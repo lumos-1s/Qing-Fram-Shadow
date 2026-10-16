@@ -85,6 +85,14 @@ window.App = Object.assign(window.App || {}, {
             else if (e.ctrlKey && e.key.toLowerCase() === 'v') { if (typing) return; e.preventDefault(); this.pasteElement(); }
             else if ((e.key === 'Delete' || e.key === 'Backspace') && !typing) {
                 e.preventDefault();
+                // 优先处理批量勾选的照片(Ctrl+A 全选后按 Delete = 删掉全部勾选的)。
+                // 必须放在最前:selectImage/afterImageSelect 会清空 selectedEls,所以"刚勾选完"
+                // 这个时刻画布元素本来也是空的,不会抢走"删元素"的语义;而 >=2 才算批量,
+                // 单击缩略图(batchSel 只有 1 项)仍保持原来的行为。
+                if (this.batchSel && this.batchSel.length > 1) {
+                    this.confirmRemoveImages(this.batchSel.slice());
+                    return;
+                }
                 // 优先删拼图字幕,但必须确认「拼图已启用」且「该槽位真有字幕」。
                 //
                 // 这里必须走 this.$:本模块被拆成独立 <script> 后,$ 只在 app.js 的

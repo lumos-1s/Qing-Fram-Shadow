@@ -1437,43 +1437,84 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
 
     // 从胶片条移除某张照片:槽位 imageIndex 引用平移,不再自动重拼,
     // 只重算布局几何并保留剩余格子图片与编辑状态(需要复原请点「重拼」)
+    // 单张删除即"只删一张"的批量删除,统一走 removeImages(逻辑只有一份)
     removeImage(i) {
-        if (i < 0 || i >= this.images.length) return;
-        if (this.images.length <= 1) { this.setStatus('至少保留一张照片'); return; }
-        const name = this.images[i].name;
-        this.batchSel = this.batchSel.filter(x => x !== i).map(x => (x > i ? x - 1 : x));
-        this.selectedIdx = this.selectedIdx.filter(x => x !== i).map(x => (x > i ? x - 1 : x));
+        this.removeImages([i]);
+    },
+
+    // 批量移除照片(Ctrl+A 全选后右键删除 / 单张删除共用)。
+    // 与旧 removeImage 的差别:
+    //  - 一次处理一批索引,必须降序 splice,否则前面的删除会让后面的索引漂移;
+    //  - 允许删到 0 张:删光是合法状态(启动时本来就没有照片),回到空状态而不是报
+    //    「至少保留一张照片」——那正是"全选删除没反应"的第二个原因。
+    removeImages(indices) {
+        if (!this.images || !this.images.length) return;
+        // 去重 + 只保留合法索引
+        const list = Array.from(new Set((indices || []).filter(i => Number.isInteger(i) && i >= 0 && i < this.images.length)))
+            .sort((a, b) => a - b);
+        if (!list.length) return;
+        const kill = new Set(list);
+        const removed = list.map(i => this.images[i]);
+        // 拼图槽位引用平移:指向被删图的槽位清空,位于其后的整体左移(按批一次算完)
         const pk = this.template && this.template.puzzle;
         if (pk && pk.slots) {
             for (const k in pk.slots) {
                 const sc = pk.slots[k];
-                if (sc && sc.imageIndex != null) {
-                    if (sc.imageIndex === i) { sc.imageIndex = undefined; sc.imagePath = undefined; }
-                    else if (sc.imageIndex > i) sc.imageIndex--;
-                }
+                if (!sc || sc.imageIndex == null) continue;
+                if (kill.has(sc.imageIndex)) { sc.imageIndex = undefined; sc.imagePath = undefined; }
+                else sc.imageIndex -= list.filter(j => j < sc.imageIndex).length;
             }
         }
-        this.images.splice(i, 1);
-        if (this.currentIdx > i) this.currentIdx--;
-        const needReselect = !this.images.includes(this.image);
+        // 记住当前主图对象:删完索引会变,不能靠索引判断它是否被删
+        const cur = this.image;
+        for (let k = list.length - 1; k >= 0; k--) this.images.splice(list[k], 1);
+        // 顺带清掉被删照片的每图模板,别让 Map 一直持有整张图的模板快照
+        removed.forEach(im => this.imageTemplates.delete(im));
+        this.batchSel = [];
+        this.selectedIdx = [];
         this.buildThumbnails();
+        // ══ 全部删完:回到空状态(与启动时无照片一致)══
+        if (!this.images.length) {
+            this.image = null;
+            this.template = null;
+            this.selectedEls = [];
+            this.currentIdx = 0;
+            this.updateEmptyState();
+            if (this.dom.stRes) this.dom.stRes.textContent = '';
+            if (this.dom.stInfo) this.dom.stInfo.textContent = '';
+            this.updateHistoryButtons();
+            // 若草稿里还有上次会话,顺手把「继续上次会话」按钮亮出来 —— 删光后这是唯一的找回入口
+            if (typeof this.checkDraftRestore === 'function') this.checkDraftRestore();
+            this.setStatus('已删除全部 ' + removed.length + ' 张照片');
+            return;
+        }
+        const curIdx = cur ? this.images.indexOf(cur) : -1;
+        if (curIdx < 0) {
+            // 当前主图被删掉了 → 就近选一张(selectImage 会重建模板/缩略图)
+            this.selectImage(Math.min(this.currentIdx, this.images.length - 1));
+        } else {
+            this.currentIdx = curIdx;
+            this.refreshUI();
+            this.scheduleRender(true);
+        }
         if (this.tplPuzzle()) {
             const pk2 = this.tplPuzzle();
             this.ensurePuzzleSlotsCount(pk2);
             this.saveCurrentTemplate();
             this.refreshPuzzleUI();
             this.scheduleRender(true);
-            this.setStatus('已移除「' + name + '」，保留剩余格子编辑结果');
+            this.setStatus(removed.length > 1 ? '已删除 ' + removed.length + ' 张照片,保留剩余格子编辑结果' : '已移除「' + removed[0].name + '」,保留剩余格子编辑结果');
             return;
         }
-        if (needReselect) {
-            this.currentIdx = Math.min(Math.max(0, this.currentIdx), this.images.length - 1);
-            this.selectImage(this.currentIdx);
-        } else if (this.image) {
-            this.selectedIdx = this.selectedIdx.filter(x => x >= 0 && x < this.images.length);
-            this.scheduleRender(true);
-        }
-        this.setStatus('已移除「' + name + '」');
+        this.setStatus(removed.length > 1 ? '已删除 ' + removed.length + ' 张照片' : '已移除「' + removed[0].name + '」');
+    },
+
+    // 批量删除前确认(单张删除沿用旧行为,不弹窗)
+    confirmRemoveImages(idxs) {
+        const list = (idxs || []).filter(i => Number.isInteger(i) && i >= 0 && i < this.images.length);
+        if (!list.length) return;
+        if (list.length > 1 && !window.confirm('确定删除选中的 ' + list.length + ' 张照片吗?')) return;
+        this.removeImages(list);
     },
 
     // 打开图片加入胶片条并设为当前图
@@ -1648,13 +1689,19 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             cb.checked = isSel;
             cb.addEventListener('click', e => { e.stopPropagation(); this.toggleBatch(i, cb); });
             // 桌面右键菜单:同步边框 / 删除
+            // 右键落在"已勾选"的缩略图上且勾了多张(Ctrl+A 全选)→ 对这一整批操作,
+            // 否则只对右键的这一张操作(与旧行为一致)。
             const ctxI = i;
             wrap.addEventListener('contextmenu', e => {
                 e.preventDefault();
                 e.stopPropagation();
+                const many = this.batchSel.length > 1 && this.batchSel.includes(ctxI);
+                const targets = many ? this.batchSel.slice() : [ctxI];
                 this.openCtx(e.clientX, e.clientY, [
-                    ['同步边框', () => this.syncBorderTo(ctxI)],
-                    ['删除', () => this.removeImage(ctxI)],
+                    [many ? `同步边框（${targets.length} 张）` : '同步边框',
+                        () => many ? this.applyBorderToSelected() : this.syncBorderTo(ctxI)],
+                    [many ? `删除选中 ${targets.length} 张` : '删除',
+                        () => many ? this.confirmRemoveImages(targets) : this.removeImage(ctxI)],
                 ]);
             });
             wrap.appendChild(t);
