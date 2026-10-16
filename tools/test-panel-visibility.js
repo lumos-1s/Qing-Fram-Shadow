@@ -96,7 +96,19 @@ const SHOW_OK = new Set([
     'SIGN_BLUR/rowBgBlurInt',
     'SIG_BLUR/rowBgBlurInt',
     'AV_BLUR/rowBgBlurInt',
-    'DARK_BRAND_ONLY/rowParamFontSize'
+    'DARK_BRAND_ONLY/rowParamFontSize',
+    // 2026-10 票券家族接入签名/头像(style-caps.js 的 sigTicket):票根三变体 + 撕边电影票
+    // 露出「签名内容/字体/颜色/字号 + 头像大小/显示头像」六行。冻结基线(能力表接入之前)里
+    // MOVIE_TICKET 这几行是隐藏的(旧梯子只给签名/头像系列 + 邮票家族开),现在引擎真的读
+    // 这些参数了 —— 不是「白藏了放出来」,而是签名行本来就在画(TICKET_* 有,电影票是这次
+    // 新加的行),以前用户没法关也没法调。每个控件都有实测断点:
+    // tools/test-ticket-redo.js ⑬–⑰(signSize 油墨 3408→12933、头像 0↔2467、头像大小
+    // 2467→13148、签名色红像素 0→2364)与 ㉘–㉞(电影票:高度 1454→1588、副券列 0 油墨 …)。
+    // 注意 rowAvatarShow 不列在这里:它整个行晚于冻结基线(见下面 NEW_ROWS),按「新增行」记账,
+    // 列进本表反而会被判成「登记已失效」。TICKET_VINTAGE/SCRAP/CONCERT 在冻结基线里根本
+    // 不存在,同样走 missingStyle 记账。
+    'MOVIE_TICKET/rowSignText', 'MOVIE_TICKET/rowSignFont', 'MOVIE_TICKET/rowSignColor',
+    'MOVIE_TICKET/rowSignSize', 'MOVIE_TICKET/rowAvatarScale',
     // 注意 PARAM_BOTTOM_LEFT/rowParamFontSize 与 STAMP_POSTAGE/rowParamFontSize 已从本表移除。
     // 它们曾因能力表判据缺陷(用全图平均差)被误判为不生效而收进 HIDE_OK;判据改成
     // "单格最大差 + 变化格数"后确认是真实响应(分别改动 51 / 29 格),于是又露了出来 ——

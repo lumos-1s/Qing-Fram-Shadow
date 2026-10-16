@@ -946,8 +946,8 @@
    "rowSignText": false
   },
   "MOVIE_TICKET": {
-   "rowAvatarScale": false,
-   "rowAvatarShow": false,
+   "rowAvatarScale": true,
+   "rowAvatarShow": true,
    "rowBgBlur": false,
    "rowBgBlurInt": false,
    "rowBrandLogo": false,
@@ -960,11 +960,11 @@
    "rowParamPos": false,
    "rowParamScale": false,
    "rowParamType": false,
-   "rowSignColor": false,
-   "rowSignFont": false,
+   "rowSignColor": true,
+   "rowSignFont": true,
    "rowSignModel": false,
-   "rowSignSize": false,
-   "rowSignText": false
+   "rowSignSize": true,
+   "rowSignText": true
   },
   "WATERCOLOR_BLEED": {
    "rowAvatarScale": false,
@@ -988,8 +988,8 @@
    "rowSignText": false
   },
   "TICKET_VINTAGE": {
-   "rowAvatarScale": false,
-   "rowAvatarShow": false,
+   "rowAvatarScale": true,
+   "rowAvatarShow": true,
    "rowBgBlur": false,
    "rowBgBlurInt": false,
    "rowBrandLogo": false,
@@ -1002,15 +1002,15 @@
    "rowParamPos": false,
    "rowParamScale": false,
    "rowParamType": false,
-   "rowSignColor": false,
-   "rowSignFont": false,
+   "rowSignColor": true,
+   "rowSignFont": true,
    "rowSignModel": false,
-   "rowSignSize": false,
-   "rowSignText": false
+   "rowSignSize": true,
+   "rowSignText": true
   },
   "TICKET_CONCERT": {
-   "rowAvatarScale": false,
-   "rowAvatarShow": false,
+   "rowAvatarScale": true,
+   "rowAvatarShow": true,
    "rowBgBlur": false,
    "rowBgBlurInt": false,
    "rowBrandLogo": false,
@@ -1023,15 +1023,15 @@
    "rowParamPos": false,
    "rowParamScale": false,
    "rowParamType": false,
-   "rowSignColor": false,
-   "rowSignFont": false,
+   "rowSignColor": true,
+   "rowSignFont": true,
    "rowSignModel": false,
-   "rowSignSize": false,
-   "rowSignText": false
+   "rowSignSize": true,
+   "rowSignText": true
   },
   "TICKET_SCRAP": {
-   "rowAvatarScale": false,
-   "rowAvatarShow": false,
+   "rowAvatarScale": true,
+   "rowAvatarShow": true,
    "rowBgBlur": false,
    "rowBgBlurInt": false,
    "rowBrandLogo": false,
@@ -1044,11 +1044,11 @@
    "rowParamPos": false,
    "rowParamScale": false,
    "rowParamType": false,
-   "rowSignColor": false,
-   "rowSignFont": false,
+   "rowSignColor": true,
+   "rowSignFont": true,
    "rowSignModel": false,
-   "rowSignSize": false,
-   "rowSignText": false
+   "rowSignSize": true,
+   "rowSignText": true
   },
   "TICKET_STAMP": {
    "rowAvatarScale": true,

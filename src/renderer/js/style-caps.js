@@ -195,14 +195,18 @@
         const sigCore = isPersonal || s === 'TICKET_STAMP' || s === 'STAMP_KRAFT' || s === 'STAMP_BLUEPRINT' || s === 'STAMP_REDSEAL' || s === 'STAMP_GOLD';
         // CARD_3D 只有签名文字四件套(内容/字体/颜色/字号),无头像,单独放行
         const sigTextOnly = s === 'CARD_3D';
+        // 票券家族(票根三变体 + 撕边电影票):签名四件套 + 头像两件套。
+        // 与 sigCore 分开放:票券引擎画的是自己的票面配色,不读 paramColor,
+        // 所以它们只该看到签名/头像这六行,不该多出一行「参数颜色」。
+        const sigTicket = s === 'TICKET_VINTAGE' || s === 'TICKET_SCRAP' || s === 'TICKET_CONCERT' || s === 'MOVIE_TICKET';
         const v = {};
         v.rowSignModel = s === 'SIGN_PARAM';
-        v.rowSignText = sigCore || sigTextOnly;
-        v.rowSignFont = sigCore || sigTextOnly;
-        v.rowSignColor = sigCore || sigTextOnly;
-        v.rowAvatarScale = sigCore;
-        v.rowSignSize = sigCore || sigTextOnly;
-        v.rowAvatarShow = sigCore;
+        v.rowSignText = sigCore || sigTextOnly || sigTicket;
+        v.rowSignFont = sigCore || sigTextOnly || sigTicket;
+        v.rowSignColor = sigCore || sigTextOnly || sigTicket;
+        v.rowAvatarScale = sigCore || sigTicket;
+        v.rowSignSize = sigCore || sigTextOnly || sigTicket;
+        v.rowAvatarShow = sigCore || sigTicket;
         v.rowParamColor = sigCore;
         v.rowParamType = isBottomBar;
         v.rowParamPos = isBottomBar;
