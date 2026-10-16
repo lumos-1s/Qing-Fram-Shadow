@@ -1200,13 +1200,24 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         const h = ih + side * 2 + textH + blurGap * 2;
         const x0 = blurGap, y0 = blurGap;
         const tw = iw + side * 2, th = ih + side * 2 + textH; // 票面矩形
-        // 底层: 照片背景模糊铺满画布(参考图邮票下层就是背景模糊, 整帧只blur一次)
+        // 底层: 照片背景模糊铺满画布(参考图邮票下层就是背景模糊, 整帧只blur一次)。
+        //       与票根/电影票同一套「两个必须」(不满足就是导出后深色背景上一条极淡的缝):
+        //    a) 底图要比画布外扩一圈:如果 bgScale=max(w/iw,h/ih),图的边缘正好压在画布
+        //       边上,模糊核会吸到画布外的透明像素,四周留出 alpha<255 的半透明带
+        //       (实测:上下各约 39 行,左右整条边,min alpha 131)。
+        //    b) 外扩之后边缘仍会有 1~2% 的 alpha 缺口,把模糊结果整幅贴自己两遍即可填满:
+        //       同色叠自己不改颜色,只把 alpha 从 a 抬到 1-(1-a)²(0.984 → 0.999999)。
         const blurR = Math.max(16, Math.round(size * 0.9));
-        const bgScale = Math.max(w / iw, h / ih);
-        g.save();
-        g.filter = 'blur(' + blurR + 'px)';
-        g.drawImage(img, (w - iw * bgScale) / 2, (h - ih * bgScale) / 2, iw * bgScale, ih * bgScale);
-        g.restore();
+        const bgPad = blurR * 4;
+        const bgScale = Math.max((w + bgPad) / iw, (h + bgPad) / ih);
+        const bg = newCanvas(w, h);
+        const bgG = bg.getContext('2d');
+        bgG.filter = 'blur(' + blurR + 'px)';
+        bgG.drawImage(img, (w - iw * bgScale) / 2, (h - ih * bgScale) / 2, iw * bgScale, ih * bgScale);
+        bgG.filter = 'none';
+        bgG.drawImage(bg, 0, 0);   // canvas 自绘前会先快照源,不会边读边写
+        bgG.drawImage(bg, 0, 0);
+        g.drawImage(bg, 0, 0);
         // 票面+齿孔: 离屏canvas做带半孔齿孔的米白票面(孔中心落在票面边缘线上,半圆天然只咬进票面内),
         // 孔内透明露出下层模糊背景; 一次性叠上, 避免逐孔重复绘制导致缩放卡顿
         const holeR = Math.max(3, Math.round(size * 0.225));

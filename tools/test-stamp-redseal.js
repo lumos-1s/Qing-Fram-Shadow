@@ -5,14 +5,17 @@
 // (半径 90~119 的圈带里有 1466 个红像素,角度集中在 0° 和 ±180°,即章的左右两侧),
 // 看起来像"假章";票面也只有一层纯米色,没有纪念邮票的印刷质感。
 //
-// 本测试做两件事:
+// 本测试做三件事:
 //   A) 红章几何体检 —— 把红色像素按"到章心距离 / 外圈半径"归一化后分桶,断言:
 //      · 内容(「纪念」+小星)与内外圈之间有一段干净的空白(证明没有东西挤在圈带里)
 //      · 圈带以外的红色只出现在两条圈线附近(证明章的图形规整)
 //      · 整枚章完整落在照片内、外形是圆的
-//   B) 防回归 —— 另外 4 个邮票变体(纪念邮票/牛皮纸/蓝晒/黑金)的整幅画面指纹必须与
-//      重做前逐像素一致,确保这次改动没有波及其它变体;同时红章自己的指纹必须变过。
-//      日期用固定时间冻结,保证指纹不随运行日期漂移。
+//   B) 防回归 —— 5 个邮票变体的画面指纹冻结(4 个非红章变体必须与冻结值逐像素一致,
+//      红章自己的必须与重做前不同);日期用固定时间冻结,保证指纹不随运行日期漂移。
+//      这里的冻结值是「邮票重做 + 模糊底不透明修复」之后重采的一版:修复把模糊底从
+//      max(w/iw,h/ih) 换成「外扩一圈 + 贴自己两遍」,5 个变体的画面都变了(见 FROZEN 上方注释)。
+//   C) 整幅全不透明 —— 5 个变体的全画布最小 alpha 必须是 255:模糊底四周不留半透明带
+//      (修复前实测 min 131、上下各约 39 行、左右整条边),否则导出 PNG 压在深色背景上会看到一条极淡的缝。
 const fs = require('fs');
 const path = require('path');
 const { app, BrowserWindow, ipcMain, protocol, net } = require('electron');
@@ -37,11 +40,17 @@ const preset = (n) => JSON.parse(fs.readFileSync(path.join(ROOT, 'shared', 'pres
 
 // 重做前(旧实现)的红章指纹 —— 重做后必须变;其余 4 个变体必须不变
 const OLD_REDSEAL = 'c459dfe8';
+// 邮票家族「模糊底不透明」修复后的指纹(修复内容见 engine-styles.js 的 styleStamp:
+// 模糊底原来按 max(w/iw,h/ih) 铺,模糊核会吸到画布外的透明像素,四周留出半透明带
+// (实测 min alpha 131、上下各约 39 行);改成与票根/电影票同一套「外扩一圈 + 贴自己两遍」后,
+// 整幅 alpha 都是 255。这一步会改变全部 5 个邮票变体的画面,所以这里的指纹比修复前整体重采了一次:
+// 纪念 48a29554→6e89016 / 牛皮纸 b97461c0→109ac51 / 蓝晒 675d71af→76728d95 /
+// 黑金 30107e11→570f2528 / 红章 88c98490→4709ec04(即 OLD_REDSEAL 之后又变了一次)。
 const FROZEN = {
-    '纪念邮票': '48a29554',
-    '牛皮纸邮票': 'b97461c0',
-    '蓝晒邮票': '675d71af',
-    '黑金邮票': '30107e11',
+    '纪念邮票': '6e89016',
+    '牛皮纸邮票': '109ac51',
+    '蓝晒邮票': '76728d95',
+    '黑金邮票': '570f2528',
 };
 
 const MEASURE = (presetObj, extra) => `(async () => {
@@ -77,8 +86,11 @@ const MEASURE = (presetObj, extra) => `(async () => {
     let h = 2166136261;
     for (let i = 0; i < d.length; i += 12) { h ^= d[i]; h = Math.imul(h, 16777619); h ^= d[i + 1]; h = Math.imul(h, 16777619); h ^= d[i + 2]; h = Math.imul(h, 16777619); }
     const fp = (h >>> 0).toString(16);
+    // 整幅最小 alpha:模糊底不外扩/不叠两遍时,四周会留下 alpha<255 的半透明带(修之前实测 min 131)
+    let alphaMin = 255;
+    for (let i = 3; i < d.length; i += 4) { if (d[i] < alphaMin) { alphaMin = d[i]; if (alphaMin === 0) break; } }
     window.Date = RD;
-    return { W, H, fp, data: null };
+    return { W, H, fp, alphaMin, data: null };
 })()`;
 
 // 红章几何体检(在渲染进程里算,避免把 16MB 像素搬回来)
@@ -226,21 +238,28 @@ app.whenReady().then(async () => {
     }
 
     const fails = [];
+    let total = 0;
     const line = (ok, label, got, expect) => {
+        total++;
         console.log(`  ${ok ? 'OK  ' : 'FAIL'} ${label}`);
         console.log(`       ${got}${expect ? '   期望: ' + expect : ''}`);
         if (!ok) fails.push(label);
     };
 
-    // ── A) 其它 4 个变体逐像素不变 ──
+    // ── A) 其它 4 个变体逐像素不变(冻结),且整幅全不透明(模糊底修复的防回归)──
     console.log('红章纪念邮票:重做回归');
     console.log('─'.repeat(94));
     for (const n of NAMES.slice(0, 4)) {
         const r = await win.webContents.executeJavaScript(MEASURE(preset(n)));
-        line(r.fp === FROZEN[n], `① ${n}:画面与重做前逐像素一致`, `指纹 ${r.fp} (${r.W}x${r.H})`, FROZEN[n]);
+        line(r.fp === FROZEN[n], `① ${n}:画面与冻结指纹一致(邮票重做 + 模糊底不透明修复之后的版本)`,
+            `指纹 ${r.fp} (${r.W}x${r.H})`, FROZEN[n]);
+        line(r.alphaMin === 255, `①b ${n}:整幅全不透明(模糊底外扩一圈 + 贴自己两遍,四周没有半透明带)`,
+            `全画布最小 alpha = ${r.alphaMin}`, '255');
     }
     const oldRed = await win.webContents.executeJavaScript(MEASURE(preset('红章纪念邮票')));
-    line(oldRed.fp !== OLD_REDSEAL, '② 红章纪念邮票:画面确实被重做了', `指纹 ${oldRed.fp}`, `≠ ${OLD_REDSEAL}`);
+    line(oldRed.fp !== OLD_REDSEAL, '② 红章纪念邮票:画面确实被重做过(与重做前的指纹不同)',
+        `指纹 ${oldRed.fp}`, `≠ ${OLD_REDSEAL}`);
+    line(oldRed.alphaMin === 255, '②b 红章纪念邮票:整幅也全不透明', `全画布最小 alpha = ${oldRed.alphaMin}`, '255');
 
     // ── B) 红章几何体检 ──
     const s = await win.webContents.executeJavaScript(SEAL_SCAN(preset('红章纪念邮票')));
@@ -316,6 +335,6 @@ app.whenReady().then(async () => {
         `第一次 ${a1.fp} / 第二次 ${a2.fp} / A 段 ${oldRed.fp}  (${a1.W}x${a1.H})`, '三者一致');
 
     console.log('─'.repeat(94));
-    console.log(fails.length ? `✖ ${fails.length} 项未通过: ${fails.join('、')}` : '✓ 全部 17 项通过');
+    console.log(fails.length ? `✖ ${fails.length} 项未通过: ${fails.join('、')}` : `✓ 全部 ${total} 项通过`);
     finish(fails.length ? 1 : 0);
 }).catch(e => { console.error(e); finish(1); });
