@@ -46,19 +46,13 @@ const PAPER = {
     TICKET_CONCERT: [14, 27, 48],      // #0e1b30 深蓝夜场
 };
 
-// 演唱会票根的预设文件是提交②才加的,这里先在内存里构造(骨架抄现有票根预设)
-function concertPreset() {
-    const p = JSON.parse(JSON.stringify(preset('复古旅行票根')));
-    p.photoFrameStyle = 'TICKET_CONCERT';
-    p.templateName = '演唱会票根';
-    return p;
-}
-
+// 演唱会票根的预设文件随「新增演唱会票根预设」那个提交加入;这里直接读文件,
+// 顺带把预设本身也纳入回归(photoFrameStyle 写错/漏写会被下面 30 项断言抓住)
 function variants() {
     return [
         { key: 'TICKET_VINTAGE', label: '复古旅行票根 TICKET_VINTAGE', preset: preset('复古旅行票根') },
         { key: 'TICKET_SCRAP', label: '手账拼贴票根 TICKET_SCRAP', preset: preset('手账拼贴票根') },
-        { key: 'TICKET_CONCERT', label: '演唱会票根 TICKET_CONCERT', preset: concertPreset() },
+        { key: 'TICKET_CONCERT', label: '演唱会票根 TICKET_CONCERT', preset: preset('演唱会票根') },
     ];
 }
 
