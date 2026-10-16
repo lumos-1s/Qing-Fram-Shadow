@@ -950,6 +950,83 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         return { fs: fs, text: str };
     }
 
+    // 五角星路径(cx/cy 中心,R 外接半径,rot 起始角,默认尖角朝上)
+    function starPath(g, cx, cy, R, rot) {
+        const inner = R * 0.382;   // 正五角星的内外半径比
+        g.beginPath();
+        for (let i = 0; i < 10; i++) {
+            const rr = (i % 2 === 0) ? R : inner;
+            const a = (rot || 0) - Math.PI / 2 + i * Math.PI / 5;
+            const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+            if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+        }
+        g.closePath();
+    }
+
+    // 圆形纪念章:双圈 + 中心「纪念」 + 圈内小五角星,叠加手刻抖动 / 断墨颗粒 / 双次盖印。
+    // 所有随机量都取自固定种子(styleNoise),反复重绘完全一致 —— 不会出现印章颗粒闪动。
+    // 关键约束:圆心放在照片内(距左下角 inset),内容(字+星)半径 < 0.52R,内圈 0.745R,
+    // 外圈 1.0R —— 内容和圈线之间必须留出干净空白(旧实现把 '★ 纪念 ★' 整行硬塞进去,
+    // 两个星被挤进内外圈之间,看着像假章)。
+    function drawRedSeal(g, cx, cy, r, rot) {
+        const pad = Math.ceil(r * 0.28);
+        const cv = newCanvas(r * 2 + pad * 2, r * 2 + pad * 2);
+        const sg = cv.getContext('2d');
+        const c = r + pad;
+        const rnd = styleNoise(Math.round(r * 10), 2026, 4491);
+        const RED = '181,26,26';
+        const wobble = function (radius, width, alpha) {
+            sg.beginPath();
+            const N = 108;
+            for (let i = 0; i <= N; i++) {
+                const a = i / N * Math.PI * 2;
+                const rr = radius * (1 + (rnd(1000) / 1000 - 0.5) * 0.035);
+                const x = c + Math.cos(a) * rr, y = c + Math.sin(a) * rr;
+                if (i === 0) sg.moveTo(x, y); else sg.lineTo(x, y);
+            }
+            sg.closePath();
+            sg.lineWidth = width;
+            sg.lineCap = 'round';
+            sg.strokeStyle = 'rgba(' + RED + ',' + alpha + ')';
+            sg.stroke();
+        };
+        // 第一次盖印:位置略偏、颜色略淡(手抖/重影)
+        sg.save();
+        sg.translate(r * 0.022, r * 0.016);
+        wobble(r, Math.max(3.5, r * 0.09), 0.30);
+        wobble(r * 0.745, Math.max(2, r * 0.045), 0.26);
+        sg.restore();
+        // 主印:外圈粗、内圈细
+        wobble(r, Math.max(3.5, r * 0.09), 0.95);
+        wobble(r * 0.745, Math.max(2, r * 0.045), 0.9);
+        // 中心「纪念」
+        sg.fillStyle = 'rgba(' + RED + ',0.95)';
+        sg.textAlign = 'center';
+        sg.textBaseline = 'middle';
+        sg.font = 'bold ' + Math.round(r * 0.37) + 'px "KaiTi","STKaiti","SimSun",serif';
+        sg.fillText('纪念', c, c - r * 0.15);
+        // 小五角星(画路径,不依赖字体里有没有 ★ 字形)
+        starPath(sg, c, c + r * 0.34, r * 0.145, 0);
+        sg.fill();
+        // 断墨颗粒:挖掉若干小点,模拟印油不匀(种子固定 → 不闪)
+        sg.globalCompositeOperation = 'destination-out';
+        sg.fillStyle = '#000';
+        for (let i = 0; i < 30; i++) {
+            const a = rnd(628) / 100, rr = rnd(1000) / 1000 * r * 0.98;
+            const br = r * (0.012 + rnd(100) / 100 * 0.05);
+            sg.globalAlpha = 0.3 + rnd(100) / 100 * 0.5;
+            sg.beginPath(); sg.arc(c + Math.cos(a) * rr, c + Math.sin(a) * rr, br, 0, 6.2832); sg.fill();
+        }
+        sg.globalAlpha = 1;
+        sg.globalCompositeOperation = 'source-over';
+        // 贴到画布(整枚章微微倾斜)
+        g.save();
+        g.translate(cx, cy);
+        g.rotate(rot);
+        g.drawImage(cv, -c, -c);
+        g.restore();
+    }
+
     // ── 纪念邮票(2026-10):邮票浮在照片背景模糊上,白纸票面+齿孔挖空透出模糊色+照片+右下地点/日期+顶部签名 ──
     function styleStamp(img, size, g, iw, ih, S, variant) {
         const pal = ({
@@ -1040,6 +1117,35 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
             tg.strokeStyle = 'rgba(212,175,55,0.8)';
             tg.lineWidth = 3;
             tg.strokeRect(7, 7, tw - 14, th - 14);
+        } else if (pal.deco === 'seal') {
+            // 红章纪念邮票票面: 浅米纸 + 雕刻细线(安全纹) + 双细线内框 + 纸纹颗粒 ——
+            // 让票面不再是一块"纯色块"。照片随后盖住中间, 四周留出一圈印刷纹理。
+            const rndf = styleNoise(tw, th, 48271);
+            tg.fillStyle = 'rgba(163,140,112,0.055)';
+            for (let i = 0; i < 2400; i++) tg.fillRect(rndf(tw), rndf(th), 2, 2);
+            const ringIn = Math.max(12, Math.round(holeR * 1.15));
+            const step = Math.max(5, Math.round(holeR * 0.30));
+            for (let k = 0; k < 4; k++) {
+                const inset = ringIn + k * step;
+                tg.strokeStyle = 'rgba(150,66,52,' + (0.15 - k * 0.02).toFixed(2) + ')';
+                tg.lineWidth = 1;
+                if (typeof tg.roundRect === 'function') {
+                    tg.beginPath();
+                    tg.roundRect(inset, inset, tw - inset * 2, th - inset * 2, Math.round(ringIn * 0.7));
+                    tg.stroke();
+                } else {
+                    tg.strokeRect(inset, inset, tw - inset * 2, th - inset * 2);
+                }
+            }
+            // 双细线内框(留出齿孔内缘)
+            const fIn = Math.max(18, Math.round(holeR * 2.2));
+            tg.strokeStyle = 'rgba(150,60,45,0.52)';
+            tg.lineWidth = 2;
+            tg.strokeRect(fIn, fIn, tw - fIn * 2, th - fIn * 2);
+            const fIn2 = fIn + Math.max(4, Math.round(step * 0.8));
+            tg.strokeStyle = 'rgba(150,60,45,0.34)';
+            tg.lineWidth = 1;
+            tg.strokeRect(fIn2, fIn2, tw - fIn2 * 2, th - fIn2 * 2);
         }
         tg.globalCompositeOperation = 'destination-out';
         tg.fillStyle = '#000000';
@@ -1071,9 +1177,42 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         g.clip();
         g.drawImage(img, dx, dy, dw, dh);
         g.restore();
-        // 签名(可选项): 票面顶部白边内居中
+        // 票面顶部: 红章纪念邮票在顶边印票题「纪念邮票」(纸色题签压断内框细线 + 两侧引线),
+        // 其余变体沿用旧的"顶部签名"位(签名文本字段, 预设未使用)。
         const sigStr = (S && S.signatureText) ? String(S.signatureText) : '';
-        if (sigStr) {
+        if (pal.deco === 'seal') {
+            const bandH = Math.max(18, side - holeR * 1.2);
+            const hFs = Math.max(11, Math.min(Math.round(size * 0.32), Math.round(bandH * 0.6)));
+            const hCy = y0 + holeR * 1.2 + bandH / 2;
+            const faceC = x0 + side + iw / 2;
+            const title = '纪 念 邮 票';
+            g.font = hFs + 'px "SimSun", serif';
+            const tW = g.measureText(title).width;
+            const boxW = tW + Math.round(hFs * 1.7);
+            const boxH = Math.round(hFs * 1.5);
+            g.fillStyle = pal.paper;
+            if (typeof g.roundRect === 'function') {
+                g.beginPath();
+                g.roundRect(faceC - boxW / 2, hCy - boxH / 2, boxW, boxH, Math.round(hFs * 0.3));
+                g.fill();
+            } else {
+                g.fillRect(faceC - boxW / 2, hCy - boxH / 2, boxW, boxH);
+            }
+            g.fillStyle = 'rgba(56,42,32,0.88)';
+            g.textAlign = 'center';
+            g.textBaseline = 'middle';
+            g.fillText(title, faceC, hCy);
+            const rIn = x0 + Math.max(24, Math.round(iw * 0.05));
+            const rEnd = x0 + side + iw - Math.max(24, Math.round(iw * 0.05));
+            g.strokeStyle = 'rgba(150,60,45,0.5)';
+            g.lineWidth = 1.5;
+            if (faceC - boxW / 2 - 10 > rIn) {
+                g.beginPath(); g.moveTo(rIn, hCy); g.lineTo(faceC - boxW / 2 - 8, hCy); g.stroke();
+            }
+            if (rEnd > faceC + boxW / 2 + 10) {
+                g.beginPath(); g.moveTo(faceC + boxW / 2 + 8, hCy); g.lineTo(rEnd, hCy); g.stroke();
+            }
+        } else if (sigStr) {
             const sigFs = Math.max(10, Math.round(size * 0.7));
             g.font = sigFs + 'px "SimSun", serif';
             g.fillStyle = pal.ink;
@@ -1081,63 +1220,110 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
             g.textBaseline = 'middle';
             g.fillText(sigStr, x0 + side + iw / 2, y0 + side * 0.55);
         }
-        // 底部: 日期(地点可选)右对齐; 有头像/签名时, 日期上方加一行头像+签名(右对齐, 头像贴签名左)
+        // 底部: 日期(地点可选)。红章纪念邮票重做为"票题式"底栏(分隔细线 + 居中铭文),
+        // 其余变体沿用右对齐排版(含头像/签名一行)。
         const d = new Date();
         const dateStr = d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
         const locStr = (S && S.location) ? String(S.location) : '';
         const fFs = Math.max(13, Math.min(Math.round(size * 0.8), Math.round(iw * 0.03)));
         const textRX = x0 + side + iw - Math.max(36, Math.round(side * 0.5));
         const footerY = y0 + side + ih;
-        g.font = fFs + 'px "SimSun", serif';
-        g.fillStyle = pal.ink;
-        g.textAlign = 'right';
-        g.textBaseline = 'middle';
-        if (hasAv || hasSig) {
-            // 日期/地点移到下方行
-            if (locStr) g.fillText(locStr, textRX, footerY + textH * 0.60);
-            g.fillText(dateStr, textRX, footerY + textH * (locStr ? 0.82 : 0.72));
-            // 上方: 头像+签名(随侧栏签名字体/颜色/字号/头像大小设置)
-            const sigStr = hasSig ? String(S.userSignature) : '';
-            const avatarR = Math.round(textH * 0.22 * ((S && S.avatarScale) || 1));
-            const sigFs = Math.round(fFs * ((S && S.signSize) || 1));
-            g.font = 'italic ' + sigFs + 'px "' + ((S && S.signFont) || 'Comic Sans MS') + '", cursive';
-            g.fillStyle = (S && S.signColor) || '#2f2a24';
-            const sigW = sigStr ? g.measureText(sigStr).width : 0;
-            const sigY = footerY + textH * 0.34;
-            let avCX = textRX - avatarR;   // 无签名: 头像右缘=textRX
-            if (sigStr) {
-                g.fillText(sigStr, textRX, sigY);
-                avCX = textRX - sigW - 10 - avatarR;
+        if (pal.deco === 'seal') {
+            const faceL = x0 + side, faceR = x0 + side + iw, faceC = faceL + iw / 2;
+            const insetX = Math.max(20, Math.round(iw * 0.035));
+            // 底栏分隔细线(承接票面内框)
+            g.strokeStyle = 'rgba(150,60,45,0.42)';
+            g.lineWidth = 1.5;
+            const ruleY = footerY + Math.round(textH * 0.16);
+            g.beginPath(); g.moveTo(faceL + insetX, ruleY); g.lineTo(faceR - insetX, ruleY); g.stroke();
+            // 日期: 无地点时居中(拉开字距, 像票面铭文); 有地点时左地点/右日期, 避免互相压字
+            const hasRow = hasAv || hasSig;
+            const dateY = footerY + textH * (hasRow ? 0.42 : 0.56);
+            g.font = fFs + 'px "SimSun", serif';
+            g.fillStyle = 'rgba(56,42,32,0.92)';
+            g.textBaseline = 'middle';
+            g.textAlign = locStr ? 'right' : 'center';
+            // ⚠ letterSpacing 必须给 CSS 长度字符串;给数字会被静默忽略(实测 0 效果)
+            g.letterSpacing = Math.round(fFs * 0.18) + 'px';
+            g.fillText(dateStr, locStr ? faceR - insetX : faceC, dateY);
+            g.letterSpacing = '0px';
+            if (locStr) {
+                g.font = Math.round(fFs * 0.82) + 'px "SimSun", serif';
+                g.fillStyle = 'rgba(56,42,32,0.66)';
+                g.textAlign = 'left';
+                g.fillText(locStr, faceL + insetX, dateY);
             }
-            if (hasAv) {
-                g.save();
-                g.beginPath(); g.arc(avCX, sigY, avatarR, 0, Math.PI * 2); g.clip();
-                const s = Math.max(avatarR * 2 / window.__qfsAvatarImg.width, avatarR * 2 / window.__qfsAvatarImg.height);
-                g.drawImage(window.__qfsAvatarImg, avCX - avatarR, sigY - avatarR, window.__qfsAvatarImg.width * s, window.__qfsAvatarImg.height * s);
-                g.restore();
-                g.strokeStyle = 'rgba(0,0,0,0.30)'; g.lineWidth = 1.5;
-                g.beginPath(); g.arc(avCX, sigY, avatarR, 0, Math.PI * 2); g.stroke();
+            // 头像+签名: 作为一组居中放在日期下方(随侧栏签名字体/颜色/字号/头像大小)
+            if (hasRow) {
+                const sigBody = hasSig ? String(S.userSignature) : '';
+                const avatarR = Math.round(textH * 0.17 * ((S && S.avatarScale) || 1));
+                const rowY = footerY + textH * 0.76;
+                const gapA = Math.max(8, Math.round(avatarR * 0.25));
+                const availW = iw - insetX * 2 - (hasAv ? avatarR * 2 + gapA : 0);
+                const fit = sigBody ? fitSignText(g, sigBody, Math.round(fFs * ((S && S.signSize) || 1)), (S && S.signFont) || 'Comic Sans MS', availW) : { text: '' };
+                const sigWS = fit.text ? g.measureText(fit.text).width : 0;
+                const totalW = (hasAv ? avatarR * 2 : 0) + (hasAv && sigWS ? gapA : 0) + sigWS;
+                let px = faceC - totalW / 2;
+                if (hasAv) {
+                    const cxA = px + avatarR;
+                    const sc2 = Math.max(avatarR * 2 / window.__qfsAvatarImg.width, avatarR * 2 / window.__qfsAvatarImg.height);
+                    const aw = window.__qfsAvatarImg.width * sc2, ah = window.__qfsAvatarImg.height * sc2;
+                    g.save();
+                    g.beginPath(); g.arc(cxA, rowY, avatarR, 0, Math.PI * 2); g.clip();
+                    g.drawImage(window.__qfsAvatarImg, cxA - aw / 2, rowY - ah / 2, aw, ah);
+                    g.restore();
+                    g.strokeStyle = 'rgba(150,60,45,0.45)'; g.lineWidth = 1.5;
+                    g.beginPath(); g.arc(cxA, rowY, avatarR, 0, Math.PI * 2); g.stroke();
+                    px += avatarR * 2 + (sigWS ? gapA : 0);
+                }
+                if (fit.text) {
+                    g.fillStyle = (S && S.signColor) || '#2f2a24';
+                    g.textAlign = 'left';
+                    g.textBaseline = 'middle';
+                    g.fillText(fit.text, px, rowY);
+                }
             }
         } else {
-            if (locStr) g.fillText(locStr, textRX, footerY + textH * 0.34);
-            g.fillText(dateStr, textRX, footerY + textH * (locStr ? 0.62 : 0.5));
+            g.font = fFs + 'px "SimSun", serif';
+            g.fillStyle = pal.ink;
+            g.textAlign = 'right';
+            g.textBaseline = 'middle';
+            if (hasAv || hasSig) {
+                // 日期/地点移到下方行
+                if (locStr) g.fillText(locStr, textRX, footerY + textH * 0.60);
+                g.fillText(dateStr, textRX, footerY + textH * (locStr ? 0.82 : 0.72));
+                // 上方: 头像+签名(随侧栏签名字体/颜色/字号/头像大小设置)
+                const sigBody = hasSig ? String(S.userSignature) : '';
+                const avatarR = Math.round(textH * 0.22 * ((S && S.avatarScale) || 1));
+                const sigFs = Math.round(fFs * ((S && S.signSize) || 1));
+                g.font = 'italic ' + sigFs + 'px "' + ((S && S.signFont) || 'Comic Sans MS') + '", cursive';
+                g.fillStyle = (S && S.signColor) || '#2f2a24';
+                const sigW = sigBody ? g.measureText(sigBody).width : 0;
+                const sigY = footerY + textH * 0.34;
+                let avCX = textRX - avatarR;   // 无签名: 头像右缘=textRX
+                if (sigBody) {
+                    g.fillText(sigBody, textRX, sigY);
+                    avCX = textRX - sigW - 10 - avatarR;
+                }
+                if (hasAv) {
+                    g.save();
+                    g.beginPath(); g.arc(avCX, sigY, avatarR, 0, Math.PI * 2); g.clip();
+                    const s = Math.max(avatarR * 2 / window.__qfsAvatarImg.width, avatarR * 2 / window.__qfsAvatarImg.height);
+                    g.drawImage(window.__qfsAvatarImg, avCX - avatarR, sigY - avatarR, window.__qfsAvatarImg.width * s, window.__qfsAvatarImg.height * s);
+                    g.restore();
+                    g.strokeStyle = 'rgba(0,0,0,0.30)'; g.lineWidth = 1.5;
+                    g.beginPath(); g.arc(avCX, sigY, avatarR, 0, Math.PI * 2); g.stroke();
+                }
+            } else {
+                if (locStr) g.fillText(locStr, textRX, footerY + textH * 0.34);
+                g.fillText(dateStr, textRX, footerY + textH * (locStr ? 0.62 : 0.5));
+            }
         }
+        // 红章纪念邮票: 左下角盖一枚圆形纪念章(整枚章落在照片内, 双圈+中心「纪念」+小星)
         if (pal.deco === 'seal') {
-            const r = Math.max(20, Math.round(Math.min(iw, ih) * 0.115));
-            const cx = x0 + side + r + 18;
-            const cy = y0 + side + ih - r - 20;
-            g.save();
-            g.translate(cx, cy);
-            g.rotate(-0.18);
-            g.strokeStyle = 'rgba(196,30,30,0.92)';
-            g.fillStyle = 'rgba(196,30,30,0.92)';
-            g.lineWidth = 3.5;
-            g.beginPath(); g.arc(0, 0, r, 0, 6.2832); g.stroke();
-            g.beginPath(); g.arc(0, 0, r * 0.72, 0, 6.2832); g.stroke();
-            g.font = 'bold ' + Math.round(r * 0.42) + 'px "SimSun", serif';
-            g.textAlign = 'center'; g.textBaseline = 'middle';
-            g.fillText('★ 纪念 ★', 0, 0);
-            g.restore();
+            const r = Math.max(20, Math.round(Math.min(iw, ih) * 0.13));
+            const inset = Math.max(16, Math.round(size * 0.32));
+            drawRedSeal(g, x0 + side + r + inset, y0 + side + ih - r - inset, r, -0.18);
         }
     }
 
