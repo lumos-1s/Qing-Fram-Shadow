@@ -1,4 +1,5 @@
-// 票根家族「真票券」重做(TICKET_VINTAGE / TICKET_SCRAP / TICKET_CONCERT)的回归测试。
+// 票根家族「真票券」重做(TICKET_VINTAGE / TICKET_SCRAP / TICKET_CONCERT)的回归测试,
+// 以及撕边电影票(MOVIE_TICKET)的重做回归(同一套判据,另一套几何:右侧副券 + 竖向锯齿撕线)。
 //
 // 背景:重做前实测出的三个根因 bug,本测试逐条防回归:
 //   ① 齿孔没挖穿 —— 旧 styleTicket 的 destination-out 沿用上一步暗角径向渐变的 fillStyle
@@ -156,6 +157,118 @@ const SCAN = (presetObj, extra, paper) => `(async () => {
         rightF, rightN, tearF, tearAboveF, photoF, stubInk, paperSample, fp };
 })()`;
 
+function movieVariant() {
+    return { key: 'MOVIE_TICKET', label: '撕边电影票 MOVIE_TICKET', preset: preset('撕边电影票') };
+}
+
+// 撕边电影票单独一套扫描:几何是「右侧副券 + 竖向锯齿撕线」,与票根家族的底部存根不同。
+// 判据一样(纯品红照片 → 品红就是「挖穿透出的模糊底」),另外查:票头/票脚深色条、锯齿只咬撕线。
+const SCAN_MOVIE = (presetObj) => `(async () => {
+    const A = window.App;
+    const RD = Date;
+    window.Date = class extends RD { constructor(...a) { if (a.length) super(...a); else super(2026, 4, 4, 12, 0, 0); } };
+    const c = document.createElement('canvas'); c.width = 1600; c.height = 1067;
+    const g0 = c.getContext('2d');
+    g0.fillStyle = 'rgb(240,30,160)'; g0.fillRect(0, 0, 1600, 1067);
+    const im = new Image();
+    await new Promise(r => { im.onload = r; im.onerror = r; im.src = c.toDataURL('image/png'); });
+    A.image = { el: im, name: 'p.png', w: 1600, h: 1067, exif: {} };
+    A.images = [A.image]; A.imageTemplates = new Map();
+    A.currentIdx = 0; A.selectedIdx = [0]; A.batchSel = []; A.selectedEls = [];
+    A.template = ${JSON.stringify(presetObj)};
+    A.normalizeTemplate();
+    A.invalidateStyleCaches();
+    A.displayMax = 2200;
+    window.__render(A, false);
+    await new Promise(r => setTimeout(r, 180));
+    window.__render(A, false);
+    await new Promise(r => setTimeout(r, 150));
+    const cv = A.dom.canvas, W = cv.width, H = cv.height;
+    const d = cv.getContext('2d').getImageData(0, 0, W, H).data;
+
+    // ── movieGeom() 的公式照抄一份(改坏了任一边,下面的尺寸断言会断)──
+    const iw = 1600, ih = 1067;
+    const bs = Math.max(5, A.template.photoFrameBorderSize || 5);
+    const size = Math.max(5, Math.floor(Math.max(5, Math.floor(bs * 2.0)) * Math.min(iw, ih) / 1000.0));
+    const side = Math.max(20, Math.round(size * 0.7));
+    const headH = Math.max(34, Math.round(size * 0.85));
+    const infoH = Math.max(26, Math.round(size * 0.62));
+    const footH = Math.max(32, Math.round(size * 0.8));
+    const stubW = Math.max(150, Math.round(iw * 0.28));
+    const gap = Math.max(36, Math.round(iw * 0.06), Math.round(size * 2.0));
+    const holeR = Math.max(3, Math.round(size * 0.225));
+    const tooth = Math.max(6, Math.round(size * 0.18));
+    const tw = iw + side * 2 + stubW;
+    const th = headH + infoH + ih + footH;
+    const tearX = side + iw;
+    const expW = tw + gap * 2, expH = th + gap * 2;
+    const s = W / expW;
+    const SX = (v) => Math.round(v * s), SY = (v) => Math.round(v * s);
+    const paper = [247, 242, 233];     // #f7f2e9 票纸
+    const band = [236, 228, 212];      // #ece4d4 信息带
+    const isF = (i) => Math.abs(d[i] - 240) <= 14 && Math.abs(d[i + 1] - 30) <= 14 && Math.abs(d[i + 2] - 160) <= 14;
+    const dPaper = (i) => Math.abs(d[i] - paper[0]) + Math.abs(d[i + 1] - paper[1]) + Math.abs(d[i + 2] - paper[2]);
+    const dTo = (i, c) => Math.abs(d[i] - c[0]) + Math.abs(d[i + 1] - c[1]) + Math.abs(d[i + 2] - c[2]);
+    const count = (x0, x1, y0, y1, fn) => { let n = 0; for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (fn((y * W + x) * 4)) n++; return n; };
+
+    let alphaMin = 255;
+    for (let i = 3; i < d.length; i += 4) if (d[i] < alphaMin) alphaMin = d[i];
+    let outerPaper = 0;
+    const O = 6;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4;
+        if (dPaper(i) > 60) continue;
+        if (x < O || y < O || x >= W - O || y >= H - O) outerPaper++;
+    }
+    let h = 2166136261;
+    for (let i = 0; i < d.length; i += 12) { h ^= d[i]; h = Math.imul(h, 16777619); h ^= d[i + 1]; h = Math.imul(h, 16777619); h ^= d[i + 2]; h = Math.imul(h, 16777619); }
+    const fp = (h >>> 0).toString(16);
+
+    // ① 四边齿孔:每条边都要「有孔(品红)又有孔间(纸色)」
+    const xA = SX(gap), xB = SX(gap + tw), yT = SY(gap + 1), yB = SY(gap + th - 1);
+    const topF = count(xA, xB, yT, yT, isF), topN = count(xA, xB, yT, yT, (i) => !isF(i));
+    const botF = count(xA, xB, yB, yB, isF), botN = count(xA, xB, yB, yB, (i) => !isF(i));
+    const xL = SX(gap + 1), xR = SX(gap + tw - 1), yA = SY(gap + 4), yZ = SY(gap + th - 4);
+    const leftF = count(xL, xL, yA, yZ, isF), leftN = count(xL, xL, yA, yZ, (i) => !isF(i));
+    const rightF = count(xR, xR, yA, yZ, isF), rightN = count(xR, xR, yA, yZ, (i) => !isF(i));
+
+    // ② 竖向锯齿撕线:贴线右侧一列「有孔有纸」交替;副券内侧同一高度必须干净(≤ 3)
+    // 扫描范围要避开上下边的齿孔带(上下边孔半径都是 holeR,不避开会把边孔当成撕线)
+    const tcY0 = SY(gap + holeR * 2 + 6), tcY1 = SY(gap + th - holeR * 2 - 6);
+    const tearCol = SX(gap + tearX + 3);
+    const tearF = count(tearCol, tearCol, tcY0, tcY1, isF);
+    const tearN = count(tearCol, tearCol, tcY0, tcY1, (i) => !isF(i));
+    const stCol = SX(gap + tearX + tooth + 40);
+    const stubF = count(stCol, stCol, tcY0, tcY1, isF);
+
+    // ③ 照片中心 = 品红
+    const photoI = (SY(gap + headH + infoH + ih / 2) * W + SX(gap + side + iw / 2)) * 4;
+    const photoF = isF(photoI);
+
+    // ④ 票头/票脚深色条(避开顶部齿孔咬入区)
+    const dark = (i) => (d[i] + d[i + 1] + d[i + 2]) < 300;
+    const bx0 = SX(gap + 30), bx1 = SX(gap + tw - 30);
+    const hy0 = SY(gap + holeR + 6), hy1 = SY(gap + headH - 2);
+    const headDark = count(bx0, bx1, hy0, hy1, dark), headAll = (bx1 - bx0 + 1) * (hy1 - hy0 + 1);
+    const fy0 = SY(gap + th - footH + 4), fy1 = SY(gap + th - holeR - 6);
+    const footDark = count(bx0, bx1, fy0, fy1, dark), footAll = (bx1 - bx0 + 1) * (fy1 - fy0 + 1);
+
+    // ⑤ 副券油墨(文字 + 虚线票框 + 金色 ADMIT ONE),排除齿孔
+    const stubInk = count(SX(gap + tearX + tooth + 10), SX(gap + tw - 20),
+        SY(gap + headH + infoH), SY(gap + th - footH), (i) => dPaper(i) > 60 && !isF(i));
+
+    // ⑥ 纸色 / 信息带取样
+    const psI = (SY(gap + headH + infoH + 60) * W + SX(gap + Math.max(holeR + 6, Math.round(side * 0.5)))) * 4;
+    const paperSample = [d[psI], d[psI + 1], d[psI + 2]];
+    const bsI = (SY(gap + headH + Math.round(infoH * 0.5)) * W + SX(gap + tw - 6)) * 4;
+    const bandSample = [d[bsI], d[bsI + 1], d[bsI + 2]];
+
+    window.Date = RD;
+    return { W, H, expW, expH, alphaMin, outerPaper, topF, topN, botF, botN, leftF, leftN, rightF, rightN,
+        tearF, tearN, stubF, photoF, headDark, headAll, footDark, footAll, stubInk, paperSample, bandSample, fp,
+        dPaper: 0, dBand: dTo(bsI, band) };
+})()`;
+
 function finish(code) { app.exit(code || 0); }
 
 app.whenReady().then(async () => {
@@ -187,6 +300,11 @@ app.whenReady().then(async () => {
             fps[v.key] = r1.fp;
             console.log(`  '${v.key}': '${r1.fp}',   // ${r1.W}x${r1.H} 纸色 ${JSON.stringify(r1.paperSample)}${r1.fp === r2.fp ? '' : '  ← 两次渲染不一致!'}`);
         }
+        const mv = movieVariant();
+        const m1 = await win.webContents.executeJavaScript(SCAN_MOVIE(mv.preset));
+        const m2 = await win.webContents.executeJavaScript(SCAN_MOVIE(mv.preset));
+        fps[mv.key] = m1.fp;
+        console.log(`  '${mv.key}': '${m1.fp}',   // ${m1.W}x${m1.H} 纸色 ${JSON.stringify(m1.paperSample)}${m1.fp === m2.fp ? '' : '  ← 两次渲染不一致!'}`);
         const out = path.join(__dirname, 'ticket-redo-fingerprints.json');
         fs.writeFileSync(out, JSON.stringify(fps, null, 2) + '\n');
         console.log('已写入 ' + out);
@@ -196,7 +314,9 @@ app.whenReady().then(async () => {
 
     const FROZEN = JSON.parse(fs.readFileSync(path.join(__dirname, 'ticket-redo-fingerprints.json'), 'utf8'));
     const fails = [];
+    let total = 0;
     const line = (ok, label, got, expect) => {
+        total++;
         console.log(`  ${ok ? 'OK  ' : 'FAIL'} ${label}`);
         console.log(`       ${got}${expect ? '   期望: ' + expect : ''}`);
         if (!ok) fails.push(label);
@@ -251,7 +371,39 @@ app.whenReady().then(async () => {
         '⑫ 带签名+头像时画布变高,且齿孔/全不透明仍然成立',
         `无签名 ${rPlain.H} → 有签名 ${rSig.H},alpha ${rSig.alphaMin},顶行孔 ${rSig.topF}`, `高度增加 且 alpha=255 且 孔 ≥ 5`);
 
+    // ── 撕边电影票 MOVIE_TICKET:另一套几何(右侧副券 + 竖向锯齿撕线),单独一节断言 ──
+    const mv = movieVariant();
+    const rm = await win.webContents.executeJavaScript(SCAN_MOVIE(mv.preset));
+    const mvPaper = [247, 242, 233], mvBand = [236, 228, 212];
+    console.log(`\n【${mv.label}】 指纹 ${rm.fp}  画布 ${rm.W}x${rm.H}  (按 movieGeom 应为 ${rm.expW}x${rm.expH} × 缩放)`);
+    line(Math.abs(rm.H - rm.expH * (rm.W / rm.expW)) <= 1.5 && rm.W <= 2200,
+        '⑬ styleDims 与 styleMovieTicket 尺寸同源(旧版两处各写一套,票脚整条被切掉)',
+        `实际 ${rm.W}x${rm.H},按 movieGeom 应高 ${Math.round(rm.expH * (rm.W / rm.expW))}(exp ${rm.expW}x${rm.expH})`,
+        '差 ≤ 1.5px 且 W ≤ displayMax(2200)');
+    line(rm.alphaMin === 255, '⑭ 整幅全不透明(导出没有透明洞/半透明边)',
+        `全画布最小 alpha = ${rm.alphaMin}`, '255');
+    line(rm.outerPaper === 0, '⑮ 最外圈 6px 没有纸色(票券浮在模糊照片上,四周留 gap)',
+        `外圈纸色像素 ${rm.outerPaper} 个`, '0 个');
+    const mvHoles = rm.topF >= 5 && rm.topN >= 5 && rm.botF >= 5 && rm.botN >= 5
+        && rm.leftF >= 5 && rm.leftN >= 5 && rm.rightF >= 5 && rm.rightN >= 5;
+    line(mvHoles, '⑯ 四边齿孔真打穿(顶/底/左/右都同时有孔=品红 与 孔间=纸色)',
+        `顶 ${rm.topF}/${rm.topN}  底 ${rm.botF}/${rm.botN}  左 ${rm.leftF}/${rm.leftN}  右 ${rm.rightF}/${rm.rightN}`,
+        '每项 ≥ 5');
+    line(rm.tearF >= 50 && rm.tearN >= 50 && rm.stubF <= 3,
+        '⑰ 竖向锯齿撕线:贴线一列有孔有纸交替,且只咬撕线(副券内侧干净)',
+        `撕线列 孔 ${rm.tearF} / 纸 ${rm.tearN}   副券内侧 ${rm.stubF} 个孔`, '撕线两项 ≥ 50 且 内侧 ≤ 3');
+    line(rm.photoF === true, '⑱ 照片画上去了(照片中心是喂进去的品红)', `中心像素 ${rm.photoF}`, 'true');
+    const hd = rm.headDark / rm.headAll, fd = rm.footDark / rm.footAll;
+    line(hd >= 0.5 && fd >= 0.5, '⑲ 深色票头/票脚还在(影院名+日期时间 / 标语+票号的底条)',
+        `票头深色占比 ${hd.toFixed(3)}   票脚 ${fd.toFixed(3)}`, '均 ≥ 0.5');
+    line(rm.stubInk >= 200, '⑳ 副券有内容(副券 STUB / 虚线票框 / ROW·SEAT·SCREEN / 竖排 ADMIT ONE)',
+        `副券油墨像素 ${rm.stubInk} 个`, '≥ 200 个');
+    const mvDW = dW(rm.paperSample, mvPaper), mvDB = dW(rm.bandSample, mvBand);
+    line(mvDW <= 30 && mvDB <= 30, '㉑ 票纸/信息带贴着设计配色(纸纹 multiply 没把票面洗白或染色)',
+        `票纸 ${JSON.stringify(rm.paperSample)} → ${mvDW}   信息带 ${JSON.stringify(rm.bandSample)} → ${mvDB}`, '两者均 ≤ 30');
+    line(rm.fp === FROZEN[mv.key], '㉒ 画面指纹与冻结值一致(跨进程可复现)', `指纹 ${rm.fp}`, FROZEN[mv.key]);
+
     console.log('\n' + '─'.repeat(94));
-    console.log(fails.length ? `✖ ${fails.length} 项未通过: ${fails.join('、')}` : `✓ 全部 ${results.length * 9 + 3} 项通过`);
+    console.log(fails.length ? `✖ ${fails.length} 项未通过: ${fails.join('、')}` : `✓ 全部 ${total} 项通过`);
     finish(fails.length ? 1 : 0);
 }).catch(e => { console.error(e); finish(1); });
