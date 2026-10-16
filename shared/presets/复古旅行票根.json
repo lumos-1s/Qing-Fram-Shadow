@@ -64,5 +64,7 @@
   "paramPosition": "CENTER",
   "photoFrameStyle": "TICKET_VINTAGE",
   "photoFrameBorderSize": 50,
-  "blurIntensity": 50
+  "blurIntensity": 50,
+  "userSignature": "",
+  "avatarShow": 0
 }

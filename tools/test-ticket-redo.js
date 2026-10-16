@@ -351,6 +351,61 @@ const SCAN_MOVIE = (presetObj, extra, after) => `(async () => {
         dPaper: 0, dBand: dTo(bsI, band) };
 })()`;
 
+// ── 「默认不带签名/头像」这条链路:模拟用户在上一款预设里填过签名/头像,再点票券预设 ──
+// 引擎只照模板画,「默认关」这件事不能写进引擎(写进去就等于每个预设硬编码一次),
+// 只能写进预设数据(userSignature:"" + avatarShow:0)。链路有三段,任一段失守都会把签名行复活:
+//   ① applyPreset 拿上一份模板的签名把空串盖回去 → 整行回来;
+//   ② 启动时 loadUserAvatar 自动填「— 昵称 —」 → 整行回来;
+//   ③ 反过来,别的预设的「用户签名优先」被这一改带坏 → 用户填的签名被预设清掉。
+// 所以这里连「填过签名的上一份模板」一起喂进去,量的是点完之后的模板字段 + 渲染高度。
+const CHAIN = (presetObj, doLogin) => `(async () => {
+    const A = window.App;
+    const RD = Date;
+    window.Date = class extends RD { constructor(...a) { if (a.length) super(...a); else super(2026, 4, 4, 12, 0, 0); } };
+    const c = document.createElement('canvas'); c.width = 1600; c.height = 1067;
+    const g0 = c.getContext('2d');
+    g0.fillStyle = 'rgb(240,30,160)'; g0.fillRect(0, 0, 1600, 1067);
+    const im = new Image();
+    await new Promise(r => { im.onload = r; im.onerror = r; im.src = c.toDataURL('image/png'); });
+    A.image = { el: im, name: 'p.png', w: 1600, h: 1067, exif: {} };
+    A.images = [A.image]; A.imageTemplates = new Map();
+    A.currentIdx = 0; A.selectedIdx = [0]; A.batchSel = []; A.selectedEls = [];
+    // 喂一张纯绿头像:让「头像本来是能画出来的」成立,这样行没出现就只能是开关/声明的原因
+    const ac2 = document.createElement('canvas'); ac2.width = 96; ac2.height = 96;
+    const ag2 = ac2.getContext('2d'); ag2.fillStyle = 'rgb(0,200,0)'; ag2.fillRect(0, 0, 96, 96);
+    const aim2 = new Image();
+    await new Promise(r => { aim2.onload = r; aim2.onerror = r; aim2.src = ac2.toDataURL('image/png'); });
+    window.__qfsAvatarImg = aim2;
+    // 上一款预设:用户自己填过签名、头像开着、还调过签名颜色
+    A.template = Object.assign(${JSON.stringify(preset('复古旅行票根'))},
+        { userSignature: '— my memory —', avatarShow: 1, signColor: '#ff0000' });
+    A.normalizeTemplate();
+    // 用户在面板里点一下目标预设缩略图
+    A.applyPreset(${JSON.stringify(presetObj)});
+    const afterPreset = { sig: A.template.userSignature || '', av: A.template.avatarShow, color: A.template.signColor || '' };
+    if (${doLogin ? 'true' : 'false'}) {
+        // 启动自动填充那一步(登录态 + localStorage 昵称)
+        try { localStorage.setItem('qfs_nickname', '老王'); } catch (e) {}
+        A.loadUserAvatar();
+        try { localStorage.removeItem('qfs_nickname'); } catch (e) {}
+    }
+    const afterLogin = A.template.userSignature || '';
+    A.invalidateStyleCaches();
+    A.displayMax = 2200;
+    window.__render(A, false);
+    await new Promise(r => setTimeout(r, 180));
+    window.__render(A, false);
+    await new Promise(r => setTimeout(r, 150));
+    const cv = A.dom.canvas, W = cv.width, H = cv.height;
+    const d = cv.getContext('2d').getImageData(0, 0, W, H).data;
+    const hasAv = !!((window.__qfsAvatarImg && window.__qfsAvatarImg.complete
+        && window.__qfsAvatarImg.naturalWidth) && (A.template.avatarShow !== 0));
+    let alphaMin = 255;
+    for (let i = 3; i < d.length; i += 4) { if (d[i] < alphaMin) { alphaMin = d[i]; if (alphaMin === 0) break; } }
+    window.Date = RD;
+    return { W, H, alphaMin, hasSig: !!A.template.userSignature, hasAv, afterPreset, afterLogin, style: A.template.photoFrameStyle };
+})()`;
+
 function finish(code) { app.exit(code || 0); }
 
 app.whenReady().then(async () => {
@@ -457,6 +512,8 @@ app.whenReady().then(async () => {
     // 这几项存在的理由:面板「签名 / 头像」组在 TICKET_*/MOVIE_TICKET 上从无到有(style-caps 的
     // sigTicket)。能力表只登记「哪些行可见」,行可见但引擎不读 = 拖了没反应,所以每个控件都要有断点。
     // 头像喂纯绿图:行内出现绿色像素 = 头像真的画上去了(比「画布高度变了」更有判别力)。
+    // 「勾上」现在要显式写 avatarShow = 1:这四款预设自带 avatarShow: 0(见 ㉟),
+    // 不写就等于测的是默认值,而默认值恰恰就是「不画」。
     const SIGTXT = 'A.template.userSignature = "— my memory —";';
     const NOAV = ' A.template.avatarShow = 0;';
     const AVUP = `const ac = document.createElement('canvas'); ac.width = 96; ac.height = 96;
@@ -464,6 +521,7 @@ app.whenReady().then(async () => {
         const aim = new Image();
         await new Promise(r => { aim.onload = r; aim.onerror = r; aim.src = ac.toDataURL('image/png'); });
         window.__qfsAvatarImg = aim;`;
+    const AVON = ' A.template.avatarShow = 1;';
     const AVDOWN = 'window.__qfsAvatarImg = null;';
     const vp = PAPER.TICKET_VINTAGE;
     line(rSig.sigInk >= 100 && rSig.sigGreen === 0,
@@ -474,13 +532,13 @@ app.whenReady().then(async () => {
         '⑭ 「签名大小」滑块生效(200% 的签名油墨明显变多),且字号只影响行内、不改画布高度',
         `100% 油墨 ${rSig.sigInk} → 200% 油墨 ${rBig.sigInk};画布 ${rSig.H} → ${rBig.H}`,
         '油墨 > 1.4× 且 高度不变');
-    const rAvOn = await win.webContents.executeJavaScript(SCAN(sigPreset, AVUP + SIGTXT, vp, AVDOWN));
+    const rAvOn = await win.webContents.executeJavaScript(SCAN(sigPreset, AVUP + AVON + SIGTXT, vp, AVDOWN));
     const rAvOff = await win.webContents.executeJavaScript(SCAN(sigPreset, AVUP + SIGTXT + NOAV, vp, AVDOWN));
     line(rAvOn.sigGreen >= 200 && rAvOff.sigGreen === 0 && rAvOn.H === rAvOff.H,
         '⑮ 「显示头像」勾选开关生效(勾上才画头像),且只影响画不画、不改画布高度',
         `勾选 头像绿 ${rAvOn.sigGreen} 个 / 不勾选 ${rAvOff.sigGreen} 个;画布 ${rAvOn.H} → ${rAvOff.H}`,
         '勾选 ≥ 200 且 不勾选 = 0 且 高度不变');
-    const rAvBig = await win.webContents.executeJavaScript(SCAN(sigPreset, AVUP + SIGTXT + ' A.template.avatarScale = 2;', vp, AVDOWN));
+    const rAvBig = await win.webContents.executeJavaScript(SCAN(sigPreset, AVUP + AVON + SIGTXT + ' A.template.avatarScale = 2;', vp, AVDOWN));
     line(rAvBig.sigGreen > rAvOn.sigGreen * 1.4,
         '⑯ 「头像大小」滑块生效(200% 的头像明显更大)',
         `100%(默认 85%) 头像绿 ${rAvOn.sigGreen} → 200% ${rAvBig.sigGreen} 个`, '> 1.4×');
@@ -552,7 +610,7 @@ app.whenReady().then(async () => {
         '㉞ 签名行居中于「照片」中线,而不是整张票的中线(右边还挂着副券)',
         `组中点 ${Math.round(rMvSig.sigMid)},照片中线 ${Math.round(rMvSig.phMid)},票面中线 ${Math.round(rMvSig.tkMid)}`,
         '离照片中线 ≤ 40px 且 离票面中线 ≥ 100px');
-    const rMvAvOn = await win.webContents.executeJavaScript(SCAN_MOVIE(mv.preset, AVUP + SIGTXT, AVDOWN));
+    const rMvAvOn = await win.webContents.executeJavaScript(SCAN_MOVIE(mv.preset, AVUP + AVON + SIGTXT, AVDOWN));
     const rMvAvOff = await win.webContents.executeJavaScript(SCAN_MOVIE(mv.preset, AVUP + SIGTXT + NOAV, AVDOWN));
     line(rMvAvOn.sigGreen >= 200 && rMvAvOff.sigGreen === 0 && rMvAvOn.H === rMvAvOff.H,
         '㉛ 电影票的「显示头像」开关同样生效(勾上才画头像,且不改画布高度)',
@@ -564,6 +622,38 @@ app.whenReady().then(async () => {
         '㉜ 电影票的「签名大小」滑块同样生效(200% 油墨明显变多),字号只影响行内、不改画布高度',
         `100% 油墨 ${rMvSig.sigInk} → 200% ${rMvBig.sigInk};画布 ${rMvSig.H} → ${rMvBig.H}`,
         '油墨 > 1.4× 且 高度不变');
+
+    // ── ㉟–㊳ 四款票券预设「默认不带签名/头像」──
+    // 引擎画不画签名行只看模板里的 avatarShow / userSignature(⑬–⑰ 已钉住控件有效),
+    // 所以「默认关」这一条只能写在预设数据里,并由下面三段链路保住。
+    console.log('\n【默认不带签名/头像】 四款票券预设:预设说了算,启动填充不复活它');
+    const TICKETS = ['复古旅行票根', '手账拼贴票根', '演唱会票根', '撕边电影票'];
+    line(TICKETS.every(n => {
+        const p = preset(n);
+        return p.photoFrameStyle && p.avatarShow === 0 && p.userSignature === '';
+    }),
+        '㉟ 四款票券预设自带「默认不带」的声明(avatarShow=0 且 userSignature 为空串)',
+        TICKETS.map(n => `${n} → avatarShow ${preset(n).avatarShow},签名 ${JSON.stringify(preset(n).userSignature)}`).join('   |   '),
+        '每款 avatarShow=0 且签名为空串');
+
+    const rChainTicket = await win.webContents.executeJavaScript(CHAIN(preset('复古旅行票根'), true));
+    line(rChainTicket.afterPreset.sig === '' && rChainTicket.afterPreset.av === 0
+        && rChainTicket.afterPreset.color === '#ff0000',
+        '㊱ 上一份预设的签名/头像没被带进票券预设(预设显式写了的才归预设管,没写的照旧沿用)',
+        `签名 ${JSON.stringify(rChainTicket.afterPreset.sig)},头像开关 ${rChainTicket.afterPreset.av},签名颜色 ${JSON.stringify(rChainTicket.afterPreset.color)}(预设没声明,应沿用)`,
+        '签名 "" 且 头像开关 0 且 签名颜色仍是 #ff0000');
+    line(rChainTicket.afterLogin === '' && rChainTicket.hasSig === false && rChainTicket.hasAv === false
+        && rChainTicket.H === rPlain.H && rChainTicket.alphaMin === 255,
+        '㊲ 启动自动填充也没把空签名填成「— 昵称 —」(画布高度回到「无签名」那档,整幅仍全不透明)',
+        `签名 ${JSON.stringify(rChainTicket.afterLogin)},画布高 ${rChainTicket.H}(无签名档 ${rPlain.H}),alpha ${rChainTicket.alphaMin},hasSig/hasAv ${rChainTicket.hasSig}/${rChainTicket.hasAv}`,
+        '签名仍为空 且 高度 == 无签名档 且 alpha=255');
+
+    // 反过来钉住:「预设没写签名的,仍沿用用户自己的」这条原有规则不能被上面那一改带坏
+    const rChainOther = await win.webContents.executeJavaScript(CHAIN(preset('NOMO复古相机'), true));
+    line(rChainOther.afterPreset.sig === '— my memory —' && rChainOther.afterPreset.av === 1,
+        '㊳ 换到不带签名声明的预设时,用户自己的签名/头像开关仍然优先(原有规则没被带坏)',
+        `签名 ${JSON.stringify(rChainOther.afterPreset.sig)},头像开关 ${rChainOther.afterPreset.av}`,
+        '签名照旧带过来 且 头像开关照旧为 1');
 
     console.log('\n' + '─'.repeat(94));
     console.log(fails.length ? `✖ ${fails.length} 项未通过: ${fails.join('、')}` : `✓ 全部 ${total} 项通过`);

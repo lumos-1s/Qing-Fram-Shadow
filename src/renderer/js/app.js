@@ -323,7 +323,11 @@ window.App = {
     },
     loadUserAvatar() {
         this.updateTopBar();
-        if (this.template && !this.template.userSignature) {
+        // 「签名/头像行」默认关的风格(票根/电影票):预设里的空签名就是「本预设不带签名」,
+        // 启动时别拿「— 昵称 —」把它变成非空、把整行又带出来。用户想带的话,
+        // 面板里填一次签名即可(那是用户自己的值,优先级不变)。
+        const sigOff = !!(window.StyleCaps && window.StyleCaps.sigRowDefaultOff && window.StyleCaps.sigRowDefaultOff(this.template && this.template.photoFrameStyle));
+        if (this.template && !this.template.userSignature && !sigOff) {
             const un = (this.user && this.user.nickname) || localStorage.getItem('qfs_nickname') || localStorage.getItem('qfs_username') || '';
             if (un) this.template.userSignature = '— ' + un + ' —';
         }

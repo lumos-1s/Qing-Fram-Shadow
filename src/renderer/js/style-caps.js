@@ -44,6 +44,11 @@
     // 风格分组(手写,从 app.js updatePersonalVisibility 原样搬过来,语义不变)
     // ────────────────────────────────────────────────────────────────────────
     const PERSONAL_STYLES = ['SIGNATURE', 'SIGN_PARAM', 'AVATAR_MEMO', 'AV_OVERLAY', 'AV_OVERLAY_TR', 'AV_OVERLAY_BR', 'AV_OVERLAY_BC', 'AV_OVERLAY_BC2'];
+    // 「签名/头像行」默认关的风格:这四款预设自带 userSignature:'' + avatarShow:0,
+    // 选中它们时画布是一张干净的票,想带签名/头像得在面板里显式开(面板行是开着的)。
+    // 这张名单只是把「默认关」的判定收在一处,供 app.js 的自动填充与测试查询,
+    // 它本身不参与任何渲染判定——渲染只认模板里的 avatarShow / userSignature。
+    const SIG_ROW_DEFAULT_OFF = ['TICKET_VINTAGE', 'TICKET_SCRAP', 'TICKET_CONCERT', 'MOVIE_TICKET'];
     const OVERLAY_STYLES = ['OVERLAY_PARAM_LEFT', 'OVERLAY_PARAM_RIGHT', 'OVERLAY_PARAM_BOTTOM'];
     const BLUR_STYLES = ['BLUR_CLASSIC', 'BLUR_DATE'];
     const IMPRESSION_STYLES = ['IMP_FROSTED', 'OVERLAY_PARAM_LEFT', 'OVERLAY_PARAM_RIGHT', 'OVERLAY_PARAM_BOTTOM', 'CARD_LOGO_PARAM'];
@@ -220,5 +225,11 @@
         return v;
     }
 
-    return { DIMS, MEASURED, PATH_FALLBACK, PERSONAL_STYLES, OVERLAY_STYLES, BLUR_STYLES, BRAND_LOGO_STYLES, caseSuffix, dimCaseId, has, caps, visibleRows };
+    // 该风格的「签名/头像行」是否默认关(需在面板里显式开启)。见 SIG_ROW_DEFAULT_OFF。
+    function sigRowDefaultOff(style) {
+        const s = String(style || '').toUpperCase();
+        return SIG_ROW_DEFAULT_OFF.indexOf(s) >= 0;
+    }
+
+    return { DIMS, MEASURED, PATH_FALLBACK, PERSONAL_STYLES, SIG_ROW_DEFAULT_OFF, OVERLAY_STYLES, BLUR_STYLES, BRAND_LOGO_STYLES, caseSuffix, dimCaseId, has, caps, visibleRows, sigRowDefaultOff };
 });
