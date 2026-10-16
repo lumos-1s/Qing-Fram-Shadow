@@ -774,31 +774,39 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
     // (场次·影厅·座位·票价)/ 深色票脚(标语+票号)/ 右侧副券 + 竖向三角锯齿撕线 +
     // 竖排 ADMIT ONE + 虚线票框 + 检票后作废。与票根家族唯一的几何差别:撕线是竖向的
     // (副券在右),不是底部横向存根。
+    // 可选签名/头像:照片与深色票脚之间多一条票纸行(与票根家族同款,有无决定 movieGeom 的 sigH)。
     //
     // 尺寸必须与 styleDims() 的 MOVIE_TICKET 分支同源 —— 旧版两处各写一套
     // (styleDims 是上下各 max(30,size*0.8),styleMovieTicket 却是 票头+信息带+票脚),
     // 登记的画布比实际画出来的票面矮 70 多像素,票脚整条被切掉。
-    function movieGeom(iw, ih, size) {
+    //
+    // sigH:照片与深色票脚之间的可选「签名/头像行」,与票根家族同一套做法 ——
+    // 只有真的有签名或头像时才存在(0 时几何与重做版逐像素一致,冻结指纹不动)。
+    function movieGeom(iw, ih, size, hasAv, hasSig) {
         const side = Math.max(20, Math.round(size * 0.7));      // 照片左纸边(右侧是副券)
         const headH = Math.max(34, Math.round(size * 0.85));    // 深色票头
         const infoH = Math.max(26, Math.round(size * 0.62));    // 信息带
         const footH = Math.max(32, Math.round(size * 0.8));     // 深色票脚
+        const sigH = (hasAv || hasSig) ? Math.max(40, Math.round(size * 1.5)) : 0;
         const stubW = Math.max(150, Math.round(iw * 0.28));     // 右侧副券
         const gap = Math.max(36, Math.round(iw * 0.06), Math.round(size * 2.0));
         const holeR = Math.max(3, Math.round(size * 0.225));
         const tooth = Math.max(6, Math.round(size * 0.18));     // 锯齿齿高
         const tw = iw + side * 2 + stubW;
-        const th = headH + infoH + ih + footH;
+        const th = headH + infoH + ih + sigH + footH;
         return {
-            side: side, headH: headH, infoH: infoH, footH: footH, stubW: stubW,
+            side: side, headH: headH, infoH: infoH, footH: footH, stubW: stubW, sigH: sigH,
             gap: gap, holeR: holeR, tooth: tooth, tw: tw, th: th, tearX: side + iw,
             w: tw + gap * 2, h: th + gap * 2
         };
     }
 
     function styleMovieTicket(img, size, g, iw, ih, S) {
-        const G = movieGeom(iw, ih, size);
-        const side = G.side, headH = G.headH, infoH = G.infoH, footH = G.footH;
+        const hasAv = !!(window.__qfsAvatarImg && window.__qfsAvatarImg.complete
+            && window.__qfsAvatarImg.naturalWidth) && (S ? S.avatarShow !== 0 : true);
+        const hasSig = !!(S && S.userSignature);
+        const G = movieGeom(iw, ih, size, hasAv, hasSig);
+        const side = G.side, headH = G.headH, infoH = G.infoH, footH = G.footH, sigH = G.sigH;
         const gap = G.gap, holeR = G.holeR, tooth = G.tooth;
         const tw = G.tw, th = G.th, tearX = G.tearX, w = G.w, h = G.h;
         const pal = {
@@ -856,7 +864,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         tg.stroke();
         // 副券底纹微暗:必须在挖孔之前(旧版画在锯齿之后,把齿尖两侧染出深浅差)
         tg.fillStyle = 'rgba(0,0,0,0.05)';
-        tg.fillRect(tearX, headH + infoH, tw - tearX, ih);
+        tg.fillRect(tearX, headH + infoH, tw - tearX, ih + sigH);
 
         // 齿孔:四边 + 四角 + 竖向锯齿撕线(副券)
         const pitch = Math.max(holeR * 4, 9);
@@ -914,6 +922,47 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         g.textAlign = 'left';
         g.textBaseline = 'alphabetic';
         const inset = Math.max(16, Math.round(side * 0.9));
+
+        // ④b 签名/头像行(可选):照片正下方、深色票脚之上的一条票纸,与票根家族同一套做法。
+        //     头像+签名作为一组居中,居中基准 = 照片中心(与照片对齐);可用宽度按照片宽度算,
+        //     所以整组永远落在撕线左侧的主票面内,不会压在竖向锯齿上。
+        //     没有签名也没有头像时 sigH=0,这一行连同它的高度都不存在。
+        if (sigH > 0) {
+            const rowY = gap + headH + infoH + ih + Math.round(sigH * 0.5);
+            const cx = gap + side + iw / 2;
+            const avatarR = Math.round(sigH * 0.19 * ((S && S.avatarScale) || 1));
+            const sigBody = hasSig ? String(S.userSignature) : '';
+            const gapA = Math.max(8, Math.round(avatarR * 0.25));
+            const availW = iw - inset * 2 - (hasAv ? avatarR * 2 + gapA : 0);
+            const fit = sigBody
+                ? fitSignText(g, sigBody, Math.max(12, Math.round(sigH * 0.34 * ((S && S.signSize) || 1))),
+                    (S && S.signFont) || 'Comic Sans MS', availW)
+                : { fs: 0, text: '' };
+            const sigWS = fit.text ? g.measureText(fit.text).width : 0;
+            const totalW = (hasAv ? avatarR * 2 : 0) + (hasAv && sigWS ? gapA : 0) + sigWS;
+            let px = cx - totalW / 2;
+            if (hasAv) {
+                const av = window.__qfsAvatarImg;
+                const sc2 = Math.max(avatarR * 2 / av.width, avatarR * 2 / av.height);
+                g.save();
+                g.beginPath(); g.arc(px + avatarR, rowY, avatarR, 0, 6.2832); g.clip();
+                g.drawImage(av, px + avatarR - av.width * sc2 / 2, rowY - av.height * sc2 / 2,
+                    av.width * sc2, av.height * sc2);
+                g.restore();
+                g.strokeStyle = 'rgba(90,70,40,0.30)';
+                g.lineWidth = 1.5;
+                g.beginPath(); g.arc(px + avatarR, rowY, avatarR, 0, 6.2832); g.stroke();
+                px += avatarR * 2 + (sigWS ? gapA : 0);
+            }
+            if (fit.text) {
+                g.fillStyle = (S && S.signColor) || pal.ink;
+                g.textAlign = 'left';
+                g.textBaseline = 'middle';
+                g.fillText(fit.text, px, rowY);
+                g.textAlign = 'left';
+                g.textBaseline = 'alphabetic';
+            }
+        }
 
         // ⑤ 票头:影院名(左) + 日期时间(右)
         const hFs = Math.max(13, Math.round(headH * 0.55));
@@ -1759,7 +1808,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
             const gapA = Math.max(8, Math.round(avatarR * 0.25));
             const availW = tw - inset * 2 - (hasAv ? avatarR * 2 + gapA : 0);
             const fit = sigBody
-                ? fitSignText(g, sigBody, Math.max(12, Math.round(sigH * 0.30)),
+                ? fitSignText(g, sigBody, Math.max(12, Math.round(sigH * 0.30 * ((S && S.signSize) || 1))),
                     (S && S.signFont) || 'Comic Sans MS', availW)
                 : { fs: 0, text: '' };
             const sigWS = fit.text ? g.measureText(fit.text).width : 0;
@@ -3939,7 +3988,10 @@ const w = natW;
                 // 尺寸与 styleMovieTicket 同源(共用 movieGeom),否则登记的画布和实际画出来的
                 // 票面对不上 —— 旧版这里写「上下各 max(30,size*0.8)」,styleMovieTicket 却是
                 // 票头+信息带+票脚,票脚整条被切掉。
-                const mvG = movieGeom(iw, ih, size);
+                const mvAv = !!(window.__qfsAvatarImg && window.__qfsAvatarImg.complete
+                    && window.__qfsAvatarImg.naturalWidth) && (S ? S.avatarShow !== 0 : true);
+                const mvSig = !!(S && S.userSignature);
+                const mvG = movieGeom(iw, ih, size, mvAv, mvSig);
                 return { w: mvG.w, h: mvG.h };
             }
 

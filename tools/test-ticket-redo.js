@@ -17,6 +17,12 @@
 //
 // 用法: node tools/run-electron.js tools/test-ticket-redo.js --hash   (重采指纹)
 //       node tools/run-electron.js tools/test-ticket-redo.js           (回归检查)
+//
+// 另有 ⑬–⑰ / ㉘–㉞:签名/头像行(四个票券共用的那一行)。能力表(style-caps.js 的 sigTicket)
+// 现在会在这四个风格上露出「签名内容/字体/颜色/字号 + 头像大小/显示头像」,而能力表只登记
+// 「哪些行可见」—— 行可见但引擎不读,用户看到的就是「滑块露着、拖了没反应」。所以每个控件
+// 都要有实测断点:喂纯绿头像图判 avatarShow/avatarScale,数签名油墨判 signSize,数红像素判
+// signColor。无签名也无头像时 sigH=0,几何与重做版逐像素一致(所以指纹不用重采)。
 const fs = require('fs');
 const path = require('path');
 const { app, BrowserWindow, ipcMain, protocol, net } = require('electron');
@@ -57,7 +63,7 @@ function variants() {
     ];
 }
 
-const SCAN = (presetObj, extra, paper) => `(async () => {
+const SCAN = (presetObj, extra, paper, after) => `(async () => {
     const A = window.App;
     const RD = Date;
     window.Date = class extends RD { constructor(...a) { if (a.length) super(...a); else super(2026, 4, 4, 12, 0, 0); } };
@@ -89,8 +95,11 @@ const SCAN = (presetObj, extra, paper) => `(async () => {
     const side = Math.max(22, Math.round(size * 1.1));
     const headH = Math.max(58, Math.round(size * 2.0));
     const footBase = Math.max(44, Math.round(size * 1.6));
+    // 与 ticketGeom() 同源:「有头像 或 有签名」都会多出一行;两者都没有时才没有(0)
+    const hasAv = !!(window.__qfsAvatarImg && window.__qfsAvatarImg.complete
+        && window.__qfsAvatarImg.naturalWidth) && (A.template.avatarShow !== 0);
     const hasSig = !!A.template.userSignature;
-    const sigH = hasSig ? Math.max(50, Math.round(size * 1.9)) : 0;
+    const sigH = (hasAv || hasSig) ? Math.max(50, Math.round(size * 1.9)) : 0;
     const stubH = Math.max(44, Math.round(size * 1.5));
     const gap = Math.max(36, Math.round(iw * 0.06), Math.round(size * 2.0));
     const holeR = Math.max(3, Math.round(size * 0.225));
@@ -152,9 +161,43 @@ const SCAN = (presetObj, extra, paper) => `(async () => {
     const psI = (SY(gap + headH + 60) * W + SX(gap + Math.round((fIn + side) / 2))) * 4;
     const paperSample = [d[psI], d[psI + 1], d[psI + 2]];
 
+    // ⑦ 签名/头像行(信息栏下半):行内油墨 / 头像绿 / 签名红。
+    //    用来断言 signSize / avatarScale / signColor / avatarShow 这四个面板控件真的接进了引擎,
+    //    而不是「滑块露着、拖了没反应」。
+    //    ⚠ 油墨判据用「到纸色 L1 > 150」而不是 > 60:信息栏分区底纹(5%)+做旧暗角+纸纹颗粒
+    //    叠起来就有 60~90,弱阈值会把整条带子算成油墨(实测 47% —— 于是 signSize 200% 只涨
+    //    1.1 倍,判不出差异)。>150 只留笔画实心处,和字号成比例。
+    //    带内 X 范围避开印刷内框, Y 范围避开撕线齿孔。
+    const rowCy = gap + headH + ih + footBase + Math.round(sigH * 0.5);
+    const sgY0 = SY(rowCy - Math.round(sigH * 0.30)), sgY1 = SY(rowCy + Math.round(sigH * 0.30));
+    const sgX0 = SX(gap + inset + 8), sgX1 = SX(gap + tw - inset - 8);
+    const isGreen = (i) => d[i] < 90 && d[i + 1] > 150 && d[i + 2] < 90;
+    const isRed = (i) => d[i] > 140 && d[i + 1] < 110 && d[i + 2] < 110;
+    let sigInk = 0, sigGreen = 0, sigRed = 0;
+    if (sigH > 0 && sgY1 > sgY0) {
+        sigInk = count(sgX0, sgX1, sgY0, sgY1, (i) => dPaper(i) > 150 && !isGreen(i));
+        sigGreen = count(sgX0, sgX1, sgY0, sgY1, isGreen);
+        sigRed = count(sgX0, sgX1, sgY0, sgY1, isRed);
+    }
+
+    // ⑧ 签名行居中基准:整组(头像+签名)居中于「照片」中线,不是整张票的中线。
+    //    取行带内油墨的最左/最右列算中点。票根家族里两者重合(照片在票面里左右等宽),
+    //    电影票才见真章:右侧多一条副券,参考线取错中点会右偏 stubW/2 ≈ 224px。
+    let sigMid = -1;
+    if (sigInk > 0) {
+        const inkAt = (x) => { for (let y = sgY0; y <= sgY1; y++) { const i = (y * W + x) * 4; if (dPaper(i) > 150 || isGreen(i)) return true; } return false; };
+        let l = -1, r = -1;
+        for (let x = sgX0; x <= sgX1 && l < 0; x++) if (inkAt(x)) l = x;
+        for (let x = sgX1; x >= sgX0 && r < 0; x--) if (inkAt(x)) r = x;
+        if (l >= 0 && r >= 0) sigMid = (l + r) / 2;
+    }
+    const phMid = SX(gap + side + iw / 2);
+
+    ${after || ''}
     window.Date = RD;
     return { W, H, expW, expH, alphaMin, outerPaper, paperish, topF, topN, leftF, leftN,
-        rightF, rightN, tearF, tearAboveF, photoF, stubInk, paperSample, fp };
+        rightF, rightN, tearF, tearAboveF, photoF, stubInk, paperSample, fp,
+        sigH, sigInk, sigGreen, sigRed, sigMid, phMid };
 })()`;
 
 function movieVariant() {
@@ -163,7 +206,7 @@ function movieVariant() {
 
 // 撕边电影票单独一套扫描:几何是「右侧副券 + 竖向锯齿撕线」,与票根家族的底部存根不同。
 // 判据一样(纯品红照片 → 品红就是「挖穿透出的模糊底」),另外查:票头/票脚深色条、锯齿只咬撕线。
-const SCAN_MOVIE = (presetObj) => `(async () => {
+const SCAN_MOVIE = (presetObj, extra, after) => `(async () => {
     const A = window.App;
     const RD = Date;
     window.Date = class extends RD { constructor(...a) { if (a.length) super(...a); else super(2026, 4, 4, 12, 0, 0); } };
@@ -176,6 +219,7 @@ const SCAN_MOVIE = (presetObj) => `(async () => {
     A.images = [A.image]; A.imageTemplates = new Map();
     A.currentIdx = 0; A.selectedIdx = [0]; A.batchSel = []; A.selectedEls = [];
     A.template = ${JSON.stringify(presetObj)};
+    ${extra || ''}
     A.normalizeTemplate();
     A.invalidateStyleCaches();
     A.displayMax = 2200;
@@ -194,12 +238,17 @@ const SCAN_MOVIE = (presetObj) => `(async () => {
     const headH = Math.max(34, Math.round(size * 0.85));
     const infoH = Math.max(26, Math.round(size * 0.62));
     const footH = Math.max(32, Math.round(size * 0.8));
+    // 与 movieGeom() 同源:有头像或有签名才多出签名行(sigH)
+    const hasAv = !!(window.__qfsAvatarImg && window.__qfsAvatarImg.complete
+        && window.__qfsAvatarImg.naturalWidth) && (A.template.avatarShow !== 0);
+    const hasSig = !!A.template.userSignature;
+    const sigH = (hasAv || hasSig) ? Math.max(40, Math.round(size * 1.5)) : 0;
     const stubW = Math.max(150, Math.round(iw * 0.28));
     const gap = Math.max(36, Math.round(iw * 0.06), Math.round(size * 2.0));
     const holeR = Math.max(3, Math.round(size * 0.225));
     const tooth = Math.max(6, Math.round(size * 0.18));
     const tw = iw + side * 2 + stubW;
-    const th = headH + infoH + ih + footH;
+    const th = headH + infoH + ih + sigH + footH;
     const tearX = side + iw;
     const expW = tw + gap * 2, expH = th + gap * 2;
     const s = W / expW;
@@ -263,9 +312,42 @@ const SCAN_MOVIE = (presetObj) => `(async () => {
     const bsI = (SY(gap + headH + Math.round(infoH * 0.5)) * W + SX(gap + tw - 6)) * 4;
     const bandSample = [d[bsI], d[bsI + 1], d[bsI + 2]];
 
+    // ⑦ 签名/头像行(照片与深色票脚之间):主票面内的油墨/头像绿;副券那一列必须干净(整组不越撕线)
+    //    油墨判据「到纸色 L1 > 150」只留笔画实心处:副券底纹(5%)+纸纹颗粒叠起来就有 36~80,
+    //    弱阈值会把副券那一列也算成油墨(实测 102 个假油墨),判不出「越没越撕线」。
+    //    副券带起点离齿尖再让 12px:齿尖是尖角,反锯齿会往外洇 1~2px,而齿孔露出的模糊照片
+    //    对纸色距离 290+,算进油墨里就会误报。右端同样要让开最右一列外缘齿孔(孔心在 x=tw,
+    //    半径 holeR,露出的模糊照片也会被算成「副券有油墨」—— 实测就是这 68 个假油墨)。
+    const rowCy = gap + headH + infoH + ih + Math.round(sigH * 0.5);
+    const sgY0 = SY(rowCy - Math.round(sigH * 0.30)), sgY1 = SY(rowCy + Math.round(sigH * 0.30));
+    const sgX0 = SX(gap + side + 4), sgX1 = SX(gap + tearX - tooth - 4);
+    const sbX0 = SX(gap + tearX + tooth + 12), sbX1 = SX(gap + tw - holeR - 6);
+    const isGreen = (i) => d[i] < 90 && d[i + 1] > 150 && d[i + 2] < 90;
+    let sigInk = 0, sigGreen = 0, stubSigInk = 0;
+    if (sigH > 0 && sgY1 > sgY0) {
+        sigInk = count(sgX0, sgX1, sgY0, sgY1, (i) => dPaper(i) > 150 && !isGreen(i));
+        sigGreen = count(sgX0, sgX1, sgY0, sgY1, isGreen);
+        stubSigInk = count(sbX0, sbX1, sgY0, sgY1, (i) => dPaper(i) > 150 && !isGreen(i));
+    }
+
+    // ⑧ 签名行居中基准(与票根家族同一套):取行带内油墨最左/最右列的中点,应与「照片中线」重合。
+    //    电影票的照片不在整张票的正中(右边还有一条副券),所以这里能真正区分参考线:
+    //    若按整张票的中线居中(常见笔误 tw/2),中点会右偏 stubW/2 ≈ 224px,远超 40px 容差。
+    let sigMid = -1;
+    if (sigInk > 0) {
+        const inkAt = (x) => { for (let y = sgY0; y <= sgY1; y++) { const i = (y * W + x) * 4; if (dPaper(i) > 150 || isGreen(i)) return true; } return false; };
+        let l = -1, r = -1;
+        for (let x = sgX0; x <= sgX1 && l < 0; x++) if (inkAt(x)) l = x;
+        for (let x = sgX1; x >= sgX0 && r < 0; x--) if (inkAt(x)) r = x;
+        if (l >= 0 && r >= 0) sigMid = (l + r) / 2;
+    }
+    const phMid = SX(gap + side + iw / 2);
+    const tkMid = SX(gap + tw / 2);
+
     window.Date = RD;
     return { W, H, expW, expH, alphaMin, outerPaper, topF, topN, botF, botN, leftF, leftN, rightF, rightN,
         tearF, tearN, stubF, photoF, headDark, headAll, footDark, footAll, stubInk, paperSample, bandSample, fp,
+        sigH, sigInk, sigGreen, stubSigInk, sigMid, phMid, tkMid,
         dPaper: 0, dBand: dTo(bsI, band) };
 })()`;
 
@@ -371,37 +453,117 @@ app.whenReady().then(async () => {
         '⑫ 带签名+头像时画布变高,且齿孔/全不透明仍然成立',
         `无签名 ${rPlain.H} → 有签名 ${rSig.H},alpha ${rSig.alphaMin},顶行孔 ${rSig.topF}`, `高度增加 且 alpha=255 且 孔 ≥ 5`);
 
+    // ── ⑬–⑰ 签名行的四个面板控件真的接进了引擎 ──
+    // 这几项存在的理由:面板「签名 / 头像」组在 TICKET_*/MOVIE_TICKET 上从无到有(style-caps 的
+    // sigTicket)。能力表只登记「哪些行可见」,行可见但引擎不读 = 拖了没反应,所以每个控件都要有断点。
+    // 头像喂纯绿图:行内出现绿色像素 = 头像真的画上去了(比「画布高度变了」更有判别力)。
+    const SIGTXT = 'A.template.userSignature = "— my memory —";';
+    const NOAV = ' A.template.avatarShow = 0;';
+    const AVUP = `const ac = document.createElement('canvas'); ac.width = 96; ac.height = 96;
+        const ag = ac.getContext('2d'); ag.fillStyle = 'rgb(0,200,0)'; ag.fillRect(0, 0, 96, 96);
+        const aim = new Image();
+        await new Promise(r => { aim.onload = r; aim.onerror = r; aim.src = ac.toDataURL('image/png'); });
+        window.__qfsAvatarImg = aim;`;
+    const AVDOWN = 'window.__qfsAvatarImg = null;';
+    const vp = PAPER.TICKET_VINTAGE;
+    line(rSig.sigInk >= 100 && rSig.sigGreen === 0,
+        '⑬ 签名真的画在信息栏下半,且没有头像图时不画头像',
+        `签名行油墨 ${rSig.sigInk} 个,头像绿 ${rSig.sigGreen} 个`, '油墨 ≥ 100 且 绿 = 0');
+    const rBig = await win.webContents.executeJavaScript(SCAN(sigPreset, SIGTXT + NOAV + ' A.template.signSize = 2;', vp));
+    line(rBig.sigInk > rSig.sigInk * 1.4 && rBig.H === rSig.H,
+        '⑭ 「签名大小」滑块生效(200% 的签名油墨明显变多),且字号只影响行内、不改画布高度',
+        `100% 油墨 ${rSig.sigInk} → 200% 油墨 ${rBig.sigInk};画布 ${rSig.H} → ${rBig.H}`,
+        '油墨 > 1.4× 且 高度不变');
+    const rAvOn = await win.webContents.executeJavaScript(SCAN(sigPreset, AVUP + SIGTXT, vp, AVDOWN));
+    const rAvOff = await win.webContents.executeJavaScript(SCAN(sigPreset, AVUP + SIGTXT + NOAV, vp, AVDOWN));
+    line(rAvOn.sigGreen >= 200 && rAvOff.sigGreen === 0 && rAvOn.H === rAvOff.H,
+        '⑮ 「显示头像」勾选开关生效(勾上才画头像),且只影响画不画、不改画布高度',
+        `勾选 头像绿 ${rAvOn.sigGreen} 个 / 不勾选 ${rAvOff.sigGreen} 个;画布 ${rAvOn.H} → ${rAvOff.H}`,
+        '勾选 ≥ 200 且 不勾选 = 0 且 高度不变');
+    const rAvBig = await win.webContents.executeJavaScript(SCAN(sigPreset, AVUP + SIGTXT + ' A.template.avatarScale = 2;', vp, AVDOWN));
+    line(rAvBig.sigGreen > rAvOn.sigGreen * 1.4,
+        '⑯ 「头像大小」滑块生效(200% 的头像明显更大)',
+        `100%(默认 85%) 头像绿 ${rAvOn.sigGreen} → 200% ${rAvBig.sigGreen} 个`, '> 1.4×');
+    const rRed = await win.webContents.executeJavaScript(SCAN(sigPreset, SIGTXT + NOAV + ' A.template.signColor = "#e74c3c";', vp));
+    line(rRed.sigRed >= 100 && rSig.sigRed === 0,
+        '⑰ 「签名颜色」生效(选红色后签名变红)',
+        `默认色 红像素 ${rSig.sigRed} 个 → 红色 ${rRed.sigRed} 个`, '红色 ≥ 100 且 默认 = 0');
+    // ㉝ 签名行的居中基准:用「头像+签名」整组去量最左/最右油墨,中点应落在照片中线上。
+    //    票根家族的票面没有副券,照片中线 == 整张票的中线 —— 这里钉住「必须居中」这个形状,
+    //    参考线写成贴着头像起笔(即整组不再居中)会偏出容差。
+    line(rAvOn.sigMid > -1 && Math.abs(rAvOn.sigMid - rAvOn.phMid) <= 40,
+        '㉝ 签名/头像整组居中于照片中线(不偏左也不偏右)',
+        `组中点 ${Math.round(rAvOn.sigMid)}px,照片中线 ${Math.round(rAvOn.phMid)}px,偏差 ${Math.round(Math.abs(rAvOn.sigMid - rAvOn.phMid))}px`,
+        '偏差 ≤ 40px');
+
     // ── 撕边电影票 MOVIE_TICKET:另一套几何(右侧副券 + 竖向锯齿撕线),单独一节断言 ──
     const mv = movieVariant();
     const rm = await win.webContents.executeJavaScript(SCAN_MOVIE(mv.preset));
     const mvPaper = [247, 242, 233], mvBand = [236, 228, 212];
     console.log(`\n【${mv.label}】 指纹 ${rm.fp}  画布 ${rm.W}x${rm.H}  (按 movieGeom 应为 ${rm.expW}x${rm.expH} × 缩放)`);
     line(Math.abs(rm.H - rm.expH * (rm.W / rm.expW)) <= 1.5 && rm.W <= 2200,
-        '⑬ styleDims 与 styleMovieTicket 尺寸同源(旧版两处各写一套,票脚整条被切掉)',
+        '⑱ styleDims 与 styleMovieTicket 尺寸同源(旧版两处各写一套,票脚整条被切掉)',
         `实际 ${rm.W}x${rm.H},按 movieGeom 应高 ${Math.round(rm.expH * (rm.W / rm.expW))}(exp ${rm.expW}x${rm.expH})`,
         '差 ≤ 1.5px 且 W ≤ displayMax(2200)');
-    line(rm.alphaMin === 255, '⑭ 整幅全不透明(导出没有透明洞/半透明边)',
+    line(rm.alphaMin === 255, '⑲ 整幅全不透明(导出没有透明洞/半透明边)',
         `全画布最小 alpha = ${rm.alphaMin}`, '255');
-    line(rm.outerPaper === 0, '⑮ 最外圈 6px 没有纸色(票券浮在模糊照片上,四周留 gap)',
+    line(rm.outerPaper === 0, '⑳ 最外圈 6px 没有纸色(票券浮在模糊照片上,四周留 gap)',
         `外圈纸色像素 ${rm.outerPaper} 个`, '0 个');
     const mvHoles = rm.topF >= 5 && rm.topN >= 5 && rm.botF >= 5 && rm.botN >= 5
         && rm.leftF >= 5 && rm.leftN >= 5 && rm.rightF >= 5 && rm.rightN >= 5;
-    line(mvHoles, '⑯ 四边齿孔真打穿(顶/底/左/右都同时有孔=品红 与 孔间=纸色)',
+    line(mvHoles, '㉑ 四边齿孔真打穿(顶/底/左/右都同时有孔=品红 与 孔间=纸色)',
         `顶 ${rm.topF}/${rm.topN}  底 ${rm.botF}/${rm.botN}  左 ${rm.leftF}/${rm.leftN}  右 ${rm.rightF}/${rm.rightN}`,
         '每项 ≥ 5');
     line(rm.tearF >= 50 && rm.tearN >= 50 && rm.stubF <= 3,
-        '⑰ 竖向锯齿撕线:贴线一列有孔有纸交替,且只咬撕线(副券内侧干净)',
+        '㉒ 竖向锯齿撕线:贴线一列有孔有纸交替,且只咬撕线(副券内侧干净)',
         `撕线列 孔 ${rm.tearF} / 纸 ${rm.tearN}   副券内侧 ${rm.stubF} 个孔`, '撕线两项 ≥ 50 且 内侧 ≤ 3');
-    line(rm.photoF === true, '⑱ 照片画上去了(照片中心是喂进去的品红)', `中心像素 ${rm.photoF}`, 'true');
+    line(rm.photoF === true, '㉓ 照片画上去了(照片中心是喂进去的品红)', `中心像素 ${rm.photoF}`, 'true');
     const hd = rm.headDark / rm.headAll, fd = rm.footDark / rm.footAll;
-    line(hd >= 0.5 && fd >= 0.5, '⑲ 深色票头/票脚还在(影院名+日期时间 / 标语+票号的底条)',
+    line(hd >= 0.5 && fd >= 0.5, '㉔ 深色票头/票脚还在(影院名+日期时间 / 标语+票号的底条)',
         `票头深色占比 ${hd.toFixed(3)}   票脚 ${fd.toFixed(3)}`, '均 ≥ 0.5');
-    line(rm.stubInk >= 200, '⑳ 副券有内容(副券 STUB / 虚线票框 / ROW·SEAT·SCREEN / 竖排 ADMIT ONE)',
+    line(rm.stubInk >= 200, '㉕ 副券有内容(副券 STUB / 虚线票框 / ROW·SEAT·SCREEN / 竖排 ADMIT ONE)',
         `副券油墨像素 ${rm.stubInk} 个`, '≥ 200 个');
     const mvDW = dW(rm.paperSample, mvPaper), mvDB = dW(rm.bandSample, mvBand);
-    line(mvDW <= 30 && mvDB <= 30, '㉑ 票纸/信息带贴着设计配色(纸纹 multiply 没把票面洗白或染色)',
+    line(mvDW <= 30 && mvDB <= 30, '㉖ 票纸/信息带贴着设计配色(纸纹 multiply 没把票面洗白或染色)',
         `票纸 ${JSON.stringify(rm.paperSample)} → ${mvDW}   信息带 ${JSON.stringify(rm.bandSample)} → ${mvDB}`, '两者均 ≤ 30');
-    line(rm.fp === FROZEN[mv.key], '㉒ 画面指纹与冻结值一致(跨进程可复现)', `指纹 ${rm.fp}`, FROZEN[mv.key]);
+    line(rm.fp === FROZEN[mv.key], '㉗ 画面指纹与冻结值一致(跨进程可复现)', `指纹 ${rm.fp}`, FROZEN[mv.key]);
+
+    // ── ㉘–㉛ 电影票的签名/头像行(照片与深色票脚之间那条票纸)──
+    const rMvSig = await win.webContents.executeJavaScript(SCAN_MOVIE(mv.preset, SIGTXT + NOAV));
+    line(rMvSig.H > rm.H && rMvSig.alphaMin === 255
+        && Math.abs(rMvSig.H - rMvSig.expH * (rMvSig.W / rMvSig.expW)) <= 1.5,
+        '㉘ 电影票有签名时画布变高(与 movieGeom 同源),且齿孔/全不透明仍然成立',
+        `无签名 ${rm.H} → 有签名 ${rMvSig.H}(exp ${rMvSig.expH}),alpha ${rMvSig.alphaMin}`,
+        '高度增加 且 alpha=255 且 高宽比一致');
+    line(rMvSig.sigInk >= 100 && rMvSig.photoF === true && (rMvSig.footDark / rMvSig.footAll) >= 0.5,
+        '㉙ 签名行落在照片与深色票脚之间(行内有油墨),且照片/票脚都没被挤坏',
+        `签名行油墨 ${rMvSig.sigInk} 个,照片中心品红 ${rMvSig.photoF},票脚深色占比 ${(rMvSig.footDark / rMvSig.footAll).toFixed(3)}`,
+        '油墨 ≥ 100 且 照片=true 且 票脚 ≥ 0.5');
+    line(rMvSig.stubSigInk <= 5,
+        '㉚ 签名/头像整组不越竖向撕线(副券那一列在签名行高度上是干净纸面)',
+        `副券列签名行油墨 ${rMvSig.stubSigInk} 个`, '≤ 5 个');
+    // ㉞ 签名行的居中基准。这是电影票与票根家族唯一的几何差别:票头/信息带/票脚都是左右对齐
+    //    (靠 inset 定位),签名行是这一版唯一的居中元素。参考线写成整张票的中线的话,画面只是
+    //    悄悄右移 stubW/2 ≈ 224px —— 没有任何「画没画/在不在框里」的断言抓得到。两条线一起比:
+    //    离照片中线近、离票面中线远,谁对谁错立刻分明。
+    line(rMvSig.sigMid > -1
+        && Math.abs(rMvSig.sigMid - rMvSig.phMid) <= 40
+        && Math.abs(rMvSig.sigMid - rMvSig.tkMid) >= 100,
+        '㉞ 签名行居中于「照片」中线,而不是整张票的中线(右边还挂着副券)',
+        `组中点 ${Math.round(rMvSig.sigMid)},照片中线 ${Math.round(rMvSig.phMid)},票面中线 ${Math.round(rMvSig.tkMid)}`,
+        '离照片中线 ≤ 40px 且 离票面中线 ≥ 100px');
+    const rMvAvOn = await win.webContents.executeJavaScript(SCAN_MOVIE(mv.preset, AVUP + SIGTXT, AVDOWN));
+    const rMvAvOff = await win.webContents.executeJavaScript(SCAN_MOVIE(mv.preset, AVUP + SIGTXT + NOAV, AVDOWN));
+    line(rMvAvOn.sigGreen >= 200 && rMvAvOff.sigGreen === 0 && rMvAvOn.H === rMvAvOff.H,
+        '㉛ 电影票的「显示头像」开关同样生效(勾上才画头像,且不改画布高度)',
+        `勾选 头像绿 ${rMvAvOn.sigGreen} 个 / 不勾选 ${rMvAvOff.sigGreen} 个;画布 ${rMvAvOn.H} → ${rMvAvOff.H}`,
+        '勾选 ≥ 200 且 不勾选 = 0 且 高度不变');
+    // 电影票的签名行是另一段代码(字号系数 size*0.34,票根家族是 *0.30),所以「签名大小」要单独验一次
+    const rMvBig = await win.webContents.executeJavaScript(SCAN_MOVIE(mv.preset, SIGTXT + NOAV + ' A.template.signSize = 2;'));
+    line(rMvBig.sigInk > rMvSig.sigInk * 1.4 && rMvBig.H === rMvSig.H,
+        '㉜ 电影票的「签名大小」滑块同样生效(200% 油墨明显变多),字号只影响行内、不改画布高度',
+        `100% 油墨 ${rMvSig.sigInk} → 200% ${rMvBig.sigInk};画布 ${rMvSig.H} → ${rMvBig.H}`,
+        '油墨 > 1.4× 且 高度不变');
 
     console.log('\n' + '─'.repeat(94));
     console.log(fails.length ? `✖ ${fails.length} 项未通过: ${fails.join('、')}` : `✓ 全部 ${total} 项通过`);
