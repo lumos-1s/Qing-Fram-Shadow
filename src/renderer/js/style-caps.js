@@ -44,11 +44,11 @@
     // 风格分组(手写,从 app.js updatePersonalVisibility 原样搬过来,语义不变)
     // ────────────────────────────────────────────────────────────────────────
     const PERSONAL_STYLES = ['SIGNATURE', 'SIGN_PARAM', 'AVATAR_MEMO', 'AV_OVERLAY', 'AV_OVERLAY_TR', 'AV_OVERLAY_BR', 'AV_OVERLAY_BC', 'AV_OVERLAY_BC2'];
-    // 「签名/头像行」默认关的风格:这四款预设自带 userSignature:'' + avatarShow:0,
+    // 「签名/头像行」默认关的风格:这五款预设自带 userSignature:'' + avatarShow:0,
     // 选中它们时画布是一张干净的票,想带签名/头像得在面板里显式开(面板行是开着的)。
     // 这张名单只是把「默认关」的判定收在一处,供 app.js 的自动填充与测试查询,
     // 它本身不参与任何渲染判定——渲染只认模板里的 avatarShow / userSignature。
-    const SIG_ROW_DEFAULT_OFF = ['TICKET_VINTAGE', 'TICKET_SCRAP', 'TICKET_CONCERT', 'MOVIE_TICKET'];
+    const SIG_ROW_DEFAULT_OFF = ['TICKET_VINTAGE', 'TICKET_SCRAP', 'TICKET_CONCERT', 'MOVIE_TICKET', 'BOARDING_PASS'];
     const OVERLAY_STYLES = ['OVERLAY_PARAM_LEFT', 'OVERLAY_PARAM_RIGHT', 'OVERLAY_PARAM_BOTTOM'];
     const BLUR_STYLES = ['BLUR_CLASSIC', 'BLUR_DATE'];
     const IMPRESSION_STYLES = ['IMP_FROSTED', 'OVERLAY_PARAM_LEFT', 'OVERLAY_PARAM_RIGHT', 'OVERLAY_PARAM_BOTTOM', 'CARD_LOGO_PARAM'];
@@ -83,6 +83,7 @@
         AV_OVERLAY_TR: {  },
         BLUR_CLASSIC: { pf: true, cr: true, isc: true, bi: true },
         BLUR_DATE: { pf: true, cr: true, isc: true, bi: true },
+        BOARDING_PASS: { cr: true, isc: true },
         BURNED_EDGE: {  },
         CARD_3D: {  },
         CARD_IMMERSION: { pf: true },
@@ -206,10 +207,10 @@
         const sigCore = isPersonal || s === 'TICKET_STAMP' || s === 'STAMP_KRAFT' || s === 'STAMP_BLUEPRINT' || s === 'STAMP_REDSEAL' || s === 'STAMP_GOLD';
         // CARD_3D 只有签名文字四件套(内容/字体/颜色/字号),无头像,单独放行
         const sigTextOnly = s === 'CARD_3D';
-        // 票券家族(票根三变体 + 撕边电影票):签名四件套 + 头像两件套。
+        // 票券家族(票根三变体 + 撕边电影票 + 复古登机牌):签名四件套 + 头像两件套。
         // 与 sigCore 分开放:票券引擎画的是自己的票面配色,不读 paramColor,
         // 所以它们只该看到签名/头像这六行,不该多出一行「参数颜色」。
-        const sigTicket = s === 'TICKET_VINTAGE' || s === 'TICKET_SCRAP' || s === 'TICKET_CONCERT' || s === 'MOVIE_TICKET';
+        const sigTicket = s === 'TICKET_VINTAGE' || s === 'TICKET_SCRAP' || s === 'TICKET_CONCERT' || s === 'MOVIE_TICKET' || s === 'BOARDING_PASS';
         const v = {};
         v.rowSignModel = s === 'SIGN_PARAM';
         v.rowSignText = sigCore || sigTextOnly || sigTicket;

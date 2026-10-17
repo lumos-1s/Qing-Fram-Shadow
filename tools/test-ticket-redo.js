@@ -1,5 +1,7 @@
 // 票根家族「真票券」重做(TICKET_VINTAGE / TICKET_SCRAP / TICKET_CONCERT)的回归测试,
-// 以及撕边电影票(MOVIE_TICKET)的重做回归(同一套判据,另一套几何:右侧副券 + 竖向锯齿撕线)。
+// 以及撕边电影票(MOVIE_TICKET)的重做回归(同一套判据,另一套几何:右侧副券 + 竖向锯齿撕线),
+// 以及复古登机牌(BOARDING_PASS)的重做回归(第三套几何:票头城市码 + 信息带 + 右侧副券,
+// 票面是紫蓝渐变而不是纸色 —— 判据换成「亮度分区 + 黑色渐变」,见 SCAN_BP)。
 //
 // 背景:重做前实测出的三个根因 bug,本测试逐条防回归:
 //   ① 齿孔没挖穿 —— 旧 styleTicket 的 destination-out 沿用上一步暗角径向渐变的 fillStyle
@@ -204,6 +206,10 @@ function movieVariant() {
     return { key: 'MOVIE_TICKET', label: '撕边电影票 MOVIE_TICKET', preset: preset('撕边电影票') };
 }
 
+function boardingVariant() {
+    return { key: 'BOARDING_PASS', label: '复古登机牌 BOARDING_PASS', preset: preset('复古登机牌') };
+}
+
 // 撕边电影票单独一套扫描:几何是「右侧副券 + 竖向锯齿撕线」,与票根家族的底部存根不同。
 // 判据一样(纯品红照片 → 品红就是「挖穿透出的模糊底」),另外查:票头/票脚深色条、锯齿只咬撕线。
 const SCAN_MOVIE = (presetObj, extra, after) => `(async () => {
@@ -351,6 +357,140 @@ const SCAN_MOVIE = (presetObj, extra, after) => `(async () => {
         dPaper: 0, dBand: dTo(bsI, band) };
 })()`;
 
+// 复古登机牌单独一套扫描:几何是「票头(城市码+航班号) + 信息带 + 主照片 + 浅色姓名条 + 票脚
+// + 右侧竖向锯齿撕线切出的副券」,票面是紫蓝渐变而不是纸色 —— 所以判据不用「到纸色距离」:
+//   · 品红  = 模糊照片透出(齿孔挖穿 / 锯齿咬开 / 票外 gap)
+//   · 亮度  = 票面分区(票头/票脚压暗 → lum<100;姓名条提亮 → lum>200;渐变自上而下由浅入深)
+// 纯品红 PNG 照片模糊后还是品红,「孔里是不是品红」就是「有没有挖穿」,与参考色无关、可直接计数。
+const SCAN_BP = (presetObj, extra, after) => `(async () => {
+    const A = window.App;
+    const RD = Date;
+    window.Date = class extends RD { constructor(...a) { if (a.length) super(...a); else super(2026, 4, 4, 12, 0, 0); } };
+    const c = document.createElement('canvas'); c.width = 1600; c.height = 1067;
+    const g0 = c.getContext('2d');
+    g0.fillStyle = 'rgb(240,30,160)'; g0.fillRect(0, 0, 1600, 1067);
+    const im = new Image();
+    await new Promise(r => { im.onload = r; im.onerror = r; im.src = c.toDataURL('image/png'); });
+    A.image = { el: im, name: 'p.png', w: 1600, h: 1067, exif: {} };
+    A.images = [A.image]; A.imageTemplates = new Map();
+    A.currentIdx = 0; A.selectedIdx = [0]; A.batchSel = []; A.selectedEls = [];
+    A.template = ${JSON.stringify(presetObj)};
+    ${extra || ''}
+    A.normalizeTemplate();
+    A.invalidateStyleCaches();
+    A.displayMax = 2200;
+    window.__render(A, false);
+    await new Promise(r => setTimeout(r, 180));
+    window.__render(A, false);
+    await new Promise(r => setTimeout(r, 150));
+    const cv = A.dom.canvas, W = cv.width, H = cv.height;
+    const d = cv.getContext('2d').getImageData(0, 0, W, H).data;
+
+    // ── boardingGeom() 的公式照抄一份(改坏了任一边,下面的尺寸断言会断)──
+    const iw = 1600, ih = 1067;
+    const bs = Math.max(5, A.template.photoFrameBorderSize || 5);
+    const size = Math.max(5, Math.floor(Math.max(5, Math.floor(bs * 2.0)) * Math.min(iw, ih) / 1000.0));
+    const side = Math.max(22, Math.round(size * 1.0));
+    const headH = Math.max(64, Math.round(size * 2.3));
+    const infoH = Math.max(30, Math.round(size * 1.05));
+    const footH = Math.max(30, Math.round(size * 0.95));
+    const hasAv = !!(window.__qfsAvatarImg && window.__qfsAvatarImg.complete
+        && window.__qfsAvatarImg.naturalWidth) && (A.template.avatarShow !== 0);
+    const hasSig = !!A.template.userSignature;
+    const sigH = (hasAv || hasSig) ? Math.max(44, Math.round(size * 1.6)) : 0;
+    const stubW = Math.max(150, Math.round(iw * 0.30));
+    const gap = Math.max(36, Math.round(iw * 0.06), Math.round(size * 2.0));
+    const holeR = Math.max(3, Math.round(size * 0.225));
+    const tooth = Math.max(6, Math.round(size * 0.18));
+    const tw = iw + side * 2 + stubW;
+    const th = headH + infoH + ih + sigH + footH;
+    const tearX = side + iw;
+    const expW = tw + gap * 2, expH = th + gap * 2;
+    const s = W / expW;
+    const SX = (v) => Math.round(v * s), SY = (v) => Math.round(v * s);
+    const isF = (i) => Math.abs(d[i] - 240) <= 14 && Math.abs(d[i + 1] - 30) <= 14 && Math.abs(d[i + 2] - 160) <= 14;
+    const lum = (i) => (d[i] + d[i + 1] + d[i + 2]) / 3;
+    const count = (x0, x1, y0, y1, fn) => { let n = 0; for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (fn((y * W + x) * 4)) n++; return n; };
+
+    // ① 整幅全不透明 / 最外圈不许出现票面(票外 gap 透出的必须是模糊照片)/ 指纹
+    let alphaMin = 255;
+    for (let i = 3; i < d.length; i += 4) if (d[i] < alphaMin) alphaMin = d[i];
+    let outerCard = 0;
+    const O = 6;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        if (x < O || y < O || x >= W - O || y >= H - O) { if (!isF((y * W + x) * 4)) outerCard++; }
+    }
+    let h = 2166136261;
+    for (let i = 0; i < d.length; i += 12) { h ^= d[i]; h = Math.imul(h, 16777619); h ^= d[i + 1]; h = Math.imul(h, 16777619); h ^= d[i + 2]; h = Math.imul(h, 16777619); }
+    const fp = (h >>> 0).toString(16);
+
+    // ② 四边齿孔:每条边都要「有孔(品红)又有孔间(票面)」
+    const xA = SX(gap), xB = SX(gap + tw), yT = SY(gap + 1), yB = SY(gap + th - 1);
+    const topF = count(xA, xB, yT, yT, isF), topN = count(xA, xB, yT, yT, (i) => !isF(i));
+    const botF = count(xA, xB, yB, yB, isF), botN = count(xA, xB, yB, yB, (i) => !isF(i));
+    const xL = SX(gap + 1), xR = SX(gap + tw - 1), yA = SY(gap + 4), yZ = SY(gap + th - 4);
+    const leftF = count(xL, xL, yA, yZ, isF), leftN = count(xL, xL, yA, yZ, (i) => !isF(i));
+    const rightF = count(xR, xR, yA, yZ, isF), rightN = count(xR, xR, yA, yZ, (i) => !isF(i));
+
+    // ③ 竖向锯齿撕线:贴线右侧一列「有孔有票面」交替;副券内侧同一高度必须干净(≤ 3)
+    const tcY0 = SY(gap + holeR * 2 + 6), tcY1 = SY(gap + th - holeR * 2 - 6);
+    const tearCol = SX(gap + tearX + 3);
+    const tearF = count(tearCol, tearCol, tcY0, tcY1, isF);
+    const tearN = count(tearCol, tearCol, tcY0, tcY1, (i) => !isF(i));
+    const stCol = SX(gap + tearX + tooth + 40);
+    const stubF = count(stCol, stCol, tcY0, tcY1, isF);
+
+    // ④ 照片中心 = 品红
+    const photoI = (SY(gap + headH + infoH + ih / 2) * W + SX(gap + side + iw / 2)) * 4;
+    const photoF = isF(photoI);
+
+    // ⑤ 票头/票脚压暗(避开顶部齿孔咬入区)
+    const dark = (i) => lum(i) < 100;
+    const bx0 = SX(gap + 30), bx1 = SX(gap + tearX - 30);
+    const hy0 = SY(gap + holeR + 6), hy1 = SY(gap + headH - 2);
+    const headDark = count(bx0, bx1, hy0, hy1, dark), headAll = (bx1 - bx0 + 1) * (hy1 - hy0 + 1);
+    const fy0 = SY(gap + th - footH + 4), fy1 = SY(gap + th - holeR - 6);
+    const footDark = count(bx0, bx1, fy0, fy1, dark), footAll = (bx1 - bx0 + 1) * (fy1 - fy0 + 1);
+
+    // ⑥ 紫蓝渐变真的画在票面上:照片左侧那条纸边(纯渐变、无分区)自上而下必须明显变深
+    const lumAt = (px, py) => { const i = (py * W + px) * 4; return (d[i] + d[i + 1] + d[i + 2]) / 3; };
+    const gX = SX(gap + Math.round(side * 0.5));
+    const lumTop = lumAt(gX, SY(gap + headH + infoH + Math.round(ih * 0.15)));
+    const lumBot = lumAt(gX, SY(gap + headH + infoH + Math.round(ih * 0.85)));
+
+    // ⑦ 副券油墨:深色副券上的条形码 + 竖排浅色文字(亮像素)
+    const stubInk = count(SX(gap + tearX + tooth + 10), SX(gap + tw - 20),
+        SY(gap + headH + infoH), SY(gap + th - footH), (i) => !isF(i) && lum(i) > 150);
+
+    // ⑧ 签名/头像行:直接印在深色票面上,不垫浅色条。预设给了米白 signColor(#f3f1fa),
+    //    所以在票面上是「亮油墨」;整组只落在撕线左侧的主票面内(副券那一列在签名行高度上要干净)。
+    const rowCy = gap + headH + infoH + ih + Math.round(sigH * 0.5);
+    const sgY0 = SY(rowCy - Math.round(sigH * 0.30)), sgY1 = SY(rowCy + Math.round(sigH * 0.30));
+    const sgX0 = SX(gap + side + 4), sgX1 = SX(gap + tearX - tooth - 4);
+    const sbX0 = SX(gap + tearX + tooth + 12), sbX1 = SX(gap + tw - holeR - 6);
+    const isGreen = (i) => d[i] < 90 && d[i + 1] > 150 && d[i + 2] < 90;
+    const isRed = (i) => d[i] > 140 && d[i + 1] < 110 && d[i + 2] < 110;
+    const isInk = (i) => lum(i) > 150;   // 深色票面上的米白签名 = 亮像素
+    let sigInk = 0, sigGreen = 0, stubSigInk = 0, sigRed = 0, sigBgLum = -1;
+    if (sigH > 0 && sgY1 > sgY0) {
+        sigInk = count(sgX0, sgX1, sgY0, sgY1, (i) => isInk(i) && !isGreen(i));
+        sigGreen = count(sgX0, sgX1, sgY0, sgY1, isGreen);
+        stubSigInk = count(sbX0, sbX1, sgY0, sgY1, (i) => isInk(i) && !isGreen(i));
+        sigRed = count(sgX0, sgX1, sgY0, sgY1, isRed);
+        // 签名行左侧空白处必须仍是深色票面 —— 钉住「不垫浅色姓名条」
+        sigBgLum = lumAt(SX(gap + side + Math.round(iw * 0.06)), SY(rowCy));
+    }
+
+    // ⑨ 签名行底色亮度(深色票面):用来断言「签名是直接印在票面上的亮油墨」而不是「垫了浅色底」
+    const stripLum = (sigH > 0) ? sigBgLum : -1;
+
+    ${after || ''}
+    window.Date = RD;
+    return { W, H, expW, expH, alphaMin, outerCard, topF, topN, botF, botN, leftF, leftN, rightF, rightN,
+        tearF, tearN, stubF, photoF, headDark, headAll, footDark, footAll, lumTop, lumBot, stubInk, fp,
+        sigH, sigInk, sigGreen, sigRed, stubSigInk, stripLum };
+})()`;
+
 // ── 「默认不带签名/头像」这条链路:模拟用户在上一款预设里填过签名/头像,再点票券预设 ──
 // 引擎只照模板画,「默认关」这件事不能写进引擎(写进去就等于每个预设硬编码一次),
 // 只能写进预设数据(userSignature:"" + avatarShow:0)。链路有三段,任一段失守都会把签名行复活:
@@ -442,6 +582,11 @@ app.whenReady().then(async () => {
         const m2 = await win.webContents.executeJavaScript(SCAN_MOVIE(mv.preset));
         fps[mv.key] = m1.fp;
         console.log(`  '${mv.key}': '${m1.fp}',   // ${m1.W}x${m1.H} 纸色 ${JSON.stringify(m1.paperSample)}${m1.fp === m2.fp ? '' : '  ← 两次渲染不一致!'}`);
+        const bp = boardingVariant();
+        const b1 = await win.webContents.executeJavaScript(SCAN_BP(bp.preset));
+        const b2 = await win.webContents.executeJavaScript(SCAN_BP(bp.preset));
+        fps[bp.key] = b1.fp;
+        console.log(`  '${bp.key}': '${b1.fp}',   // ${b1.W}x${b1.H}${b1.fp === b2.fp ? '' : '  ← 两次渲染不一致!'}`);
         const out = path.join(__dirname, 'ticket-redo-fingerprints.json');
         fs.writeFileSync(out, JSON.stringify(fps, null, 2) + '\n');
         console.log('已写入 ' + out);
@@ -623,16 +768,71 @@ app.whenReady().then(async () => {
         `100% 油墨 ${rMvSig.sigInk} → 200% ${rMvBig.sigInk};画布 ${rMvSig.H} → ${rMvBig.H}`,
         '油墨 > 1.4× 且 高度不变');
 
-    // ── ㉟–㊳ 四款票券预设「默认不带签名/头像」──
+    // ── ㊴–㊿ 复古登机牌 BOARDING_PASS:第三套几何 + 紫蓝渐变票面 ──
+    const bp = boardingVariant();
+    const rb = await win.webContents.executeJavaScript(SCAN_BP(bp.preset));
+    console.log(`\n【${bp.label}】 指纹 ${rb.fp}  画布 ${rb.W}x${rb.H}  (按 boardingGeom 应为 ${rb.expW}x${rb.expH} × 缩放)`);
+    line(Math.abs(rb.H - rb.expH * (rb.W / rb.expW)) <= 1.5 && rb.W <= 2200,
+        '㊴ styleDims 与 styleBoardingPass 尺寸同源(两处各写一套会让票面与登记画布错位)',
+        `实际 ${rb.W}x${rb.H},按 boardingGeom 应高 ${Math.round(rb.expH * (rb.W / rb.expW))}(exp ${rb.expW}x${rb.expH})`,
+        '差 ≤ 1.5px 且 W ≤ displayMax(2200)');
+    line(rb.alphaMin === 255, '㊵ 整幅全不透明(导出没有透明洞/半透明边)',
+        `全画布最小 alpha = ${rb.alphaMin}`, '255');
+    line(rb.outerCard === 0, '㊶ 最外圈 6px 全是模糊照片(票券四周留 gap,浮在模糊底上)',
+        `外圈非品红(票面)像素 ${rb.outerCard} 个`, '0 个');
+    const bpHoles = rb.topF >= 5 && rb.topN >= 5 && rb.botF >= 5 && rb.botN >= 5
+        && rb.leftF >= 5 && rb.leftN >= 5 && rb.rightF >= 5 && rb.rightN >= 5;
+    line(bpHoles, '㊷ 四边齿孔真打穿(顶/底/左/右都同时有孔=品红 与 孔间=票面)',
+        `顶 ${rb.topF}/${rb.topN}  底 ${rb.botF}/${rb.botN}  左 ${rb.leftF}/${rb.leftN}  右 ${rb.rightF}/${rb.rightN}`,
+        '每项 ≥ 5');
+    line(rb.tearF >= 50 && rb.tearN >= 50 && rb.stubF <= 3,
+        '㊸ 竖向锯齿撕线:贴线一列有孔有票面交替,且只咬撕线(副券内侧干净)',
+        `撕线列 孔 ${rb.tearF} / 票面 ${rb.tearN}   副券内侧 ${rb.stubF} 个孔`, '撕线两项 ≥ 50 且 内侧 ≤ 3');
+    line(rb.photoF === true, '㊹ 照片画上去了(照片中心是喂进去的品红)', `中心像素 ${rb.photoF}`, 'true');
+    const bpHd = rb.headDark / rb.headAll, bpFd = rb.footDark / rb.footAll;
+    line(bpHd >= 0.5 && bpFd >= 0.5 && (rb.lumTop - rb.lumBot) >= 20,
+        '㊺ 票面分区+渐变都在:票头/票脚压暗成深色条,且紫蓝渐变真的画在票面上(票头侧亮、票脚侧暗)',
+        `票头深色占比 ${bpHd.toFixed(3)}   票脚 ${bpFd.toFixed(3)}   照片带左缘 ${rb.lumTop.toFixed(1)}→${rb.lumBot.toFixed(1)}(差 ${(rb.lumTop - rb.lumBot).toFixed(1)})`,
+        '深浅占比均 ≥ 0.5 且 亮度差 ≥ 20');
+    line(rb.stubInk >= 200, '㊻ 副券有内容(条形码 + 竖排 BOARDING/SEAT/GATE + 票号)',
+        `副券亮像素 ${rb.stubInk} 个`, '≥ 200 个');
+    line(rb.fp === FROZEN[bp.key], '㊼ 画面指纹与冻结值一致(跨进程可复现)', `指纹 ${rb.fp}`, FROZEN[bp.key]);
+
+    // ㊽–㊿ 登机牌的签名/头像行(照片与票脚之间的深色票面,不垫浅底)──
+    // 注意 ㊽ 同时钉住「预设必须给一个浅色 signColor」:引擎的 signColor 兜底是 #555,
+    // 而这张紫蓝卡在签名行高度只有 ~58 亮度,#555(85) 画上去对比不到 1.5:1 等于看不见。
+    const SIGTXT_B = 'A.template.userSignature = "— my memory —";';
+    const rBpSig = await win.webContents.executeJavaScript(SCAN_BP(bp.preset, SIGTXT_B + NOAV));
+    line(rBpSig.H > rb.H && rBpSig.alphaMin === 255 && rBpSig.stripLum >= 0 && rBpSig.stripLum < 120
+        && rBpSig.sigInk >= 100 && rBpSig.sigGreen === 0 && rBpSig.stubSigInk <= 5
+        && Math.abs(rBpSig.H - rBpSig.expH * (rBpSig.W / rBpSig.expW)) <= 1.5,
+        '㊽ 有签名时:画布变高,签名以米白直接印在深色票面上(不垫浅色条)、无头像图时不画头像、整组不越竖向撕线',
+        `无签名 ${rb.H} → 有签名 ${rBpSig.H},签名行底色亮度 ${rBpSig.stripLum.toFixed(1)}(应深),签名亮油墨 ${rBpSig.sigInk},头像绿 ${rBpSig.sigGreen},副券列油墨 ${rBpSig.stubSigInk},alpha ${rBpSig.alphaMin}`,
+        '高度增加 且 底色<120 且 亮油墨≥100 且 绿=0 且 副券列≤5');
+    const rBpAvOn = await win.webContents.executeJavaScript(SCAN_BP(bp.preset, AVUP + AVON + SIGTXT_B, AVDOWN));
+    const rBpAvOff = await win.webContents.executeJavaScript(SCAN_BP(bp.preset, AVUP + SIGTXT_B + NOAV, AVDOWN));
+    line(rBpAvOn.sigGreen >= 200 && rBpAvOff.sigGreen === 0 && rBpAvOn.H === rBpAvOff.H,
+        '㊾ 登机牌的「显示头像」开关生效(勾上才画头像,且不改画布高度)',
+        `勾选 头像绿 ${rBpAvOn.sigGreen} 个 / 不勾选 ${rBpAvOff.sigGreen} 个;画布 ${rBpAvOn.H} → ${rBpAvOff.H}`,
+        '勾选 ≥ 200 且 不勾选 = 0 且 高度不变');
+    const rBpBig = await win.webContents.executeJavaScript(SCAN_BP(bp.preset, SIGTXT_B + NOAV + ' A.template.signSize = 2;'));
+    const rBpRed = await win.webContents.executeJavaScript(SCAN_BP(bp.preset, SIGTXT_B + NOAV + ' A.template.signColor = "#e74c3c";'));
+    line(rBpBig.sigInk > rBpSig.sigInk * 1.4 && rBpBig.H === rBpSig.H
+        && rBpRed.sigRed >= 100 && rBpSig.sigRed === 0,
+        '㊿ 登机牌的「签名大小」「签名颜色」两个控件都生效(200% 油墨变多且不改高度;选红色后签名变红)',
+        `100% 油墨 ${rBpSig.sigInk} → 200% ${rBpBig.sigInk}(画布 ${rBpSig.H}→${rBpBig.H});默认色红像素 ${rBpSig.sigRed} → 红色 ${rBpRed.sigRed}`,
+        '油墨 > 1.4× 且 高度不变 且 红色 ≥ 100 且 默认 = 0');
+
+    // ── ㉟–㊳ 五款票券预设「默认不带签名/头像」──
     // 引擎画不画签名行只看模板里的 avatarShow / userSignature(⑬–⑰ 已钉住控件有效),
     // 所以「默认关」这一条只能写在预设数据里,并由下面三段链路保住。
-    console.log('\n【默认不带签名/头像】 四款票券预设:预设说了算,启动填充不复活它');
-    const TICKETS = ['复古旅行票根', '手账拼贴票根', '演唱会票根', '撕边电影票'];
+    console.log('\n【默认不带签名/头像】 五款票券预设:预设说了算,启动填充不复活它');
+    const TICKETS = ['复古旅行票根', '手账拼贴票根', '演唱会票根', '撕边电影票', '复古登机牌'];
     line(TICKETS.every(n => {
         const p = preset(n);
         return p.photoFrameStyle && p.avatarShow === 0 && p.userSignature === '';
     }),
-        '㉟ 四款票券预设自带「默认不带」的声明(avatarShow=0 且 userSignature 为空串)',
+        '㉟ 五款票券预设自带「默认不带」的声明(avatarShow=0 且 userSignature 为空串)',
         TICKETS.map(n => `${n} → avatarShow ${preset(n).avatarShow},签名 ${JSON.stringify(preset(n).userSignature)}`).join('   |   '),
         '每款 avatarShow=0 且签名为空串');
 

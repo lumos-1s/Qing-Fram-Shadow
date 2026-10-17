@@ -1024,6 +1024,283 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         g.textBaseline = 'alphabetic';
     }
 
+    // ── 复古登机牌(BOARDING_PASS)──────────────────────────────────────────────
+    // 与票根家族同一套「真票券」做法(模糊底 + 真齿孔 + 锯齿撕线),版式换成登机牌:
+    //   票头(✈ BOARDING PASS + 出发地 → 目的地 + 航班号)→ 信息带(登机口/座位/登机时间)
+    //   → 主照片 → 可选签名/头像行 → 票脚(航空名 + 票号);
+    //   右侧一条竖向锯齿撕线切出副券(存根):小标题 + 条形码 + 竖排 BOARDING/SEAT/GATE。
+    // 配色沿用旧「复古登机牌」预设的紫蓝四色渐变:旧实现是拿一张全幅渐变图层 + 胶片齿孔
+    // 装饰假装票券,现在由本风格把渐变真画在票面上(渐变即票面底色,不再是背景图层)。
+    // 尺寸必须与 styleDims() 的 BOARDING_PASS 分支同源 —— 两边都调 boardingGeom()。
+    function boardingGeom(iw, ih, size, hasAv, hasSig) {
+        const side = Math.max(22, Math.round(size * 1.0));       // 照片左纸边(右侧是副券)
+        const headH = Math.max(64, Math.round(size * 2.3));      // 票头:标题 + 城市码 + 航班号
+        const infoH = Math.max(30, Math.round(size * 1.05));     // 信息带:登机口/座位/登机时间
+        const footH = Math.max(30, Math.round(size * 0.95));     // 票脚:航空名 + 票号
+        const sigH = (hasAv || hasSig) ? Math.max(44, Math.round(size * 1.6)) : 0;
+        const stubW = Math.max(150, Math.round(iw * 0.30));      // 右侧副券(存根)
+        const gap = Math.max(36, Math.round(iw * 0.06), Math.round(size * 2.0));
+        const holeR = Math.max(3, Math.round(size * 0.225));
+        const tooth = Math.max(6, Math.round(size * 0.18));      // 锯齿齿高
+        const tw = iw + side * 2 + stubW;
+        const th = headH + infoH + ih + sigH + footH;
+        return {
+            side: side, headH: headH, infoH: infoH, footH: footH, stubW: stubW, sigH: sigH,
+            gap: gap, holeR: holeR, tooth: tooth, tw: tw, th: th, tearX: side + iw,
+            w: tw + gap * 2, h: th + gap * 2
+        };
+    }
+
+    function styleBoardingPass(img, size, g, iw, ih, S) {
+        const hasAv = !!(window.__qfsAvatarImg && window.__qfsAvatarImg.complete
+            && window.__qfsAvatarImg.naturalWidth) && (S ? S.avatarShow !== 0 : true);
+        const hasSig = !!(S && S.userSignature);
+        const G = boardingGeom(iw, ih, size, hasAv, hasSig);
+        const side = G.side, headH = G.headH, infoH = G.infoH, footH = G.footH, sigH = G.sigH;
+        const stubW = G.stubW, gap = G.gap, holeR = G.holeR, tooth = G.tooth;
+        const tw = G.tw, th = G.th, tearX = G.tearX;
+
+        // 配色:旧预设的紫蓝渐变 + 米白字 + 暖金点缀
+        const ink = '#f3f1fa', sub = 'rgba(243,241,250,0.74)', dim = 'rgba(243,241,250,0.44)';
+        const gold = '#e9c98d', rule = 'rgba(243,241,250,0.30)';
+        const fam = '"Arial", "Microsoft YaHei", sans-serif';
+        const famDisplay = '"Georgia", "Times New Roman", serif';
+
+        const d = new Date();
+        const dateStr = d.getFullYear() + '.' + pad0(d.getMonth() + 1) + '.' + pad0(d.getDate());
+        const noBase = 100 + Math.abs(iw * 29 + ih * 13) % 900;
+        const noStr = 'NO.' + d.getFullYear() + '-' + String(noBase).padStart(3, '0');
+        // 版式文字为装饰性常量(与票根家族一致:不取自 EXIF)
+        const from = 'SZX', to = 'NRT', flight = 'QA 0808';
+        const stubV = 'BOARDING   SEAT 08A   GATE A12';
+
+        // ① 下层:模糊照片铺满画布 —— 齿孔/锯齿挖穿后透出的就是这一层。
+        //    外扩 + 叠自己两遍保证整幅不透明(与票根/电影票同一套,理由见 styleTicket)
+        const blurR = Math.max(14, Math.round(size * 0.8));
+        const bgPad = blurR * 4;
+        const bgScale = Math.max((G.w + bgPad) / iw, (G.h + bgPad) / ih);
+        const bg = newCanvas(G.w, G.h);
+        const bgG = bg.getContext('2d');
+        bgG.filter = 'blur(' + blurR + 'px)';
+        bgG.drawImage(img, (G.w - iw * bgScale) / 2, (G.h - ih * bgScale) / 2, iw * bgScale, ih * bgScale);
+        bgG.filter = 'none';
+        bgG.drawImage(bg, 0, 0);
+        bgG.drawImage(bg, 0, 0);
+        g.drawImage(bg, 0, 0);
+
+        // ② 票面(离屏):紫蓝渐变 → 纸纹(multiply)→ 分区压暗/提亮 → 内框 → 真齿孔 + 竖向锯齿撕线
+        const tc = newCanvas(tw, th);
+        const tg = tc.getContext('2d');
+        const lg = tg.createLinearGradient(0, 0, 0, th);
+        lg.addColorStop(0, '#7b77a1');
+        lg.addColorStop(0.45, '#6e6a96');
+        lg.addColorStop(0.72, '#4a5275');
+        lg.addColorStop(1, '#212839');
+        tg.fillStyle = lg;
+        tg.fillRect(0, 0, tw, th);
+        // 纸纹颗粒:multiply 叠加(白底=1.0 不改配色,只加纤维颗粒;详见 styleTicket 注释)
+        tg.save();
+        tg.globalCompositeOperation = 'multiply';
+        tg.fillStyle = ticketPaperPattern();
+        tg.fillRect(0, 0, tw, th);
+        tg.restore();
+        tg.fillStyle = 'rgba(6,8,22,0.38)';           // 票头压暗(浅色字要有对比)
+        tg.fillRect(0, 0, tw, headH);
+        tg.fillStyle = 'rgba(6,8,22,0.30)';           // 票脚压暗
+        tg.fillRect(0, th - footH, tw, footH);
+        tg.fillStyle = 'rgba(255,255,255,0.10)';
+        tg.fillRect(0, headH, tw, infoH);
+        tg.fillStyle = 'rgba(0,0,0,0.10)';           // 副券整条微暗 —— 必须在挖孔之前
+        tg.fillRect(tearX, 0, tw - tearX, th);
+        // 签名/头像行直接印在票面上,不垫浅色条(与同族演唱会票根 TICKET_CONCERT 一致)。
+        // 代价是引擎默认的签名色 #555(见此文件 buildState 的 signColor)在这张紫蓝卡上
+        // 亮度差不到 1.5:1,等于看不见 —— 所以由预设显式给一个米白 signColor(#f3f1fa),
+        // 面板里的「签名颜色」仍可随时改。
+        // 内框(浅色细线)+ 信息带下边细线
+        const fIn = Math.max(16, Math.round(holeR * 2.0));
+        tg.strokeStyle = rule;
+        tg.lineWidth = 1.4;
+        tg.strokeRect(fIn, fIn, tw - fIn * 2, th - fIn * 2);
+        tg.lineWidth = 1;
+        tg.beginPath();
+        tg.moveTo(0, headH + infoH - 0.5);
+        tg.lineTo(tw, headH + infoH - 0.5);
+        tg.stroke();
+
+        // ③ 齿孔:四边 + 四角 + 竖向锯齿撕线(副券,贯穿整条票高)
+        const pitch = Math.max(holeR * 4, 9);
+        tg.globalCompositeOperation = 'destination-out';
+        tg.fillStyle = '#000000';   // ⚠ 显式设置,别沿用上面的浅色描边(见文件头注释)
+        const rowX = ticketPerfRow(tw, holeR * 2, pitch);
+        const rowY = ticketPerfRow(th, holeR * 2, pitch);
+        for (let i = 0; i < rowX.length; i++) {
+            tg.beginPath(); tg.arc(rowX[i], 0, holeR, 0, 6.2832); tg.fill();
+            tg.beginPath(); tg.arc(rowX[i], th, holeR, 0, 6.2832); tg.fill();
+        }
+        for (let i = 0; i < rowY.length; i++) {
+            tg.beginPath(); tg.arc(0, rowY[i], holeR, 0, 6.2832); tg.fill();
+            tg.beginPath(); tg.arc(tw, rowY[i], holeR, 0, 6.2832); tg.fill();
+        }
+        tg.beginPath(); tg.arc(0, 0, holeR, 0, 6.2832); tg.fill();
+        tg.beginPath(); tg.arc(tw, 0, holeR, 0, 6.2832); tg.fill();
+        tg.beginPath(); tg.arc(0, th, holeR, 0, 6.2832); tg.fill();
+        tg.beginPath(); tg.arc(tw, th, holeR, 0, 6.2832); tg.fill();
+        tg.beginPath();
+        for (let y = -tooth; y <= th; y += tooth * 2) {
+            tg.moveTo(tearX - tooth, y);
+            tg.lineTo(tearX, y + tooth);
+            tg.lineTo(tearX + tooth, y);
+        }
+        tg.fill();
+        tg.globalCompositeOperation = 'source-over';
+
+        // ④ 贴到画布:票券浮在模糊照片上,四周留 gap(齿孔/锯齿透出的就是这圈模糊)
+        g.drawImage(tc, gap, gap);
+
+        // ⑤ 照片(带 imgScale / imgOffset / 圆角,与票根家族一致)
+        const sc = (S && S.imgScale) || 1;
+        const dw = iw * sc, dh = ih * sc;
+        const rectX = gap + side, rectY = gap + headH + infoH;
+        const px0 = rectX + (iw - dw) / 2 + ((S && S.imgOffsetX) || 0);
+        const py0 = rectY + (ih - dh) / 2 + ((S && S.imgOffsetY) || 0);
+        const arcR = S ? Math.min(S.cornerAll || 0, Math.min(iw, ih) / 2) : 0;
+        g.save();
+        g.beginPath();
+        if (arcR > 1 && typeof g.roundRect === 'function') g.roundRect(rectX, rectY, iw, ih, arcR);
+        else g.rect(rectX, rectY, iw, ih);
+        g.clip();
+        g.drawImage(img, px0, py0, dw, dh);
+        g.restore();
+        g.strokeStyle = 'rgba(243,241,250,0.34)';
+        g.lineWidth = 1;
+        if (arcR > 1 && typeof g.roundRect === 'function') {
+            g.beginPath(); g.roundRect(rectX - 0.5, rectY - 0.5, iw + 1, ih + 1, arcR); g.stroke();
+        } else {
+            g.strokeRect(rectX - 0.5, rectY - 0.5, iw + 1, ih + 1);
+        }
+
+        const inset = Math.max(16, Math.round(side * 0.9));
+
+        // ⑥ 签名/头像行(可选):照片正下方、票脚之上;整组居中于「照片中线」(与票根家族同一套)。
+        //    可用宽度只按照片宽度算 —— 整组永远落在撕线左侧的主票面内,不会压在竖向锯齿上。
+        if (sigH > 0) {
+            const rowY = gap + headH + infoH + ih + Math.round(sigH * 0.5);
+            const cx = gap + side + iw / 2;
+            const avatarR = Math.round(sigH * 0.19 * ((S && S.avatarScale) || 1));
+            const sigBody = hasSig ? String(S.userSignature) : '';
+            const gapA = Math.max(8, Math.round(avatarR * 0.25));
+            const availW = iw - inset * 2 - (hasAv ? avatarR * 2 + gapA : 0);
+            const fit = sigBody
+                ? fitSignText(g, sigBody, Math.max(12, Math.round(sigH * 0.36 * ((S && S.signSize) || 1))),
+                    (S && S.signFont) || 'Comic Sans MS', availW)
+                : { fs: 0, text: '' };
+            const sigWS = fit.text ? g.measureText(fit.text).width : 0;
+            const totalW = (hasAv ? avatarR * 2 : 0) + (hasAv && sigWS ? gapA : 0) + sigWS;
+            let px = cx - totalW / 2;
+            if (hasAv) {
+                const av = window.__qfsAvatarImg;
+                const sc2 = Math.max(avatarR * 2 / av.width, avatarR * 2 / av.height);
+                g.save();
+                g.beginPath(); g.arc(px + avatarR, rowY, avatarR, 0, 6.2832); g.clip();
+                g.drawImage(av, px + avatarR - av.width * sc2 / 2, rowY - av.height * sc2 / 2,
+                    av.width * sc2, av.height * sc2);
+                g.restore();
+                g.strokeStyle = 'rgba(243,241,250,0.42)';   // 深色票面 → 头像描边用浅色(与票面文字同族)
+                g.lineWidth = 1.5;
+                g.beginPath(); g.arc(px + avatarR, rowY, avatarR, 0, 6.2832); g.stroke();
+                px += avatarR * 2 + (sigWS ? gapA : 0);
+            }
+            if (fit.text) {
+                g.fillStyle = (S && S.signColor) || ink;
+                g.textAlign = 'left';
+                g.textBaseline = 'middle';
+                g.fillText(fit.text, px, rowY);
+                g.textAlign = 'left';
+                g.textBaseline = 'alphabetic';
+            }
+        }
+
+        g.textAlign = 'left';
+        g.textBaseline = 'alphabetic';
+
+        // ⑦ 票头:行1 = ✈ BOARDING PASS(左)+ 日期(右,止于撕线);行2 = 出发地 → 目的地 + 航班号
+        const hFs = Math.max(11, Math.round(headH * 0.19));
+        const hY = gap + Math.round(headH * 0.30);
+        ticketText(g, '✈  BOARDING PASS', gap + inset, hY, sub, hFs, fam, true, 2);
+        const dtW = ticketTextW(g, dateStr, hFs, fam, false, 1);
+        ticketText(g, dateStr, gap + tearX - inset - dtW, hY, dim, hFs, fam, false, 1);
+        const codeFs = Math.max(22, Math.round(headH * 0.40));
+        const codeY = gap + Math.round(headH * 0.80);
+        const codeTrack = 3;
+        const fromW = ticketTextW(g, from, codeFs, famDisplay, true, codeTrack);
+        ticketText(g, from, gap + inset, codeY, ink, codeFs, famDisplay, true, codeTrack);
+        const arFs = Math.round(codeFs * 0.62);
+        const arX = gap + inset + fromW + Math.round(codeFs * 0.34);
+        const arW = ticketTextW(g, '→', arFs, fam, false, 0);
+        ticketText(g, '→', arX, codeY - Math.round(codeFs * 0.06), gold, arFs, fam, false, 0);
+        const toX = arX + arW + Math.round(codeFs * 0.34);
+        ticketText(g, to, toX, codeY, ink, codeFs, famDisplay, true, codeTrack);
+        const flFs = Math.max(12, Math.round(headH * 0.17));
+        const flW = ticketTextW(g, flight, flFs, famDisplay, true, 3);
+        ticketText(g, flight, gap + tearX - inset - flW, codeY - Math.round(codeFs * 0.05),
+            gold, flFs, famDisplay, true, 3);
+
+        // ⑧ 信息带:登机口/座位/登机时间(标签淡、值亮,单行内联)
+        const iFs = Math.max(12, Math.round(infoH * 0.44));
+        const iY = gap + headH + Math.round(infoH * 0.70);
+        let sx = gap + inset;
+        const seg = (label, value) => {
+            const lf = Math.max(9, Math.round(iFs * 0.66));
+            ticketText(g, label, sx, iY, dim, lf, fam, false, 1);
+            sx += ticketTextW(g, label, lf, fam, false, 1) + Math.round(lf * 0.6);
+            ticketText(g, value, sx, iY, ink, iFs, fam, true, 1);
+            sx += ticketTextW(g, value, iFs, fam, true, 1) + Math.round(iFs * 1.5);
+        };
+        seg('GATE', 'A12');
+        seg('SEAT', '08A');
+        seg('BOARDING', '20:30');
+
+        // ⑨ 票脚:航空名(左)+ 票号(右)
+        const fFs = Math.max(11, Math.round(footH * 0.42));
+        ticketText(g, 'MEMORY AIRLINES', gap + inset, gap + th - Math.round(footH * 0.34), gold, fFs, fam, true, 2);
+        const noFs = Math.max(10, Math.round(fFs * 0.9));
+        const noW = ticketTextW(g, noStr, noFs, fam, false, 1);
+        ticketText(g, noStr, gap + tw - inset - noW, gap + th - Math.round(footH * 0.34), dim, noFs, fam, false, 1);
+
+        // ⑩ 副券:小标题 + 横向条形码 + 竖排 BOARDING/SEAT/GATE + 底部票号(内容区避开撕线齿尖)
+        const sL = gap + tearX + tooth + Math.max(10, Math.round(size * 0.16));
+        const sR = gap + tw - inset;
+        const sTop = gap + headH + infoH;
+        const sBot = gap + headH + infoH + ih + sigH;
+        const stFs = Math.max(10, Math.round(size * 0.22));
+        ticketText(g, '登机牌  STUB', sL, sTop + Math.round(ih * 0.06), gold, stFs, fam, true, 1);
+        const bcH = Math.max(24, Math.round(stubW * 0.16));
+        const bcW = Math.max(60, sR - sL);
+        const bcY = sTop + Math.round(ih * 0.12);
+        const brnd = styleNoise(noBase, 913, 7);
+        g.fillStyle = 'rgba(243,241,250,0.88)';
+        let bx = 0;
+        while (bx < bcW) {
+            const bw = Math.max(1, Math.round(size * (0.05 + brnd(6) / 100)));
+            if (brnd(4) !== 0) g.fillRect(sL + bx, bcY, bw, bcH);
+            bx += bw + 1 + brnd(4);
+        }
+        const adFs = Math.max(12, Math.round(size * 0.28));
+        const adW = ticketTextW(g, stubV, adFs, fam, true, 3);
+        g.save();
+        g.translate(sR - Math.round(adFs * 0.4), Math.round((sTop + sBot) / 2));
+        g.rotate(-Math.PI / 2);
+        ticketText(g, stubV, -Math.round(adW / 2), Math.round(adFs * 0.36), sub, adFs, fam, true, 3);
+        g.restore();
+        const snFs = Math.max(9, Math.round(size * 0.20));
+        const snW = ticketTextW(g, noStr, snFs, fam, false, 1);
+        ticketText(g, noStr, Math.round((sL + sR - snW) / 2), sBot - Math.round(ih * 0.05),
+            dim, snFs, fam, false, 1);
+
+        g.textAlign = 'left';
+        g.textBaseline = 'alphabetic';
+    }
+
     // ── 票根纸张纹理:256px tile(纤维颗粒+半调网点+双色噪点),缓存平铺一次,预览不卡 ──
     let ticketPaperCache = null;
     function ticketPaperPattern() {
@@ -2123,7 +2400,7 @@ AV_OVERLAY:63,
 AV_OVERLAY_TR:64,
 AV_OVERLAY_BR:65,
 AV_OVERLAY_BC:66,
-AV_OVERLAY_BC2:67, GALLERY_MAT:68 };
+AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69 };
     const MASK48 = 0xffffffffffffn, MULT = 0x5deece66dn, INC = 0xbn;
     function javaRandom(seed64) {
         let s = (BigInt(seed64) ^ MULT) & MASK48;
@@ -4005,6 +4282,15 @@ const w = natW;
                 const mvG = movieGeom(iw, ih, size, mvAv, mvSig);
                 return { w: mvG.w, h: mvG.h };
             }
+            case 'BOARDING_PASS': {
+                // 尺寸与 styleBoardingPass 同源(共用 boardingGeom),否则登记的画布和实际画出来的
+                // 票面对不上,齿孔/撕线会整片错位。
+                const bpAv = !!(window.__qfsAvatarImg && window.__qfsAvatarImg.complete
+                    && window.__qfsAvatarImg.naturalWidth) && (S ? S.avatarShow !== 0 : true);
+                const bpSig = !!(S && S.userSignature);
+                const bpG = boardingGeom(iw, ih, size, bpAv, bpSig);
+                return { w: bpG.w, h: bpG.h };
+            }
 
             case 'TICKET_VINTAGE':
             case 'TICKET_CONCERT':
@@ -5532,7 +5818,7 @@ const w = natW;
             STAMP_POSTAGE: styleStampPostage, TEARED_PAPER: styleTornPaper,
             FOLD_CORNER: styleFoldCorner, PINBOARD_TAPE: stylePinboardTape, DOUBLE_EXPOSURE: styleDoubleExposure, MAGAZINE_MASTHEAD: styleMagazineMasthead, MAGAZINE_COVER: styleMagazineCover, MAGAZINE_HEADER: styleMagazineHeader,
             VHS_TAPE: styleVhsTape, ALBUM_CORNER: styleAlbumCorner,
-                        MOVIE_TICKET: styleMovieTicket, WATERCOLOR_BLEED: styleWatercolorBleed,
+                        MOVIE_TICKET: styleMovieTicket, BOARDING_PASS: styleBoardingPass, WATERCOLOR_BLEED: styleWatercolorBleed,
             TICKET_VINTAGE: (img, size, g, iw, ih, S) => styleTicket(img, size, g, iw, ih, S, 'vintage'),
             TICKET_CONCERT: (img, size, g, iw, ih, S) => styleTicket(img, size, g, iw, ih, S, 'concert'),
             TICKET_SCRAP: (img, size, g, iw, ih, S) => styleTicket(img, size, g, iw, ih, S, 'scrap'),
