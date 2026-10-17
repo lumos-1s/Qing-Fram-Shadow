@@ -18,7 +18,10 @@
   "rowSignFont",
   "rowSignModel",
   "rowSignSize",
-  "rowSignText"
+  "rowSignText",
+  "rowT2iColor",
+  "rowT2iEffect",
+  "rowT2iStyle"
  ],
  "styles": {
   "SIMPLE": {
@@ -40,7 +43,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "WHITE_PLAIN": {
    "rowAvatarScale": false,
@@ -61,7 +67,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "ROUNDED": {
    "rowAvatarScale": false,
@@ -82,7 +91,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "FILM_STRIP": {
    "rowAvatarScale": false,
@@ -103,7 +115,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "POLAROID": {
    "rowAvatarScale": false,
@@ -124,7 +139,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "DOUBLE_LINE": {
    "rowAvatarScale": false,
@@ -145,7 +163,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "VINTAGE": {
    "rowAvatarScale": false,
@@ -166,7 +187,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "GRADIENT": {
    "rowAvatarScale": false,
@@ -187,7 +211,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "DROP_SHADOW": {
    "rowAvatarScale": false,
@@ -208,7 +235,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "BLUR_CLASSIC": {
    "rowAvatarScale": false,
@@ -229,7 +259,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "BLUR_DATE": {
    "rowAvatarScale": false,
@@ -250,7 +283,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "WM_CLASSIC": {
    "rowAvatarScale": false,
@@ -271,7 +307,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "WM_SINGLE": {
    "rowAvatarScale": false,
@@ -292,7 +331,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "WM_BRAND_LOGO": {
    "rowAvatarScale": false,
@@ -313,7 +355,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "WM_AI": {
    "rowAvatarScale": false,
@@ -334,7 +379,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "IMP_FROSTED": {
    "rowAvatarScale": false,
@@ -355,7 +403,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "IMP_CLASSIC": {
    "rowAvatarScale": false,
@@ -376,7 +427,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "XIAOMI_IMP": {
    "rowAvatarScale": false,
@@ -397,7 +451,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "CARD_LEICA": {
    "rowAvatarScale": false,
@@ -418,7 +475,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "CARD_LOGO_PARAM": {
    "rowAvatarScale": false,
@@ -439,7 +499,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "CARD_PURE_LOGO": {
    "rowAvatarScale": false,
@@ -460,7 +523,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "CARD_SIMPLE": {
    "rowAvatarScale": false,
@@ -481,7 +547,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "CARD_IMMERSION": {
    "rowAvatarScale": false,
@@ -502,7 +571,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "OVERLAY_PARAM_LEFT": {
    "rowAvatarScale": false,
@@ -523,7 +595,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "OVERLAY_PARAM_RIGHT": {
    "rowAvatarScale": false,
@@ -544,7 +619,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "OVERLAY_PARAM_BOTTOM": {
    "rowAvatarScale": false,
@@ -565,7 +643,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "FUJI_WM": {
    "rowAvatarScale": false,
@@ -586,7 +667,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "FUJI_WM_BRAND": {
    "rowAvatarScale": false,
@@ -607,7 +691,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "DARK_BRAND_ONLY": {
    "rowAvatarScale": false,
@@ -628,7 +715,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "OVERLAY_LOGO_BOTTOM": {
    "rowAvatarScale": false,
@@ -649,7 +739,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "COLOR_CLASSIC": {
    "rowAvatarScale": false,
@@ -670,7 +763,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "COLOR_REFINED": {
    "rowAvatarScale": false,
@@ -691,7 +787,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "ART_CARD": {
    "rowAvatarScale": false,
@@ -712,7 +811,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "FUJI_WHITE": {
    "rowAvatarScale": false,
@@ -733,7 +835,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "SIMPLE_FILM": {
    "rowAvatarScale": false,
@@ -754,7 +859,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "PARAM_TOP_LEFT": {
    "rowAvatarScale": false,
@@ -775,7 +883,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "PARAM_BOTTOM_LEFT": {
    "rowAvatarScale": false,
@@ -796,7 +907,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "PARAM_BOTTOM_SINGLE": {
    "rowAvatarScale": false,
@@ -817,7 +931,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "STAMP_POSTAGE": {
    "rowAvatarScale": false,
@@ -838,7 +955,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "TEARED_PAPER": {
    "rowAvatarScale": false,
@@ -859,7 +979,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "FOLD_CORNER": {
    "rowAvatarScale": false,
@@ -880,7 +1003,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "PINBOARD_TAPE": {
    "rowAvatarScale": false,
@@ -901,7 +1027,106 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
+  },
+  "DOUBLE_EXPOSURE": {
+   "rowAvatarScale": false,
+   "rowAvatarShow": false,
+   "rowBgBlur": false,
+   "rowBgBlurInt": false,
+   "rowBrandLogo": false,
+   "rowBrandSize": false,
+   "rowCornerRadius": false,
+   "rowGlobalMargin": false,
+   "rowImgScale": false,
+   "rowParamColor": false,
+   "rowParamFontSize": false,
+   "rowParamPos": false,
+   "rowParamScale": false,
+   "rowParamType": false,
+   "rowSignColor": false,
+   "rowSignFont": false,
+   "rowSignModel": false,
+   "rowSignSize": false,
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
+  },
+  "MAGAZINE_MASTHEAD": {
+   "rowAvatarScale": false,
+   "rowAvatarShow": false,
+   "rowBgBlur": false,
+   "rowBgBlurInt": false,
+   "rowBrandLogo": false,
+   "rowBrandSize": false,
+   "rowCornerRadius": false,
+   "rowGlobalMargin": false,
+   "rowImgScale": false,
+   "rowParamColor": false,
+   "rowParamFontSize": false,
+   "rowParamPos": false,
+   "rowParamScale": false,
+   "rowParamType": false,
+   "rowSignColor": false,
+   "rowSignFont": false,
+   "rowSignModel": false,
+   "rowSignSize": false,
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
+  },
+  "MAGAZINE_COVER": {
+   "rowAvatarScale": false,
+   "rowAvatarShow": false,
+   "rowBgBlur": false,
+   "rowBgBlurInt": false,
+   "rowBrandLogo": false,
+   "rowBrandSize": false,
+   "rowCornerRadius": false,
+   "rowGlobalMargin": false,
+   "rowImgScale": false,
+   "rowParamColor": false,
+   "rowParamFontSize": false,
+   "rowParamPos": false,
+   "rowParamScale": false,
+   "rowParamType": false,
+   "rowSignColor": false,
+   "rowSignFont": false,
+   "rowSignModel": false,
+   "rowSignSize": false,
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
+  },
+  "MAGAZINE_HEADER": {
+   "rowAvatarScale": false,
+   "rowAvatarShow": false,
+   "rowBgBlur": false,
+   "rowBgBlurInt": false,
+   "rowBrandLogo": false,
+   "rowBrandSize": false,
+   "rowCornerRadius": false,
+   "rowGlobalMargin": false,
+   "rowImgScale": false,
+   "rowParamColor": false,
+   "rowParamFontSize": false,
+   "rowParamPos": false,
+   "rowParamScale": false,
+   "rowParamType": false,
+   "rowSignColor": false,
+   "rowSignFont": false,
+   "rowSignModel": false,
+   "rowSignSize": false,
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "VHS_TAPE": {
    "rowAvatarScale": false,
@@ -922,7 +1147,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "ALBUM_CORNER": {
    "rowAvatarScale": false,
@@ -943,7 +1171,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "MOVIE_TICKET": {
    "rowAvatarScale": true,
@@ -952,9 +1183,9 @@
    "rowBgBlurInt": false,
    "rowBrandLogo": false,
    "rowBrandSize": false,
-   "rowCornerRadius": false,
+   "rowCornerRadius": true,
    "rowGlobalMargin": false,
-   "rowImgScale": false,
+   "rowImgScale": true,
    "rowParamColor": false,
    "rowParamFontSize": false,
    "rowParamPos": false,
@@ -964,7 +1195,10 @@
    "rowSignFont": true,
    "rowSignModel": false,
    "rowSignSize": true,
-   "rowSignText": true
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "WATERCOLOR_BLEED": {
    "rowAvatarScale": false,
@@ -985,7 +1219,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "TICKET_VINTAGE": {
    "rowAvatarScale": true,
@@ -1006,7 +1243,10 @@
    "rowSignFont": true,
    "rowSignModel": false,
    "rowSignSize": true,
-   "rowSignText": true
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "TICKET_CONCERT": {
    "rowAvatarScale": true,
@@ -1027,7 +1267,10 @@
    "rowSignFont": true,
    "rowSignModel": false,
    "rowSignSize": true,
-   "rowSignText": true
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "TICKET_SCRAP": {
    "rowAvatarScale": true,
@@ -1048,7 +1291,10 @@
    "rowSignFont": true,
    "rowSignModel": false,
    "rowSignSize": true,
-   "rowSignText": true
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "TICKET_STAMP": {
    "rowAvatarScale": true,
@@ -1069,7 +1315,106 @@
    "rowSignFont": true,
    "rowSignModel": false,
    "rowSignSize": true,
-   "rowSignText": true
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
+  },
+  "STAMP_KRAFT": {
+   "rowAvatarScale": true,
+   "rowAvatarShow": true,
+   "rowBgBlur": false,
+   "rowBgBlurInt": false,
+   "rowBrandLogo": false,
+   "rowBrandSize": false,
+   "rowCornerRadius": true,
+   "rowGlobalMargin": false,
+   "rowImgScale": true,
+   "rowParamColor": true,
+   "rowParamFontSize": false,
+   "rowParamPos": false,
+   "rowParamScale": false,
+   "rowParamType": false,
+   "rowSignColor": true,
+   "rowSignFont": true,
+   "rowSignModel": false,
+   "rowSignSize": true,
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
+  },
+  "STAMP_BLUEPRINT": {
+   "rowAvatarScale": true,
+   "rowAvatarShow": true,
+   "rowBgBlur": false,
+   "rowBgBlurInt": false,
+   "rowBrandLogo": false,
+   "rowBrandSize": false,
+   "rowCornerRadius": true,
+   "rowGlobalMargin": false,
+   "rowImgScale": true,
+   "rowParamColor": true,
+   "rowParamFontSize": false,
+   "rowParamPos": false,
+   "rowParamScale": false,
+   "rowParamType": false,
+   "rowSignColor": true,
+   "rowSignFont": true,
+   "rowSignModel": false,
+   "rowSignSize": true,
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
+  },
+  "STAMP_REDSEAL": {
+   "rowAvatarScale": true,
+   "rowAvatarShow": true,
+   "rowBgBlur": false,
+   "rowBgBlurInt": false,
+   "rowBrandLogo": false,
+   "rowBrandSize": false,
+   "rowCornerRadius": true,
+   "rowGlobalMargin": false,
+   "rowImgScale": true,
+   "rowParamColor": true,
+   "rowParamFontSize": false,
+   "rowParamPos": false,
+   "rowParamScale": false,
+   "rowParamType": false,
+   "rowSignColor": true,
+   "rowSignFont": true,
+   "rowSignModel": false,
+   "rowSignSize": true,
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
+  },
+  "STAMP_GOLD": {
+   "rowAvatarScale": true,
+   "rowAvatarShow": true,
+   "rowBgBlur": false,
+   "rowBgBlurInt": false,
+   "rowBrandLogo": false,
+   "rowBrandSize": false,
+   "rowCornerRadius": true,
+   "rowGlobalMargin": false,
+   "rowImgScale": true,
+   "rowParamColor": true,
+   "rowParamFontSize": false,
+   "rowParamPos": false,
+   "rowParamScale": false,
+   "rowParamType": false,
+   "rowSignColor": true,
+   "rowSignFont": true,
+   "rowSignModel": false,
+   "rowSignSize": true,
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "NEON_GLOW": {
    "rowAvatarScale": false,
@@ -1090,7 +1435,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "BURNED_EDGE": {
    "rowAvatarScale": false,
@@ -1111,7 +1459,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "INK_WASH": {
    "rowAvatarScale": false,
@@ -1132,7 +1483,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "CYANOTYPE": {
    "rowAvatarScale": false,
@@ -1153,7 +1507,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "OIL_BRUSH": {
    "rowAvatarScale": false,
@@ -1174,7 +1531,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "PRESSED_FLOWER": {
    "rowAvatarScale": false,
@@ -1195,7 +1555,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "WAX_SEAL": {
    "rowAvatarScale": false,
@@ -1216,7 +1579,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "PRISMATIC": {
    "rowAvatarScale": false,
@@ -1237,7 +1603,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "CYBER_GLITCH": {
    "rowAvatarScale": false,
@@ -1258,7 +1627,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "POLAROID_HAND": {
    "rowAvatarScale": false,
@@ -1279,7 +1651,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "TORN_JOURNAL": {
    "rowAvatarScale": false,
@@ -1300,7 +1675,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "CARD_3D": {
    "rowAvatarScale": false,
@@ -1317,11 +1695,14 @@
    "rowParamPos": false,
    "rowParamScale": false,
    "rowParamType": false,
-   "rowSignColor": false,
-   "rowSignFont": false,
+   "rowSignColor": true,
+   "rowSignFont": true,
    "rowSignModel": false,
-   "rowSignSize": false,
-   "rowSignText": false
+   "rowSignSize": true,
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "COMIC_PANEL": {
    "rowAvatarScale": false,
@@ -1342,7 +1723,34 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
+  },
+  "POP_COMIC": {
+   "rowAvatarScale": false,
+   "rowAvatarShow": false,
+   "rowBgBlur": false,
+   "rowBgBlurInt": false,
+   "rowBrandLogo": false,
+   "rowBrandSize": false,
+   "rowCornerRadius": false,
+   "rowGlobalMargin": false,
+   "rowImgScale": false,
+   "rowParamColor": false,
+   "rowParamFontSize": false,
+   "rowParamPos": false,
+   "rowParamScale": false,
+   "rowParamType": false,
+   "rowSignColor": false,
+   "rowSignFont": false,
+   "rowSignModel": false,
+   "rowSignSize": false,
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "NEWSPAPER": {
    "rowAvatarScale": false,
@@ -1363,7 +1771,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "COLOR_PALETTE": {
    "rowAvatarScale": false,
@@ -1384,7 +1795,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "SIGNATURE": {
    "rowAvatarScale": true,
@@ -1405,7 +1819,10 @@
    "rowSignFont": true,
    "rowSignModel": false,
    "rowSignSize": true,
-   "rowSignText": true
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "SIGN_PARAM": {
    "rowAvatarScale": true,
@@ -1426,7 +1843,10 @@
    "rowSignFont": true,
    "rowSignModel": true,
    "rowSignSize": true,
-   "rowSignText": true
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "AVATAR_MEMO": {
    "rowAvatarScale": true,
@@ -1447,7 +1867,10 @@
    "rowSignFont": true,
    "rowSignModel": false,
    "rowSignSize": true,
-   "rowSignText": true
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "SIGN_BLUR": {
    "rowAvatarScale": false,
@@ -1468,7 +1891,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "SIG_BLUR": {
    "rowAvatarScale": false,
@@ -1489,7 +1915,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "AV_BLUR": {
    "rowAvatarScale": false,
@@ -1510,7 +1939,10 @@
    "rowSignFont": false,
    "rowSignModel": false,
    "rowSignSize": false,
-   "rowSignText": false
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "AV_OVERLAY": {
    "rowAvatarScale": true,
@@ -1531,7 +1963,10 @@
    "rowSignFont": true,
    "rowSignModel": false,
    "rowSignSize": true,
-   "rowSignText": true
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "AV_OVERLAY_TR": {
    "rowAvatarScale": true,
@@ -1552,7 +1987,10 @@
    "rowSignFont": true,
    "rowSignModel": false,
    "rowSignSize": true,
-   "rowSignText": true
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "AV_OVERLAY_BR": {
    "rowAvatarScale": true,
@@ -1573,7 +2011,10 @@
    "rowSignFont": true,
    "rowSignModel": false,
    "rowSignSize": true,
-   "rowSignText": true
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "AV_OVERLAY_BC": {
    "rowAvatarScale": true,
@@ -1594,7 +2035,10 @@
    "rowSignFont": true,
    "rowSignModel": false,
    "rowSignSize": true,
-   "rowSignText": true
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   },
   "AV_OVERLAY_BC2": {
    "rowAvatarScale": true,
@@ -1615,7 +2059,34 @@
    "rowSignFont": true,
    "rowSignModel": false,
    "rowSignSize": true,
-   "rowSignText": true
+   "rowSignText": true,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
+  },
+  "GALLERY_MAT": {
+   "rowAvatarScale": false,
+   "rowAvatarShow": false,
+   "rowBgBlur": false,
+   "rowBgBlurInt": false,
+   "rowBrandLogo": false,
+   "rowBrandSize": false,
+   "rowCornerRadius": false,
+   "rowGlobalMargin": false,
+   "rowImgScale": true,
+   "rowParamColor": false,
+   "rowParamFontSize": false,
+   "rowParamPos": false,
+   "rowParamScale": false,
+   "rowParamType": false,
+   "rowSignColor": false,
+   "rowSignFont": false,
+   "rowSignModel": false,
+   "rowSignSize": false,
+   "rowSignText": false,
+   "rowT2iColor": false,
+   "rowT2iEffect": false,
+   "rowT2iStyle": false
   }
  }
 }

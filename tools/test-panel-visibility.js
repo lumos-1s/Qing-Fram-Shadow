@@ -74,8 +74,10 @@ const HIDE_OK = new Set([
     'AV_OVERLAY_BC/rowParamFontSize', 'AV_OVERLAY_BC2/rowParamFontSize',
     'AV_BLUR/rowParamFontSize', 'SIG_BLUR/rowParamFontSize',
     // CARD_3D:旧梯子的隐藏清单漏了 rowSignText,导致"签名文字"单独露着,而同行��字体/颜色/头像
-    // 全被藏掉。3D 卡片风格不画签名,整组收齐更自洽。
-    'CARD_3D/rowSignText',
+    // (此处曾登记过 'CARD_3D/rowSignText' —— 当时的判断是「3D 卡片不画签名,整组收齐」。
+    //  实测发现这条登记是失效的:旧梯子只是漏放了「签名文字」那一行(它在冻结基线里本来
+    //  就是可见的),而现在的能力表(sigTextOnly)对它也是可见 —— 净变化为零,没有可登记的东西。
+    //  真正的变化在同行另外三行(字体/颜色/字号:冻结基线隐藏 → 现在露出),按实测登记在 SHOW_OK。)
     // rowBgBlurInt:旧代码状态泄漏 + 本就只在 BLUR_CLASSIC/BLUR_DATE 显形,其余一律收到"隐藏"口径
     'WM_CLASSIC/rowBgBlurInt', 'WM_SINGLE/rowBgBlurInt', 'WM_BRAND_LOGO/rowBgBlurInt',
     'WM_AI/rowBgBlurInt', 'IMP_FROSTED/rowBgBlurInt', 'IMP_CLASSIC/rowBgBlurInt',
@@ -109,6 +111,12 @@ const SHOW_OK = new Set([
     // 不存在,同样走 missingStyle 记账。
     'MOVIE_TICKET/rowSignText', 'MOVIE_TICKET/rowSignFont', 'MOVIE_TICKET/rowSignColor',
     'MOVIE_TICKET/rowSignSize', 'MOVIE_TICKET/rowAvatarScale',
+    // CARD_3D:冻结基线里 3D 卡片的「签名字体/颜色/字号」是隐藏的(旧梯子的隐藏清单只漏放了
+    // rowSignText 那一行,于是同行六个控件里只有"签名内容"露着)。引擎实测这三项确实生效 ——
+    // styleCard3D 的签名行读 userSignature/signFont/signColor/signSize,且只画签名不画头像
+    // (见 tools/test-ticket-redo.js ⑮)。能力表 sigTextOnly 组把四行一起露出,净变化就是这三条;
+    // 相对冻结基线 rowSignText 本来就是可见的(见上面 HIDE_OK 的说明),故不在此列。
+    'CARD_3D/rowSignColor', 'CARD_3D/rowSignFont', 'CARD_3D/rowSignSize',
     // 注意 PARAM_BOTTOM_LEFT/rowParamFontSize 与 STAMP_POSTAGE/rowParamFontSize 已从本表移除。
     // 它们曾因能力表判据缺陷(用全图平均差)被误判为不生效而收进 HIDE_OK;判据改成
     // "单格最大差 + 变化格数"后确认是真实响应(分别改动 51 / 29 格),于是又露了出来 ——
@@ -119,7 +127,13 @@ const SHOW_OK = new Set([
 // 接入能力表时在 index.html 上补 id 的三个行(原先没有任何 id,故永远显示、也没法纳入快照)。
 // 冻结基线里不存在这些行,audit 时按"新增行"单独记账,不算覆盖缺口。
 // rowAvatarShow:2026-10 新增的「显示头像」开关(53bd5e2),同样晚于冻结基线,按新增行记账。
-const NEW_ROWS = new Set(['rowCornerRadius', 'rowGlobalMargin', 'rowImgScale', 'rowAvatarShow']);
+// rowT2i*:2026-10-10 的「文字转图片」功能(d937d41, v0.1.8)往 index.html 加的三行。它晚于
+//   冻结基线(2026-09-26),也晚于上一次整表重建(2026-10-08) —— 所以当前快照的 rowIds 里一直没有
+//   它们,audit 会按"参照缺行"报 76 风格 × 3 = 228 条。它们和上面三行性质相同(都是能力表接入之后
+//   才有的行),按新增行记账即可;下次 --update 重建快照后它们自然会进 rowIds,默认模式的"缺行"
+//   也就归零了。
+const NEW_ROWS = new Set(['rowCornerRadius', 'rowGlobalMargin', 'rowImgScale', 'rowAvatarShow',
+    'rowT2iColor', 'rowT2iEffect', 'rowT2iStyle']);
 
 function drawKeys() {
     const src = fs.readFileSync(ENGINE, 'utf8');

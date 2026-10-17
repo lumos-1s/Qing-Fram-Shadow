@@ -7,6 +7,23 @@
 </head>
 <body>
 <canvas id="c"></canvas>
+<script>
+// ── 冻结时钟:必须在 engine*.js 之前 ──
+// engine-styles.js 模块级 `const NOW = new Date()` 是**脚本加载时**定死的,另有 10 个风格会画
+// "当天"日期:styleBlurCommon(BLUR_CLASSIC/BLUR_DATE)、stylePolaroid、stylePrismatic、
+// styleNewspaper、styleAvatarMemo、styleAvBlur、stylePolaroidHand、styleTicket、styleMovieTicket、
+// styleStamp(styleComicPanel/stylePopComic 只用 getFullYear(),年内本来就不漂)。
+// 不冻结的话基线就带了一个隐藏输入——"采集那天":同一个提交隔天跑,画日期的风格指纹就会变
+// (实测在 BLUR_DATE__bi100 上差 0.1,尚未越过 FP_TOL 2.0,但已经贴阈值的用例没有余量了)。
+// 钉死之后基线只对"代码真变了"负责。做法与 tools/test-stamp-redseal.js 一致;取 2026-10-08 12:00
+// —— 上一版基线的采集日,这样本次重采的净变化里不含日期噪声,便于逐条核对。
+const FIXED_MS = new Date(2026, 9, 8, 12, 0, 0).getTime(); // 2026-10-08 12:00 本地
+const RealDate = Date;
+window.Date = class extends RealDate {
+  constructor(...a) { if (a.length) super(...a); else super(FIXED_MS); }
+  static now() { return FIXED_MS; }
+};
+</script>
 <script src="../src/renderer/js/engine.js"></script>
 <script src="../src/renderer/js/engine-styles.js"></script>
 <script>
