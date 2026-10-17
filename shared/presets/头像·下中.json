@@ -19,5 +19,6 @@
   "signFont": "cursive",
   "signColor": "#ffffff",
   "avatarScale": 0.85,
+  "avatarShow": 1,
   "signSize": 1
 }

@@ -162,6 +162,8 @@ if (!files.length) {
 
 const byPath = { style: [], card: [], layer: [] };
 const usedStyles = new Set();
+// 预设实际用到的分类(templateTag,合并前的原始值),供下面的「分组顺序表」反向校验
+const usedTags = new Set();
 
 for (const file of files) {
     let data;
@@ -177,7 +179,54 @@ for (const file of files) {
     }
     byPath[classify(data)].push(file.replace(/\.json$/, ''));
     if (data.photoFrameStyle) usedStyles.add(String(data.photoFrameStyle).toUpperCase());
+    if (data.templateTag) usedTags.add(String(data.templateTag).trim());
     checkPreset(file, data);
+}
+
+// ── 反向检查:预设分类必须登记在预设面板的「大标题顺序表」里 ──
+// 背景:app-templates.js 的 buildTree() 用一个写死的 order 数组决定预设面板分组大标题的
+// 显示顺序,不在数组里的分类会被排到最末尾(99 位)。「邮票」分类新增时加了 5 个预设却忘了
+// 登记,整组一直垫在最后 —— 观感上像「分类不见了」,而当时没有任何检查会报这件事。
+// 这里把它固化成硬约束:新加预设分类却忘了进 order,提交前就直接报错。
+// 用 PRESETS_DIR 换目录做自测时不跑这条(临时目录里的分类名当然不在真实顺序表里)。
+if (!process.env.PRESETS_DIR) checkGroupOrder();
+
+function checkGroupOrder() {
+    const TEMPLATES = path.join(ROOT, 'src', 'renderer', 'js', 'app-templates.js');
+    let src;
+    try { src = fs.readFileSync(TEMPLATES, 'utf8'); }
+    catch (e) { warnings.push(`读不到 app-templates.js,分组顺序未校验(${e.message})`); return; }
+
+    const lines = src.split(/\r?\n/);
+    // 文件里有两处 `const order =`:另一处是「我的模板」按字母序排的 `[...groups.keys()]`,
+    // 必须取最后一个 —— 也就是预设面板那个显式清单。
+    const orderLine = lines.filter(l => l.trim().startsWith('const order = [')).pop();
+    const mergeLine = lines.filter(l => l.trim().startsWith('const merge = {')).pop();
+    if (!orderLine || !mergeLine) {
+        warnings.push('app-templates.js 里找不到 const order = [...] / const merge = {...},分组顺序未校验');
+        return;
+    }
+    const pick = (line, open, close) => {
+        const a = line.indexOf(open), b = line.lastIndexOf(close);
+        if (a < 0 || b <= a) return [];
+        return line.slice(a + 1, b).split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+    };
+    const order = pick(orderLine, '[', ']');
+    const merge = {};
+    for (const it of pick(mergeLine, '{', '}')) {
+        const [k, v] = it.split(':').map(s => s.trim().replace(/^['"]|['"]$/g, ''));
+        if (k) merge[k] = v;
+    }
+    // 一个分类都没解析出来 = 顺序表被改成了别的写法,此时报错只会误伤
+    if (!order.length) { warnings.push('order 顺序表解析为空,分组顺序未校验'); return; }
+
+    const groups = new Set();
+    for (const tag of usedTags) groups.add(merge[tag] || tag || '其他');
+    const missing = [...groups].filter(g => !order.includes(g)).sort();
+    for (const g of missing) {
+        errors.push(`预设分类「${g}」未登记在 app-templates.js 的 order 顺序表里 → 会被排到面板最末尾`
+            + `\n      请把它加进 const order = [...]。当前顺序: ${order.join(', ')}`);
+    }
 }
 
 // ── 输出 ──

@@ -16,5 +16,6 @@
   "photoFrameBorderSize": 100,
   "blurIntensity": 50,
   "userSignature": "— my memory —",
-  "signIncludeModel": 0
+  "signIncludeModel": 0,
+  "avatarShow": 1
 }

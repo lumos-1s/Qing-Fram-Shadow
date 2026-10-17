@@ -15,5 +15,6 @@
   "photoFrameStyle": "AVATAR_MEMO",
   "photoFrameBorderSize": 100,
   "blurIntensity": 50,
-  "userSignature": "— my memory —"
+  "userSignature": "— my memory —",
+  "avatarShow": 1
 }

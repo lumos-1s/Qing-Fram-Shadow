@@ -36,7 +36,7 @@ for (const c of ['open-image', 'open-images', 'open-sticker-image', 'import-temp
 const preset = (name) => JSON.parse(fs.readFileSync(path.join(ROOT, 'shared', 'presets', name + '.json'), 'utf8'));
 
 // 渲染一张照片 + 指定预设,并把签名设成纯红、字号设成 signSize
-const setup = (presetObj, signSize, text) => `(async () => {
+const setup = (presetObj, signSize, text, avatarShow = 1) => `(async () => {
     const A = window.App;
     const c = document.createElement('canvas'); c.width = 800; c.height = 600;
     const g0 = c.getContext('2d'); g0.fillStyle = '#4a6f9c'; g0.fillRect(0, 0, 800, 600);
@@ -49,7 +49,7 @@ const setup = (presetObj, signSize, text) => `(async () => {
     A.template.userSignature = ${JSON.stringify(text)};
     A.template.signColor = '#ff0000';
     A.template.signSize = ${signSize};
-    A.template.avatarShow = 1;
+    A.template.avatarShow = ${avatarShow};
     A.template.signBgBlur = 0;
     A.normalizeTemplate();
     // 头像图:洋红(与红色签名区分开,避免像素判定混在一起)
@@ -72,8 +72,11 @@ const setup = (presetObj, signSize, text) => `(async () => {
     const isPhoto = (i) => Math.abs(d[i] - 0x4a) < 26 && Math.abs(d[i + 1] - 0x6f) < 26 && Math.abs(d[i + 2] - 0x9c) < 26;
     // 签名(纯红;洋红头像 b=255 或 g=255 都不满足)
     const isText = (i) => d[i] > 150 && d[i + 1] < 110 && d[i + 2] < 110;
+    // 头像(测试画的纯洋红 #ff00ff;与红签名、照片蓝、白边都区分得开)
+    const isAvatar = (i) => d[i] > 200 && d[i + 1] < 80 && d[i + 2] > 200;
     let pTop = H, pBottom = -1, pLeft = W, pRight = -1;
     let tTop = H, tBottom = -1, tLeft = W, tRight = -1, tCount = 0;
+    let aTop = H, aBottom = -1, aLeft = W, aRight = -1, aCount = 0;
     for (let y = 0; y < H; y++) {
         for (let x = 0; x < W; x++) {
             const i = (y * W + x) * 4;
@@ -86,9 +89,15 @@ const setup = (presetObj, signSize, text) => `(async () => {
                 if (y < tTop) tTop = y; if (y > tBottom) tBottom = y;
                 if (x < tLeft) tLeft = x; if (x > tRight) tRight = x;
             }
+            if (isAvatar(i)) {
+                aCount++;
+                if (y < aTop) aTop = y; if (y > aBottom) aBottom = y;
+                if (x < aLeft) aLeft = x; if (x > aRight) aRight = x;
+            }
         }
     }
     return { W, H, pTop, pBottom, pLeft, pRight, tTop, tBottom, tLeft, tRight, tCount,
+        aTop, aBottom, aLeft, aRight, aCount, avatarShow: A.template.avatarShow,
         signSize: A.template.signSize, sigText: A.template.userSignature };
 })()`;
 function finish(code) { app.exit(code || 0); }
@@ -157,6 +166,43 @@ app.whenReady().then(async () => {
             (bound === 'canvas' ? `画布 ${r.W}×${r.H}` : `照片 ${r.pTop}..${r.pBottom} × ${r.pLeft}..${r.pRight}`) +
             (over.length ? '  ← ' + over.join('、') : ''),
             '签名 bbox ⊆ ' + (bound === 'canvas' ? '画布' : '照片') + ' bbox');
+    }
+
+    // ── 「个性」预设的「显示头像」开关(avatarShow) ──
+    // 背景:头像系列原先无条件画头像,面板里的「显示头像」勾选框(写 template.avatarShow)
+    // 对这些风格完全无效 —— 用户勾掉也照画。这里按像素量:开=有洋红头像,关=一个都没有;
+    // 并顺带确认关掉头像后签名顶回左边、仍留在照片内(布局要跟着让位,不能留空档/顶出边界)。
+    console.log('');
+    console.log('「个性」预设的「显示头像」开关');
+    console.log('─'.repeat(90));
+    const AV_PRESETS = ['头像·左下', '头像·右上', '头像·右下', '头像·下中', '头像·下排', '头像纪念', '签名+参数'];
+    // 头像纪念 / 签名+参数的签名在照片下方的底栏里(本来就在照片外),边界按画布算。
+    const AV_BAR = ['头像纪念', '签名+参数'];
+    for (const pname of AV_PRESETS) {
+        const on = await win.webContents.executeJavaScript(setup(preset(pname), 1, SIG, 1));
+        const off = await win.webContents.executeJavaScript(setup(preset(pname), 1, SIG, 0));
+        n++;
+        line(on.aCount > 0 && off.aCount === 0,
+            `${String(n).padStart(2, '0')} ${pname}:avatarShow 开关真的能开关头像`,
+            `avatarShow=1 洋红 ${on.aCount}px / avatarShow=0 洋红 ${off.aCount}px`,
+            '开 > 0、关 = 0');
+        const isBar = AV_BAR.indexOf(pname) >= 0;
+        const B = isBar
+            ? { top: 0, bottom: off.H - 1, left: 0, right: off.W - 1 }
+            : { top: off.pTop, bottom: off.pBottom, left: off.pLeft, right: off.pRight };
+        const inside = off.tCount > 0 && off.tTop >= B.top && off.tBottom <= B.bottom && off.tLeft >= B.left && off.tRight <= B.right;
+        n++;
+        line(inside, `${String(n).padStart(2, '0')} ${pname}:关掉头像后签名仍落在${isBar ? '画布' : '照片'}内`,
+            `签名 ${off.tTop}..${off.tBottom} × ${off.tLeft}..${off.tRight}(${off.tCount}px)`,
+            '签名 bbox ⊆ ' + (isBar ? '画布' : '照片') + ' bbox');
+    }
+    // 预设数据必须自己声明 avatarShow:1,否则会「沿用上一份模板」——
+    // 刚点过票根(avatarShow:0)再点头像预设,就会得到一个没有头像的头像预设。
+    for (const pname of AV_PRESETS) {
+        const j = preset(pname);
+        n++;
+        line(j.avatarShow === 1, `${String(n).padStart(2, '0')} ${pname} 预设自带 avatarShow:1`,
+            `avatarShow=${JSON.stringify(j.avatarShow)}`, '= 1');
     }
 
     console.log('─'.repeat(90));
