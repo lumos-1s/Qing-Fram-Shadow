@@ -2,3 +2,8 @@
 # 生成结果固定用 LF。若这些 SVG 被 git 按 core.autocrlf 转成 CRLF,check 必挂。
 # 强制按 LF 检出/入库,让生成器与磁盘永远逐字节一致。
 shared/marks/*.svg text eol=lf
+# 同理:gen-style-caps.js 用 indexOf("…生成区 BEGIN…\n    const MEASURED = ") 定位要替换的块,
+# 那个常量里带一个裸 \n。style-caps.js 一旦被 core.autocrlf 转成 CRLF,indexOf 立即失配,
+# gen:caps / check:caps 直接抛「style-caps.js 里找不到生成区标记」(check 链因此常红)。
+# 强制 LF,让生成器看到的就是它自己写下的字节。
+src/renderer/js/style-caps.js text eol=lf
