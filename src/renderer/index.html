@@ -79,7 +79,16 @@
                                 <option value="1080">手机分享 · 1080px</option>
                             </select>
                         </div>
+                        <div class="ep-row">
+                            <label>拍摄信息</label>
+                            <label class="ep-check" title="把原图的机型/镜头/参数/拍摄时间写进导出文件（仅 JPG 生效）"><input type="checkbox" id="chkKeepExif" class="ctl-chk" checked /> 保留 EXIF</label>
+                        </div>
+                        <div class="ep-row">
+                            <label>位置信息</label>
+                            <label class="ep-check" title="默认去除 GPS；勾选后拍摄地点会随文件带出，分享前注意隐私"><input type="checkbox" id="chkKeepGps" class="ctl-chk" /> 含 GPS</label>
+                        </div>
                         <div class="ep-note" id="exportSizeNote" style="display:none"></div>
+                        <div class="ep-note muted" id="exportExifNote">拍摄信息仅 JPG 导出时写入</div>
                     </div>
                 </div>
                 <button id="btnSyncSel" class="tbtn" title="将当前边框效果应用到选中的照片">同步到选中</button>

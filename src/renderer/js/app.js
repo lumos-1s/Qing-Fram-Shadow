@@ -127,14 +127,30 @@ window.App = {
         else setTimeout(showIntro, 3000);
     },
 
-    // 恢复上次的界面偏好(导出质量等)
+    // 恢复上次的界面偏好(导出质量 / 拍摄信息开关)
     async loadPrefs() {
         try {
             const p = await window.qingframe.getPrefs();
             if (p && p.exportQuality && this.dom.slExportQuality) {
                 this.dom.slExportQuality.value = p.exportQuality;
             }
+            if (p && typeof p.keepExif === 'boolean' && this.dom.chkKeepExif) this.dom.chkKeepExif.checked = p.keepExif;
+            if (p && typeof p.keepGps === 'boolean' && this.dom.chkKeepGps) this.dom.chkKeepGps.checked = p.keepGps;
+            if (this.dom.chkKeepGps) this.dom.chkKeepGps.disabled = !(this.dom.chkKeepExif && this.dom.chkKeepExif.checked);
         } catch (_) {}
+    },
+
+    // 导出偏好三项一起存:save-prefs 在主进程是**整对象替换**(saveState({prefs})),
+    // 分开发的每一次都会把另外两项抹掉 —— 存的时候必须全量提交
+    _saveExportPrefs() {
+        const d = this.dom || {};
+        if (!window.qingframe || !window.qingframe.savePrefs) return;
+        // 异步调用,静默忽略失败(旧主进程无该 handler 时不报未处理错误)
+        window.qingframe.savePrefs({
+            exportQuality: d.slExportQuality ? d.slExportQuality.value : undefined,
+            keepExif: !!(d.chkKeepExif && d.chkKeepExif.checked),
+            keepGps: !!(d.chkKeepGps && d.chkKeepGps.checked)
+        }).catch(() => {});
     },
 
     cacheDom() {
@@ -142,6 +158,7 @@ window.App = {
         this.dom = {
             btnOpen: $('btnOpen'), btnSave: $('btnSave'), selFormat: $('selFormat'), selExportSize: $('selExportSize'),
             slExportQuality: $('slExportQuality'), exportSizeNote: $('exportSizeNote'),
+            chkKeepExif: $('chkKeepExif'), chkKeepGps: $('chkKeepGps'),
             btnExportSettings: $('btnExportSettings'), exportPop: $('exportPop'),
             btnSyncSel: $('btnSyncSel'), btnUndo: $('btnUndo'), btnRedo: $('btnRedo'),
             btnReset: $('btnReset'), btnRandom: $('btnRandom'), btnFit: $('btnFit'),
@@ -191,12 +208,15 @@ window.App = {
                 }
             });
         }
-        if (d.slExportQuality) {
-            d.slExportQuality.addEventListener('change', () => {
-                // 异步调用,静默忽略失败(旧主进程无该 handler 时不报未处理错误)
-                window.qingframe.savePrefs({ exportQuality: d.slExportQuality.value }).catch(() => {});
+        if (d.slExportQuality) d.slExportQuality.addEventListener('change', () => this._saveExportPrefs());
+        if (d.chkKeepExif) {
+            d.chkKeepExif.addEventListener('change', () => {
+                // 总开关关掉时 GPS 选项失去意义,置灰但保留状态(重新打开总开关时恢复)
+                if (d.chkKeepGps) d.chkKeepGps.disabled = !d.chkKeepExif.checked;
+                this._saveExportPrefs();
             });
         }
+        if (d.chkKeepGps) d.chkKeepGps.addEventListener('change', () => this._saveExportPrefs());
         // 尺寸提示依赖「所选档位 × 当前照片 × 当前相框样式」,三者任一变化都要重算
         if (d.selExportSize) d.selExportSize.addEventListener('change', () => this.updateExportSizeNote());
         d.btnSyncSel.addEventListener('click', () => this.syncToSelected());

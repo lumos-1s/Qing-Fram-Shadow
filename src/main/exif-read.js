@@ -88,4 +88,4 @@ async function readExif(filePath) {
     } catch (e) { return {}; }
 }
 
-module.exports = { readExif, exifSegmentState, EXIF_HEAD_BYTES };
+module.exports = { readExif, exifSegmentState, readHead, EXIF_HEAD_BYTES };

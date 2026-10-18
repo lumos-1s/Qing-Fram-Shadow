@@ -18,6 +18,8 @@ protocol.registerSchemesAsPrivileged([
 // EXIF 解析:独立模块(src/main/exif-read.js)。只读文件头部而不整读照片,
 // 拆出来是为了能用纯 node 直接验证"头部解析 == 整文件解析"。
 const { readExif } = require('./exif-read');
+// EXIF 写回:导出 JPEG 时把原图 EXIF 移植进成品(默认剥 GPS),任何失败静默回退。
+const exifWrite = require('./exif-write');
 
 if (!app.requestSingleInstanceLock()) {
     // 静默退出会把"我明明重启了却还是旧代码"变成一个查不出来的谜:
@@ -788,12 +790,13 @@ ipcMain.handle('pick-export-location', async (_e, { count, hintName }) => {
     return { mode: 'file', filePath: fp };
 });
 
-// 把已渲染好的导出数据写入选好的位置
+// 把已渲染好的导出数据写入选好的位置。
+// 条目带 originalPath 时,经 exif-write 把原图 EXIF 移植进 JPEG 字节(失败静默回退为原字节)。
 ipcMain.handle('write-export-files', async (event, { location, files }) => {
     if (!location || !files || !files.length) return { ok: 0, fail: files ? files.length : 0 };
     if (location.mode === 'file') {
         try {
-            fs.writeFileSync(location.filePath, Buffer.from(files[0].data, 'base64'));
+            fs.writeFileSync(location.filePath, await exifWrite.applyExifToExportItem(files[0]));
             event.sender.send('export-progress', { done: 1, total: 1 });
             return { ok: 1, fail: 0 };
         } catch (e) {
@@ -811,7 +814,7 @@ ipcMain.handle('write-export-files', async (event, { location, files }) => {
                     const destDir = (f.subdir && String(f.subdir).trim()) ? path.join(location.dir, String(f.subdir).trim()) : location.dir;
                     if (destDir !== location.dir) fs.mkdirSync(destDir, { recursive: true });
                     const dest = freeFilePath(destDir, f.filename || (f.stem + '.' + f.ext), written);
-                    fs.writeFileSync(dest, Buffer.from(f.data, 'base64'));
+                    fs.writeFileSync(dest, await exifWrite.applyExifToExportItem(f));
                     written.add(path.basename(dest));
                     ok++;
                 } catch (e) { fail++; }

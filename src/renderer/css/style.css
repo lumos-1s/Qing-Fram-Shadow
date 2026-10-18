@@ -189,6 +189,15 @@ html.dark .tbtn.primary { color: #0c1914; }
 }
 .export-pop .ep-row .inline-select { flex: 1; width: 100%; padding: 5px 8px; font-size: 12px; background: var(--surface-alt); }
 
+/* 导出弹窗的勾选项:label 整行可点。
+   该行的 <label> 基线是 flex:0 0 34px / 右对齐(见上),这里必须拉满剩余宽度并改回左对齐 */
+.export-pop .ep-row .ep-check {
+    flex: 1 1 auto; display: flex; align-items: center; gap: 6px;
+    text-align: left; cursor: pointer; user-select: none;
+}
+.export-pop .ep-row .ep-check:has(input:disabled) { opacity: .45; cursor: default; }
+.export-pop .ep-note.muted { color: var(--text-2); }
+
 /* 导出尺寸的「实际输出会小于所选」提示。
    不复用 .hint-box:那个自带 8px margin / 虚线边框 / 10px 圆角,是为参数区整块说明设计的,
    塞进导出弹窗这种紧凑控件区会撑破布局。这里只借用它的字号与弱化色。

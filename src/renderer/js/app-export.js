@@ -13,6 +13,16 @@ window.App = Object.assign(window.App || {}, {
         }));
     },
 
+    // 导出保留拍摄信息(EXIF)的开关 → 主进程移植参数;返回 {} 或 { originalPath, keepGps }。
+    // 不满足条件(没勾 / 没有磁盘路径 / 非 JPG)一律 {}(.qfs 载入的照片没有路径,天然不参与)
+    _exportExifFor(im) {
+        const d = this.dom || {};
+        if (!(d.chkKeepExif && d.chkKeepExif.checked)) return {};
+        if (!im || !im.path) return {};
+        if (!(d.selFormat && d.selFormat.value === 'jpeg')) return {};   // PNG/WebP 暂无 eXIf 容器写入
+        return { originalPath: im.path, keepGps: !!(d.chkKeepGps && d.chkKeepGps.checked) };
+    },
+
     /* ── 导出:先选保存位置,再渲染导出画面,最后写盘 ── */
     async exportImage() {
         if (!this.image) { this.setStatus('请先导入照片'); return; }
@@ -50,7 +60,11 @@ window.App = Object.assign(window.App || {}, {
         // ① 先在画布外准备好文件名(不触发任何渲染),单文件时作为默认名
         const files = jobs.map(j => {
             const baseName = (j.im.name || 'photo').replace(/\.[^.]+$/, '');
-            return { data: null, stem: `${baseName}${j.puzzle ? '_拼图' : '_边框'}`, ext };
+            // 拼图是多图合成,没有单一拍摄信息来源 → 不带;其余按开关带原图路径
+            return Object.assign(
+                { data: null, stem: `${baseName}${j.puzzle ? '_拼图' : '_边框'}`, ext },
+                j.puzzle ? {} : this._exportExifFor(j.im)
+            );
         });
         this.dedupeExportNames(files);
 
@@ -275,17 +289,19 @@ window.App = Object.assign(window.App || {}, {
     _gridExt() { return (this.dom.selFormat.value === 'jpeg') ? 'jpg' : this.dom.selFormat.value; },
 
     // 按当前导出格式/质量把缓存切块转成可写盘文件
-    _gridFiles(baseName, subdir) {
+    // im:这些切块源自哪张照片(九宫格是同源裁切,EXIF 仍跟随它的主照片)
+    _gridFiles(baseName, subdir, im) {
         const fmt = this.dom.selFormat.value;
         const mime = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }[fmt] || 'image/jpeg';
         const quality = (fmt === 'jpeg' || fmt === 'webp') ? Math.min(1, Math.max(0.6, (parseInt(this.dom.slExportQuality.value, 10) || 92) / 100)) : 1;
-        return this._gridBlocks.map((cv, i) => ({
+        const ex = this._exportExifFor(im);
+        return this._gridBlocks.map((cv, i) => Object.assign({
             data: cv.toDataURL(mime, quality).split(',')[1],
             filename: baseName + '_九宫格_' + (i + 1) + '.' + this._gridExt(),
             stem: baseName + '_九宫格_' + (i + 1),
             ext: this._gridExt(),
             subdir: subdir || ''
-        }));
+        }, ex));
     },
 
     // 预览:渲染一帧 → 切块 → 弹缩略图 modal(缓存供导出复用)
@@ -363,7 +379,7 @@ window.App = Object.assign(window.App || {}, {
                     const blocks = this._sliceGrid(src, n, this.gridPad());
                     this._gridBlocks = blocks;
                     const baseName = (im.name || ('photo' + (idx + 1))).replace(/\.[^.]+$/, '');
-                    allFiles.push.apply(allFiles, this._gridFiles(baseName, this.gridSubdir() ? baseName : ''));
+                    allFiles.push.apply(allFiles, this._gridFiles(baseName, this.gridSubdir() ? baseName : '', im));
                     this.setStatus('正在批量切图 ' + (k + 1) + '/' + targets.length + '…');
                 }
                 this.currentIdx = originalIdx; this.image = this.images[originalIdx];
@@ -404,7 +420,7 @@ window.App = Object.assign(window.App || {}, {
             }
 
             const baseName = (this.image.name || 'photo').replace(/\.[^.]+$/, '');
-            const files = this._gridFiles(baseName, this.gridSubdir() ? baseName : '');
+            const files = this._gridFiles(baseName, this.gridSubdir() ? baseName : '', this.image);
             const loc = await window.qingframe.pickExportLocation({ count: files.length, hintName: baseName + '_九宫格' });
             if (!loc || loc.canceled) { this.setStatus('已取消切图'); this.scheduleRender(true); return; }
             {
