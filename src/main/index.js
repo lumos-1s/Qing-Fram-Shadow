@@ -83,6 +83,10 @@ app.whenReady().then(() => {
     const GH_PROXIES = process.env.QINGFRAME_PROXY
         ? [process.env.QINGFRAME_PROXY]
         : ['https://ghproxy.net', 'https://ghfast.top', 'https://gh-proxy.com'];
+    // 镜像会随时间劣化(实测 ghproxy.net 2026-10 起常被限速到 40KB/s 级):下载前实测各镜像速度,
+    // 把最快者写进 activeProxy;探测失败时回退用列表第一个。QINGFRAME_PROXY 指定时尊重用户选择。
+    let activeProxy = null;
+    const proxyFor = () => activeProxy || GH_PROXIES[0];
     const withTimeout = (promise, ms, label) => Promise.race([
         promise,
         new Promise((_, reject) => setTimeout(
@@ -99,7 +103,7 @@ app.whenReady().then(() => {
             const orig = GHProvider.prototype.resolveFiles;
             GHProvider.prototype.resolveFiles = function (updateInfo) {
                 const files = orig.call(this, updateInfo);
-                const proxy = GH_PROXIES[0];
+                const proxy = proxyFor();
                 if (proxy && files && files.length) {
                     for (const f of files) {
                         // electron-updater 26 里 f.url 是 URL 实例(非字符串),要按 href 判断并重建 URL
@@ -147,7 +151,7 @@ app.whenReady().then(() => {
             // 镜像替换统一放在 createRequestOptions:httpRequest 与 GitHubProvider 的
             // fetchData(this.executor.request(channelFileUrl)) 两条链路都会经过它, 一处覆盖全部。
             ProviderCls.prototype.createRequestOptions = function (url, headers) {
-                const proxy = GH_PROXIES[0];
+                const proxy = proxyFor();
                 if (proxy && url) {
                     const href = (typeof url === 'string') ? url : url.href;
                     if (href && href.startsWith('https://github.com/') && !/\/releases\.atom$/.test(href)) {
@@ -195,6 +199,72 @@ app.whenReady().then(() => {
             return false;
         }
     };
+
+    // ── 更新下载提速:镜像测速优选 + 差量留种 ──
+    // ① 下载前对各个镜像实测速度(与真实下载同路径:普通 GET,读满 512KB 即断),选最快者下载,
+    //    失败时按速度顺序自动换源重试 —— 镜像速度随时间和线路剧烈波动(实测同一镜像一小时
+    //    内从 1.8MB/s 跌到连不上),写死一个必踩坑;
+    // ② 下载完成后把安装包复制成更新缓存里的 installer.exe:electron-updater 的差量下载
+    //    (只下与旧版不同的数据块)需要它当"旧文件"基准,而工具链没有任何环节维护它,
+    //    不主动留种的话差量只在第一次可用,之后就永远退化回整个 75MB 全量下载。
+    const PROBE_BYTES = 512 * 1024;
+    const PROBE_TIMEOUT_MS = 4000;
+    const probeProxySpeed = async (proxy, githubUrl) => {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), PROBE_TIMEOUT_MS);
+        const t0 = Date.now();
+        let got = 0;
+        try {
+            const res = await net.fetch(proxy + '/' + githubUrl, { signal: ac.signal });
+            if (res.ok) {
+                const reader = res.body.getReader();
+                while (got < PROBE_BYTES) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    got += value.length;
+                }
+                try { await reader.cancel(); } catch (_) { /* ignore */ }
+            }
+        } catch (_) { /* 超时/网络错:按已收字节折算速度 */ }
+        finally { clearTimeout(timer); }
+        return got >= 64 * 1024 ? Math.round(got / Math.max(Date.now() - t0, 1) * 1000) : 0; // B/s;收得太少视为失败
+    };
+    // 返回按实测速度降序的可用镜像列表;探测不出可用镜像时返回 null(调用方保持默认顺序)
+    const rankProxies = async (githubUrl) => {
+        if (!githubUrl || GH_PROXIES.length < 2) return null; // 用户用 QINGFRAME_PROXY 指定了镜像时尊重用户选择
+        const byProxy = new Map();
+        const all = Promise.all(GH_PROXIES.map(async (proxy) => {
+            byProxy.set(proxy, await probeProxySpeed(proxy, githubUrl));
+        }));
+        // 早退:已有镜像达到"够快"标准就不必再等慢的(每 200ms 看一眼)
+        await Promise.race([all, (async () => {
+            for (let i = 0; i < Math.ceil(PROBE_TIMEOUT_MS / 200); i++) {
+                await new Promise((r) => setTimeout(r, 200));
+                let best = 0;
+                for (const s of byProxy.values()) best = Math.max(best, s);
+                if (best >= 768 * 1024) return;
+            }
+        })()]);
+        const results = GH_PROXIES.map((proxy) => ({ proxy, speed: byProxy.get(proxy) || 0 }));
+        console.log('[updater] 镜像测速(B/s):', results.map((r) => `${r.proxy}=${r.speed}`).join(', '));
+        const usable = results.filter((r) => r.speed > 0).sort((a, b) => b.speed - a.speed);
+        return usable.length ? usable.map((r) => r.proxy) : null;
+    };
+    // 差量留种:把刚下载的安装包复制为缓存 installer.exe(体积相同则跳过,避免每次下载都复制 75MB)
+    const seedCachedInstaller = () => {
+        try {
+            const helper = updater && updater.downloadedUpdateHelper;
+            const src = helper && helper.file;
+            const cacheDir = helper && helper.cacheDir;
+            if (!src || !cacheDir || !fs.existsSync(src)) return;
+            const dest = path.join(cacheDir, 'installer.exe');
+            if (fs.existsSync(dest) && fs.statSync(dest).size === fs.statSync(src).size) return;
+            fs.copyFileSync(src, dest);
+            console.log('[updater] 已留种缓存 installer.exe,下次更新可走差量:', dest);
+        } catch (e) {
+            console.warn('[updater] 差量留种失败(忽略):', e && e.message);
+        }
+    };
     let updater = null;
     if (app.isPackaged) {
         // portable 单文件版不生成 app-update.yml,electron-updater 读取时会抛
@@ -240,10 +310,56 @@ app.whenReady().then(() => {
             return { ok: false, message: msg };
         }
     });
+    let updateDownloadInFlight = false; // 防连点:测速+下载+自动重试全程只允许一个在飞
     ipcMain.handle('start-update-download', async () => {
         if (!updater) return { ok: false, message: '当前为便携版,不支持在线自动更新,请到 GitHub Releases 下载新版' };
-        try { await updater.downloadUpdate(); return { ok: true }; }
-        catch (e) { return { ok: false, message: e && e.message }; }
+        if (updateDownloadInFlight) return { ok: false, message: '更新下载已在进行中' };
+        updateDownloadInFlight = true;
+        try {
+            // 先让横幅进入"下载中"状态:镜像测速最多要几秒,不能看起来像点了没反应
+            try {
+                const w = BrowserWindow.getAllWindows()[0];
+                if (w && !w.isDestroyed()) w.webContents.send('updater:event', { type: 'progress', percent: 0, speed: 0 });
+            } catch (_) { /* ignore */ }
+            // ① 下载前镜像测速,选最快者下载;② 下载失败时按速度顺序自动换源重试
+            let candidates = null;
+            try {
+                const info = updater.updateInfoAndProvider && updater.updateInfoAndProvider.info;
+                const file = info && Array.isArray(info.files) ? info.files[0] : null;
+                if (info && file) {
+                    const raw = (typeof file.url === 'string') ? file.url : (file.url && file.url.href);
+                    const githubUrl = /^https?:\/\//.test(raw || '')
+                        ? raw
+                        : `https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/download/${info.tag}/${raw}`;
+                    candidates = await rankProxies(githubUrl);
+                    if (candidates) activeProxy = candidates[0];
+                }
+            } catch (e) {
+                console.warn('[updater] 镜像测速失败(继续用默认顺序):', e && e.message);
+            }
+            let lastErr = null;
+            try {
+                await updater.downloadUpdate();
+            } catch (e) {
+                lastErr = e;
+            }
+            while (lastErr && candidates && candidates.length > 1) {
+                candidates = candidates.slice(1);
+                activeProxy = candidates[0];
+                console.warn('[updater] 下载失败,自动换镜像重试:', activeProxy, '-', lastErr.message);
+                try {
+                    await updater.downloadUpdate();
+                    lastErr = null;
+                } catch (e2) {
+                    lastErr = e2;
+                }
+            }
+            if (lastErr) return { ok: false, message: lastErr && lastErr.message };
+            seedCachedInstaller();
+            return { ok: true };
+        } finally {
+            updateDownloadInFlight = false;
+        }
     });
     ipcMain.handle('quit-and-install', () => {
         if (updater) { try { updater.quitAndInstall(); } catch (e) { console.warn('[updater] quitAndInstall:', e && e.message); } }
