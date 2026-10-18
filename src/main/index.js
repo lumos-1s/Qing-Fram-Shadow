@@ -125,8 +125,9 @@ app.whenReady().then(() => {
     // 镜像服务器在国外访问 GitHub,本地只连镜像,绕开被干扰的链路。
     // 实测(2026-10-10):ghproxy.net / ghfast.top / gh-proxy.com 对 /releases.atom 一律 403/404
     // (镜像只放行下载类路径),但 releases/latest(带 Accept:application/json)与 latest.yml 均 200。
-    // 因此 atom 源改为返回本地伪造的最小 feed(解析只需 entry/title/link),真实 tag 与版本信息
-    // 分别由 releases/latest 与 latest.yml 提供,不依赖 atom 内容,检查链路即可全镜像跑通。
+    // 因此 atom 源不真的取:改用 releases/latest 的 tag_name/body 现拼一个最小 feed(见下),
+    // 真实 tag、版本、更新说明全部来自服务端,检查链路即可全镜像跑通。
+    // 这份静态 feed 只作动态取数失败时的兜底(更新检查不会因此断掉, 只是说明退回这条)。
     const FAKE_ATOM_XML = `<?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>Qing-Fram-Shadow-web Releases</title>
@@ -156,13 +157,33 @@ app.whenReady().then(() => {
                 }
                 return origCreateOpts.call(this, url, headers);
             };
-            // atom 源:镜像不支持该路径(实测 403/404), 直接返回伪造的最小 feed;
-            // 真实 tag 与版本信息分别由 releases/latest 与 latest.yml 提供。
+            // atom 源:镜像不支持该路径(实测 403/404)。不返回写死的静态 feed, 而是用同一条
+            // 镜像链路现取 releases/latest, 用 tag_name/body 拼一个最小 feed:
+            // electron-updater 会把「链接匹配真实 tag 的条目」的 <content> 当更新说明(getNoteValue),
+            // 动态生成后说明永远等于该 Release 的正文, 不会再显示检查方自带的旧文案。
+            // 取数/解析失败时兜底返回静态 FAKE_ATOM_XML, 更新检查本身不受影响。
             ProviderCls.prototype.httpRequest = function (url, headers, cancellationToken) {
                 if (url) {
                     const href = (typeof url === 'string') ? url : url.href;
                     if (href && /\/releases\.atom$/.test(href)) {
-                        return Promise.resolve(FAKE_ATOM_XML);
+                        const esc = (s) => String(s == null ? '' : s)
+                            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        const base = href.replace(/\.atom$/, '');
+                        return origHttp.call(this, base + '/latest', { Accept: 'application/json' }, cancellationToken)
+                            .then((raw) => {
+                                const info = JSON.parse(raw);
+                                if (!info || !info.tag_name) throw new Error('releases/latest 无 tag_name');
+                                return `<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Qing-Fram-Shadow-web Releases</title>
+  <entry>
+    <title>${esc(info.name || info.tag_name)}</title>
+    <link href="${base}/tag/${esc(info.tag_name)}"/>
+    <content type="html">${esc(info.body || '')}</content>
+  </entry>
+</feed>`;
+                            })
+                            .catch(() => FAKE_ATOM_XML);
                     }
                 }
                 return origHttp.call(this, url, headers, cancellationToken);
