@@ -132,8 +132,8 @@ app.whenReady().then(() => {
   <title>Qing-Fram-Shadow-web Releases</title>
   <entry>
     <title>新版本可用</title>
-    <link href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/tag/v0.1.10"/>
-    <content type="html">更新检查与下载已全部走加速镜像, 修复国内网络直连失败问题</content>
+    <link href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/tag/v0.1.11"/>
+    <content type="html">拼图四修复(导出防护/草稿/导入保留/撤销提示), 复古登机牌与真票券票根等风格重做, 批量删除+右键旋转 90°</content>
   </entry>
 </feed>`;
     const patchUpdateHttpRequests = () => {
