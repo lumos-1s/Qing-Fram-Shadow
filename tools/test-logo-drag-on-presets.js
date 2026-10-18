@@ -153,6 +153,15 @@ app.whenReady().then(async () => {
     for (let i = 0; i < 120; i++) { if (await win.webContents.executeJavaScript('!!(window.App && window.App.dom && window.App.dom.canvas)')) break; await new Promise(r => setTimeout(r, 250)); }
     for (let i = 0; i < 80; i++) { if ((await win.webContents.executeJavaScript('(window.App.presets || []).length')) > 0) break; await new Promise(r => setTimeout(r, 250)); }
     const count = await win.webContents.executeJavaScript('(window.App.presets || []).length');
+    // 启动期「新手引导」弹窗(requestIdleCallback,最迟 4s)会盖住整窗:此后真实鼠标
+    // 事件都落在弹窗上,表现为「全部拖不动」。禁用弹出并隐藏,保证输入直达画布。
+    // 不调 closeIntro():它写 localStorage 标记,而测试与真实应用共用用户数据目录。
+    await win.webContents.executeJavaScript(`(() => {
+        window.App.showIntroIfNeeded = () => {};
+        const m = document.getElementById('introModal');
+        if (m) m.style.display = 'none';
+        return 1;
+    })()`);
     const dbg = win.webContents.debugger;
     dbg.attach('1.3');
 let done = false;

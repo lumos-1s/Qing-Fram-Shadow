@@ -33,6 +33,14 @@ for (const c of ['open-image', 'open-images', 'open-sticker-image', 'import-temp
 const SETUP = `
 (async () => {
     const A = window.App;
+    // 新手引导弹窗:启动期 requestIdleCallback(最迟 4s)排队弹出,会在拖拽进行到一半时
+    // 盖住画布 —— 指针一进弹窗,stage 就收到 mouseleave → cancelDrags,_dragEl 被清,
+    // 表现为「按下能选中、一动就弹回」(②④⑤失败)。这里直接禁用弹出并隐藏。
+    // 不调 closeIntro():它会写 localStorage 的 qfs_intro_done,而测试与真实应用共用
+    // 同一份用户数据目录,不能污染真实档案。
+    A.showIntroIfNeeded = () => {};
+    const _intro = document.getElementById('introModal');
+    if (_intro) _intro.style.display = 'none';
     const c = document.createElement('canvas'); c.width = 1000; c.height = 800;
     const g = c.getContext('2d'); g.fillStyle = '#5a86bb'; g.fillRect(0, 0, 1000, 800);
     const im = new Image();
