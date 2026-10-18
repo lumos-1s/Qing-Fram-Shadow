@@ -3959,7 +3959,11 @@ const w = natW;
             aiCapTheme: clampP(t.aiCapTheme != null ? t.aiCapTheme : 0, 0, 2),
             userSignature: String(t.userSignature || '').trim(),
             signFont: String(t.signFont || 'cursive'),
-            signColor: String(t.signColor || '#555'),
+            // 未设置就保持空串 —— 各风格用 `(S && S.signColor) || 风格色` 取自己的兜底色
+            // （票面 ink、报纸 #2f2a24、照片浮层 #fff…）。旧行为统一填引擎默认 #555，
+            // 把风格兜底全压死了：深色票面上签名亮度差不到 1.5:1，等于看不见。
+            // 真正以 #555/#444 为默认的绘制处自带 `S.signColor || '#555'` 写法，行为不变。
+            signColor: String(t.signColor || ''),
             signIncludeModel: Number(t.signIncludeModel || 0),
             avatarScale: Number(t.avatarScale || 0.85),
             avatarShow: t.avatarShow === undefined ? 1 : Number(t.avatarShow),

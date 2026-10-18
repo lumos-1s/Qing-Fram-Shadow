@@ -175,11 +175,15 @@ const SCAN = (presetObj, extra, paper, after) => `(async () => {
     const sgX0 = SX(gap + inset + 8), sgX1 = SX(gap + tw - inset - 8);
     const isGreen = (i) => d[i] < 90 && d[i + 1] > 150 && d[i + 2] < 90;
     const isRed = (i) => d[i] > 140 && d[i + 1] < 110 && d[i + 2] < 110;
-    let sigInk = 0, sigGreen = 0, sigRed = 0;
+    let sigInk = 0, sigGreen = 0, sigRed = 0, sigCore = 0;
     if (sigH > 0 && sgY1 > sgY0) {
         sigInk = count(sgX0, sgX1, sgY0, sgY1, (i) => dPaper(i) > 150 && !isGreen(i));
         sigGreen = count(sgX0, sgX1, sgY0, sgY1, isGreen);
         sigRed = count(sgX0, sgX1, sgY0, sgY1, isRed);
+        // 近黑核:channel 和 < 200。风格墨色 pal.ink #2c2720 的实心笔画约为 115;
+        // 引擎旧默认 #555 的和恒为 255,即使与纸色(和 ~650)抗锯齿相混也化简不出 < 200
+        // (650-535t < 200 需 t > 0.84,但 #555 起点就是 255) —— 所以这枚计数零误报。
+        sigCore = count(sgX0, sgX1, sgY0, sgY1, (i) => (d[i] + d[i + 1] + d[i + 2]) < 200 && !isGreen(i));
     }
 
     // ⑧ 签名行居中基准:整组(头像+签名)居中于「照片」中线,不是整张票的中线。
@@ -199,7 +203,7 @@ const SCAN = (presetObj, extra, paper, after) => `(async () => {
     window.Date = RD;
     return { W, H, expW, expH, alphaMin, outerPaper, paperish, topF, topN, leftF, leftN,
         rightF, rightN, tearF, tearAboveF, photoF, stubInk, paperSample, fp,
-        sigH, sigInk, sigGreen, sigRed, sigMid, phMid };
+        sigH, sigInk, sigGreen, sigRed, sigCore, sigMid, phMid };
 })()`;
 
 function movieVariant() {
@@ -691,6 +695,13 @@ app.whenReady().then(async () => {
     line(rRed.sigRed >= 100 && rSig.sigRed === 0,
         '⑰ 「签名颜色」生效(选红色后签名变红)',
         `默认色 红像素 ${rSig.sigRed} 个 → 红色 ${rRed.sigRed} 个`, '红色 ≥ 100 且 默认 = 0');
+    // ⑰b 未设置 signColor 时必须回落到风格墨色(票根家族 = pal.ink #2c2720 近黑),而不是旧的
+    //     引擎默认 #555;且显式设 #555 仍然生效(用户手选的灰照用,不做「看起来像默认就忽略」)。
+    const r555 = await win.webContents.executeJavaScript(SCAN(sigPreset, SIGTXT + NOAV + ' A.template.signColor = "#555";', vp));
+    line(rSig.sigCore >= 100 && r555.sigCore <= 20 && r555.sigInk >= 100,
+        '⑰b 未设置签名色 → 风格墨色(近黑),显式 #555 仍被采用',
+        `默认色近黑核 ${rSig.sigCore} 个;#555 近黑核 ${r555.sigCore} 个,油墨 ${r555.sigInk} 个`,
+        '默认 ≥ 100 且 #555 ≤ 20 且 #555 油墨 ≥ 100');
     // ㉝ 签名行的居中基准:用「头像+签名」整组去量最左/最右油墨,中点应落在照片中线上。
     //    票根家族的票面没有副券,照片中线 == 整张票的中线 —— 这里钉住「必须居中」这个形状,
     //    参考线写成贴着头像起笔(即整组不再居中)会偏出容差。
@@ -799,8 +810,9 @@ app.whenReady().then(async () => {
     line(rb.fp === FROZEN[bp.key], '㊼ 画面指纹与冻结值一致(跨进程可复现)', `指纹 ${rb.fp}`, FROZEN[bp.key]);
 
     // ㊽–㊿ 登机牌的签名/头像行(照片与票脚之间的深色票面,不垫浅底)──
-    // 注意 ㊽ 同时钉住「预设必须给一个浅色 signColor」:引擎的 signColor 兜底是 #555,
-    // 而这张紫蓝卡在签名行高度只有 ~58 亮度,#555(85) 画上去对比不到 1.5:1 等于看不见。
+    // 注意 ㊽ 同时钉住「预设的浅色 signColor 真的被用上」:这张紫蓝卡在签名行高度只有 ~58 亮度,
+    // 深墨(#555/#2c2720 一族)画上去对比不到 1.5:1 等于看不见;预设显式给了米白 #f3f1fa。
+    // (引擎自 2026-10 起:未设置时不再填 #555,由风格取兜底色 —— 见 buildState 与 ⑰b 的钉子。)
     const SIGTXT_B = 'A.template.userSignature = "— my memory —";';
     const rBpSig = await win.webContents.executeJavaScript(SCAN_BP(bp.preset, SIGTXT_B + NOAV));
     line(rBpSig.H > rb.H && rBpSig.alphaMin === 255 && rBpSig.stripLum >= 0 && rBpSig.stripLum < 120
