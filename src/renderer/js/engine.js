@@ -1317,29 +1317,41 @@ function drawPuzzleCaption(ctx, cap, r, align, fs) {
     }
 }
 
-// 竖直间隙字幕:字符列水平居中于缝隙,字形宽度受缝隙厚度与 4000 长边基准限制,列整体垂直居中
+// 竖直间隙字幕:每条文本一列,列内自上而下、整体在缝高内居中;两行时分列并排(缝内均分)。
+// 字形宽度受缝隙厚度与 4000 长边基准限制;间距 = 字符间隙的附加比例;背景条同样只认勾选。
+// (旧实现恒定画 55% 黑条 —— 勾选框无效;且只读 line1,第二行/间距被静默丢弃。)
 function drawVerticalPuzzleCaption(ctx, cap, x, y0, y1, gw, fs) {
-    if (!cap || !cap.line1) return;
-    const t = String(cap.line1);
-    const maxCharW = Math.max(1, gw * 0.9);
-    const baseSize = (cap.size1 || 28) * (fs == null ? 1 : fs);
-    const size = Math.max(6, Math.min(baseSize, maxCharW / 1.4));
+    if (!cap) return;
+    const F = (fs == null ? 1 : fs);
+    const txts = [cap.line1, cap.line2].filter(s => s != null && String(s).length);
+    if (!txts.length) return;
     const c = parseColor(cap.color || 'ffffff', 100);
-    const w = Math.min(size * 1.4, gw - 1);
-    const step = size * 1.3;
-    const totalH = t.length * step;
-    const yTop = y0 + Math.max(0, (y1 - y0 - totalH) / 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(x - w / 2, yTop, w, Math.min(totalH, y1 - yTop));
-    ctx.fillStyle = rgba(c);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.font = `${size}px "${cap.font1 || 'Microsoft YaHei'}"`;
-    for (let i = 0; i < t.length; i++) {
-        const cy = yTop + i * step;
-        if (cy > y1 - size) break;
-        ctx.fillText(t[i], x, cy);
-    }
+    const spPct = (cap.spacing == null ? 0 : cap.spacing) / 100;
+    const colW = Math.max(1, gw / txts.length);
+    txts.forEach((raw, ci) => {
+        const t = String(raw);
+        const size1 = ci === 0 ? (cap.size1 || 28) : (cap.size2 || 20);
+        const font = ci === 0 ? (cap.font1 || 'Microsoft YaHei') : (cap.font2 || 'Microsoft YaHei');
+        const size = Math.max(6, Math.min(size1 * F, Math.max(1, colW * 0.9) / 1.4));
+        const w = Math.max(1, Math.min(size * 1.4, colW - 1));
+        const step = size * 1.3 + size * spPct;
+        const totalH = t.length * step;
+        const yTop = y0 + Math.max(0, (y1 - y0 - totalH) / 2);
+        const cx = x - gw / 2 + colW * (ci + 0.5);
+        if (cap.bgBar === 1) {
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(cx - w / 2, yTop, w, Math.min(totalH, y1 - yTop));
+        }
+        ctx.fillStyle = rgba(c);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.font = `${size}px "${font}"`;
+        for (let i = 0; i < t.length; i++) {
+            const cy = yTop + i * step;
+            if (cy > y1 - size) break;
+            ctx.fillText(t[i], cx, cy);
+        }
+    });
 }
 
 function renderPuzzle(app, compare, noSelection) {
@@ -1361,6 +1373,10 @@ function renderPuzzle(app, compare, noSelection) {
     let W = 1000, H = 1000;
     const sz = puzzleLayoutSize(layout, S, gap);
     W = sz[0]; H = sz[1];
+    // 间距换算基准 = 版式「原生」短边(auto 时它恰好等于画布短边)。
+    // 画布比例只负责把画布裁成所选比例,不应顺带改变间距的厚度 —— 否则同一档「间距」
+    // 在 auto / 4:3 / 9:16 下渲染出的缝隙各不相同(实测 v3: 3.00→2.25px,h3: 3.00→7.02px)。
+    const gapUnit = Math.min(W, H);
     if (pk.canvasRatio && pk.canvasRatio !== 'auto') {
         const wh = parseRatio(pk.canvasRatio);
         if (wh) {
@@ -1377,16 +1393,24 @@ function renderPuzzle(app, compare, noSelection) {
     const border = parseColor(pk.borderColor || 'ffffff', 100);
     const b = Math.max(1, Math.round(Wn * 0.003));
     const px = (x) => x * Wn, py = (y) => y * Hn, pw = (w) => w * Wn, ph = (h) => h * Hn;
-    const scaler = Math.min(Wn, Hn) / 1000;
+    const scaler = gapUnit / 1000;
     // 格子间距统一只有一种来源:图片每侧内缩 gapPx;贴边格子的外边再内进 gapPx,
     // 于是内部缝隙 = 2*gapPx = 四周留白 = 字幕条带厚度(gth),格子间距处处一致。
     const gapG = Math.max(0, Math.round(((pk.gap == null ? 6 : pk.gap) / 100) * 1000));
     const gapPx = Math.max(0, (pk.gap == null ? 6 : pk.gap) * scaler * 0.5);
+    const EPS = 1e-6;
     const shift = gapPx;
     const shiftX = shift / Wn, shiftY = shift / Hn;
+    // 只对"贴边的那些边"额外内进 gapPx(+ 下面统一内缩的 gapPx = 外侧 2*gapPx):
+    // 外侧 2*gapPx = 内部缝隙 2*gapPx = 字幕条带 gth,四处一致。
+    // 以前这里对所有格子四条边无条件内进,于是缝隙变成 4*gapPx(2 倍外边距),
+    // 与 puzzleSlotAtPx 的点选范围、gth 字幕带的宽度都对不上。
     slots0 = slots0.map(r => {
         let x0 = r[0], y0 = r[1], x1 = r[0] + r[2], y1 = r[1] + r[3];
-        x0 += shiftX; x1 -= shiftX; y0 += shiftY; y1 -= shiftY;
+        if (x0 <= EPS) x0 += shiftX;
+        if (x1 >= 1 - EPS) x1 -= shiftX;
+        if (y0 <= EPS) y0 += shiftY;
+        if (y1 >= 1 - EPS) y1 -= shiftY;
         return [x0, y0, x1 - x0, y1 - y0];
     });
     // 字幕字号:画布长边基准 + 受字幕带高度(gth)约束,gap 小则字号自动缩小,避免行间重叠
@@ -1419,8 +1443,6 @@ function renderPuzzle(app, compare, noSelection) {
     const gth = Math.max(2, gapPx * 2);
     const hAxRow = axes.h || [], vAxRow = axes.v || [];
     const rowsN = hAxRow.length + 1;
-    const bbCap = gcs && gcs['h' + (rowsN - 1)];
-    const hasBottomCap = !!(bbCap && (bbCap.line1 || bbCap.line2));
 
     rectPx.forEach((r, i) => {
         const sc = slots[i] || {};
@@ -1434,9 +1456,9 @@ function renderPuzzle(app, compare, noSelection) {
         ctx.save();
         ctx.beginPath();
         const cx = rx + gapPx, cy = ry + gapPx, cw = Math.max(1, rw - gapPx * 2);
-        // 底部行图片让出等宽字幕带,字幕不叠到图上
-        let chh = Math.max(1, rh - gapPx * 2);
-        if (hasBottomCap && r[1] + 1e-6 >= (rowsN > 1 ? (hAxRow[rowsN - 2] || 1) : 0)) chh = Math.max(1, chh - gth);
+        // 字幕带厚度 = 外边距 = 2*gapPx,底部字幕带正好落进下外边距里,图片不必再让位。
+        // (旧写法拿像素 r[1] 去比 0-1 归一化轴位,恒真 —— gap>0 时每一行都被削掉 gth。)
+        const chh = Math.max(1, rh - gapPx * 2);
         // 格子圆角(用户可调,默认3%)
         const cornerPct = (pk.cornerRadius == null ? 3 : pk.cornerRadius) / 100;
         const cr = Math.max(0, Math.min(cw, chh) * cornerPct);
