@@ -1,6 +1,6 @@
 // 拼图「间距与字幕」几何回归(带壳:加载真实 index.html,调 window.__renderPuzzle 后按像素测量)。
 //
-// 这一组断言对应四个"看起来像玄学"的逻辑 bug:
+// 这一组断言对应五个"看起来像玄学"的逻辑 bug:
 //   1. 外边距 ≠ 内部缝隙 —— 引擎对每一格的**四条边**都内缩 gapPx,格子之间于是 4*gapPx,
 //      画布外边距只有 2*gapPx:缝隙是外边距的两倍,方块看起来粘太紧、外边留白又太窄。
 //   2. 点选范围与画面不符 —— app 的 puzzleSlotAtPx 只对贴边的边内缩(= 注释里的设计意图),
@@ -9,6 +9,8 @@
 //      gap>0 时**每一行**都被削掉 gth,照片下方多出一条白带。
 //   4. 竖排间隙字幕恒定画 55% 黑条(背景条勾选框无效),且只读 line1 ——
 //      第二行与"间距"被静默丢弃。
+//   5. 六个取色器一个监听都没挂 —— 字幕颜色/边框色改完模型不更新、画面不重绘,
+//      要拖一下别的控件颜色才"补"上来。第 5 段专测这条(清画布 + 只派发事件 + 等两帧)。
 //
 // 判定全部走像素(照片填纯色 #c06030、字幕纯黑),不依赖任何布局公式,改实现也照样有效。
 const path = require('path');
@@ -140,7 +142,63 @@ const RUN = `(async () => {
   const hb0 = inkBox(hs0), hb2 = inkBox(hs2);
   add(hb0.h > 0 && hb2.h > hb0.h * 1.2, '横排字幕:间距滑块拉开行距', '间距 0 → 高 ' + hb0.h + 'px / 200 → ' + hb2.h + 'px');
 
-  // ── 5. 画布比例只裁画布,不改变间距厚度 ──
+  // ── 5. 字幕色/边框色取色器:改完当场生效,不等下一个控件 ──
+  // 旧实现:六个 <input type=color> 一个监听都没挂(只有滑块/复选框/下拉/文本框有),
+  // 取色后模型不更新、画面不重绘 —— 要拖一下别的滑块颜色才"补"上来。
+  // 判定:先清空画布,只派发取色器事件,等两帧(不主动调渲染),看画面是否被应用自己的重绘恢复。
+  {
+    A.template = A.defaultTemplate();
+    const pk = A.template.puzzle;
+    pk.enabled = 1; pk.layout = 'grid4'; pk.layoutType = 6; pk.gap = 60; pk.bgMode = 0;
+    pk.borderColor = 'ffffff'; pk.canvasRatio = 'auto'; pk.axisVals = {};
+    pk.captions = {};
+    pk.gapCaptions = { h1: { line1: 'AB', line2: '', size1: 40, size2: 20, color: 'ffffff', bgBar: 0, spacing: 0 } };
+    pk.slots = { 0: { imageIndex: 0 }, 1: { imageIndex: 0 }, 2: { imageIndex: 0 }, 3: { imageIndex: 0 } };
+    im.customSettings = A.template; // renderPreview 认这张模板,否则回落到默认模板(不画拼图)
+    A._puzzleSlot = 'h1';
+    A.refreshPuzzleUI();
+    await A.flushRender();
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const shotNow = () => A.dom.canvas.getContext('2d').getImageData(0, 0, A.dom.canvas.width, A.dom.canvas.height).data;
+    const countPx = (test) => { const d = shotNow(); let n = 0; for (let i = 0; i < d.length; i += 4) if (test(d[i], d[i + 1], d[i + 2])) n++; return n; };
+    const raf2 = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const capEl = document.getElementById('cpCapColor');
+    const bdEl = document.getElementById('cpPuzzleBorder');
+
+    // 字幕颜色 @input(取色器里拖动):写进"当前编辑槽位"的模型 + 当场重绘
+    A.dom.canvas.getContext('2d').clearRect(0, 0, A.dom.canvas.width, A.dom.canvas.height);
+    capEl.value = '#00ff00';
+    capEl.dispatchEvent(new Event('input', { bubbles: true }));
+    await raf2();
+    const cap = A.template.puzzle.gapCaptions['h1'];
+    add(cap && cap.color === '00ff00', '字幕色 input:即时写入当前编辑槽位的模型', cap ? cap.color : '(字幕被删)');
+    const green = countPx((r, g, b) => r < 120 && g > 200 && b < 120);
+    add(green > 20, '字幕色 input:画布已按新颜色重绘(绿色墨迹)', green + 'px 绿');
+
+    // 字幕颜色 @change(关闭取色器):提交路径同样写模型 + 重绘
+    A.dom.canvas.getContext('2d').clearRect(0, 0, A.dom.canvas.width, A.dom.canvas.height);
+    capEl.value = '#0000ff';
+    capEl.dispatchEvent(new Event('change', { bubbles: true }));
+    await raf2();
+    const cap2 = A.template.puzzle.gapCaptions['h1'];
+    add(cap2 && cap2.color === '0000ff', '字幕色 change:提交后模型为新颜色', cap2 ? cap2.color : '(字幕被删)');
+    const blueCap = countPx((r, g, b) => r < 120 && g < 120 && b > 200);
+    add(blueCap > 20, '字幕色 change:画布墨迹变蓝', blueCap + 'px 蓝');
+
+    // 边框色 @change:pk.borderColor 生效,画布底色/格边当场换色,并入撤销栈
+    A.dom.canvas.getContext('2d').clearRect(0, 0, A.dom.canvas.width, A.dom.canvas.height);
+    const undo0 = A.undoStack.length;
+    bdEl.value = '#00ffff';
+    bdEl.dispatchEvent(new Event('change', { bubbles: true }));
+    await raf2();
+    add(A.template.puzzle.borderColor === '00ffff', '边框色 change:写入 pk.borderColor', A.template.puzzle.borderColor);
+    const cyan = countPx((r, g, b) => r < 100 && g > 200 && b > 200);
+    add(cyan > 1000, '边框色 change:画布背景/格边已换新色(青色铺满)', cyan + 'px 青');
+    add(A.undoStack.length === undo0 + 1, '取色器 change 压入撤销栈(可 Ctrl+Z 回退)', '撤销栈 ' + undo0 + ' → ' + A.undoStack.length);
+  }
+
+  // ── 6. 画布比例只裁画布,不改变间距厚度 ──
   // (gapPx 若跟画布短边走,选 4:3 会把同一档间距渲染得更粗/更细 —— 实测 v3 3.00→2.25px、h3 3.00→7.02px)
   for (const layout of ['v3', 'h3']) {
     const cell = { layout: layout, layoutType: A.layoutTypeOf(layout), gap: 6, canvasRatio: 'auto',
@@ -187,7 +245,7 @@ app.whenReady().then(async () => {
         if (!ok) fails.push(label);
     };
 
-    console.log('拼图:间距(外边距/缝隙/点选) + 字幕(底部让位/竖排背景条/第二行/间距)');
+    console.log('拼图:间距(外边距/缝隙/点选) + 字幕(底部让位/竖排背景条/第二行/间距) + 取色实时生效');
     console.log('─'.repeat(90));
 
     let res = null;

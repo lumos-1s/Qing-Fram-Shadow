@@ -1882,6 +1882,20 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             el.addEventListener('change', () => this.onSettingCommit());
         });
 
+        // 颜色选择器:input 即时预览,change 关闭取色器后提交压栈(与滑块同一套通路)。
+        // 拼图的两个色要先补一次 syncPuzzleFromUI:字幕颜色挂在"当前编辑槽位"的模型上
+        // (captureCaptionToModel 只在滑块/提交通路里被调),少了这步就是"取色后画面不动,
+        // 动一下别的控件才补上";cpPuzzleBorder 同样要从 pk 模型读回。
+        // 不含 cpT2iColor —— 它只在「文字转图片」按钮按下时读一次,不属于画布状态。
+        const colors = ['cpFillColor', 'cpStrokeColor', 'cpShadowColor', 'cpGlowColor', 'cpCapColor', 'cpPuzzleBorder'];
+        colors.forEach(id => {
+            const el = $(id);
+            if (!el) return;
+            const sync = () => { if (id === 'cpCapColor' || id === 'cpPuzzleBorder') this.syncPuzzleFromUI(); };
+            el.addEventListener('input', () => { sync(); this.onSettingChanged(); });
+            el.addEventListener('change', () => { sync(); this.onSettingCommit(); });
+        });
+
         // 图层按钮
         const bindBtn = (id, fn) => { const el = $(id); if (el) el.addEventListener('click', () => fn()); };
         bindBtn('btnBuiltinTexture', () => this.pickBuiltinTexture());
