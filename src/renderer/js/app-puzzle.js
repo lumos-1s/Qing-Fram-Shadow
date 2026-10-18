@@ -847,26 +847,37 @@ window.App = Object.assign(window.App || {}, {
             this.displayMax = 4000;
             this.uiDprOverride = 1;
             this.exportScale = 4000;
-            return new Promise(res => requestAnimationFrame(() => {
-                window.__renderPuzzle(this, false, true);
-                const data = this.dom.canvas.toDataURL('image/png');
-                const base64 = data.split(',')[1];
-                if (prev === undefined) delete this.displayMax;
-                else this.displayMax = prev;
-                if (prevDpr === undefined) delete this.uiDprOverride;
-                else this.uiDprOverride = prevDpr;
-                if (prevScale === undefined) delete this.exportScale;
-                else this.exportScale = prevScale;
-                res(base64);
-            }));
+            return (async () => {
+                try {
+                    await this._awaitFrameRender(true);
+                    return this.dom.canvas.toDataURL('image/png').split(',')[1];
+                } catch (e) {
+                    console.error('[exportPuzzle] render failed', e);
+                    this.setStatus('导出失败');
+                    return false;
+                } finally {
+                    // 临时档位必须还原:渲染/取数抛错时旧写法 res 永不执行,会把 4000 档永久钉死
+                    if (prev === undefined) delete this.displayMax;
+                    else this.displayMax = prev;
+                    if (prevDpr === undefined) delete this.uiDprOverride;
+                    else this.uiDprOverride = prevDpr;
+                    if (prevScale === undefined) delete this.exportScale;
+                    else this.exportScale = prevScale;
+                }
+            })();
         };
         const base64 = await exportPuzzleNow();
-        if (!base64) return;
+        if (!base64) {
+            // 导出档渲染的最后一帧还留在 canvas 上,重排一帧把预览画回正常档位
+            if (this.image) this.scheduleRender(true);
+            return;
+        }
         const im0 = this.images && this.images.length ? this.images[this.currentIdx != null ? this.currentIdx : 0] : null;
         const pzName = im0 ? (im0.name || 'photo').replace(/\.[^.]+$/, '') : '';
         const filename = pzName ? `${pzName}_拼图.png` : '拼图.png';
         const r = await window.qingframe.saveImage(base64, filename);
         if (r) this.setStatus('拼图已导出');
         else this.setStatus('导出失败');
+        if (this.image) this.scheduleRender(true);
     }
 });

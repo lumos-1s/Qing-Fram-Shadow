@@ -1,5 +1,18 @@
 // 导出模块：图片导出 —— 从 app.js 拆分
 window.App = Object.assign(window.App || {}, {
+    // 等下一帧渲染一次(导出通道专用)。渲染异常必须把 Promise 拒掉:
+    // 旧写法 `render(); res();` 在渲染抛错时 res 永不执行 → 导出流程悬死,
+    // uiDprOverride/displayMax 等临时档位也永远不还原(画面缩放平移被钉死)。
+    _awaitFrameRender(puzzle) {
+        return new Promise((res, rej) => requestAnimationFrame(() => {
+            try {
+                if (puzzle && window.__renderPuzzle) window.__renderPuzzle(this, false, true);
+                else window.__render(this, false);
+                res();
+            } catch (e) { rej(e); }
+        }));
+    },
+
     /* ── 导出:先选保存位置,再渲染导出画面,最后写盘 ── */
     async exportImage() {
         if (!this.image) { this.setStatus('请先导入照片'); return; }
@@ -102,11 +115,7 @@ window.App = Object.assign(window.App || {}, {
                 // 渲染到同一块 canvas,谁后跑谁定稿。不等它就导出会拿到"预览还没让位"的中间态。
                 await this.flushRender();
                 try {
-                    await new Promise(res => requestAnimationFrame(() => {
-                        if (puzzle && window.__renderPuzzle) window.__renderPuzzle(this, false, true);
-                        else window.__render(this, false);
-                        res();
-                    }));
+                    await this._awaitFrameRender(puzzle);
                     const beforeW = Math.max(1, this.dom.canvas.width || 1);
                     const targetPx = sizeOpt > 0 ? sizeOpt : Math.max(1, im.w || 1, im.h || 1);
                     this.displayMax = targetPx;
@@ -138,10 +147,7 @@ window.App = Object.assign(window.App || {}, {
                     // 元素坐标为基准画布像素:导出画布变大时等比放大,避免缩到角落
                     // (this.template 是导出专用拷贝,副本随本循环丢弃,无需再按 1/k 还原)
                     if (!puzzle && k !== 1 && scaleElPix(this.template, k)) {
-                        await new Promise(res => requestAnimationFrame(() => {
-                            window.__render(this, false);
-                            res();
-                        }));
+                        await this._awaitFrameRender();
                     }
                     this.displayMax = uiMaxSave;
                     let src = this.dom.canvas;
@@ -222,19 +228,22 @@ window.App = Object.assign(window.App || {}, {
         const prevMax = this.displayMax, prevDpr = this.uiDprOverride;
         this.displayMax = this.gridRenderMax();
         this.uiDprOverride = 1;
-        await new Promise(res => requestAnimationFrame(() => { window.__render(this, false); res(); }));
-        let src = this.dom.canvas;
-        if (this.dom.selFormat.value === 'jpeg') {
-            const bg = document.createElement('canvas');
-            bg.width = src.width; bg.height = src.height;
-            const bx = bg.getContext('2d');
-            bx.fillStyle = '#ffffff'; bx.fillRect(0, 0, bg.width, bg.height);
-            bx.drawImage(src, 0, 0);
-            src = bg;
+        try {
+            await this._awaitFrameRender();
+            let src = this.dom.canvas;
+            if (this.dom.selFormat.value === 'jpeg') {
+                const bg = document.createElement('canvas');
+                bg.width = src.width; bg.height = src.height;
+                const bx = bg.getContext('2d');
+                bx.fillStyle = '#ffffff'; bx.fillRect(0, 0, bg.width, bg.height);
+                bx.drawImage(src, 0, 0);
+                src = bg;
+            }
+            return src;
+        } finally {
+            if (prevMax === undefined) delete this.displayMax; else this.displayMax = prevMax;
+            if (prevDpr === undefined) delete this.uiDprOverride; else this.uiDprOverride = prevDpr;
         }
-        if (prevMax === undefined) delete this.displayMax; else this.displayMax = prevMax;
-        if (prevDpr === undefined) delete this.uiDprOverride; else this.uiDprOverride = prevDpr;
-        return src;
     },
 
     // 把 src 切成 n×n,返回每块 canvas(行优先 1..n²;最后一行/列取剩余尺寸防漏缝;
