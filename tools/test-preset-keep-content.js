@@ -102,19 +102,40 @@ const SCENARIOS = `
         // 签名规则(已与用户确认):预设自带签名就用预设的,预设没带才保留用户输入的
         const presetSigN = preset.userSignature ? 1 : 0;
 
-        // 保留的 logo 是否还能被命中检测点到
+        // 保留的 logo 是否还能被命中检测点到。
+        // 全链路偶发:整机/前序用例负载高时,applyPreset 后的渲染协商帧可能还没落定,
+        // 单次采样会测到 null(实测 ~10 次链路跑出 2 次)。测不到 logo 时排干渲染 + 两帧后
+        // 重测(至多 3 轮);重试仍失败才判 FAIL,并把现场几何打进 got 便于追因。
         let hit = 'n/a';
         const el0 = (t.logoElements || [])[0];
         if (el0) {
-            const cv = A.dom.canvas, rect = cv.getBoundingClientRect();
-            // 按压点与命中检测(hitTestLogos)同口径:用「基准画布」取 logo 中心。
-            // 引擎通道 DPR=1 时画布是基准的 2 倍,若按 cv.width 算,点击点落在命中区外一倍处 → 假 miss。
-            const base = A.logoBaseForOverlay();
-            const pos = A.logoPos(el0, base.w, base.h, el0.size);
-            const sx = rect.left + (pos.cx / cv.width) * rect.width;
-            const sy = rect.top + (pos.cy / cv.height) * rect.height;
-            const picked = A.pickElement(A.screenToCanvas({ clientX: sx, clientY: sy, screenX: sx, screenY: sy }));
-            hit = picked ? picked.kind : 'null';
+            const measure = () => {
+                const cv = A.dom.canvas, rect = cv.getBoundingClientRect();
+                // 按压点与命中检测(hitTestLogos)同口径:用「基准画布」取 logo 中心。
+                // 引擎通道 DPR=1 时画布是基准的 2 倍,若按 cv.width 算,点击点落在命中区外一倍处 → 假 miss。
+                const base = A.logoBaseForOverlay();
+                const pos = A.logoPos(el0, base.w, base.h, el0.size);
+                const sx = rect.left + (pos.cx / cv.width) * rect.width;
+                const sy = rect.top + (pos.cy / cv.height) * rect.height;
+                const pt = A.screenToCanvas({ clientX: sx, clientY: sy, screenX: sx, screenY: sy });
+                const picked = A.pickElement(pt);
+                return {
+                    hit: picked ? picked.kind : 'null',
+                    diag: ' rect=' + rect.width.toFixed(1) + 'x' + rect.height.toFixed(1) +
+                        ' cv=' + cv.width + 'x' + cv.height + ' base=' + base.w + 'x' + base.h +
+                        ' log=' + cv._logW + 'x' + cv._logH + ' dpr=' + window.devicePixelRatio +
+                        ' pos=' + pos.cx + ',' + pos.cy + ' pt=' + pt.x + ',' + pt.y +
+                        ' el=' + JSON.stringify({ rel: el0.rel, rx: el0.rx, ry: el0.ry, x: el0.x, y: el0.y, size: el0.size }),
+                };
+            };
+            let m = measure();
+            for (let k = 0; k < 3 && m.hit !== 'logo'; k++) {
+                try { await A.flushRender(); } catch (e) {}
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                m = measure();
+            }
+            hit = m.hit;
+            if (hit !== 'logo') hit += ' [稳定等待后仍 miss:' + m.diag + ' ]';
         }
 
         out.push({
