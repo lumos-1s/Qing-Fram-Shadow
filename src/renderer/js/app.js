@@ -1795,7 +1795,11 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             delete snap.manualExif;
             if (hasCam) snap.manualExif = base;
         }
-        this.imageTemplates.set(tgt, snap);
+        // customSettings 与 imageTemplates 必须都写:导出(exportTemplateFor)/工程保存(.qfs)/
+        // 对比原图都以 customSettings 优先,只写 imageTemplates 会让「之前加过边框」的目标图
+        // 在这些链路上仍取到旧边框(没加过边框的图 customSettings 为空、回落到 imageTemplates,反而正常)
+        tgt.customSettings = snap;
+        this.imageTemplates.set(tgt, JSON.parse(JSON.stringify(snap)));
         this.queueThumb(tgt);
         this.setStatus('已将当前边框同步到「' + tgt.name + '」');
     },

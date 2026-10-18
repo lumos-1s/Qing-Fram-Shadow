@@ -635,7 +635,6 @@ window.App = Object.assign(window.App || {}, {
 
     syncToSelected() {
         if (this.selectedIdx.length <= 1) { this.setStatus('请先在胶片条中多选需要同步的照片(Ctrl/Shift+点击)'); return; }
-        const srcIdx = this.selectedIdx[0];
         // 源模板 = 当前编辑中模板(含全部最新修改)。不要用 customSettings/imageTemplates 旧快照,
         // 否则第一张带过独立设置/保存过之后,再次修改第一张再点同步仍会同步旧参数
         const applied = JSON.parse(JSON.stringify(this.template));
@@ -643,7 +642,10 @@ window.App = Object.assign(window.App || {}, {
         if (applied.decorConfig) { delete applied.decorConfig.stickers; delete applied.decorConfig.textLines; }
         delete applied.puzzle;
         let count = 0;
-        this.selectedIdx.slice(1).forEach(i => {
+        // 目标 = 除当前编辑图以外的全部选中图。旧写法 slice(1) 假设「选中序列第一张=源」,
+        // 但源模板取的是当前编辑图,与 selectedIdx[0] 无关:Ctrl+A 全选时会固定漏掉下标最小的那张
+        this.selectedIdx.forEach(i => {
+            if (i === this.currentIdx) return;
             const im = this.images[i];
             if (!im) return;
             const tgtSnap = JSON.parse(JSON.stringify(applied));
@@ -678,13 +680,7 @@ window.App = Object.assign(window.App || {}, {
             this.queueThumb(im);
             count++;
         });
-        // 若当前显示的照片也在同步目标中,立刻以第一张的参数刷新界面
-        if (this.currentIdx !== srcIdx && this.selectedIdx.includes(this.currentIdx)) {
-            this.template = JSON.parse(JSON.stringify(applied));
-            this.selectedEls = [];
-            this.refreshUI();
-        }
-        this.setStatus(`已将第 ${srcIdx + 1} 张的参数同步到其余 ${count} 张选中照片（Logo/元素按各图独立记忆）`);
+        this.setStatus(`已将当前边框同步到 ${count} 张选中照片（Logo/元素按各图独立记忆）`);
         this.scheduleRender(true);
     }
 });
