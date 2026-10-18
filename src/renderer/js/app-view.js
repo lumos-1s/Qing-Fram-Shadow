@@ -135,14 +135,12 @@ window.App = Object.assign(window.App || {}, {
         });
     },
 
-    // 把当前边框参数应用到所有勾选的照片
+    // 把当前边框参数应用到所有勾选的照片(右键菜单「同步边框（N 张）」/ Ctrl+D)
     applyBorderToSelected() {
         if (!this.image) { this.setStatus('请先打开一张照片'); return; }
         const targets = (this.batchSel && this.batchSel.length) ? this.batchSel.slice() : [this.currentIdx];
-        let n = 0;
-        targets.forEach(i => {
-            if (i !== this.currentIdx) { this.syncBorderTo(i); n++; }
-        });
+        const n = this._syncTplToTargets(targets, { confirm: true });
+        if (n < 0) return; // 用户在覆盖确认里取消
         this.setStatus(n ? `已把当前边框同步到 ${n} 张选中照片` : '没有需要同步的选中照片(仅当前张)');
     },
 

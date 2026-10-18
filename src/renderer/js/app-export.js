@@ -192,7 +192,7 @@ window.App = Object.assign(window.App || {}, {
             this.currentIdx = originalIdx;
             this.image = this.images[this.currentIdx];
             this.invalidateStyleCaches();
-            this.template = (this.image && this.image.customSettings) || baseTemplate;
+            this.template = this.getTpl(this.image) || baseTemplate;
             if (prevMax === undefined) delete this.displayMax;
             else this.displayMax = prevMax;
         }
@@ -355,7 +355,7 @@ window.App = Object.assign(window.App || {}, {
                     if (!im) continue;
                     this.currentIdx = idx; this.image = im;
                     this.invalidateStyleCaches && this.invalidateStyleCaches();
-                    const srcTpl = (im.customSettings) || this.exportTemplateFor(im, idx, originalIdx, baseTemplate);
+                    const srcTpl = this.exportTemplateFor(im, idx, originalIdx, baseTemplate);
                     this.template = srcTpl ? JSON.parse(JSON.stringify(srcTpl)) : baseTemplate;
                     this.normalizeTemplate && this.normalizeTemplate();
                     this.showExportProgress(k, targets.length, im.name);
@@ -618,10 +618,10 @@ window.App = Object.assign(window.App || {}, {
         return files;
     },
 
-    // 每张照片导出用哪个模板:已自定义/记忆过的用其自身;否则当前主图(ownerIdx,导出开始时的图)用 liveTemplate,其余用默认空模板
+    // 每张照片导出用哪个模板:有每图模板用其自身(单一存取口,Map 与 customSettings 恒同一对象);
+    // 否则当前主图(ownerIdx,导出开始时的图)用 liveTemplate,其余用默认空模板
     exportTemplateFor(im, idx, ownerIdx, liveTemplate) {
-        return im.customSettings || this.imageTemplates.get(im) ||
-            (idx === ownerIdx ? liveTemplate : this.defaultTemplate());
+        return this.getTpl(im) || (idx === ownerIdx ? liveTemplate : this.defaultTemplate());
     },
 
     // 导出进度:进度条 + 底部“第 n / N 张”标签

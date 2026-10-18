@@ -124,5 +124,29 @@ window.App = Object.assign(window.App || {}, {
         const t = JSON.parse(JSON.stringify(this.template || null));
         if (t && t._draftText) delete t._draftText;
         return t;
+    },
+
+    /* ══ 每图模板唯一存取口 ══ */
+    // 每图模板有两处存储:imageTemplates Map(缩略图/切换恢复/草稿)与 im.customSettings
+    // (.qfs 序列化/导出/对比原图)。历史上两处分散读写,出现过「同步只写 Map、导出仍取旧
+    // customSettings」的 bug(0.1.12 修复)。新代码一律只走这三个方法:两处恒为同一对象。
+    // getTpl 兼容旧会话里只写过单一侧的图片(按 Map → customSettings 回退)。
+    getTpl(im) {
+        if (!im) return null;
+        return (this.imageTemplates && this.imageTemplates.get(im)) || im.customSettings || null;
+    },
+    // 深拷贝后写入两处(同一份);调用方持有原对象后续再改写不会牵连存储
+    setTpl(im, snap) {
+        if (!im) return null;
+        if (snap == null) { this.clearTpl(im); return null; }
+        const t = JSON.parse(JSON.stringify(snap));
+        im.customSettings = t;
+        this.imageTemplates.set(im, t);
+        return t;
+    },
+    clearTpl(im) {
+        if (!im) return;
+        if (this.imageTemplates) this.imageTemplates.delete(im);
+        delete im.customSettings;
     }
 });

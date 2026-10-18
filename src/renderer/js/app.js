@@ -1200,10 +1200,9 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
 
     saveCurrentTemplate() {
         if (!this.image) return;
-        const snap = this.cloneTemplate();
-        this.imageTemplates.set(this.image, snap);
-        // customSettings 保持指向当前 this.template,避免克隆后 selectedEls 引用失效
-        // undo/redo 时才会把 customSettings 换成新快照
+        // 单一存取口(见 app-state.js):Map 与 customSettings 恒为同一对象。
+        // 写入的是 cloneTemplate 快照,this.template 本体引用不变,selectedEls 不受影响
+        this.setTpl(this.image, this.cloneTemplate());
         this.queueThumb(this.image);
         if (typeof this.scheduleDraft === 'function') this.scheduleDraft();
     },
@@ -1216,7 +1215,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         this.updateEmptyState();
         const btn = document.getElementById('btnRestoreDraft');
         if (btn) btn.style.display = 'none';
-        const saved = this.imageTemplates.get(this.image);
+        const saved = this.getTpl(this.image);
         if (saved) this.template = saved;
         else this.normalizeTemplate();
         this.selectedEls = [];
@@ -1236,7 +1235,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         this.currentIdx = idx;
         this.image = this.images[idx];
         // 有独立预设的图恢复其自身模板;没有独立预设的以默认(原图)开始,画布显示原图
-        const saved = this.image && (this.image.customSettings || this.imageTemplates.get(this.image));
+        const saved = this.getTpl(this.image);
         this.template = saved ? JSON.parse(JSON.stringify(saved)) : this.defaultTemplate();
         this.invalidateStyleCaches();
         this.buildThumbnails();
@@ -1495,8 +1494,8 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         // 记住当前主图对象:删完索引会变,不能靠索引判断它是否被删
         const cur = this.image;
         for (let k = list.length - 1; k >= 0; k--) this.images.splice(list[k], 1);
-        // 顺带清掉被删照片的每图模板,别让 Map 一直持有整张图的模板快照
-        removed.forEach(im => this.imageTemplates.delete(im));
+        // 顺带清掉被删照片的每图模板(单一存取口),别让 Map 一直持有整张图的模板快照
+        removed.forEach(im => this.clearTpl(im));
         if (typeof this.scheduleDraft === 'function') this.scheduleDraft();
         this.batchSel = [];
         this.selectedIdx = [];
@@ -1641,7 +1640,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
 
     // 用该图自己的模板(没有则用当前模板快照)在 200px 离屏画布渲染装框成品,替换占位
     // 注意:无独立模板的图只显示边框效果,不继承当前图的 logo/贴纸/自由文字——
-    // 这些元素是各图独立记忆的(见 syncBorderTo 注释),缩略图与主画布口径保持一致。
+    // 这些元素是各图独立记忆的(见 app-sync.js 的同步语义注释),缩略图与主画布口径保持一致。
     renderFramedThumb(im) {
         if (!window.__render || !im) return;
         const prevCanvas = this.dom.canvas;
@@ -1655,7 +1654,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             this.dom.canvas = cv;
             this.displayMax = 200;
             this.image = im;
-            const saved = this.imageTemplates.get(im);
+            const saved = this.getTpl(im);
             this.template = saved ? JSON.parse(JSON.stringify(saved)) : (prevTpl ? JSON.parse(JSON.stringify(prevTpl)) : null);
             if (!this.template) return;
             // 无独立模板的图:剔除水印元素,避免当前图的 logo/贴纸/文字串到其它图缩略图上
@@ -1702,7 +1701,8 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             wrap.draggable = false;
             const t = document.createElement('img');
             const isSel = this.batchSel.includes(i);
-            const isSrc = isSel && this.batchSel.length > 1 && this.selectedIdx[0] === i;
+            // 同步源 = 当前编辑中的照片(app-sync.js 同步语义):批量为多张时在源图上标注「源」
+            const isSrc = this.batchSel.length > 1 && this.image === im;
             const cls = ['thumb'];
             if (isSel) cls.push('active');
             if (isSrc) cls.push('src');
@@ -1735,8 +1735,10 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
                 e.stopPropagation();
                 const many = this.batchSel.length > 1 && this.batchSel.includes(ctxI);
                 const targets = many ? this.batchSel.slice() : [ctxI];
+                // 同步源 = 当前编辑图,不计入目标数(与 app-sync.js 的目标集口径一致)
+                const syncN = many ? targets.filter(k => k !== this.currentIdx).length : 1;
                 this.openCtx(e.clientX, e.clientY, [
-                    [many ? `同步边框（${targets.length} 张）` : '同步边框',
+                    [many ? `同步边框（${syncN} 张）` : '同步边框',
                         () => many ? this.applyBorderToSelected() : this.syncBorderTo(ctxI)],
                     [many ? `删除选中 ${targets.length} 张` : '删除',
                         () => many ? this.confirmRemoveImages(targets) : this.removeImage(ctxI)],
@@ -1748,60 +1750,13 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
                 const tag = document.createElement('span');
                 tag.className = 'thumb-src';
                 tag.textContent = '源';
-                tag.title = '同步源：选中图片中的第一张（同步时以它为准）';
+                tag.title = '同步源：当前编辑中的照片（同步时以它的边框为准）';
                 wrap.appendChild(tag);
             }
             strip.appendChild(wrap);
         });
         this._thumbEls = elMap;
         strip.style.display = this.images.length > 1 ? 'flex' : 'none';
-    },
-
-    // 把当前主图的边框模板复制给指定缩略图(每图边框独立,同步后该图也恢复此边框;
-    // Logo/贴纸/自由文字/拼图布局不随迁移,保持各图独立记忆)
-    syncBorderTo(i) {
-        const tgt = this.images[i];
-        if (!tgt || !this.image) return;
-        const prev = this.imageTemplates.get(tgt);
-        const prevManual = (prev && prev.manualExif && typeof prev.manualExif === 'object') ? prev.manualExif : null;
-        const snap = this.cloneTemplate();
-        // Logo/贴纸/自由文字的位置已改为「相对比例」存储,可跨照片尺寸还原,
-        // 因此同步边框时一并带上(原先会清空 logoElements,等于放弃多图统一元素布局)。
-        // 旧模板里的绝对像素坐标也会随模板复制过去 —— 目标图尺寸不同时位置会偏,
-        // 但引擎/app 在首次拖动该元素时就会补写成相对比例。
-        if (snap.decorConfig) { delete snap.decorConfig.stickers; delete snap.decorConfig.textLines; }
-        delete snap.puzzle;
-        // 相机数据:同步只动边框。目标图自己能识别 EXIF → 用自己的(清除历史同步/兜底写入的手动参数);
-        // 没有 EXIF 但手动填过 → 保留该图自己的手动参数;都无 → 沿用当前图的有效相机数据
-        const ownExif = (tgt.exif && typeof tgt.exif === 'object') ? tgt.exif : {};
-        const hasOwn = ['make', 'model', 'focal', 'aperture', 'iso', 'shutter'].some(k => String(ownExif[k] || '').trim() !== '');
-        if (hasOwn) {
-            delete snap.manualExif;
-        } else if (prevManual) {
-            delete snap.manualExif;
-            if (Object.keys(prevManual).length) snap.manualExif = JSON.parse(JSON.stringify(prevManual));
-        } else {
-            const srcManual = (this.template.manualExif && typeof this.template.manualExif === 'object') ? this.template.manualExif : {};
-            const srcAuto = (this.image.exif && typeof this.image.exif === 'object') ? this.image.exif : {};
-            const base = {
-                brand: String(srcManual.brand || '').trim() || String(srcAuto.make || '').trim(),
-                model: String(srcManual.model || '').trim() || String(srcAuto.model || '').trim(),
-                focal: String(srcManual.focal || '').trim() || String(srcAuto.focal || '').trim(),
-                aperture: String(srcManual.aperture || '').trim() || String(srcAuto.aperture || '').trim(),
-                iso: String(srcManual.iso || '').trim() || String(srcAuto.iso || '').trim(),
-                shutter: String(srcManual.shutter || '').trim() || String(srcAuto.shutter || '').trim()
-            };
-            const hasCam = ['brand', 'model', 'focal', 'aperture', 'iso', 'shutter'].some(k => base[k] !== '');
-            delete snap.manualExif;
-            if (hasCam) snap.manualExif = base;
-        }
-        // customSettings 与 imageTemplates 必须都写:导出(exportTemplateFor)/工程保存(.qfs)/
-        // 对比原图都以 customSettings 优先,只写 imageTemplates 会让「之前加过边框」的目标图
-        // 在这些链路上仍取到旧边框(没加过边框的图 customSettings 为空、回落到 imageTemplates,反而正常)
-        tgt.customSettings = snap;
-        this.imageTemplates.set(tgt, JSON.parse(JSON.stringify(snap)));
-        this.queueThumb(tgt);
-        this.setStatus('已将当前边框同步到「' + tgt.name + '」');
     },
 
     // 勾选切换(checkbox;与 Ctrl/Shift 多选同一份 batchSel,按勾选顺序排队)

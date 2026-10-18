@@ -611,12 +611,9 @@ window.App = Object.assign(window.App || {}, {
     resetParams() {
         if (!this.template) return;
         this.pushUndo();
-        // 重置后本图不再视为“已用预设”:清理 customSettings 与旧的模板记忆,
+        // 重置后本图不再视为“已用预设”:清掉单一存取口的两处存储,
         // 否则切走再切回/导出时仍会取到重置前的旧边框
-        if (this.image) {
-            delete this.image.customSettings;
-            this.imageTemplates.delete(this.image);
-        }
+        if (this.image) this.clearTpl(this.image);
         this.template = this.defaultTemplate();
         this.saveCurrentTemplate();
         this.refreshUI();
@@ -633,54 +630,4 @@ window.App = Object.assign(window.App || {}, {
         this.setStatus(`已应用随机边框：${p.templateName}`);
     },
 
-    syncToSelected() {
-        if (this.selectedIdx.length <= 1) { this.setStatus('请先在胶片条中多选需要同步的照片(Ctrl/Shift+点击)'); return; }
-        // 源模板 = 当前编辑中模板(含全部最新修改)。不要用 customSettings/imageTemplates 旧快照,
-        // 否则第一张带过独立设置/保存过之后,再次修改第一张再点同步仍会同步旧参数
-        const applied = JSON.parse(JSON.stringify(this.template));
-        if (Array.isArray(applied.logoElements)) applied.logoElements = [];
-        if (applied.decorConfig) { delete applied.decorConfig.stickers; delete applied.decorConfig.textLines; }
-        delete applied.puzzle;
-        let count = 0;
-        // 目标 = 除当前编辑图以外的全部选中图。旧写法 slice(1) 假设「选中序列第一张=源」,
-        // 但源模板取的是当前编辑图,与 selectedIdx[0] 无关:Ctrl+A 全选时会固定漏掉下标最小的那张
-        this.selectedIdx.forEach(i => {
-            if (i === this.currentIdx) return;
-            const im = this.images[i];
-            if (!im) return;
-            const tgtSnap = JSON.parse(JSON.stringify(applied));
-            // 相机数据与 syncBorderTo 一致:同步只动边框。目标图自己能识别 EXIF → 用自己的;
-            // 没有 EXIF 但手动填过 → 保留该图自己的手动参数;都无 → 沿用源图的有效相机数据
-            const prev = this.imageTemplates.get(im) || (im.customSettings || null);
-            const prevManual = (prev && prev.manualExif && typeof prev.manualExif === 'object') ? prev.manualExif : null;
-            const ownExif = (im.exif && typeof im.exif === 'object') ? im.exif : {};
-            const hasOwn = ['make', 'model', 'focal', 'aperture', 'iso', 'shutter'].some(k => String(ownExif[k] || '').trim() !== '');
-            if (hasOwn) {
-                delete tgtSnap.manualExif;
-            } else if (prevManual) {
-                delete tgtSnap.manualExif;
-                if (Object.keys(prevManual).length) tgtSnap.manualExif = JSON.parse(JSON.stringify(prevManual));
-            } else {
-                const srcManual = (this.template.manualExif && typeof this.template.manualExif === 'object') ? this.template.manualExif : {};
-                const srcAuto = (this.image && this.image.exif && typeof this.image.exif === 'object') ? this.image.exif : {};
-                const base = {
-                    brand: String(srcManual.brand || '').trim() || String(srcAuto.make || '').trim(),
-                    model: String(srcManual.model || '').trim() || String(srcAuto.model || '').trim(),
-                    focal: String(srcManual.focal || '').trim() || String(srcAuto.focal || '').trim(),
-                    aperture: String(srcManual.aperture || '').trim() || String(srcAuto.aperture || '').trim(),
-                    iso: String(srcManual.iso || '').trim() || String(srcAuto.iso || '').trim(),
-                    shutter: String(srcManual.shutter || '').trim() || String(srcAuto.shutter || '').trim()
-                };
-                const hasCam = ['brand', 'model', 'focal', 'aperture', 'iso', 'shutter'].some(k => base[k] !== '');
-                delete tgtSnap.manualExif;
-                if (hasCam) tgtSnap.manualExif = base;
-            }
-            im.customSettings = tgtSnap;
-            this.imageTemplates.set(im, JSON.parse(JSON.stringify(tgtSnap)));
-            this.queueThumb(im);
-            count++;
-        });
-        this.setStatus(`已将当前边框同步到 ${count} 张选中照片（Logo/元素按各图独立记忆）`);
-        this.scheduleRender(true);
-    }
 });

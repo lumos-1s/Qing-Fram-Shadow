@@ -214,7 +214,9 @@ console.log('─'.repeat(72));
      c. k === 1 表示无需再渲一次(省掉每张的第 3 次全尺寸渲染) */
 {
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'js', 'app-export.js'), 'utf-8');
+    const stateSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'js', 'app-state.js'), 'utf-8');
     const win = {};
+    new Function('window', stateSrc)(win); // exportTemplateFor 走单一存取口(getTpl):先并入 app-state
     const App = new Function('window', src + '\n;return window.App;')(win);
     ok(App && typeof App.exportSizeScale === 'function', '⑥ app-export.js 可加载且导出换算已抽出为纯函数');
 
@@ -248,16 +250,22 @@ console.log('─'.repeat(72));
     ok(JSON.stringify(files.map(f => f.filename)) === JSON.stringify(['a_边框.jpg', 'a_边框_1.jpg', 'a_边框_2.jpg', 'b_拼图.png']),
         '⑥ dedupeExportNames:重名首张原名、后续 _1/_2', JSON.stringify(files.map(f => f.filename)));
 
-    // f. 每张图用哪个模板的优先级
-    const fake = { imageTemplates: new Map(), defaultTemplate: () => ({ from: 'default' }) };
-    const imA = { customSettings: { from: 'custom' } };
+    // f. 每张图用哪个模板:经单一存取口 getTpl(Map 与 customSettings 恒同一对象;
+    //    旧会话只写过单一侧时按 Map → customSettings 回退);没有每图模板时当前主图用 live、其余用默认
+    const fake = { imageTemplates: new Map(), getTpl: App.getTpl, setTpl: App.setTpl, clearTpl: App.clearTpl, defaultTemplate: () => ({ from: 'default' }) };
+    const imA = { customSettings: { from: 'custom' } };          // 旧会话:只有 customSettings 一侧
     const imB = {};
-    fake.imageTemplates.set(imB, { from: 'map' });
+    fake.setTpl(imB, { from: 'map' });
     const imC = {};
-    ok(App.exportTemplateFor.call(fake, imA, 0, 0, { from: 'live' }).from === 'custom', '⑥ 模板优先级:customSettings 最优先');
-    ok(App.exportTemplateFor.call(fake, imB, 1, 0, { from: 'live' }).from === 'map', '⑥ 模板优先级:其次 imageTemplates 快照');
+    ok(App.exportTemplateFor.call(fake, imA, 0, 0, { from: 'live' }).from === 'custom', '⑥ 每图模板:仅 customSettings(旧会话)也能取到');
+    ok(App.exportTemplateFor.call(fake, imB, 1, 0, { from: 'live' }).from === 'map', '⑥ 每图模板:经存取口写入后导出取到');
     ok(App.exportTemplateFor.call(fake, imC, 2, 2, { from: 'live' }).from === 'live', '⑥ 模板优先级:当前主图用正在编辑的模板');
     ok(App.exportTemplateFor.call(fake, imC, 2, 0, { from: 'live' }).from === 'default', '⑥ 模板优先级:其余图用各自的默认边框');
+    // 单一存取口本身:两处存储必须同一对象(0.1.12「同步只写一侧」bug 的防回归锁)
+    ok(imB.customSettings === fake.imageTemplates.get(imB) && fake.getTpl(imB).from === 'map',
+        '⑥ setTpl/getTpl:Map 与 customSettings 为同一对象(不再可能分叉)');
+    fake.clearTpl(imB);
+    ok(!fake.getTpl(imB) && !fake.imageTemplates.has(imB), '⑥ clearTpl:两处一起清');
 }
 
 /* ⑦ .qfs 工程导出的两处省法必须成立
@@ -268,9 +276,11 @@ console.log('─'.repeat(72));
    ② customSettings 不再深拷贝:随即被 IPC 结构化克隆,中间无人改写。断言它保持同一引用。 */
 {
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'js', 'app-qfs.js'), 'utf-8');
+    const stateSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'js', 'app-state.js'), 'utf-8');
     const win = {};
+    new Function('window', stateSrc)(win); // qfsImageEntry 走单一存取口(getTpl):先并入 app-state
     const Q = new Function('window', src + '\n;return window.App;')(win);
-    ok(Q && typeof Q.qfsReusableSource === 'function' && typeof Q.qfsImageEntry === 'function',
+    ok(Q && typeof Q.qfsReusableSource === 'function' && typeof Q.qfsImageEntry === 'function' && typeof Q.getTpl === 'function',
         '⑦ app-qfs.js 可加载且两个纯函数已抽出');
 
     const mkCanvas = (w, h, withToDataURL) => {
@@ -335,6 +345,88 @@ console.log('─'.repeat(72));
     ok(caps.visibleRows('').rowSignText === false, '⑧ 空风格名不报错且各行均隐藏');
     ok(caps.DIMS.every(d => caps.visibleRows('SIGNATURE')[d.row] === caps.has('SIGNATURE', d.key)),
         '⑧ 五个数值滑块行与 MEASURED 实测口径一致');
+}
+
+/* ⑨ 边框同步的语义与数据一致性(0.1.12 两处修复 + 语义统一 的防回归锁)
+   ① 写入必须走单一存取口:同步后目标图 Map 与 customSettings 是同一对象
+      —— 之前「同步只写 Map」导致已加过边框的图在导出/工程保存/对比原图里仍取旧边框;
+   ② 保留目标图自己的贴纸/自由文字/拼图;源图贴纸不带过去;Logo 随同步带上;
+   ③ 相机数据三级规则(自有 EXIF → 用己;无 EXIF 手填过 → 留己;都无 → 沿源);
+   ④ 目标 = 全部选中 − 当前编辑图(Ctrl+A 全选时含第 1 张,旧 slice(1) 会漏);
+   ⑤ 覆盖确认:批量时先问、取消后一张不动;单张(右键路径)不弹确认。 */
+{
+    const stateSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'js', 'app-state.js'), 'utf-8');
+    const syncSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'js', 'app-sync.js'), 'utf-8');
+    const win = {};
+    new Function('window', stateSrc)(win);
+    const S = new Function('window', syncSrc + '\n;return window.App;')(win);
+
+    S.images = [
+        { name: '源.jpg', exif: {}, customSettings: null },
+        { name: '甲.jpg', exif: {}, customSettings: null },
+        { name: '乙.jpg', exif: {}, customSettings: null },
+        { name: '丙.jpg', exif: { make: 'Nikon' }, customSettings: null }
+    ];
+    S.imageTemplates = new Map();
+    S.currentIdx = 0; S.image = S.images[0];
+    S.template = {
+        templateName: '新边框', baseMargin: { refTop: 80 },
+        logoElements: [{ name: 'LOGO', x: 0, y: 0 }],
+        decorConfig: { stickers: [{ id: 'src-stk' }] },
+        puzzle: { enabled: true, slots: {} },
+        manualExif: { brand: 'SRC' }
+    };
+    S.queueThumb = () => {};
+    S.scratch = null; S.setStatus = (m) => { S.scratch = m; };
+    S.scheduleDraft = () => {};
+
+    // 甲:旧边框 + 自己的贴纸/自由文字/拼图/手填相机(无 EXIF)
+    S.setTpl(S.images[1], {
+        templateName: '旧边框',
+        decorConfig: { stickers: [{ id: 'own-stk' }], textLines: [{ align: 'free', x: 5 }] },
+        puzzle: { enabled: true, slots: { s0: { imageIndex: 2 } } },
+        manualExif: { iso: '100' }
+    });
+
+    const n1 = S._syncTplToTargets([1, 2, 3], {});
+    const t1 = S.getTpl(S.images[1]);
+    ok(n1 === 3, '⑨ 同步 3 张成功');
+    ok(S.images[1].customSettings === S.imageTemplates.get(S.images[1]) && S.images[1].customSettings === t1,
+        '⑨ 同步后 Map 与 customSettings 同一对象(导出链路取到的就是新边框)');
+    ok(t1.templateName === '新边框' && t1.baseMargin && t1.baseMargin.refTop === 80, '⑨ 边框参数整份带到');
+    ok(Array.isArray(t1.logoElements) && t1.logoElements[0] && t1.logoElements[0].name === 'LOGO', '⑨ Logo 随同步带上');
+    ok(!(t1.decorConfig.stickers || []).some(s => s.id === 'src-stk'), '⑨ 源图贴纸不随同步');
+    ok(t1.decorConfig.stickers.length === 1 && t1.decorConfig.stickers[0].id === 'own-stk', '⑨ 目标自己的贴纸保留');
+    ok(t1.decorConfig.textLines.length === 1 && t1.decorConfig.textLines[0].align === 'free', '⑨ 目标自己的自由文字保留');
+    ok(!!(t1.puzzle && t1.puzzle.enabled && t1.puzzle.slots && t1.puzzle.slots.s0), '⑨ 目标自己的拼图保留');
+    ok(!!(t1.manualExif && t1.manualExif.iso === '100'), '⑨ 无 EXIF 但手填过 → 保留目标自己的相机参数');
+    const t2 = S.getTpl(S.images[2]);
+    ok(!!(t2 && t2.manualExif && t2.manualExif.brand === 'SRC'), '⑨ 都没有 → 沿用源图有效相机数据');
+    const t3 = S.getTpl(S.images[3]);
+    ok(!!t3 && !t3.manualExif, '⑨ 目标自有 EXIF → 不写入手填相机参数');
+
+    // Ctrl+A 全选 + syncToSelected:目标 = 全部选中 − 当前编辑图,第 1 张也在内(旧 slice(1) 会漏它)
+    S.currentIdx = 3; S.image = S.images[3];
+    S.template = { templateName: 'T2' };
+    S.selectedIdx = [0, 1, 2, 3];
+    win.confirm = () => true; // 覆盖确认:接受
+    S.syncToSelected();
+    ok(S.getTpl(S.images[0]) && S.getTpl(S.images[0]).templateName === 'T2', '⑨ Ctrl+A 全选同步:第 1 张也同步(修复 slice(1) 漏首张)');
+    ok(S.getTpl(S.images[2]).templateName === 'T2' && S.getTpl(S.images[1]).templateName === 'T2', '⑨ 其余选中图一并同步');
+    ok(S.getTpl(S.images[3]).templateName !== 'T2', '⑨ 当前编辑图(源)不在目标集里');
+
+    // 覆盖确认:取消 → 一张不动,状态为已取消
+    win.confirm = () => false;
+    const before0 = JSON.stringify(S.getTpl(S.images[0]));
+    S.template = { templateName: 'T3' };
+    S.syncToSelected();
+    ok(S.scratch === '已取消同步' && JSON.stringify(S.getTpl(S.images[0])) === before0, '⑨ 确认框取消 → 目标不动');
+
+    // 单张(右键路径)不弹确认:confirm 直接抛错,仍应同步成功
+    win.confirm = () => { throw new Error('单张同步不应弹覆盖确认'); };
+    S.currentIdx = 0; S.image = S.images[0]; S.template = { templateName: '单图' };
+    S.syncBorderTo(1);
+    ok(S.getTpl(S.images[1]).templateName === '单图', '⑨ 单张同步走同一核心且不弹确认');
 }
 
 console.log('─'.repeat(72));

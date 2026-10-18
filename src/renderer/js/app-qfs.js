@@ -31,15 +31,15 @@ window.App = Object.assign(window.App || {}, {
         return b64;
     },
 
-    // 工程里单张照片的描述。customSettings **刻意不再深拷贝**:它紧接着就被 IPC 结构化克隆给主进程,
-    // 中间没有任何代码改写它,多一次 JSON.parse(JSON.stringify()) 只是把带 base64 的模板
-    // (每个 logo 的 dataUrl 都在里面,量级 MB)白白搬一遍。
+    // 工程里单张照片的描述。customSettings **刻意不再深拷贝**:单一存取口取出的就是存储本体,
+    // 紧接着被 IPC 结构化克隆给主进程,中间没有任何代码改写它,多一次 JSON.parse(JSON.stringify())
+    // 只是把带 base64 的模板(每个 logo 的 dataUrl 都在里面,量级 MB)白白搬一遍。
     qfsImageEntry(im, data) {
         return {
             name: im.name || 'photo',
             w: im.w, h: im.h,
             exif: im.exif || {},
-            customSettings: im.customSettings || null,
+            customSettings: this.getTpl(im) || null,
             data
         };
     },
@@ -110,9 +110,9 @@ window.App = Object.assign(window.App || {}, {
                 w: oriented ? oriented.w : img.naturalWidth,
                 h: oriented ? oriented.h : img.naturalHeight,
                 exif,
-                customSettings: m.customSettings ? JSON.parse(JSON.stringify(m.customSettings)) : null
+                customSettings: null
             };
-            if (im.customSettings) this.imageTemplates.set(im, JSON.parse(JSON.stringify(im.customSettings)));
+            if (m.customSettings) this.setTpl(im, m.customSettings);
             this.queueThumb(im);
             ims.push(im);
         }
@@ -124,8 +124,9 @@ window.App = Object.assign(window.App || {}, {
         const ci = Math.min(Math.max(0, (bundle.session && bundle.session.currentIdx) || 0), ims.length - 1);
         this.currentIdx = ci;
         this.image = ims[ci];
-        this.template = this.image && this.image.customSettings
-            ? JSON.parse(JSON.stringify(this.image.customSettings))
+        const savedTpl = this.getTpl(this.image);
+        this.template = savedTpl
+            ? JSON.parse(JSON.stringify(savedTpl))
             : (bundle.template ? JSON.parse(JSON.stringify(bundle.template)) : this.defaultTemplate());
         this.normalizeTemplate();
         this.invalidateStyleCaches();

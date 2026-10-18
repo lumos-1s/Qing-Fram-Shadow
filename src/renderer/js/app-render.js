@@ -192,11 +192,8 @@ window.App = Object.assign(window.App || {}, {
             // 未使用预设的图:画布直接展示原图;当前图只要有边框设置,就把最新模板写回该图记录
             // (既标记“已用预设”,也保证切走再切回时保留最新编辑)
             const im = this.image;
-            if (this.hasBorderSettings(this.template)) {
-                im.customSettings = JSON.parse(JSON.stringify(this.template));
-                this.imageTemplates.set(im, im.customSettings);
-            }
-            const assigned = !!(im.customSettings || this.imageTemplates.get(im));
+            if (this.hasBorderSettings(this.template)) this.setTpl(im, this.template);
+            const assigned = !!this.getTpl(im);
             const previewTpl = assigned ? this.template : this.defaultTemplate();
             const prevTpl = this.template;
             this.template = previewTpl;
@@ -265,7 +262,8 @@ window.App = Object.assign(window.App || {}, {
     setCompare(on) {
         if (!this.image) return;
         this.draggingCompare = on;
-        if (this.image.customSettings) this.template = this.image.customSettings;
+        const saved = this.getTpl(this.image);
+        if (saved) this.template = saved;
         this.normalizeTemplate();
         // 走统一队列:与普通帧 FIFO,不再自排一条并行 rAF(那会让对比帧与
         // 已排队的正常帧争抢同一 vsync,谁先跑取决于注册顺序,表现为偶发闪回)

@@ -60,7 +60,7 @@ window.App = Object.assign(window.App || {}, {
             const imageTemplates = [];
             for (const im of this.images) {
                 if (!im.path) continue;
-                const saved = this.imageTemplates.get(im);
+                const saved = this.getTpl(im);
                 if (saved) imageTemplates.push({ path: im.path, tpl: JSON.parse(JSON.stringify(saved)) });
             }
             const draft = {
@@ -115,7 +115,8 @@ window.App = Object.assign(window.App || {}, {
             const ci = Math.min(Math.max(0, this.currentIdx || 0), restored.length - 1);
             this.currentIdx = ci;
             this.image = restored[ci];
-            this.template = this.image.customSettings || (draft.template ? JSON.parse(JSON.stringify(draft.template)) : this.defaultTemplate());
+            const draftTpl = this.getTpl(this.image);
+            this.template = draftTpl || (draft.template ? JSON.parse(JSON.stringify(draft.template)) : this.defaultTemplate());
             this.normalizeTemplate();
             this.invalidateStyleCaches();
             this.buildThumbnails();
@@ -151,10 +152,7 @@ window.App = Object.assign(window.App || {}, {
                 exif,
                 customSettings: null
             };
-            if (savedTpl) {
-                im.customSettings = JSON.parse(JSON.stringify(savedTpl));
-                this.imageTemplates.set(im, JSON.parse(JSON.stringify(savedTpl)));
-            }
+            if (savedTpl) this.setTpl(im, savedTpl);
             this.queueThumb(im);
             return im;
         } catch (e) { return null; }
