@@ -1219,11 +1219,6 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         const saved = this.imageTemplates.get(this.image);
         if (saved) this.template = saved;
         else this.normalizeTemplate();
-        // 拼图模式下:如果当前已启用拼图,切换照片时保持拼图配置不丢失
-        if (this.template && this.template.puzzle && this.template.puzzle.enabled) {
-            // 确保 puzzle.enabled 保持(新照片的 normalizeTemplate 可能把它设为0)
-            this.template.puzzle.enabled = 1;
-        }
         this.selectedEls = [];
         this.updateStatusBar();
         this.refreshUI();
@@ -1232,6 +1227,9 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
     },
 
     selectImage(idx) {
+        // 离开带拼图的照片时记下旧图:拼图只保存在旧图自己的预设里,切走会在状态栏提示去向
+        const prevIm = this.image;
+        const prevHadPuzzle = !!(prevIm && this.images[idx] !== prevIm && this.tplPuzzle && this.tplPuzzle());
         this.selectedIdx = [idx];
         // 普通单击/切换 = 单选:连批量勾选也一并取消,只保留当前这张
         this.batchSel = [idx];
@@ -1243,6 +1241,9 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         this.invalidateStyleCaches();
         this.buildThumbnails();
         this.afterImageSelect();
+        if (prevHadPuzzle && !(this.tplPuzzle && this.tplPuzzle())) {
+            this.setStatus('拼图保存在「' + (prevIm.name || '上一张') + '」上（点胶片条切回该照片可继续编辑）');
+        }
     },
 
     // 主照片旋转 90°(顺时针):重新生成位图替换 image.el,渲染/导出/缩略图同步生效
@@ -1282,8 +1283,12 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         let done = 0;
         const tick = (name) => { done++; this.setImportProgress(done, total, name); };
         try {
-            const results = await Promise.allSettled(images.map(async (file, i) => {
-                const r = await this.loadFile(file);
+            // 载入任务按 3 并发池跑:旧写法 Promise.allSettled(images.map(...)) 会让几十张
+            // 24MP 大图同时开跑,解码缓冲/像素位图同时驻留直接把内存顶爆(拖拽导入后卡死的来源之一)
+            const results = new Array(images.length).fill(null);
+            let next = 0;
+            const loadOne = async (i) => {
+                const r = await this.loadFile(images[i]);
                 if (!r || !r.url) { tick(images[i].name); return null; }
                 const img = new Image();
                 const loadedOk = await new Promise(res => { img.onload = () => res(true); img.onerror = () => res(false); img.src = r.url; });
@@ -1295,24 +1300,42 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
                 const useEl = oriented ? oriented.el : img;
                 const w = oriented ? oriented.w : img.naturalWidth;
                 const h = oriented ? oriented.h : img.naturalHeight;
-                const im = { el: useEl, name: images[i].name, w, h, exif, customSettings: null };
                 tick(images[i].name);
-                return im;
-            }));
+                return { el: useEl, name: images[i].name, w, h, exif, customSettings: null };
+            };
+            const worker = async () => {
+                for (;;) {
+                    const i = next++;
+                    if (i >= images.length) return;
+                    try { results[i] = await loadOne(i); }
+                    catch (e) { results[i] = null; }
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(3, images.length) }, worker));
             let loaded = 0;
             for (let i = 0; i < results.length; i++) {
-                const im = results[i].status === 'fulfilled' ? results[i].value : null;
+                const im = results[i];
                 if (!im) continue;
                 this.images.push(im);
                 this.queueThumb(im);
                 loaded++;
             }
             if (loaded) {
+                if (typeof this.scheduleDraft === 'function') this.scheduleDraft();
                 this.buildThumbnails();
-                this.template = this.defaultTemplate();
-                this.normalizeTemplate();
-                this.selectImage(this.images.length - loaded);
-                this.setStatus(`已导入 ${loaded} 张图片${skipped ? '，跳过 ' + skipped + ' 个不支持的文件' : ''}`);
+                const pk = this.tplPuzzle && this.tplPuzzle();
+                if (pk && this.image) {
+                    // 拼图进行中导入:保留当前主图与拼图模板(旧写法 defaultTemplate+selectImage 会把
+                    // 画面瞬间打回单张照片,看起来就像"拼图丢了");新图先只进胶片条,想拼进来点「重拼」或拖进格子
+                    this.saveCurrentTemplate();
+                    this.scheduleRender(true);
+                    this.setStatus(`已导入 ${loaded} 张图片，拼图保持在「${this.image.name || '当前照片'}」上（可点「重拼」把新图填进格子）`);
+                } else {
+                    this.template = this.defaultTemplate();
+                    this.normalizeTemplate();
+                    this.selectImage(this.images.length - loaded);
+                    this.setStatus(`已导入 ${loaded} 张图片${skipped ? '，跳过 ' + skipped + ' 个不支持的文件' : ''}`);
+                }
             } else if (skipped) this.setStatus('不支持的文件格式');
         } finally {
             this.finishImportProgress();
@@ -1474,6 +1497,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         for (let k = list.length - 1; k >= 0; k--) this.images.splice(list[k], 1);
         // 顺带清掉被删照片的每图模板,别让 Map 一直持有整张图的模板快照
         removed.forEach(im => this.imageTemplates.delete(im));
+        if (typeof this.scheduleDraft === 'function') this.scheduleDraft();
         this.batchSel = [];
         this.selectedIdx = [];
         this.buildThumbnails();
@@ -1547,6 +1571,16 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             this.finishImportProgress();
         }
         if (!loaded) { this.setStatus('图片加载失败'); return; }
+        if (typeof this.scheduleDraft === 'function') this.scheduleDraft();
+        const pk = this.tplPuzzle && this.tplPuzzle();
+        if (pk && this.image) {
+            // 拼图进行中导入:同 addImageFiles,保留当前主图与拼图模板,不打回单图
+            this.buildThumbnails();
+            this.saveCurrentTemplate();
+            this.scheduleRender(true);
+            this.setStatus(`已导入 ${loaded} 张图片，拼图保持在「${this.image.name || '当前照片'}」上（可点「重拼」把新图填进格子）`);
+            return;
+        }
         this.selectImage(this.images.length - loaded);
         this.setStatus('已导入 ' + loaded + ' 张图片');
     },

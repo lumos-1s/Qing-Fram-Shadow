@@ -86,6 +86,7 @@ window.App = Object.assign(window.App || {}, {
 
     undo() {
         if (!this.undoStack.length) { this.setStatus('没有可撤销的操作'); return; }
+        const hadPuzzle = !!(this.template && this.template.puzzle && this.template.puzzle.enabled);
         this.redoStack.push(this.cloneTemplate());
         this.template = this.undoStack.pop();
         this.normalizeTemplate();
@@ -93,7 +94,11 @@ window.App = Object.assign(window.App || {}, {
         this.saveCurrentTemplate();
         this.refreshUI();
         this.scheduleRender(true);
-        this.setStatus('已撤销');
+        // 撤销把拼图整个撤掉时特别提示可重做救回:saveCurrentTemplate 会立刻把这份快照写回当前图,
+        // 只有马上 Ctrl+Y 能恢复,过会儿再想起来就没了
+        const nowPuzzle = !!(this.template && this.template.puzzle && this.template.puzzle.enabled);
+        if (hadPuzzle && !nowPuzzle) this.setStatus('已撤销：拼图已撤掉，按 Ctrl+Y 可恢复');
+        else this.setStatus('已撤销');
     },
 
     redo() {
