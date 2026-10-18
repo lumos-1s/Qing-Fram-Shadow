@@ -2,13 +2,16 @@
 window.App = Object.assign(window.App || {}, {
     _draftKey: 'qfs_draft_v1',
     _draftTimer: null,
+    _draftDirty: false,
 
     initDraft() {
         if (typeof localStorage === 'undefined') return;
         this.scheduleDraft();
         window.addEventListener('pagehide', () => this.saveDraftNow());
         document.addEventListener('visibilitychange', () => { if (document.hidden) this.saveDraftNow(); });
-        setInterval(() => this.saveDraftNow(), 30000);
+        // 30 秒兜底只在有变更时写:旧写法无条件写,闲置时也反复同步落盘(leveldb flush),
+        // 大图会话放久后每次写都是一次整库落盘,是"放着没动回来就卡"的贡献者之一
+        setInterval(() => { if (this._draftDirty) this.saveDraftNow(); }, 30000);
         this.checkDraftRestore();
     },
 
@@ -30,8 +33,24 @@ window.App = Object.assign(window.App || {}, {
     },
 
     scheduleDraft() {
+        this._draftDirty = true;
         if (this._draftTimer) return;
         this._draftTimer = setTimeout(() => { this._draftTimer = null; this.saveDraftNow(); }, 1500);
+    },
+
+    // 剥离草稿树上超长的 data: 内嵌串(模板可携带元素图/自定义图标),返回剥离个数
+    _stripDraftData(node) {
+        if (!node || typeof node !== 'object') return 0;
+        let n = 0;
+        for (const k of Object.keys(node)) {
+            const v = node[k];
+            if (typeof v === 'string') {
+                if (v.length > 65536 && v.startsWith('data:')) { node[k] = ''; n++; }
+            } else if (v && typeof v === 'object') {
+                n += this._stripDraftData(v);
+            }
+        }
+        return n;
     },
 
     saveDraftNow() {
@@ -52,7 +71,18 @@ window.App = Object.assign(window.App || {}, {
                 template: tpl,
                 imageTemplates
             };
-            try { localStorage.setItem(this._draftKey, JSON.stringify(draft)); }
+            let raw = JSON.stringify(draft);
+            // 体积护栏:超 2MB 先剥掉大 data: 串再写;剥完仍超 8MB 就放弃本次写入(留诊断日志),
+            // 不让一步超大 localStorage.setItem 卡住主线程
+            const TRIM_AT = 2 * 1024 * 1024, SKIP_AT = 8 * 1024 * 1024;
+            if (raw.length > TRIM_AT) {
+                if (this._stripDraftData(draft)) raw = JSON.stringify(draft);
+                if (raw.length > SKIP_AT) {
+                    if (this.diagLog) this.diagLog(`草稿体积 ${(raw.length / 1048576).toFixed(1)}MB 超过上限，跳过本次保存`);
+                    return;
+                }
+            }
+            try { localStorage.setItem(this._draftKey, raw); this._draftDirty = false; }
             catch (e) { /* 超配额时静默 */ }
         } catch (e) { /* 忽略草稿写入错误 */ }
     },
@@ -94,6 +124,7 @@ window.App = Object.assign(window.App || {}, {
             this.scheduleRender(true);
             const btn = document.getElementById('btnRestoreDraft');
             if (btn) btn.style.display = 'none';
+            this.scheduleDraft();
             this.setStatus('已恢复上次会话草稿（' + restored.length + ' 张照片）');
         } catch (e) { /* 恢复失败不阻塞启动 */ }
     },
