@@ -55,6 +55,41 @@
 
 ---
 
+## 六、导出链体检（2026-10-19，只量未改）
+
+> 工具：`tools/measure-export.js`（`node tools/run-electron.js tools/measure-export.js`）。
+> 同一张画布上把「canvas → toDataURL(base64)」与「canvas → toBlob → arrayBuffer」各跑一遍。
+> 测试进程带 `--disable-gpu`（软件光栅），绝对耗时偏慢；看的是两条路的相对差。
+> 画布内容为渐变 + 4 万块噪点 + 文字（模拟高熵照片），JPEG q92。
+
+| 尺寸 | 像素 | toDataURL | toBlob | base64 体积 | blob 体积 | 膨胀 | 像素一致 | 字节一致 |
+|---|---|---|---|---|---|---|---|---|
+| 6000×4000 | 24.0 MP | 160.2ms | **107.0ms** | 2.3MB | 1.7MB | 1.333× | 是 | **是** |
+| 8192×5461 | 44.7 MP | 272.1ms | **176.9ms** | 2.7MB | 2.0MB | 1.333× | 是 | **是** |
+
+**结论（三条，均已实测）**
+
+1. **同一画布上两条路逐字节相同**（24MP/44.7MP 都是；同一画布两次 `toDataURL` 也逐字节一致 ⇒ 编码确定）。
+   即 OPTIMIZATIONS「刻意没做 #5」里「换 `toBlob` 可能静默丢 sRGB」的担忧在实测中不成立：JPEG 标注
+   （APP0/JFIF、APP2/ICC_PROFILE 等段清单）两条路完全一致 —— 换路不改产物，不需要重建像素基线。
+2. **编码耗时 −33%～−35%**（160→107ms / 272→177ms），且 `toBlob` 是异步接口：长边 8192 的批量导出
+   不会把渲染线程按百毫秒级长时间独占（现状 `toDataURL` 是同步调用）。
+3. **负载小三分之一**：base64 字符串恒比原始字节大 1.333×（每张多搬 0.6–0.7MB 字符串），
+   IPC 往返 base64 5.5/7.4ms vs Uint8Array 3.8/4.9ms，主进程 `Buffer.from(base64)` 另花 0.6–1.1ms。
+   `blob.arrayBuffer()` 本身仅 1.6–1.9ms。
+
+**若切（需要拍板，改动点已探明，风险低）**
+
+- 渲染层 `app-export.js` 两处：`exportImage`（`files[n].data = src.toDataURL(...).split(',')[1]`）与
+  `_gridFiles`（逐块 `toDataURL`）→ 改 `await toBlob + arrayBuffer`，负载传 `Uint8Array`。
+- 主进程 `index.js` 写盘 handler：`Buffer.from(f.data, 'base64')`（exif-write.js `applyExifToExportItem`）
+  改为 `Buffer.from(arr.buffer, byteOffset, byteLength)`；`.qfs` 与其它 base64 路径不动。
+- EXIF 移植、`freeFilePath`、进度事件都不受影响（两条路之后完全同路径）。
+- 注：**本机测试窗口**的画布编码带 APP2 ICC_PROFILE(472B)，而应用画布在 `test:srgb` 里测得 0 字节 ICC ——
+  与页面色彩配置有关；但两条路在**同一画布**上标注与字节完全一致，故与本次取舍无关。
+
+---
+
 ## 验证命令
 
 ```powershell
@@ -85,7 +120,7 @@ $env:STRESS_IN='<照片目录>'; $env:STRESS_OUT='<可写目录>'; npx electron 
 **B. 需要先拿到 `npm test` 基线才敢动**
 
 4. **每帧全模板深克隆**（`app-state.js:7` → `app.js` `cloneTemplate`，以及 `app-render.js:196`）：UI 组认定的单项最大收益（带 logoElements 时 0.5–3ms/帧）。但它有 **6 个读取点**（切图 1189 / 缩略图 1524 / 导出 `app-export.js:207` / 草稿 `app-draft.js:44` / 同步 `app-templates.js:567` / 帧内判定 `app-render.js:199`），延迟克隆漏接任何一个都会变成"编辑完快速切走再切回，改动没了"的**静默数据丢失**。
-5. **导出改 `toBlob` → `Uint8Array`**：8192 每张约省 35–45MB 峰值与一趟 base64。风险：可能与 `toDataURL` 的编码字节不同（**静默丢 sRGB**，而那正是 `test-export-srgb` 要防的"微信发灰"）；但那条测试跑的是 `design/regress.html` 自调 `toDataURL` 的路径，**不经过 `app-export`,抓不到这个回归**。
+5. **导出改 `toBlob` → `Uint8Array`**：8192 每张约省 35–45MB 峰值与一趟 base64。风险：可能与 `toDataURL` 的编码字节不同（**静默丢 sRGB**，而那正是 `test-export-srgb` 要防的"微信发灰"）；但那条测试跑的是 `design/regress.html` 自调 `toDataURL` 的路径，**不经过 `app-export`,抓不到这个回归**。**（2026-10-19 实测已排雷：同一画布两条路逐字节相同、标注一致、编码 −33%，见第六节；等拍板即可切）**
 6. **`willReadFrequently`**：可能让 CPU/GPU 光栅差 1 LSB —— 那等于改像素。必须先过 869 键基线。
 
 **C. 已评估后判定不划算**
