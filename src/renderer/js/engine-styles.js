@@ -4510,27 +4510,24 @@ const w = natW;
             return;
         }
 
-    // 富士水印: 深色圆角卡片+照片cover+底部品牌名+参数
+    // 富士水印: 白底+照片(支持缩放/偏移,放大可盖过白边)+底部品牌名+参数
     function styleFujifilm(img, size, g, iw, ih, S, withBrand, showParams) { showParams = showParams !== false;
         const outerPad = Math.max(15, Math.round(size * 0.5));
         const w = iw + outerPad * 2;
         const h = ih + outerPad * 2;
         // 白外底
         g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
-        // 照片角落圆角(cornerConfig):卡片圆角与照片取同一圆角,避免照片圆角外侧露出深色卡底(黑色楔形)
-        const cx = outerPad, cy = outerPad, cw = iw, ch = ih;
+        // 照片完整显示(支持缩放/偏移):不垫深色卡底——照片缩小/偏移后露出的是白底(与「参数横条」一致);
+        // 放大时可盖过白边、裁切边界=画布外沿(旧实现被裁在卡片矩形内,白边永远在、缩小露深蓝 #0d1b2a)
+        const cx = outerPad, cy = outerPad;
         const photoCr = Math.min(S.cornerAll || 0, Math.min(iw, ih) / 2);
-        const cardR = Math.round(photoCr);
-        g.fillStyle = '#0d1b2a';
-        if (typeof g.roundRect === 'function') { g.beginPath(); g.roundRect(cx, cy, cw, ch, cardR); g.fill(); }
-        else g.fillRect(cx, cy, cw, ch);
-        // 照片完整显示(支持缩放/偏移)
         const sc = S.imgScale || 1;
         const dw = iw * sc, dh = ih * sc;
         const dx = cx + (iw - dw) / 2 + (S.imgOffsetX || 0);
         const dy = cy + (ih - dh) / 2 + (S.imgOffsetY || 0);
         g.save();
-        if (typeof g.roundRect === 'function') { g.beginPath(); g.roundRect(cx, cy, cw, ch, photoCr); g.clip(); }
+        // 有圆角时裁到照片自身矩形(圆角跟着照片走);无圆角不裁,溢出交给画布外沿
+        if (photoCr > 0 && typeof g.roundRect === 'function') { g.beginPath(); g.roundRect(dx, dy, dw, dh, photoCr); g.clip(); }
         g.drawImage(img, dx, dy, dw, dh);
         g.restore();
         // 文字大小(从面板参数):参数字号 × 参数缩放;品牌字再乘 品牌大小(近印象系列映射)
@@ -4539,7 +4536,8 @@ const w = natW;
         g.textAlign = 'center';
         g.textBaseline = 'alphabetic';
         const bottomPad = Math.max(20, Math.round(ih * 0.06));
-        let ty = cy + ih - bottomPad;
+        // 文字锚点跟着照片下沿走(照片缩小时白字仍落在照片上);放大时取「原卡片下沿」与「照片下沿」的中点=下沉量减半
+        let ty = (Math.min(cy + ih, dy + dh) + dy + dh) / 2 - bottomPad;
         if (withBrand && S.cam && !brandHidden(S)) {
             // 品牌字体统一为印象毛玻璃同款:Georgia 衬线 + 字间距(仅品牌,参数行不变)
             g.font = 'bold ' + fBrand + "px Georgia, 'Times New Roman', serif";
