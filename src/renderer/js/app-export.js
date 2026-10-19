@@ -395,6 +395,7 @@ window.App = Object.assign(window.App || {}, {
                 {
                     const bar0 = document.getElementById('progressBar');
                     if (bar0) bar0.style.width = '2%';
+                    this.progressWrap(true);
                     const label0 = document.getElementById('exportProgressText');
                     if (label0) { label0.style.display = ''; label0.textContent = '写盘 0/' + allFiles.length + ' · 九宫格'; }
                 }
@@ -429,6 +430,7 @@ window.App = Object.assign(window.App || {}, {
             {
                 const bar0 = document.getElementById('progressBar');
                 if (bar0) bar0.style.width = '2%';
+                this.progressWrap(true);
                 const label0 = document.getElementById('exportProgressText');
                 if (label0) { label0.style.display = ''; label0.textContent = '写盘 0/' + files.length + ' · 九宫格'; }
             }
@@ -648,8 +650,18 @@ window.App = Object.assign(window.App || {}, {
         const pct = Math.round(((n + 1) / total) * 100);
         const bar = document.getElementById('progressBar');
         if (bar) bar.style.width = pct + '%';
+        this.progressWrap(true);
         const label = document.getElementById('exportProgressText');
         if (label) { label.style.display = ''; label.textContent = `导出中 ${n + 1}/${total} · ${pct}% · ${String(name || '').replace(/\.[^.]+$/, '')}`; }
+    },
+    // 进度条容器:空闲时整条隐藏。此前它常驻一条 120×6 的空轨道,像状态栏里多了个坏滑块。
+    // 必须写显式 display 值:不能写 ''(清掉内联样式会回落到 CSS 的 display:none,进度条就永远不出来了)。
+    // on 时递增序号,供 resetProgress 判断"这 800ms 里有没有新导出接管"。
+    progressWrap(on) {
+        const wrap = document.querySelector('.progress-wrap');
+        if (!wrap) return;
+        if (on) { this._progressSeq = (this._progressSeq || 0) + 1; wrap.style.display = 'block'; }
+        else wrap.style.display = 'none';
     },
     // 导出完成后在资源管理器中定位产物:单文件选中该文件,目录模式打开目录
     revealExport(loc, okCount, aborted) {
@@ -733,7 +745,13 @@ window.App = Object.assign(window.App || {}, {
 
     resetProgress() {
         const bar = document.getElementById('progressBar');
-        if (bar) setTimeout(() => bar.style.width = '0', 800);
+        const seq = this._progressSeq || 0;
+        // 条先缩回 0(.2s 过渡),再整条收起;800ms 内若有新导出接管(序号变了),则把手让开
+        if (bar) setTimeout(() => {
+            if ((this._progressSeq || 0) !== seq) return;
+            bar.style.width = '0';
+            this.progressWrap(false);
+        }, 800);
         const btnCancel = document.getElementById('btnExportCancel');
         if (btnCancel) btnCancel.style.display = 'none';
         const label = document.getElementById('exportProgressText');

@@ -299,6 +299,7 @@ window.App = {
             this.template.signBgBlur = chkBB.checked ? 1 : 0;
             const rowBI = document.getElementById('rowBgBlurInt');
             if (rowBI) rowBI.style.display = chkBB.checked ? '' : 'none';
+            this.syncEmptyGroups();
             this.onSettingChanged();
         });
         const slBI = document.getElementById('slBgBlurInt');
@@ -935,6 +936,37 @@ window.App = {
         for (const id in rows) {
             const el = document.getElementById(id);
             if (el) el.style.display = rows[id] ? '' : 'none';
+        }
+        this.syncEmptyGroups();
+    },
+
+    // 行全被能力表隐藏时,把整组一起收起 —— 否则右侧只剩一个光标题的空卡片。
+    // 实测出现率:「品牌行」73/85、「背景模糊」71/85、「签名/头像」66/85、「照片」39/85、「参数文字」32/85,
+    // 用户看到的就是"面板像没加载完"。
+    // 只收起"我们自己收起的"组:组可能由别的逻辑管着(.ctl-grp-light 按模式、#vbCaptionEditor 按状态),
+    // 所以用 data 标记记账 —— 不碰它们,也就不存在误恢复。
+    // 判可见用 computedStyle 而不是 offsetParent:面板本身隐藏时,行/组的 display 仍是各自的值。
+    syncEmptyGroups() {
+        const groups = document.querySelectorAll('.insp-body .param-group');
+        for (let i = 0; i < groups.length; i++) {
+            const g = groups[i];
+            const shown = (el) => window.getComputedStyle(el).display !== 'none';
+            let content = false;
+            const rows = g.querySelectorAll('.param-row');
+            for (let k = 0; k < rows.length && !content; k++) if (shown(rows[k])) content = true;
+            // 行之外的内容(按钮行/提示框/模板列表…)可见时,组也得留着
+            for (let k = 0; k < g.children.length && !content; k++) {
+                const el = g.children[k];
+                if (el.classList.contains('pg-title') || el.classList.contains('param-row')) continue;
+                if (shown(el)) content = true;
+            }
+            const collapsed = g.dataset.emptyCollapsed === '1';
+            if (content) {
+                if (collapsed) { g.style.display = ''; delete g.dataset.emptyCollapsed; }
+            } else if (!collapsed && g.style.display !== 'none') {
+                g.style.display = 'none';
+                g.dataset.emptyCollapsed = '1';
+            }
         }
     },
 

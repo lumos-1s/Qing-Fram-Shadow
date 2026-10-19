@@ -100,7 +100,7 @@ body {
     box-shadow: var(--shadow-sm), var(--shadow-rim);
     z-index: 3;
 }
-.brand { display: flex; align-items: center; gap: 9px; padding-right: 6px; }
+.brand { display: flex; align-items: center; gap: 9px; padding-right: 6px; flex: 0 0 auto; }
 .brand-mark {
     width: 30px; height: 30px; border-radius: 9px;
     background: var(--primary-grad);
@@ -108,7 +108,7 @@ body {
     box-shadow: 0 4px 12px var(--primary-soft), inset 0 1px 0 rgba(255,255,255,.25);
 }
 .brand-mark svg { display: block; }
-.brand-name { font-size: 14.5px; font-weight: 700; letter-spacing: .5px; display: flex; align-items: baseline; gap: 6px; }
+.brand-name { font-size: 14.5px; font-weight: 700; letter-spacing: .5px; display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
 .brand-sub { font-size: 9.5px; color: var(--text-3); letter-spacing: .5px; }
 
 .toolbar-group {
@@ -117,6 +117,7 @@ body {
     background: var(--surface-alt);
     border-radius: 12px;
     border: 1px solid var(--border);
+    flex: 0 0 auto;
 }
 .toolbar-group.right { background: transparent; border: none; padding: 0; }
 .toolbar-group.zoom-group { background: transparent; border: 1px solid var(--border); padding: 4px 6px; }
@@ -163,6 +164,23 @@ html.dark #btnTheme .ico-moon { display: none; }
 html.dark .tbtn.primary { color: #0c1914; }
 .tbtn.primary:hover { filter: brightness(1.07); background: var(--primary-grad); color: #fff; }
 .tbtn.primary:active { box-shadow: 0 2px 6px var(--primary-soft); transform: scale(.97); }
+
+/* ── 窄窗口:顶栏按优先级逐级收起次要控件 ──
+   窗口最小 1000px,而顶栏满载实测 1223px:没有这组规则时,品牌名会被压成竖排、
+   右侧整组按钮直接被裁掉(实测 1000px 下 toolbar.scrollWidth 1135 > clientWidth 987)。
+   收起顺序:品牌副标题 + 缩放滑杆 → 缩放百分号 → 撤销/重做/重置/随机的文字(留图标+tooltip)。
+   缩放本身不受影响:画布滚轮缩放、Ctrl+0 适应窗口、适应按钮都还在。 */
+@media (max-width: 1240px) {
+    .brand-sub { display: none; }
+    #zoomRange { display: none; }
+}
+@media (max-width: 1080px) {
+    .toolbar-group { gap: 2px; padding: 4px 5px; }
+    .zoom-badge { display: none; }
+}
+@media (max-width: 1010px) {
+    #btnUndo, #btnRedo, #btnReset, #btnRandom { font-size: 0; gap: 0; padding: 6px 8px; }
+}
 
 .inline-select {
     border: 1px solid var(--border-strong); background: var(--surface-alt);
@@ -753,7 +771,7 @@ html.dark .icon-pool .icon-cell {
 .st-btn svg { flex: 0 0 auto; }
 .st-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
 .st-btn:active { transform: scale(.96); }
-.progress-wrap { width: 120px; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.progress-wrap { width: 120px; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; display: none; }
 .progress-bar { height: 100%; width: 0; background: var(--primary-grad); transition: width .2s; border-radius: 3px; }
 
 /* ═══ 登录弹窗 ═══ */
