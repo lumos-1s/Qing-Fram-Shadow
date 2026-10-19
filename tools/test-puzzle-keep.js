@@ -10,6 +10,9 @@
 //   ③ 草稿瘦身 —— 30 秒兜底只在 _draftDirty 时写;超 2MB 剥大 data: 串(只动副本);
 //      剥完仍超 8MB 跳过写入并记诊断日志。
 //   ④ 导入并发池 —— 加载任务并发数有界(=3),几十张大图不再同时开跑。
+//   ⑤ 拼图主导出尺寸 —— 顶部「导出」在“原图尺寸”档(sizeOpt=0)也必须按 4000px
+//      长边渲染;旧行为:拼图版式坐标固定 1000 单位、不设 exportScale,画布停在
+//      1000~3000px,默认 JPG q92 只有几百 KB。
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -168,6 +171,45 @@ const RUN = `(async () => {
     A.diagLog = origDiag;
     add(rawBefore === rawAfter && logs.some(l => /跳过/.test(l)),
       '③ 剥离后仍超 8MB:跳过写入并记诊断日志', 'skip=' + skipMs + 'ms ' + (logs.find(l => /跳过/.test(l)) || logs.join('|').slice(0, 80)));
+
+    // ── ⑤ 主导出拼图:原图尺寸档 → 4000px 长边 ──
+    // 本用例无 preload,window.qingframe 不存在;在渲染进程里补一个最小桩接住
+    // 保存位置/写盘,让 exportImage 走完整真实流程。
+    let EXPORTED = null;
+    window.qingframe = Object.assign({}, window.qingframe || {}, {
+      pickExportLocation: async () => ({ mode: 'dir', dir: 'qfs-test-export' }),
+      writeExportFiles: async (payload) => {
+        EXPORTED = (payload && payload.files) || [];
+        return { ok: EXPORTED.length, fail: 0 };
+      },
+      showItemInFolder: async () => ({ ok: true })
+    });
+    const tpl5 = A.defaultTemplate();
+    tpl5.puzzle.enabled = 1;
+    tpl5.puzzle.layout = 'grid4';
+    tpl5.puzzle.gap = 6;
+    tpl5.puzzle.bgMode = 0;
+    tpl5.puzzle.slots = { 0: { imageIndex: 0 }, 1: { imageIndex: 0 }, 2: { imageIndex: 0 }, 3: { imageIndex: 0 } };
+    A.template = JSON.parse(JSON.stringify(tpl5));
+    im0.customSettings = JSON.parse(JSON.stringify(tpl5));
+    A.imageTemplates.set(im0, im0.customSettings);
+    A.currentIdx = 0; A.image = im0;
+    A.dom.selFormat.value = 'jpeg';
+    A.dom.selExportSize.value = '0';
+    A.dom.slExportQuality.value = '92';
+    A.dom.chkKeepExif.checked = false;
+    await A.exportImage();
+    add(/导出完成/.test(A.statusMsg || ''), '⑤ 主导出拼图(原图尺寸档)完成', A.statusMsg || '(空)');
+    const f5 = EXPORTED && EXPORTED[0];
+    let dim5 = null;
+    if (f5 && f5.data) {
+      const im5 = new Image();
+      await new Promise(r => { im5.onload = r; im5.onerror = r; im5.src = 'data:image/jpeg;base64,' + f5.data; });
+      dim5 = { w: im5.naturalWidth, h: im5.naturalHeight };
+    }
+    add(!!(dim5 && Math.max(dim5.w, dim5.h) === 4000),
+      '⑤ 主导出拼图原图尺寸档 → 长边 4000px(旧:1000~3000)',
+      dim5 ? dim5.w + 'x' + dim5.h + ' / ' + Math.round(f5.data.length * 0.75 / 1024) + 'KB' : '未捕获导出数据');
   } catch (e) {
     add(false, '探针执行异常', (e && e.message) || String(e));
   } finally {
@@ -199,7 +241,7 @@ app.whenReady().then(async () => {
         if (!ok) fails.push(label);
     };
 
-    console.log('拼图保活:导入保拼图/提示去向/undo 提示 + 导出异常还原 + 草稿脏写与瘦身 + 导入并发池');
+    console.log('拼图保活:导入保拼图/提示去向/undo 提示 + 导出异常还原 + 草稿脏写与瘦身 + 导入并发池 + 主导出尺寸');
     console.log('─'.repeat(90));
 
     let res = null;

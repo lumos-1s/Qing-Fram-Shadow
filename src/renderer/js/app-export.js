@@ -134,7 +134,10 @@ window.App = Object.assign(window.App || {}, {
                     const targetPx = sizeOpt > 0 ? sizeOpt : Math.max(1, im.w || 1, im.h || 1);
                     this.displayMax = targetPx;
                     // 选了大尺寸选项时交出目标长边,由引擎上采样到该值(小图也能导出到所选尺寸)
+                    // 拼图版式坐标固定在 1000 单位,不给 exportScale 就停在 1000~3000px;
+                    // “原图尺寸”对多图拼图没有单一来源,沿用拼图页签通道的 4000px。
                     if (sizeOpt > 0) this.exportScale = sizeOpt;
+                    else if (puzzle) this.exportScale = 4000;
                     await new Promise(res => requestAnimationFrame(() => {
                         if (puzzle && window.__renderPuzzle) window.__renderPuzzle(this, false, true);
                         else window.__render(this, false);
