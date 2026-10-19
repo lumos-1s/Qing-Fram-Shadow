@@ -139,8 +139,8 @@ app.whenReady().then(() => {
   <title>Qing-Fram-Shadow-web Releases</title>
   <entry>
     <title>新版本可用</title>
-    <link href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/tag/v0.1.11"/>
-    <content type="html">拼图四修复(导出防护/草稿/导入保留/撤销提示), 复古登机牌与真票券票根等风格重做, 批量删除+右键旋转 90°</content>
+    <link href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/tag/v0.1.12"/>
+    <content type="html">富士白卡品牌跟随 EXIF 并改用等高数字字体, 拼图主导出统一 4000px, 参数条智能反差与数据源逐字段合并, 富士水印白底/边界修复</content>
   </entry>
 </feed>`;
     const patchUpdateHttpRequests = () => {
