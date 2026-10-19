@@ -837,6 +837,58 @@ function textLineAnchor(textLine, cw, ch, card, cardY, cardH) {
     return [tx, ty];
 }
 
+// ── 智能反差 ──
+// 采样文字背后的实际像素,决定文字用什么颜色、要不要一圈反色边线。
+// 取样方式:把目标区域先缩到 32×8 再 getImageData —— 直接读原区域的话,6000px 宽的导出
+// 画布上一趟要搬 MB 级像素,而这里只需要几十个采样点。
+const LM_W = 32, LM_H = 8;
+let _lmCv = null, _lmCtx = null;
+// WCAG 相对亮度的线性化查找表(γ≈2.2,够用且比 pow 便宜)
+const LM_LUT = (() => { const t = new Float64Array(256); for (let i = 0; i < 256; i++) t[i] = Math.pow(i / 255, 2.2); return t; })();
+
+// 纯决策:meanY=平均相对亮度(0..1)、dev=编码亮度的平均绝对偏差(0..255,越大底越花)。
+// 黑/白两边对比度的交叉点在 Y≈0.179(WCAG 公式解出来的),故阈值取 0.18;
+// 底花(dev>30)时光靠换色保证不了可读性,再描一圈反色边线。
+function contrastChoice(meanY, dev) {
+    const light = !(meanY > 0.18);          // 暗底 → 白字
+    return { light, outline: dev > 30 };
+}
+
+// 采样:返回 { meanY, dev, n } 或 null(读不到像素:无 DOM 桩 / 跨域画布 / 尺寸非法)。
+// 绝不抛异常、绝不改动传入 ctx 的任何状态 —— 调用方拿不到结果就按原行为走。
+function backdropStats(ctx, x, y, w, h) {
+    try {
+        const cv = ctx && ctx.canvas;
+        if (!cv || !(w > 0) || !(h > 0)) return null;
+        const sx = Math.max(0, Math.floor(x)), sy = Math.max(0, Math.floor(y));
+        const sw = Math.min(cv.width - sx, Math.ceil(w)), sh = Math.min(cv.height - sy, Math.ceil(h));
+        if (sw <= 0 || sh <= 0) return null;
+        if (!_lmCv) {
+            _lmCv = document.createElement('canvas');
+            _lmCv.width = LM_W; _lmCv.height = LM_H;
+            _lmCtx = _lmCv.getContext('2d', { willReadFrequently: true });
+        }
+        _lmCtx.clearRect(0, 0, LM_W, LM_H);
+        _lmCtx.drawImage(cv, sx, sy, sw, sh, 0, 0, LM_W, LM_H);
+        const d = _lmCtx.getImageData(0, 0, LM_W, LM_H).data;
+        const n = d.length / 4;
+        if (!n) return null;
+        let sumY = 0, sumL = 0, dev = 0;
+        const lums = new Float64Array(n);
+        for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+            const a = d[i + 3] / 255;
+            // 半透明像素按「白底」折算:JPEG 导出会垫白,透明区不该被当成纯黑
+            const r = d[i] * a + 255 * (1 - a), g = d[i + 1] * a + 255 * (1 - a), b = d[i + 2] * a + 255 * (1 - a);
+            const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            sumY += 0.2126 * LM_LUT[Math.round(r)] + 0.7152 * LM_LUT[Math.round(g)] + 0.0722 * LM_LUT[Math.round(b)];
+            sumL += l; lums[p] = l;
+        }
+        const meanL = sumL / n;
+        for (let p = 0; p < n; p++) dev += Math.abs(lums[p] - meanL);
+        return { meanY: sumY / n, dev: dev / n, n };
+    } catch (e) { return null; }
+}
+
 // 文字行绘??原版 drawTextLine)
 /* exported drawTextLine */ function drawTextLine(ctx, line, cw, ch, card, cardY, cardH) {
     ctx.save();
@@ -844,15 +896,37 @@ function textLineAnchor(textLine, cw, ch, card, cardY, cardH) {
     ctx.font = `${line.fontWeight || 400} ${fs}px "${line.fontFamily || 'Microsoft YaHei'}"`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = rgba(parseColor(line.colorHex, line.opacity));
+    let fill = rgba(parseColor(line.colorHex, line.opacity));
+    let outline = null;
     const anchor = textLineAnchor(line, cw, ch, card || false, cardY || 0, cardH || 0);
+    // 智能反差(仅显式开启的行,如 EXIF 水印):按文字实际覆盖的区域取色
+    if (line.autoContrast) {
+        const tw = Math.max(8, ctx.measureText(line.text).width);
+        const st = backdropStats(ctx, anchor[0] - tw / 2, anchor[1] - fs, tw, fs * 1.4);
+        if (st) {
+            const pick = contrastChoice(st.meanY, st.dev);
+            const a = clamp((line.opacity == null ? 100 : line.opacity) / 100, 0, 1);
+            fill = pick.light ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`;
+            if (pick.outline) outline = pick.light ? `rgba(0,0,0,${a * 0.5})` : `rgba(255,255,255,${a * 0.5})`;
+        }
+    }
+    ctx.fillStyle = fill;
+    const paint = (tx, ty) => {
+        if (outline) {
+            ctx.strokeStyle = outline;
+            ctx.lineWidth = Math.max(1, Math.round(fs * 0.06));
+            ctx.lineJoin = 'round';
+            ctx.strokeText(line.text, tx, ty);
+        }
+        ctx.fillText(line.text, tx, ty);
+    };
     const rot = line.rotation || 0;
     if (rot !== 0) {
         ctx.translate(anchor[0], anchor[1]);
         ctx.rotate(rot * Math.PI / 180);
-        ctx.fillText(line.text, 0, 0);
+        paint(0, 0);
     } else {
-        ctx.fillText(line.text, anchor[0], anchor[1]);
+        paint(anchor[0], anchor[1]);
     }
     ctx.restore();
 }
@@ -882,6 +956,7 @@ function buildExifLines(template, image) {
         align: 'bottom',
         fontFamily: 'Microsoft YaHei',
         fontWeight: 400,
+        autoContrast: 1,
     }];
 }
 
@@ -947,10 +1022,27 @@ function drawExifStrip(ctx, text, stripTop, cw, ch) {
     const w = ctx.measureText(text).width;
     if (w > avail && w > 0) fs = Math.max(minFs, Math.round(fs * avail / w));
     ctx.font = font(fs);
+    // 智能反差:参数条压在纯白留白上是黑字;换成深色/花纹理填充后,原来的固定黑字会消失。
+    // 采样留白条的实际颜色:亮底黑字、暗底白字;底花(偏差大)再描一圈反色边线。
+    let stripFill = 'rgba(0,0,0,1)';
+    let stripOutline = null;
+    const st = backdropStats(ctx, 0, stripTop || 0, cw, stripH);
+    if (st) {
+        const pick = contrastChoice(st.meanY, st.dev);
+        stripFill = pick.light ? 'rgba(255,255,255,1)' : 'rgba(0,0,0,1)';
+        if (pick.outline) stripOutline = pick.light ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)';
+    }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = 'rgba(0,0,0,1)';
-    ctx.fillText(text, cw / 2, stripTop + stripH / 2 + fs * 0.06);
+    const ty = stripTop + stripH / 2 + fs * 0.06;
+    if (stripOutline) {
+        ctx.strokeStyle = stripOutline;
+        ctx.lineWidth = Math.max(1, Math.round(fs * 0.06));
+        ctx.lineJoin = 'round';
+        ctx.strokeText(text, cw / 2, ty);
+    }
+    ctx.fillStyle = stripFill;
+    ctx.fillText(text, cw / 2, ty);
 }
 
 // ── 卡片样式(原版 renderCardStyle:独立管线,不画图层)──

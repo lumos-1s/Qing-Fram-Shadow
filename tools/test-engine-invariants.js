@@ -37,7 +37,7 @@ const ENGINE_SRC = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer',
 let Engine;
 try {
     Engine = new Function('window', 'document', ENGINE_SRC + `
-;return { parseColor, rgba, grainTile, GRAIN_TILE_CACHE, GRAIN_TILE_ORDER, GRAIN_TILE_MAX, clamp };`
+;return { parseColor, rgba, grainTile, GRAIN_TILE_CACHE, GRAIN_TILE_ORDER, GRAIN_TILE_MAX, clamp, contrastChoice };`
     )(windowStub, documentStub);
 } catch (e) {
     console.error('加载 engine.js 失败(可能需要补 DOM 桩):', e && e.message);
@@ -427,6 +427,28 @@ console.log('─'.repeat(72));
     S.currentIdx = 0; S.image = S.images[0]; S.template = { templateName: '单图' };
     S.syncBorderTo(1);
     ok(S.getTpl(S.images[1]).templateName === '单图', '⑨ 单张同步走同一核心且不弹确认');
+}
+
+/* ⑩ 智能反差:黑白取色的翻转点、花底描边阈值 */
+{
+    const white = Engine.contrastChoice(1.0, 0);
+    ok(white.light === false && white.outline === false, '⑩ 纯白底:黑字、无描边');
+    const dark = Engine.contrastChoice(0.02, 0);
+    ok(dark.light === true && dark.outline === false, '⑩ 深色底:白字、无描边');
+    // 0..1 全区间只翻转一次(不存在反复横跳)
+    let flips = 0, prev = null;
+    for (let y = 0; y <= 1.0001; y += 0.01) {
+        const light = Engine.contrastChoice(y, 0).light;
+        if (prev !== null && light !== prev) flips++;
+        prev = light;
+    }
+    ok(flips === 1, '⑩ 选色在 0..1 亮度区间只翻转一次', 'flips=' + flips);
+    ok(Engine.contrastChoice(0.181, 0).light === false && Engine.contrastChoice(0.18, 0).light === true,
+        '⑩ 翻转点 = 0.18(临界值取白字)');
+    ok(Engine.contrastChoice(0.5, 30).outline === false && Engine.contrastChoice(0.5, 31).outline === true,
+        '⑩ 花底阈值 30:不花不描边,超过才描边');
+    ok(Engine.contrastChoice(0.05, 99).light === true && Engine.contrastChoice(0.05, 99).outline === true,
+        '⑩ 暗底 + 花底:白字 + 反色边线');
 }
 
 console.log('─'.repeat(72));
