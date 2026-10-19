@@ -96,6 +96,49 @@ app.whenReady().then(() => {
             ms
         ))
     ]);
+    // 检查环节的镜像优选:检查请求固定按 GH_PROXIES 顺序走,首选镜像一旦劣化(实测 2026-10:
+    // ghproxy.net 对 releases/latest 只回几字节垃圾),electron-updater 会把解析失败报成
+    // "Cannot parse releases feed: Unable to find latest version on GitHub"。
+    // 检查前并行探测各镜像,按列表顺序取第一个返回合法 JSON(tag_name)的写进 activeProxy;
+    // 全部不可用则维持原顺序(检查照旧失败,推给 UI 的文案会被翻译成可读版本)。
+    const CHECK_LATEST_URL = 'https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/latest';
+    const CHECK_PROBE_TIMEOUT_MS = 5000;
+    const probeProxyForCheck = async () => {
+        if (GH_PROXIES.length < 2) return; // 用户用 QINGFRAME_PROXY 指定了镜像时尊重其选择
+        const probe = async (proxy) => {
+            const ac = new AbortController();
+            const timer = setTimeout(() => ac.abort(), CHECK_PROBE_TIMEOUT_MS);
+            try {
+                const res = await net.fetch(proxy + '/' + CHECK_LATEST_URL, {
+                    headers: { Accept: 'application/json' },
+                    signal: ac.signal
+                });
+                if (!res.ok) return null;
+                const info = JSON.parse(await res.text());
+                return (info && info.tag_name) ? proxy : null;
+            } catch (_) {
+                return null;
+            } finally {
+                clearTimeout(timer);
+            }
+        };
+        const results = await Promise.all(GH_PROXIES.map((proxy) => probe(proxy)));
+        const healthy = results.find((p) => p);
+        if (healthy) {
+            activeProxy = healthy;
+            console.log('[updater] 检查镜像可用:', healthy);
+        } else {
+            console.warn('[updater] 所有检查镜像均不可用,按默认顺序尝试:', GH_PROXIES.join(', '));
+        }
+    };
+    // 原始 feed 报错(JSON 解析栈)对用户不可读,推给 UI 时换成一句网络提示;日志仍保留原文
+    const friendlyUpdaterError = (msg) => {
+        const m = String(msg || '');
+        if (m.includes('Cannot parse releases feed') || m.includes('Unable to find latest version') || m.includes('ERR_UPDATER_INVALID_RELEASE_FEED')) {
+            return '无法连接 GitHub 更新源（镜像暂不可用）。请稍后重试，或到 GitHub Releases 手动下载新版';
+        }
+        return m || '网络异常';
+    };
     // 下载环节把 GitHub 文件 URL 换成镜像前缀(镜像仅转发原文件,sha512 不变);patch 一次即可
     const patchGitHubDownloadProxy = () => {
         try {
@@ -140,7 +183,7 @@ app.whenReady().then(() => {
   <entry>
     <title>新版本可用</title>
     <link href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/tag/v0.1.12"/>
-    <content type="html">富士白卡品牌跟随 EXIF 并改用等高数字字体, 拼图主导出统一 4000px, 参数条智能反差与数据源逐字段合并, 富士水印白底/边界修复</content>
+    <content type="html">富士白卡品牌跟随 EXIF 并改用等高数字字体, 拼图主导出统一 4000px, 参数条智能反差与数据源逐字段合并, 富士水印白底/边界修复, 更新检查镜像自动优选(修复 Cannot parse releases feed)</content>
   </entry>
 </feed>`;
     const patchUpdateHttpRequests = () => {
@@ -289,9 +332,14 @@ app.whenReady().then(() => {
             autoUpdater.on('update-not-available', () => pushUpdater('not-available'));
             autoUpdater.on('download-progress', (p) => pushUpdater('progress', { percent: p && p.percent, speed: p && p.bytesPerSecond }));
             autoUpdater.on('update-downloaded', () => pushUpdater('downloaded'));
-            autoUpdater.on('error', (err) => { console.warn('[updater]', err && err.message); pushUpdater('error', { message: err && err.message }); });
+            autoUpdater.on('error', (err) => { console.warn('[updater]', err && err.message); pushUpdater('error', { message: friendlyUpdaterError(err && err.message) }); });
             // 启动后延迟静默检查,避免拖慢首屏;国内网络慢,加超时兜底(失败静默,不打扰首屏)
-            setTimeout(() => { withTimeout(autoUpdater.checkForUpdates(), CHECK_TIMEOUT_MS, '检查更新').catch(() => {}); }, 3000);
+            setTimeout(() => {
+                probeProxyForCheck()
+                    .catch(() => {})
+                    .then(() => withTimeout(autoUpdater.checkForUpdates(), CHECK_TIMEOUT_MS, '检查更新'))
+                    .catch(() => {});
+            }, 3000);
         } catch (e) {
             console.warn('[updater] 初始化失败:', e && e.message);
         }
@@ -300,10 +348,11 @@ app.whenReady().then(() => {
     ipcMain.handle('check-for-updates', async () => {
         if (!updater) return { ok: false, message: '当前为便携版,不支持在线自动更新,请到 GitHub Releases 下载新版' };
         try {
+            await probeProxyForCheck().catch(() => {});
             await withTimeout(updater.checkForUpdates(), CHECK_TIMEOUT_MS, '检查更新');
             return { ok: true };
         } catch (e) {
-            const msg = (e && e.message) || '网络异常';
+            const msg = friendlyUpdaterError(e && e.message);
             // 手动点"检查更新"时,超时/失败也要让更新横幅可见并带"重试"按钮
             try {
                 const w = BrowserWindow.getAllWindows()[0];
