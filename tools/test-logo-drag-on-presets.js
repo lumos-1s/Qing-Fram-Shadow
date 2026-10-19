@@ -190,9 +190,13 @@ let done = false;
         const prep = await win.webContents.executeJavaScript(PREP.replace('${IDX}', String(i)));
         if (prep.error) { skipped++; if (skipped <= 12) console.log('  SKIP  ' + String(prep.name).padEnd(20) + prep.error); continue; }
         process.stdout.write('\r  ' + (i + 1) + '/' + count + ' ' + String(prep.name).padEnd(14));
-        const r = prep.rect;
-        const tx = r.left + TX * r.width, ty = r.top + TY * r.height;
-        await dragTo(dbg, prep.startX, prep.startY, tx, ty, 12);
+        // 拖动坐标必须在**拖动前即时重读**画布矩形再换算:PREP 里的 rect/startX 是 600ms 前的,
+        // 期间布局或适配缩放变动几像素,按下点就会偏出 logo → 全部变成画布平移(模型纹丝不动)。
+        // 实测同一份代码单跑 85/85、进全链却 85 个全"拖不动",差别就在这个旧矩形。
+        const g = await win.webContents.executeJavaScript('(() => { const r = window.App.dom.canvas.getBoundingClientRect(); return { l: r.left, t: r.top, w: r.width, h: r.height }; })()');
+        const startX = g.l + (prep.pos0.cx / prep.w0) * g.w, startY = g.t + (prep.pos0.cy / prep.h0) * g.h;
+        const tx = g.l + TX * g.w, ty = g.t + TY * g.h;
+        await dragTo(dbg, startX, startY, tx, ty, 12);
         const after = await win.webContents.executeJavaScript(AFTER);
         // 判定:以 app 坐标(基准口径,已被像素扫描验证 = 绘制位)为主,像素扫描仅旁证
         const sx = after.stored ? after.stored.cx / after.w0 : null, sy = after.stored ? after.stored.cy / after.h0 : null;
@@ -205,6 +209,26 @@ let done = false;
         if (reached) ok++;
         else {
             blocked++;
+            // 失败现场:留几何对比 + 顶层元素 + 弹窗 + 截图(只取前 2 个,避免刷屏/占空间)
+            if (blocked <= 2) {
+                try {
+                    const diag = await win.webContents.executeJavaScript(`(() => {
+                        const A = window.App, cv = A.dom.canvas, r = cv.getBoundingClientRect();
+                        const el = document.elementFromPoint(${startX}, ${startY});
+                        const ov = [...document.querySelectorAll('.modal-overlay')].map(m => ({ id: m.id, display: getComputedStyle(m).display }));
+                        return { rectNow: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)],
+                                 topEl: el ? (el.id || el.className || el.tagName) : null,
+                                 visibleOverlays: ov.filter(o => o.display !== 'none'),
+                                 focus: document.hasFocus(), transform: getComputedStyle(cv).transform,
+                                 pan: [A.panX, A.panY], dragEl: !!A._dragEl };
+                    })()`);
+                    console.log('\n  [现场] ' + prep.name + ' rectPREP=' + JSON.stringify(prep.rect) + ' ' + JSON.stringify(diag));
+                    const png = (await win.webContents.capturePage()).toPNG();
+                    const dir = path.join(app.getPath('temp'), 'qfs-logodrag-fail');
+                    fs.mkdirSync(dir, { recursive: true });
+                    fs.writeFileSync(path.join(dir, 'fail-' + i + '.png'), png);
+                } catch (e) { console.log('\n  [现场诊断失败] ' + String(e && e.message)); }
+            }
             if (bad.length < 30) {
                 bad.push({ name: prep.name, ratio: prep.ratio,
                     fx: fx.toFixed(3), fy: fy.toFixed(3),
