@@ -3791,19 +3791,45 @@ const w = natW;
         // 文字在barH内垂直居中
         const barY = ih + pad;
         const startY = barY + padBottom;
-        const line1 = brandHidden(S) ? '' : ('FUJIFILM ' + S.cam.model);
-        const m1 = textMetrics(g, line1, fs, false, true, 0);
+        // 品牌名跟着 EXIF 走(原先写死 FUJIFILM,佳能/尼康照片会印成 "FUJIFILM EOS R5")
+        const brand = String((S.cam && S.cam.brand) || 'FUJIFILM').toUpperCase();
+        const model = String((S.cam && S.cam.model) || '').trim();
+        const line1 = brandHidden(S) ? '' : (model ? brand + ' ' + model : brand);
+        // 品牌行字体:Georgia 衬线 + 拉开字距(与「参数品牌水印」的品牌字同族,不再用默认 sans-serif)
+        // 不能用 Georgia:它的数字是旧式数字(0/1 只有 x-height,3/4/5/7/9 带下沉),
+        // 机型里的 0 会读成小写 o(X100V → X1ooV);Georgia 本身没有等高数字备用字形。
+        const fBrandLine = 'bold ' + fs + "px 'Times New Roman', Cambria, serif";
+        const brandTrack = Math.round(fs * 0.12);
+        const measureBrand = (s) => {
+            if (!s) return 0;
+            g.save();
+            g.font = fBrandLine; g.letterSpacing = brandTrack + 'px';
+            const bw = g.measureText(s).width;
+            g.restore();
+            return bw;
+        };
+        const drawBrandLine = (s, x, y) => {
+            if (!s) return;
+            g.save();
+            g.font = fBrandLine; g.letterSpacing = brandTrack + 'px';
+            g.fillStyle = 'rgb(40,40,40)';
+            g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+            g.fillText(s, x, y);
+            g.letterSpacing = '0px';
+            g.restore();
+        };
+        const m1w = measureBrand(line1);
         const lwFw = brandMarkW(S, fs);
         const onlyLogoFw = (S.brandLogo === 2 && lwFw > 0);
-        const fwBrandW = textMetrics(g, 'FUJIFILM ', fs, false, true, 0).w;
+        const fwBrandW = measureBrand(brand + ' ');
         if (onlyLogoFw) {
-            const x1 = cx2(w, m1.w);
+            const x1 = cx2(w, m1w);
             const used = drawBrandMark(g, S, logoCenterX(S, fs, x1, fwBrandW), startY + fs, fs);
-            if (!used) drawTextL(g, line1, x1, startY + fs, 'rgb(40,40,40)', fs, false, true, 0);
-            else drawTextL(g, S.cam.model, x1 + fwBrandW, startY + fs, 'rgb(40,40,40)', fs, false, true, 0);
+            if (!used) drawBrandLine(line1, x1, startY + fs);
+            else drawBrandLine(model, x1 + fwBrandW, startY + fs);
         } else {
-            const lwFwUsed = drawBrandMark(g, S, cx2(w, m1.w + lwFw), startY + fs, fs);
-            drawTextL(g, line1, cx2(w, m1.w + lwFw) + lwFwUsed, startY + fs, 'rgb(40,40,40)', fs, false, true, 0);
+            const lwFwUsed = drawBrandMark(g, S, cx2(w, m1w + lwFw), startY + fs, fs);
+            drawBrandLine(line1, cx2(w, m1w + lwFw) + lwFwUsed, startY + fs);
         }
         const line2 = S.cam.focal + '  ' + S.cam.aperture + '  ' + S.cam.iso + '  ' + S.cam.shutter;
         const m2 = textMetrics(g, line2, f2, true, false, 0);
