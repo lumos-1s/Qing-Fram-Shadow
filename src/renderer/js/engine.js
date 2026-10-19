@@ -960,6 +960,27 @@ function buildExifLines(template, image) {
     }];
 }
 
+// 参数条数据源:逐字段「手动(含相机库填入)> 自动识别」。
+// 自动 EXIF 的品牌键名是 make、手动是 brand —— 原先这里整份二选一(hasManual ? manual : exif),
+// 结果:导入后没碰过参数输入框的照片,参数条里只剩型号没有品牌;而风格参数行(cameraFor)
+// 本来就用 make 兜住了,两处口径不一致。现在改成逐字段回落,手动只填了 ISO 时其余字段照样兜底。
+function stripExifSrc(manual, image) {
+    const auto = (image && image.exif && typeof image.exif === 'object') ? image.exif : {};
+    const pick = (mk, ak) => {
+        const v = (manual && manual[mk] != null) ? String(manual[mk]).trim() : '';
+        if (v) return v;
+        return (auto[ak] != null) ? String(auto[ak]).trim() : '';
+    };
+    return {
+        brand: pick('brand', 'make'),
+        model: pick('model', 'model'),
+        focal: pick('focal', 'focal'),
+        aperture: pick('aperture', 'aperture'),
+        iso: pick('iso', 'iso'),
+        shutter: pick('shutter', 'shutter'),
+    };
+}
+
 // 装饰总入??原版 drawDecoration:文字/贴纸/四角括号/EXIF 底条)
 function drawDecoration(ctx, decor, cw, ch, image, template, stripTop) {
     if (!decor) return;
@@ -967,8 +988,8 @@ function drawDecoration(ctx, decor, cw, ch, image, template, stripTop) {
     const exifOn = (decor.exifAutoText || 0) === 1;
     const tpl = template || {};
     const manual = (tpl.manualExif && typeof tpl.manualExif === 'object') ? tpl.manualExif : {};
-    const hasManual = !!(manual.brand || manual.model || manual.focal || manual.aperture || manual.iso || manual.shutter);
-    const src = hasManual ? manual : ((image && image.exif) || {});
+    // 手动(含相机库填入)> 自动识别,逐字段合并 —— 见 stripExifSrc 注释
+    const src = stripExifSrc(manual, image);
     const exifParts = [
         src.brand && src.model ? `${src.brand} ${src.model}` : (src.brand || src.model || ''),
         (src.shutter != null ? src.shutter : ''), (src.aperture != null ? src.aperture : ''),

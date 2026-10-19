@@ -37,7 +37,7 @@ const ENGINE_SRC = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer',
 let Engine;
 try {
     Engine = new Function('window', 'document', ENGINE_SRC + `
-;return { parseColor, rgba, grainTile, GRAIN_TILE_CACHE, GRAIN_TILE_ORDER, GRAIN_TILE_MAX, clamp, contrastChoice };`
+;return { parseColor, rgba, grainTile, GRAIN_TILE_CACHE, GRAIN_TILE_ORDER, GRAIN_TILE_MAX, clamp, contrastChoice, stripExifSrc };`
     )(windowStub, documentStub);
 } catch (e) {
     console.error('加载 engine.js 失败(可能需要补 DOM 桩):', e && e.message);
@@ -449,6 +449,25 @@ console.log('─'.repeat(72));
         '⑩ 花底阈值 30:不花不描边,超过才描边');
     ok(Engine.contrastChoice(0.05, 99).light === true && Engine.contrastChoice(0.05, 99).outline === true,
         '⑩ 暗底 + 花底:白字 + 反色边线');
+}
+
+/* ⑪ 参数条数据源:手动 > 自动 逐字段合并,make→brand 映射 */
+{
+    const img = { exif: { make: 'CANON', model: 'EOS R5', focal: '50mm', aperture: 'f/2.8', iso: 'ISO400', shutter: '1/125s' } };
+    const a = Engine.stripExifSrc(null, img);
+    ok(a.brand === 'CANON' && a.model === 'EOS R5', '⑪ 无手动时品牌取自动 make(修复品牌丢失)');
+    const b = Engine.stripExifSrc({ brand: 'SONY', model: 'A7 IV' }, img);
+    ok(b.brand === 'SONY' && b.model === 'A7 IV' && b.focal === '50mm',
+        '⑪ 手动优先,未填字段回落自动');
+    const c = Engine.stripExifSrc({ iso: 'ISO100' }, img);
+    ok(c.iso === 'ISO100' && c.brand === 'CANON' && c.shutter === '1/125s',
+        '⑪ 手动只填 ISO:其余字段照样兜底');
+    const d = Engine.stripExifSrc({ brand: '   ' }, img);
+    ok(d.brand === 'CANON', '⑪ 手动空白串视为未填');
+    const e = Engine.stripExifSrc({ brand: ' NIKON ' }, img);
+    ok(e.brand === 'NIKON', '⑪ 手动值两端空白被裁掉');
+    const f = Engine.stripExifSrc(null, { exif: {} });
+    ok(f.brand === '' && f.model === '' && f.shutter === '', '⑪ 两边都没数据:全空串(参数条不画)');
 }
 
 console.log('─'.repeat(72));
