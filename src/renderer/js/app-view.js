@@ -16,6 +16,8 @@ window.App = Object.assign(window.App || {}, {
     },
 
     setZoom(z) {
+        // 任何显式缩放(滚轮/滑杆/输入/元素聚焦)都退出「跟随适应」:窗口变化不再自动重算
+        this._followFit = false;
         this.zoom = z;
         this.dom.zoomInput.value = Math.round(z * 100) + '%';
         this.dom.zoomRange.value = Math.round(z * 100);
@@ -32,6 +34,8 @@ window.App = Object.assign(window.App || {}, {
         const z = Math.min(sw / canvas.width, sh / canvas.height);
         this.panX = 0; this.panY = 0;
         this.setZoom(Math.max(0.1, z));
+        // 视图回到「适应」状态:窗口尺寸变化时自动重算(app.js 的 ResizeObserver 读这个标志)
+        this._followFit = true;
     },
     applyZoomStyle() {
         // 导出渲染期间不动 CSS 显示样式(见 fitZoom 守卫)

@@ -226,6 +226,20 @@ window.App = {
         d.btnReset.addEventListener('click', () => this.resetParams());
         d.btnRandom.addEventListener('click', () => this.randomBorder());
         d.btnFit.addEventListener('click', () => this.fitZoom());
+        // 窗口尺寸变化:视图停在「适应」时自动重算缩放。
+        // 否则窄窗会把画布裁掉(画布区 overflow:hidden,没有滚动条),宽窗又只占中间一小块。
+        // 手动缩放/平移会退出跟随(setZoom / 画布平移处置 false),不打扰用户已经调好的视角。
+        if (typeof ResizeObserver === 'function' && d.stage) {
+            const ro = new ResizeObserver(() => {
+                clearTimeout(this._fitResizeT);
+                this._fitResizeT = setTimeout(() => {
+                    if (!this._followFit || !this.image || this.uiDprOverride === 1) return;
+                    this.fitZoom();
+                }, 140);
+            });
+            ro.observe(d.stage);
+            this._fitResizeRO = ro;
+        }
         d.btnTheme.addEventListener('click', () => this.toggleTheme());
         d.zoomRange.addEventListener('input', e => this.setZoom(parseInt(e.target.value, 10) / 100));
         d.zoomInput.addEventListener('change', e => {
@@ -470,6 +484,20 @@ window.App = {
             }, { passive: false });
         };
         hscrollWheel(this.dom.thumbStrip);
+        // 胶片条空闲淡出:它悬浮在画布底部正中,常显正好压住相框下边(参数文字/品牌行)。
+        // 指针在条上时保持不透明,离开 2.2s 后淡到 45%(仍可点,只是让出画面)。
+        const strip = this.dom.thumbStrip;
+        if (strip) {
+            const wake = () => { clearTimeout(this._stripIdleT); strip.classList.remove('strip-idle'); };
+            const sleep = () => {
+                clearTimeout(this._stripIdleT);
+                this._stripIdleT = setTimeout(() => strip.classList.add('strip-idle'), 2200);
+            };
+            strip.addEventListener('pointerenter', wake);
+            strip.addEventListener('pointerdown', wake);
+            strip.addEventListener('pointerleave', sleep);
+            sleep();
+        }
         // 三个图标池(内置标记/品牌Logo/自定义图标)已改为网格+垂直滚动,
         // 滚轮原生垂直滑动;不能再劫持成水平滚动,否则会阻止原生滚动。
         // hscrollWheel(this.$('brandIconBox'));
@@ -553,6 +581,8 @@ window.App = {
             }
             this.selectedEls = [];
             this.refreshElList();
+            // 手动平移也退出跟随:否则窗口一变,视图会跳回居中、丢掉用户拖出来的视角
+            this._followFit = false;
             this._pan = { sx: e.screenX, sy: e.screenY, px: this.panX, py: this.panY };
             canvas.style.cursor = 'grabbing';
         });
@@ -2567,6 +2597,9 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         if (ins) ins.classList.toggle('no-image', empty);
         if (this.dom.placeholder) this.dom.placeholder.style.display = empty ? 'flex' : 'none';
         if (this.dom.canvas) this.dom.canvas.style.display = empty ? 'none' : 'block';
+        // 样式条同时收起:无照片时它还写着上一张图的样式,空态下是假信息(有图后由 applyModeControls 重写)
+        const ms = document.getElementById('modeStatus');
+        if (ms && empty) ms.style.display = 'none';
     },
 
     /* ══ armLogoPlacement(logo) { … → app-elements.js ══ */

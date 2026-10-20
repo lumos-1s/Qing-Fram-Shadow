@@ -394,7 +394,11 @@ html.dark #previewCanvas {
     border-radius: 14px; box-shadow: var(--shadow);
     max-width: 76%; overflow-x: auto;
     backdrop-filter: blur(8px);
+    transition: opacity .28s ease;
 }
+/* 空闲态:让出画布底部(app.js 在指针离开 2.2s 后加类);悬停始终还原 */
+.thumb-strip.strip-idle { opacity: .45; }
+.thumb-strip:hover { opacity: 1; }
 .thumb-strip .thumb {
     width: 42px; height: 42px; border-radius: 9px;
     object-fit: cover; cursor: pointer; flex: 0 0 auto;
@@ -451,6 +455,16 @@ html.dark #previewCanvas {
 
 /* 空状态: 未导入照片时右侧面板整体置灰, 引导用户先导入 */
 #inspector.no-image { opacity: .5; pointer-events: none; transition: opacity .25s ease; }
+/* 无照片时参数页整体收起,只留一句说明。面板此时 pointer-events:none,
+   画布/照片/文字/相机这些组本来就点不了;露着只会像「面板没加载完」。
+   其余「行全空」的组在有模板时仍由 syncEmptyGroups 收敛,这里不抢它的活。 */
+#inspector.no-image #panel-param .param-group { display: none; }
+#inspector.no-image #panel-param .param-empty-note { display: block; }
+.param-empty-note {
+    display: none; margin: 2px 2px 10px; padding: 10px 12px;
+    font-size: 12px; line-height: 1.6; color: var(--text-3); text-align: center;
+    border: 1px dashed var(--border); border-radius: 10px;
+}
 
 /* ── 照片导入进度条 ── */
 .import-progress {
