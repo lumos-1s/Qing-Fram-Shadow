@@ -182,8 +182,8 @@ app.whenReady().then(() => {
   <title>Qing-Fram-Shadow-web Releases</title>
   <entry>
     <title>新版本可用</title>
-    <link href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/tag/v0.1.12"/>
-    <content type="html">富士白卡品牌跟随 EXIF 并改用等高数字字体, 拼图主导出统一 4000px, 参数条智能反差与数据源逐字段合并, 富士水印白底/边界修复, 更新检查镜像自动优选(修复 Cannot parse releases feed)</content>
+    <link href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/tag/v0.1.13"/>
+    <content type="html">导出提速: 纯边框只渲一次 + JPEG 字节直传, 3D卡片/背景模糊约快2.5倍; 头像裁剪重做(边界钳制/指针锚定缩放/滑杆复位); 新应用图标「墨玉金框」; 画布随窗口自适应 + 用户资料/角饰/缩略图交互修复</content>
   </entry>
 </feed>`;
     const patchUpdateHttpRequests = () => {
