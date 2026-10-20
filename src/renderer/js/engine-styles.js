@@ -295,13 +295,76 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         g.strokeRect(Math.floor(gap / 2), Math.floor(gap / 2), w - gap - 1, h - gap - 1);
     }
     function styleVintage(img, size, g, iw, ih) {
-        const w = iw + size * 2, h = ih + size * 2;
-        g.fillStyle = rgbJ(210, 190, 165);
-        g.fillRect(0, 0, w, h);
-        g.strokeStyle = rgbJ(160, 140, 115);
-        g.lineWidth = Math.max(2, Math.floor(size / 8));
-        g.strokeRect(size - 2, size - 2, iw + 3, ih + 3);
-        g.drawImage(img, size, size);
+        const G = vintageGeom(iw, ih, size);
+        const { frame, band, lineGap, w, h } = G;
+        const cream = '#f4e6cb', terra = '#b24f2f', mustard = '#d89a3f', teal = '#2f6f66', ink = '#6b3522';
+        // 奶油色纸面 + 陶土色外圈。
+        const bg = g.createLinearGradient(0, 0, w, h);
+        bg.addColorStop(0, '#f8eed9'); bg.addColorStop(0.55, cream); bg.addColorStop(1, '#e7cfa9');
+        g.fillStyle = bg; g.fillRect(0, 0, w, h);
+        g.fillStyle = terra; g.fillRect(0, 0, w, h);
+        g.fillStyle = cream; g.fillRect(band, band, w - band * 2, h - band * 2);
+        const rnd = styleNoise(iw, ih, 1974);
+        g.fillStyle = 'rgba(120,80,45,0.045)';
+        for (let i = 0; i < Math.min(420, Math.floor(w * h / 2600)); i++) {
+            g.beginPath(); g.arc(rnd(w), rnd(h), 0.4 + rnd(2) * 0.4, 0, 6.2832); g.fill();
+        }
+
+        // 顶部半日纹:三层拱线,像 70 年代海报上的日落。
+        const sunX = w / 2, sunY = Math.round(frame * 0.76), sunR = Math.max(9, Math.round(frame * 0.20));
+        g.save();
+        g.lineWidth = Math.max(1.5, Math.round(frame * 0.018));
+        for (let k = 0; k < 3; k++) {
+            g.strokeStyle = [terra, mustard, teal][k];
+            g.beginPath(); g.arc(sunX, sunY, sunR * (1 - k * 0.24), Math.PI, Math.PI * 2); g.stroke();
+        }
+        g.strokeStyle = mustard; g.lineWidth = Math.max(1, Math.round(frame * 0.014));
+        for (let i = 0; i < 7; i++) {
+            const a = Math.PI + (i + 0.5) * Math.PI / 7;
+            const r0 = sunR * 1.18, r1 = sunR * 1.48;
+            g.beginPath();
+            g.moveTo(sunX + Math.cos(a) * r0, sunY + Math.sin(a) * r0);
+            g.lineTo(sunX + Math.cos(a) * r1, sunY + Math.sin(a) * r1);
+            g.stroke();
+        }
+        g.restore();
+
+        // 四角四分之一圆环。
+        g.save();
+        g.lineWidth = Math.max(1.2, Math.round(frame * 0.014));
+        const corners = [[band, band, 0], [w - band, band, Math.PI / 2], [band, h - band, -Math.PI / 2], [w - band, h - band, Math.PI]];
+        for (let ci = 0; ci < corners.length; ci++) {
+            const [cx, cy, a0] = corners[ci];
+            for (let k = 0; k < 3; k++) {
+                g.strokeStyle = [teal, mustard, terra][k];
+                g.beginPath();
+                g.arc(cx, cy, frame * (0.28 + k * 0.11), a0, a0 + Math.PI / 2);
+                g.stroke();
+            }
+        }
+        g.restore();
+
+        // 照片 + 双线框。
+        g.drawImage(img, frame, frame, iw, ih);
+        const outerInset = frame - lineGap;
+        g.strokeStyle = terra;
+        g.lineWidth = Math.max(2, Math.round(frame * 0.045));
+        g.strokeRect(outerInset, outerInset, iw + (frame - outerInset) * 2, ih + (frame - outerInset) * 2);
+        const innerInset = frame - Math.max(5, Math.round(lineGap * 0.45));
+        g.strokeStyle = teal;
+        g.lineWidth = Math.max(1.2, Math.round(frame * 0.018));
+        g.strokeRect(innerInset, innerInset, iw + (frame - innerInset) * 2, ih + (frame - innerInset) * 2);
+
+        // 底部字标。
+        g.save();
+        g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+        g.font = '700 ' + Math.max(6, Math.round(frame * 0.075)) + 'px Georgia, serif';
+        g.fillStyle = 'rgba(107,53,34,0.62)';
+        g.fillText('EST. 1974', w / 2, h - Math.round(frame * 0.47));
+        g.fillStyle = ink;
+        g.font = '700 ' + Math.max(8, Math.round(frame * 0.13)) + 'px Arial, sans-serif';
+        g.fillText('V I N T A G E', w / 2, h - Math.round(frame * 0.30));
+        g.restore();
     }
     function styleGradient(img, size, g, iw, ih) {
         const w = iw + size * 2, h = ih + size * 2;
@@ -389,6 +452,10 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
     }
 
     // 复古胶片撕裂:竖幅用竖条负片,横幅用横条负片;一端做锯齿撕口。
+    function vintageGeom(iw, ih, size) {
+        const frame = Math.max(50, Math.round(size));
+        return { frame, band: Math.max(8, Math.round(frame * 0.18)), lineGap: Math.max(10, Math.round(frame * 0.16)), w: iw + frame * 2, h: ih + frame * 2 };
+    }
     function filmTearGeom(iw, ih, size) {
         const vertical = ih >= iw * 0.98;
         const framePad = Math.max(10, Math.round(Math.min(iw, ih) * 0.018));
@@ -4544,7 +4611,6 @@ const w = natW;
             case 'SIMPLE':
             case 'ROUNDED':
             case 'WHITE_PLAIN':
-            case 'VINTAGE':
             case 'GRADIENT':
             case 'DOUBLE_LINE':
             case 'SIMPLE_FILM':
@@ -4559,6 +4625,10 @@ const w = natW;
             case 'FILM_TEAR': {
                 const ft = filmTearGeom(iw, ih, size);
                 return { w: ft.w, h: ft.h };
+            }
+            case 'VINTAGE': {
+                const vg = vintageGeom(iw, ih, size);
+                return { w: vg.w, h: vg.h };
             }
             case 'POLAROID': {
                 const pfs = Math.max(10, Math.round(autoExifSize((S ? S.paramFs : 12), iw)));

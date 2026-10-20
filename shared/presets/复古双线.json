@@ -63,6 +63,6 @@
   "paramType": 0,
   "paramPosition": "CENTER",
   "photoFrameStyle": "VINTAGE",
-  "photoFrameBorderSize": 50,
+  "photoFrameBorderSize": 80,
   "blurIntensity": 50
 }
