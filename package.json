@@ -1,6 +1,6 @@
 {
   "name": "qingframe-web",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "本地照片加框工具：艺术边框、光影、文字 Logo、模板与多图拼贴（Electron + Canvas 2D）",
   "main": "src/main/index.js",
   "scripts": {
@@ -59,7 +59,7 @@
     "dist": "electron-builder --win && node tools/verify-dist.js --installers",
     "dist:portable": "electron-builder --win portable"
   },
-  "author": "lumos",
+  "author": "Qingframe",
   "license": "MIT",
   "build": {
     "appId": "com.qingframe.web",
