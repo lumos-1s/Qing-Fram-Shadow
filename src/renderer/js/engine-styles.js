@@ -345,12 +345,25 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
     // 确定性噪声:同照片同风格下渲染结果稳定(基于照片尺寸+盐的 Java LCG)
     function styleNoise(iw, ih, salt) { return javaRandom(iw * 7919 + ih * 104729 + salt); }
 
-    function stampMatte(size) {
-        const m = Math.max(72, Math.floor(size * 2.6));
-        const padX = Math.max(44, Math.round(m * 0.55));
-        const padY = Math.max(78, Math.round(m * 0.98));
-        const d = Math.max(10, Math.round(m / 5));
-        return { m, padX, padY, d };
+    // 仿古邮票:一枚贴在大版张上的纪念邮票。几何同时供 styleDims 使用,
+    // 保证登记画布、邮票齿孔和照片位置永远一致。
+    function stampPostageGeom(iw, ih, size) {
+        const padX = Math.max(36, Math.round(iw * 0.055), Math.round(size * 0.60));
+        const padTop = Math.max(50, Math.round(ih * 0.07), Math.round(size * 0.75));
+        const padBottom = Math.max(66, Math.round(ih * 0.095), Math.round(size * 1.00));
+        const d = Math.max(9, Math.round(Math.min(iw, ih) * 0.022));
+        const stampW = iw + padX * 2, stampH = ih + padTop + padBottom;
+        const sheetPadX = Math.max(22, Math.round(iw * 0.032));
+        const sheetTop = Math.max(22, Math.round(ih * 0.028));
+        const sheetBottom = Math.max(100, Math.round(ih * 0.16));
+        const sheetW = stampW + sheetPadX * 2, sheetH = sheetTop + stampH + sheetBottom;
+        const albumPad = Math.max(22, Math.round(Math.min(iw, ih) * 0.03), Math.round(size * 0.35));
+        const stampX = albumPad + sheetPadX, stampY = albumPad + sheetTop;
+        return {
+            padX, padTop, padBottom, d, stampW, stampH, stampX, stampY,
+            sheetX: albumPad, sheetY: albumPad, sheetW, sheetH, sheetPadX, sheetTop, sheetBottom, albumPad,
+            w: sheetW + albumPad * 2, h: sheetH + albumPad * 2
+        };
     }
     // 邮票齿孔:沿四周外缘打半圆孔(destination-out,露出透明底)
     function stampPerforate(g, w, h, d) {
@@ -368,38 +381,132 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         g.restore();
     }
     function styleStampPostage(img, size, g, iw, ih, S) {
-        const { padX, padY, d } = stampMatte(size);
-        const w = iw + padX * 2, h = ih + padY * 2;
-        g.fillStyle = '#f6f3ea';
-        g.fillRect(0, 0, w, h);
-        stampPerforate(g, w, h, d);
-        g.drawImage(img, padX, padY, iw, ih);
-        g.strokeStyle = 'rgba(120,110,88,0.5)';
-        g.lineWidth = 1;
-        g.strokeRect(padX - 0.5, padY - 0.5, iw + 1, ih + 1);
-        const ink = 'rgba(66,58,120,0.62)';
-        const fs = Math.max(11, Math.min(Math.round(autoExifSize(S.paramFs, iw)), Math.floor(padY / 3)));
-        const fy = Math.floor(fs * 0.36);
-        drawTrackedTextL(g, '中国邮政', w / 2, Math.floor(padY / 2) + fy, fs, ink, true, 0.55, null);
-        const val = '¥ 0.80';
-        drawTrackedTextL(g, val, w / 2, h - Math.floor(padY / 2) + fy, fs, ink, true, 0.55, null);
-        // 邮戳(右上,盖在照片上)
-        const rnd = styleNoise(iw, ih, 9301);
-        const pr0 = Math.max(16, Math.floor(Math.min(iw, ih) * 0.16));
+        const G = stampPostageGeom(iw, ih, size);
+        const { padX, padTop, padBottom, d, stampW, stampH, stampX, stampY,
+            sheetX, sheetY, sheetW, sheetH, sheetBottom, w, h } = G;
+        // 深绿卡纸底:像集邮册的一页,让邮票版张浮起来。
+        const bg = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.72);
+        bg.addColorStop(0, '#33473b'); bg.addColorStop(0.62, '#223229'); bg.addColorStop(1, '#141d18');
+        g.fillStyle = bg; g.fillRect(0, 0, w, h);
+        const rnd = styleNoise(iw, ih, 4177);
+        g.fillStyle = 'rgba(215,225,205,0.035)';
+        const dots = Math.min(900, Math.floor(w * h / 3200));
+        for (let i = 0; i < dots; i++) {
+            const dx = rnd(w), dy = rnd(h), rr = 0.5 + rnd(2) * 0.5;
+            g.beginPath(); g.arc(dx, dy, rr, 0, 6.2832); g.fill();
+        }
+
+        // 版张纸 + 双层版框。
         g.save();
-        g.translate(padX + Math.floor(iw * 0.76), padY + Math.floor(ih * 0.30));
-        g.rotate(-0.14);
-        g.strokeStyle = 'rgba(46,40,108,0.4)';
-        g.lineWidth = 1.5;
-        g.beginPath(); g.arc(0, 0, pr0, 0, 6.2832); g.stroke();
-        g.beginPath(); g.arc(0, 0, pr0 * 0.55, 0, 6.2832); g.stroke();
-        g.lineWidth = 1.1;
-        for (let k = 0; k < 2; k++) {
-            const yy = (k - 0.5) * pr0 * 0.68;
+        g.shadowColor = 'rgba(0,0,0,0.48)';
+        g.shadowBlur = Math.max(14, Math.round(size * 0.45));
+        g.shadowOffsetY = Math.max(6, Math.round(size * 0.12));
+        g.fillStyle = '#efe6d2';
+        g.fillRect(sheetX, sheetY, sheetW, sheetH);
+        g.restore();
+        g.strokeStyle = 'rgba(100,82,55,0.55)'; g.lineWidth = 1.2;
+        g.strokeRect(sheetX + 0.5, sheetY + 0.5, sheetW - 1, sheetH - 1);
+        g.strokeStyle = 'rgba(180,155,105,0.35)'; g.lineWidth = 1;
+        g.strokeRect(sheetX + 8.5, sheetY + 8.5, sheetW - 17, sheetH - 17);
+
+        // 邮票本体画到独立画布,再整体打齿孔,避免把版张一起打穿。
+        const stamp = newCanvas(stampW, stampH);
+        const sg = stamp.getContext('2d');
+        sg.fillStyle = '#fbf6e8'; sg.fillRect(0, 0, stampW, stampH);
+        sg.drawImage(img, padX, padTop, iw, ih);
+        // 轻微泛黄,让照片像旧票面。
+        sg.fillStyle = 'rgba(128,88,46,0.055)';
+        sg.fillRect(padX, padTop, iw, ih);
+        sg.strokeStyle = 'rgba(96,79,54,0.55)'; sg.lineWidth = 1;
+        sg.strokeRect(padX - 0.5, padTop - 0.5, iw + 1, ih + 1);
+
+        const capFs = Math.max(11, Math.min(Math.round(autoExifSize(S ? S.paramFs : 33, iw)),
+            Math.floor(padTop / 2.0)));
+        sg.save();
+        sg.textAlign = 'center'; sg.textBaseline = 'alphabetic';
+        sg.font = '700 ' + capFs + 'px "SimSun", "Songti SC", serif';
+        sg.fillStyle = 'rgba(62,52,37,0.86)';
+        sg.fillText('中国邮政', stampW / 2, Math.round(padTop * 0.58));
+        sg.font = 'bold ' + Math.max(7, Math.round(capFs * 0.38)) + 'px Georgia, serif';
+        sg.fillStyle = 'rgba(96,79,54,0.62)';
+        sg.fillText('POSTAGE', stampW / 2, Math.round(padTop * 0.84));
+        const valFs = Math.max(13, Math.min(Math.round(autoExifSize(S ? S.paramFs : 33, iw) * 1.12),
+            Math.floor(padBottom / 2.2)));
+        sg.font = '700 ' + valFs + 'px "SimSun", "Songti SC", serif';
+        sg.fillStyle = 'rgba(62,52,37,0.88)';
+        sg.fillText('¥ 0.80', stampW / 2, stampH - Math.round(padBottom * 0.52));
+        sg.font = 'bold ' + Math.max(7, Math.round(valFs * 0.34)) + 'px Georgia, serif';
+        sg.fillStyle = 'rgba(96,79,54,0.58)';
+        sg.fillText('POSTAGE & REVENUE', stampW / 2, stampH - Math.round(padBottom * 0.22));
+        sg.restore();
+        stampPerforate(sg, stampW, stampH, d);
+
+        // 邮票投影 + 贴到版张上。
+        g.save();
+        g.shadowColor = 'rgba(40,30,18,0.30)';
+        g.shadowBlur = Math.max(8, Math.round(size * 0.20));
+        g.shadowOffsetY = Math.max(2, Math.round(size * 0.05));
+        g.drawImage(stamp, stampX, stampY);
+        g.restore();
+
+        // 销印:压在邮票右下角并延伸出波浪线。
+        const pr = Math.max(26, Math.round(Math.min(stampW, stampH) * 0.095));
+        const pcx = stampX + stampW - Math.round(pr * 0.72);
+        const pcy = stampY + stampH - Math.round(pr * 0.48);
+        g.save();
+        g.strokeStyle = 'rgba(58,54,112,0.34)';
+        g.fillStyle = 'rgba(58,54,112,0.38)';
+        g.lineWidth = 1.4;
+        g.beginPath(); g.arc(pcx, pcy, pr, 0, 6.2832); g.stroke();
+        g.beginPath(); g.arc(pcx, pcy, pr * 0.62, 0, 6.2832); g.stroke();
+        g.font = 'bold ' + Math.max(8, Math.round(pr * 0.20)) + 'px Georgia, serif';
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText('1998. 6. 12', pcx, pcy - pr * 0.16);
+        g.font = 'bold ' + Math.max(7, Math.round(pr * 0.16)) + 'px Georgia, serif';
+        g.fillText('BEIJING', pcx, pcy + pr * 0.22);
+        g.lineWidth = 1.2;
+        for (let k = 0; k < 3; k++) {
+            const yy = pcy - pr * 0.34 + k * pr * 0.30;
             g.beginPath();
-            for (let x = -pr0; x <= pr0; x += pr0 / 8) g.lineTo(x, yy + (rnd(3) - 1) * 3);
+            for (let x = 0; x <= pr * 2.6; x += 4) {
+                const wy = yy + Math.sin((x / pr) * 3.2 + k) * pr * 0.06;
+                if (x === 0) g.moveTo(pcx - pr * 3.2 + x, wy); else g.lineTo(pcx - pr * 3.2 + x, wy);
+            }
             g.stroke();
         }
+        g.restore();
+
+        // 版张下边纸:纪念标题、编号和红色邮戳印。
+        const selvY = stampY + stampH;
+        const ruleY = selvY + Math.max(10, Math.round(sheetBottom * 0.10));
+        g.strokeStyle = 'rgba(105,88,60,0.45)'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(sheetX + 28, ruleY); g.lineTo(sheetX + sheetW - 28, ruleY); g.stroke();
+        const titleFs = Math.max(17, Math.round(sheetW * 0.028));
+        g.save();
+        g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+        g.font = '700 ' + titleFs + 'px "SimSun", "Songti SC", serif';
+        g.fillStyle = '#3b352b';
+        g.fillText('纪念邮票', sheetX + 30, selvY + Math.round(sheetBottom * 0.48));
+        const subFs = Math.max(8, Math.round(titleFs * 0.38));
+        g.font = 'bold ' + subFs + 'px Georgia, serif';
+        g.fillStyle = 'rgba(115,98,73,0.78)';
+        g.fillText('COMMEMORATIVE ISSUE', sheetX + 32, selvY + Math.round(sheetBottom * 0.64));
+        g.font = 'bold ' + subFs + 'px monospace';
+        g.fillStyle = 'rgba(115,98,73,0.62)';
+        g.fillText('NO. 0087  ·  1998', sheetX + 32, selvY + Math.round(sheetBottom * 0.82));
+
+        // 红色票戳:略微歪一点,像手盖的。
+        const seal = Math.max(30, Math.round(sheetW * 0.052));
+        g.translate(sheetX + sheetW - 34 - seal / 2, selvY + sheetBottom * 0.40);
+        g.rotate(-0.10);
+        g.fillStyle = '#a83a2f';
+        fillRoundRectCtx(g, -seal / 2, -seal / 2, seal, seal, Math.max(2, seal * 0.06));
+        g.strokeStyle = 'rgba(255,238,216,0.62)'; g.lineWidth = 1;
+        g.strokeRect(-seal / 2 + 4.5, -seal / 2 + 4.5, seal - 9, seal - 9);
+        g.fillStyle = '#f6e8d3';
+        g.font = '700 ' + Math.round(seal * 0.52) + 'px "SimSun", "Songti SC", serif';
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText('邮', 0, 1);
         g.restore();
     }
 
@@ -4524,8 +4631,8 @@ const w = natW;
                 return { w: iw + pad * 2, h: ih + pad + barH };
             }
             case 'STAMP_POSTAGE': {
-                const sd = stampMatte(size);
-                return { w: iw + sd.padX * 2, h: ih + sd.padY * 2 };
+                const sd = stampPostageGeom(iw, ih, size);
+                return { w: sd.w, h: sd.h };
             }
             case 'TEARED_PAPER': {
                 const tp = tornPaperParams(iw, ih, size);
