@@ -456,6 +456,13 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         const frame = Math.max(50, Math.round(size));
         return { frame, band: Math.max(8, Math.round(frame * 0.18)), lineGap: Math.max(10, Math.round(frame * 0.16)), w: iw + frame * 2, h: ih + frame * 2 };
     }
+    function albumGeom(iw, ih, size) {
+        const padX = Math.max(52, Math.round(size * 1.00), Math.round(iw * 0.05));
+        const padTop = Math.max(52, Math.round(size * 1.00), Math.round(ih * 0.05));
+        const padBottom = Math.max(116, Math.round(size * 1.90), Math.round(ih * 0.15));
+        const printBorder = Math.max(10, Math.round(size * 0.18));
+        return { padX, padTop, padBottom, printBorder, w: iw + padX * 2, h: ih + padTop + padBottom, photoX: padX, photoY: padTop };
+    }
     function filmTearGeom(iw, ih, size) {
         const vertical = ih >= iw * 0.98;
         const framePad = Math.max(10, Math.round(Math.min(iw, ih) * 0.018));
@@ -1078,25 +1085,89 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         }
     }
     function styleAlbumCorner(img, size, g, iw, ih) {
-        const pad = Math.max(40, Math.floor(size * 1.2));
-        const w = iw + pad * 2, h = ih + pad * 2;
-        g.fillStyle = '#3d3a35';
-        g.fillRect(0, 0, w, h);
-        g.drawImage(img, pad, pad);
-        const cs = Math.max(28, Math.floor(Math.min(iw, ih) * 0.07));
-        const paper = '#d9c39a';
-        const corners = [[pad, pad, 1, 1], [pad + iw, pad, -1, 1], [pad, pad + ih, 1, -1], [pad + iw, pad + ih, -1, -1]];
-        for (const [cx, cy, sx, sy] of corners) {
-            g.fillStyle = 'rgba(0,0,0,0.18)';
-            g.beginPath();
-            g.moveTo(cx + 2, cy + 2); g.lineTo(cx + sx * cs + 2, cy + 2); g.lineTo(cx + 2, cy + sy * cs + 2);
-            g.closePath(); g.fill();
-            g.fillStyle = paper;
-            g.beginPath();
-            g.moveTo(cx, cy); g.lineTo(cx + sx * cs, cy); g.lineTo(cx, cy + sy * cs);
-            g.closePath(); g.fill();
-            g.strokeStyle = 'rgba(90,70,40,0.35)'; g.lineWidth = 1; g.stroke();
+        const G = albumGeom(iw, ih, size);
+        const { padX, padTop, padBottom, printBorder, w, h, photoX, photoY } = G;
+        // 深绿相册纸 + 纸纹 + 装订孔。
+        const page = g.createLinearGradient(0, 0, w, h);
+        page.addColorStop(0, '#34483c'); page.addColorStop(0.55, '#263a30'); page.addColorStop(1, '#16241d');
+        g.fillStyle = page; g.fillRect(0, 0, w, h);
+        const rnd = styleNoise(iw, ih, 1978);
+        g.fillStyle = 'rgba(225,235,215,0.035)';
+        for (let i = 0; i < Math.min(560, Math.floor(w * h / 2600)); i++) {
+            g.beginPath(); g.arc(rnd(w), rnd(h), 0.4 + rnd(2) * 0.4, 0, 6.2832); g.fill();
         }
+        g.strokeStyle = 'rgba(190,165,115,0.30)'; g.lineWidth = 1;
+        g.strokeRect(12.5, 12.5, w - 25, h - 25);
+        const holeR = Math.max(6, Math.round(padX * 0.13));
+        const holeX = Math.round(padX * 0.36);
+        for (const t of [0.24, 0.50, 0.76]) {
+            const hy = Math.round(padTop + ih * t);
+            g.fillStyle = '#0c110e';
+            g.beginPath(); g.arc(holeX, hy, holeR, 0, 6.2832); g.fill();
+            g.strokeStyle = 'rgba(190,165,115,0.55)'; g.lineWidth = Math.max(1.2, holeR * 0.18);
+            g.beginPath(); g.arc(holeX, hy, holeR, 0, 6.2832); g.stroke();
+            g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 1;
+            g.beginPath(); g.arc(holeX - holeR * 0.22, hy - holeR * 0.22, holeR * 0.55, 0, 6.2832); g.stroke();
+        }
+
+        // 米色照片纸 + 柔和投影。
+        g.save();
+        g.shadowColor = 'rgba(0,0,0,0.48)';
+        g.shadowBlur = Math.max(12, Math.round(size * 0.35));
+        g.shadowOffsetY = Math.max(4, Math.round(size * 0.08));
+        g.fillStyle = '#f2e7d2';
+        g.fillRect(photoX - printBorder, photoY - printBorder, iw + printBorder * 2, ih + printBorder * 2);
+        g.restore();
+        g.strokeStyle = 'rgba(175,145,95,0.38)'; g.lineWidth = 1;
+        g.strokeRect(photoX - printBorder + 0.5, photoY - printBorder + 0.5, iw + printBorder * 2 - 1, ih + printBorder * 2 - 1);
+        g.drawImage(img, photoX, photoY, iw, ih);
+        g.strokeStyle = 'rgba(60,45,30,0.30)'; g.lineWidth = 1;
+        g.strokeRect(photoX - 0.5, photoY - 0.5, iw + 1, ih + 1);
+
+        // 四个角贴:奶油色三角口袋,带折痕与投影。
+        const cs = Math.max(30, Math.round(Math.min(iw, ih) * 0.075));
+        const corners = [[photoX, photoY, 1, 1], [photoX + iw, photoY, -1, 1], [photoX, photoY + ih, 1, -1], [photoX + iw, photoY + ih, -1, -1]];
+        for (const [cx, cy, sx, sy] of corners) {
+            g.save();
+            g.shadowColor = 'rgba(0,0,0,0.30)'; g.shadowBlur = 4; g.shadowOffsetX = 2; g.shadowOffsetY = 2;
+            g.fillStyle = '#e4cfa8';
+            g.beginPath();
+            g.moveTo(cx, cy);
+            g.lineTo(cx + sx * cs, cy);
+            g.quadraticCurveTo(cx + sx * cs * 0.58, cy + sy * cs * 0.58, cx, cy + sy * cs);
+            g.closePath(); g.fill();
+            g.restore();
+            g.strokeStyle = 'rgba(105,80,48,0.50)'; g.lineWidth = 1;
+            g.beginPath();
+            g.moveTo(cx + sx * cs * 0.90, cy + sy * 2.5);
+            g.quadraticCurveTo(cx + sx * cs * 0.55, cy + sy * cs * 0.55, cx + sx * 2.5, cy + sy * cs * 0.90);
+            g.stroke();
+            g.strokeStyle = 'rgba(255,250,235,0.40)'; g.lineWidth = 1;
+            g.beginPath();
+            g.moveTo(cx + sx * 3, cy + sy * 3);
+            g.lineTo(cx + sx * cs * 0.82, cy + sy * 5);
+            g.stroke();
+        }
+
+        // 手写题注 + 日期/页码。
+        const capTop = photoY + ih + printBorder;
+        g.save();
+        g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+        g.fillStyle = 'rgba(239,226,203,0.94)';
+        g.font = '700 ' + Math.max(18, Math.round(iw * 0.032)) + 'px "Segoe Script", "Comic Sans MS", cursive';
+        g.fillText('Summer at the lake', w / 2, capTop + Math.round(padBottom * 0.34));
+        g.font = 'bold ' + Math.max(8, Math.round(iw * 0.010)) + 'px Georgia, serif';
+        g.fillStyle = 'rgba(232,216,188,0.62)';
+        g.fillText('1978  ·  PAGE 07', w / 2, capTop + Math.round(padBottom * 0.53));
+        g.textAlign = 'left';
+        g.font = 'bold ' + Math.max(7, Math.round(iw * 0.008)) + 'px monospace';
+        g.fillStyle = 'rgba(232,216,188,0.45)';
+        g.fillText('ALBUM 07', padX, h - Math.max(12, Math.round(padBottom * 0.11)));
+        g.textAlign = 'right';
+        g.fillStyle = 'rgba(220,155,105,0.58)';
+        g.font = 'bold ' + Math.max(8, Math.round(iw * 0.009)) + 'px "Courier New", monospace';
+        g.fillText('JUN 12 1978', w - padX, h - Math.max(12, Math.round(padBottom * 0.11)));
+        g.restore();
     }
     // ── 撕边电影票(MOVIE_TICKET)────────────────────────────────────────────────
     // 与票根家族同一套「真票券」做法:浮在模糊照片上、四边真齿孔、纸纹 multiply 叠、
@@ -4777,8 +4848,8 @@ const w = natW;
                 return { w: iw + padX * 2, h: ih + topH + botH };
             }
             case 'ALBUM_CORNER': {
-                const pad = Math.max(40, Math.floor(size * 1.2));
-                return { w: iw + pad * 2, h: ih + pad * 2 };
+                const ag = albumGeom(iw, ih, size);
+                return { w: ag.w, h: ag.h };
             }
             case 'MOVIE_TICKET': {
                 // 尺寸与 styleMovieTicket 同源(共用 movieGeom),否则登记的画布和实际画出来的
