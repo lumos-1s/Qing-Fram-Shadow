@@ -102,6 +102,7 @@
         DOUBLE_LINE: {  },
         DROP_SHADOW: {  },
         FILM_STRIP: {  },
+        FILM_TEAR: { pf: true },
         FOLD_CORNER: {  },
         FUJI_WHITE: { pf: true },
         FUJI_WM: { pf: true, cr: true, isc: true },

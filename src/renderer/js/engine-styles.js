@@ -387,6 +387,35 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         const bottomH = Math.round(iw * 0.22);
         return { pad, mastH, headH, bottomH, w: iw + pad * 2, h: 0 };
     }
+
+    // 复古胶片撕裂:竖幅用竖条负片,横幅用横条负片;一端做锯齿撕口。
+    function filmTearGeom(iw, ih, size) {
+        const vertical = ih >= iw * 0.98;
+        const framePad = Math.max(10, Math.round(Math.min(iw, ih) * 0.018));
+        const rail = Math.max(34, Math.round(size * 0.90), Math.round(Math.min(iw, ih) * 0.055));
+        const endPad = Math.max(48, Math.round(Math.min(iw, ih) * 0.055));
+        const tornPad = Math.max(52, Math.round(Math.min(iw, ih) * 0.060));
+        const deskPad = Math.max(24, Math.round(size * 0.50), Math.round(Math.min(iw, ih) * 0.030));
+        let filmW, filmH, photoX, photoY, tearY = 0, tearX = 0;
+        if (vertical) {
+            filmW = iw + framePad * 2 + rail * 2;
+            filmH = ih + framePad * 2 + endPad + tornPad;
+            photoX = rail + framePad;
+            photoY = endPad + framePad;
+            tearY = photoY + ih + framePad + Math.round(tornPad * 0.35);
+        } else {
+            filmW = iw + framePad * 2 + endPad + tornPad;
+            filmH = ih + framePad * 2 + rail * 2;
+            photoX = endPad + framePad;
+            photoY = rail + framePad;
+            tearX = photoX + iw + framePad + Math.round(tornPad * 0.35);
+        }
+        return {
+            vertical, framePad, rail, endPad, tornPad, deskPad,
+            filmW, filmH, photoX, photoY, tearY, tearX,
+            w: filmW + deskPad * 2, h: filmH + deskPad * 2
+        };
+    }
     function styleStampPostage(img, size, g, iw, ih, S) {
         const G = stampPostageGeom(iw, ih, size);
         const { padX, padTop, padBottom, d, stampW, stampH, stampX, stampY,
@@ -2634,7 +2663,7 @@ AV_OVERLAY:63,
 AV_OVERLAY_TR:64,
 AV_OVERLAY_BR:65,
 AV_OVERLAY_BC:66,
-AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69 };
+AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70 };
     const MASK48 = 0xffffffffffffn, MULT = 0x5deece66dn, INC = 0xbn;
     function javaRandom(seed64) {
         let s = (BigInt(seed64) ^ MULT) & MASK48;
@@ -4527,6 +4556,10 @@ const w = natW;
                 const railH = Math.max(20, size);
                 return { w: iw + size * 2, h: ih + railH * 2 };
             }
+            case 'FILM_TEAR': {
+                const ft = filmTearGeom(iw, ih, size);
+                return { w: ft.w, h: ft.h };
+            }
             case 'POLAROID': {
                 const pfs = Math.max(10, Math.round(autoExifSize((S ? S.paramFs : 12), iw)));
                 const pbottom = Math.max(size * 3, Math.round(pfs * 2.6));
@@ -5580,6 +5613,156 @@ const w = natW;
         g.restore();
     }
 
+    // ══ 复古胶片撕裂 ══
+    // 暗房桌面 + 一条撕断的 35mm 负片:齿孔、片边码、划痕、日期戳都在底片上。
+    function styleFilmTear(img, size, g, iw, ih, S) {
+        const G = filmTearGeom(iw, ih, size);
+        const { vertical, framePad, rail, endPad, tornPad, deskPad,
+            filmW, filmH, photoX, photoY, tearY, tearX, w, h } = G;
+        // 暗房桌面:深褐黑,带极淡的接触印相网格。
+        const desk = g.createLinearGradient(0, 0, w, h);
+        desk.addColorStop(0, '#231c15'); desk.addColorStop(0.58, '#15100c'); desk.addColorStop(1, '#090705');
+        g.fillStyle = desk; g.fillRect(0, 0, w, h);
+        g.strokeStyle = 'rgba(210,180,140,0.035)'; g.lineWidth = 1;
+        const grid = Math.max(64, Math.round(Math.min(iw, ih) * 0.10));
+        for (let x = deskPad; x < w; x += grid) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
+        for (let y = deskPad; y < h; y += grid) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+
+        const film = newCanvas(filmW, filmH);
+        const fg = film.getContext('2d');
+        const base = fg.createLinearGradient(0, 0, filmW, filmH);
+        base.addColorStop(0, '#251c14'); base.addColorStop(0.55, '#17110c'); base.addColorStop(1, '#0d0906');
+        fg.fillStyle = base; fg.fillRect(0, 0, filmW, filmH);
+        fg.strokeStyle = 'rgba(210,180,135,0.16)'; fg.lineWidth = 1.5;
+        fg.strokeRect(1, 1, filmW - 2, filmH - 2);
+
+        // 照片 + 轻微泛黄 + 暗角。
+        fg.drawImage(img, photoX, photoY, iw, ih);
+        fg.fillStyle = 'rgba(132,86,36,0.06)'; fg.fillRect(photoX, photoY, iw, ih);
+        const vign = fg.createRadialGradient(photoX + iw / 2, photoY + ih / 2, Math.min(iw, ih) * 0.32,
+            photoX + iw / 2, photoY + ih / 2, Math.max(iw, ih) * 0.72);
+        vign.addColorStop(0, 'rgba(0,0,0,0)'); vign.addColorStop(1, 'rgba(0,0,0,0.30)');
+        fg.fillStyle = vign; fg.fillRect(photoX, photoY, iw, ih);
+
+        // 划痕与灰尘:固定盐,渲染稳定。
+        const rnd = styleNoise(iw, ih, 5150);
+        fg.save();
+        for (let i = 0; i < 10; i++) {
+            const sx = photoX + rnd(iw), sy = photoY + rnd(ih);
+            const len = Math.max(8, rnd(Math.max(12, Math.round(ih * 0.22))));
+            fg.strokeStyle = i < 7 ? 'rgba(255,242,210,0.06)' : 'rgba(0,0,0,0.15)';
+            fg.lineWidth = 1;
+            fg.beginPath(); fg.moveTo(sx, sy); fg.lineTo(sx + (i % 2 ? len * 0.16 : -len * 0.16), sy + len); fg.stroke();
+        }
+        fg.fillStyle = 'rgba(255,245,220,0.10)';
+        for (let i = 0; i < 18; i++) {
+            fg.beginPath(); fg.arc(photoX + rnd(iw), photoY + rnd(ih), 0.6 + rnd(2) * 0.5, 0, 6.2832); fg.fill();
+        }
+        fg.restore();
+        fg.strokeStyle = 'rgba(232,214,180,0.62)'; fg.lineWidth = 1.5;
+        fg.strokeRect(photoX - 1.5, photoY - 1.5, iw + 3, ih + 3);
+        fg.strokeStyle = 'rgba(0,0,0,0.40)'; fg.lineWidth = 1;
+        fg.strokeRect(photoX - 3.5, photoY - 3.5, iw + 7, ih + 7);
+
+        // 齿孔:竖条在左右轨,横条在上下轨。
+        fg.fillStyle = 'rgba(232,220,196,0.92)';
+        if (vertical) {
+            const hw = Math.max(8, Math.round(rail * 0.36)), hh = Math.max(12, Math.round(rail * 0.55));
+            const step = Math.max(hw + 4, Math.round(rail * 0.92));
+            for (let y = Math.round(endPad * 0.45); y < filmH - Math.round(tornPad * 0.45); y += step) {
+                for (const cx of [rail / 2, filmW - rail / 2]) {
+                    fillRoundRectCtx(fg, Math.round(cx - hw / 2), y, hw, hh, Math.min(hw, hh) * 0.28);
+                }
+            }
+        } else {
+            const hw = Math.max(12, Math.round(rail * 0.55)), hh = Math.max(8, Math.round(rail * 0.36));
+            const step = Math.max(hw + 4, Math.round(rail * 0.92));
+            for (let x = Math.round(endPad * 0.45); x < filmW - Math.round(tornPad * 0.45); x += step) {
+                for (const cy of [rail / 2, filmH - rail / 2]) {
+                    fillRoundRectCtx(fg, x, Math.round(cy - hh / 2), hw, hh, Math.min(hw, hh) * 0.28);
+                }
+            }
+        }
+
+        // 片边码。
+        const codeFs = Math.max(7, Math.round(Math.min(iw, ih) * 0.010));
+        fg.save();
+        fg.font = 'bold ' + codeFs + 'px "Courier New", monospace';
+        fg.fillStyle = 'rgba(214,166,102,0.85)';
+        fg.textBaseline = 'middle';
+        if (vertical) {
+            fg.textAlign = 'left';
+            fg.fillText('KODAK 400TX · 12A', rail + framePad, Math.round(endPad * 0.62));
+            fg.textAlign = 'right';
+            fg.fillText('▷ 12', filmW - rail - framePad, Math.round(endPad * 0.62));
+        } else {
+            fg.translate(Math.round(endPad * 0.55), filmH / 2);
+            fg.rotate(-Math.PI / 2);
+            fg.textAlign = 'center';
+            fg.fillText('KODAK 400TX · 12A', 0, 0);
+        }
+        fg.restore();
+
+        // 经典橙色日期戳。
+        const dateFs = Math.max(12, Math.min(Math.round(autoExifSize(S ? S.paramFs : 33, iw) * 1.15),
+            Math.round(iw * 0.06)));
+        fg.save();
+        fg.font = 'bold ' + dateFs + 'px "Courier New", monospace';
+        fg.textAlign = 'right'; fg.textBaseline = 'alphabetic';
+        fg.shadowColor = 'rgba(255,110,20,0.60)'; fg.shadowBlur = Math.max(3, dateFs * 0.28);
+        fg.fillStyle = '#ff9b45';
+        fg.fillText('98 6 12', photoX + iw - Math.round(dateFs * 0.5), photoY + ih - Math.round(dateFs * 0.4));
+        fg.restore();
+
+        // 撕口:锯齿路径 + 亮色断口。
+        const amp = Math.max(3, Math.round(Math.min(iw, ih) * 0.007));
+        const count = Math.max(8, Math.floor((vertical ? filmW : filmH) / 14));
+        const pts = [];
+        for (let i = 0; i <= count; i++) {
+            const t = i / count;
+            if (vertical) pts.push([Math.round(t * filmW), Math.round(tearY + (rnd(amp * 2 + 1) - amp))]);
+            else pts.push([Math.round(tearX + (rnd(amp * 2 + 1) - amp)), Math.round(t * filmH)]);
+        }
+        fg.save();
+        fg.globalCompositeOperation = 'destination-out';
+        fg.beginPath();
+        if (vertical) {
+            fg.moveTo(0, filmH); fg.lineTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) fg.lineTo(pts[i][0], pts[i][1]);
+            fg.lineTo(filmW, filmH);
+        } else {
+            fg.moveTo(filmW, 0); fg.lineTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) fg.lineTo(pts[i][0], pts[i][1]);
+            fg.lineTo(filmW, filmH);
+        }
+        fg.closePath(); fg.fill(); fg.restore();
+        fg.save();
+        fg.strokeStyle = 'rgba(242,224,190,0.82)';
+        fg.lineWidth = Math.max(1, Math.round(size * 0.022));
+        fg.beginPath();
+        fg.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) fg.lineTo(pts[i][0], pts[i][1]);
+        fg.stroke(); fg.restore();
+
+        g.save();
+        g.shadowColor = 'rgba(0,0,0,0.65)';
+        g.shadowBlur = Math.max(12, Math.round(size * 0.35));
+        g.shadowOffsetY = Math.max(4, Math.round(size * 0.08));
+        g.drawImage(film, deskPad, deskPad);
+        g.restore();
+
+        const deskFs = Math.max(7, Math.round(iw * 0.009));
+        g.save();
+        g.font = 'bold ' + deskFs + 'px monospace';
+        g.fillStyle = 'rgba(210,172,118,0.62)';
+        g.textBaseline = 'alphabetic';
+        const deskY = h - Math.max(8, Math.round(deskPad * 0.45));
+        g.textAlign = 'left';
+        g.fillText('35MM · KODAK 400TX', deskPad, deskY);
+        g.textAlign = 'right';
+        g.fillText('FRAME 12A · EST. 1998', w - deskPad, deskY);
+        g.restore();
+    }
 
     // ══ 色卡提取 ══ 从照片提取 5 个主色,照片下方深色条内显示色块+色码
     const _paletteCache = new WeakMap();
@@ -6317,7 +6500,7 @@ const w = natW;
 
     const draw = {
             SIMPLE: styleSimple, WHITE_PLAIN: styleWhitePlain, ROUNDED: styleRounded,
-            FILM_STRIP: styleFilmStrip, POLAROID: stylePolaroid,
+            FILM_STRIP: styleFilmStrip, FILM_TEAR: styleFilmTear, POLAROID: stylePolaroid,
             DOUBLE_LINE: styleDoubleLine, VINTAGE: styleVintage,
             GRADIENT: styleGradient, DROP_SHADOW: styleDropShadow,
             BLUR_CLASSIC: styleBlurClassic, BLUR_DATE: styleBlurDate,
