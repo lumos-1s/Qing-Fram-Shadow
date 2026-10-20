@@ -1,0 +1,29 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="a-bg" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#1B2426"/>
+      <stop offset="0.55" stop-color="#101719"/>
+      <stop offset="1" stop-color="#0A0F11"/>
+    </linearGradient>
+    <linearGradient id="a-gold" gradientUnits="userSpaceOnUse" x1="140" y1="150" x2="372" y2="362">
+      <stop offset="0" stop-color="#F6E3AC"/>
+      <stop offset="0.45" stop-color="#DCBA79"/>
+      <stop offset="1" stop-color="#A6814B"/>
+    </linearGradient>
+    <radialGradient id="a-glow" cx="0.5" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#5AD9B4" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#5AD9B4" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="a-sh" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  <rect x="14" y="14" width="484" height="484" rx="112" fill="url(#a-bg)"/>
+  <rect x="14" y="14" width="484" height="484" rx="112" fill="url(#a-glow)"/>
+  <rect x="15.5" y="15.5" width="481" height="481" rx="110.5" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="3"/>
+  <g filter="url(#a-sh)">
+    <rect x="126" y="142" width="260" height="228" rx="36" stroke="url(#a-gold)" stroke-width="26"/>
+  </g>
+  <path d="M279 170 V342" stroke="url(#a-gold)" stroke-width="17" stroke-linecap="round"/>
+  <path d="M279 256 H364" stroke="url(#a-gold)" stroke-width="17" stroke-linecap="round"/>
+</svg>
