@@ -399,74 +399,123 @@ window.App = {
     openAvatarCrop(dataUrl) {
         const modal = document.getElementById('avatarCropModal');
         const img = document.getElementById('cropImg');
-        if (!modal || !img) { this.saveUserAvatar(dataUrl); return; }
-        modal.style.display = 'flex'; modal.style.alignItems = 'center'; modal.style.justifyContent = 'center';
+        const stage = document.getElementById('avatarCropStage');
+        if (!modal || !img || !stage) { this.saveUserAvatar(dataUrl); return; }
+        const range = document.getElementById('cropZoom');
+        const rangeVal = document.getElementById('cropZoomVal');
+        modal.style.display = 'flex';
+        stage.classList.remove('dragging');
+        // 裁剪状态:scale = 每个原图像素占多少 CSS px;x/y = 图片左上角在裁剪框里的位置
+        const st = this._crop = { iw: 0, ih: 0, w: 0, scale: 1, min: 1, max: 4, x: 0, y: 0 };
+        const pct = () => Math.round(st.scale / st.min * 100);
+        // 图片必须始终铺满裁剪框:位置夹在 [w - 图片尺寸, 0],拖不到空白处
+        const clamp = () => {
+            st.x = Math.min(0, Math.max(st.w - st.iw * st.scale, st.x));
+            st.y = Math.min(0, Math.max(st.w - st.ih * st.scale, st.y));
+        };
+        const paint = () => {
+            clamp();
+            img.style.width = st.iw * st.scale + 'px';
+            img.style.height = st.ih * st.scale + 'px';
+            img.style.left = st.x + 'px';
+            img.style.top = st.y + 'px';
+            const p = pct();
+            if (range) range.value = String(Math.max(100, Math.min(400, p)));
+            if (rangeVal) rangeVal.textContent = p + '%';
+        };
+        const center = () => {
+            st.x = (st.w - st.iw * st.scale) / 2;
+            st.y = (st.w - st.ih * st.scale) / 2;
+            paint();
+        };
+        // 以裁剪框内某点(默认圆心)为锚缩放;滚轮时锚在指针处
+        const zoomTo = (next, ax, ay) => {
+            const s2 = Math.max(st.min, Math.min(st.max, next));
+            if (ax == null) { ax = st.w / 2; ay = st.w / 2; }
+            const k = s2 / st.scale;
+            st.x = ax - (ax - st.x) * k;
+            st.y = ay - (ay - st.y) * k;
+            st.scale = s2;
+            paint();
+        };
+        const setup = () => {
+            st.iw = img.naturalWidth || 300;
+            st.ih = img.naturalHeight || 300;
+            st.w = stage.clientWidth || 300;
+            st.min = Math.max(st.w / st.iw, st.w / st.ih);   // cover:短边刚好铺满
+            st.max = st.min * 4;
+            st.scale = st.min;
+            center();
+        };
+        img.onload = setup;
         img.src = dataUrl;
-        this._cropScale = 1;
-        this._cropX = 0;
-        this._cropY = 0;
-        const apply = () => {
-            const wrap = img.parentElement;
-            const w = wrap.clientWidth;
-            // 图片按cover填,初始scale按宽度
-            const iw = img.naturalWidth || 300;
-            const ih = img.naturalHeight || 300;
-            const s = Math.max(w / iw, w / ih);
-            this._cropScale = s;
-            this._cropX = 0; this._cropY = 0;
-            img.style.width = iw * s + 'px';
-            img.style.height = ih * s + 'px';
-            img.style.left = (w - iw * s) / 2 + 'px';
-            img.style.top = (w - ih * s) / 2 + 'px';
-        };
-        img.onload = apply;
-        if (img.complete && img.naturalWidth) apply();
-        // 拖动
-        let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
-        img.onmousedown = (e) => { dragging = true; sx = e.clientX; sy = e.clientY; ox = this._cropX; oy = this._cropY; e.preventDefault(); };
-        window.onmousemove = (e) => { if (!dragging) return; this._cropX = ox + e.clientX - sx; this._cropY = oy + e.clientY - sy; img.style.left = this._cropX + 'px'; img.style.top = this._cropY + 'px'; };
-        window.onmouseup = () => { dragging = false; };
-        // 滚轮缩放
-        img.onwheel = (e) => {
+        if (img.complete && img.naturalWidth) setup();
+        // 拖动(pointer 事件 + 捕获,拖出裁剪框也不丢)
+        let drag = null;
+        stage.onpointerdown = (e) => {
+            if (e.button !== 0) return;
+            drag = { x: e.clientX, y: e.clientY, ox: st.x, oy: st.y };
+            stage.classList.add('dragging');
+            try { stage.setPointerCapture(e.pointerId); } catch (_) { /* 合成事件没有活动指针 */ }
             e.preventDefault();
-            const old = this._cropScale;
-            this._cropScale *= (e.deltaY < 0 ? 1.1 : 0.9);
-            this._cropScale = Math.max(old * 0.3, Math.min(this._cropScale, old * 5));
-            const iw = img.naturalWidth, ih = img.naturalHeight;
-            img.style.width = iw * this._cropScale + 'px';
-            img.style.height = ih * this._cropScale + 'px';
         };
-        // 确认
+        stage.onpointermove = (e) => {
+            if (!drag) return;
+            st.x = drag.ox + (e.clientX - drag.x);
+            st.y = drag.oy + (e.clientY - drag.y);
+            paint();
+        };
+        const endDrag = (e) => {
+            if (!drag) return;
+            drag = null;
+            stage.classList.remove('dragging');
+            try { if (stage.hasPointerCapture(e.pointerId)) stage.releasePointerCapture(e.pointerId); } catch (_) {}
+        };
+        stage.onpointerup = endDrag;
+        stage.onpointercancel = endDrag;
+        stage.ondblclick = () => { st.scale = st.min; center(); };
+        stage.onwheel = (e) => {
+            e.preventDefault();
+            const r = stage.getBoundingClientRect();
+            zoomTo(st.scale * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX - r.left, e.clientY - r.top);
+        };
+        if (range) range.oninput = () => { zoomTo(st.min * (Number(range.value) || 100) / 100); };
+        const reset = () => { st.scale = st.min; center(); };
+        const resetBtn = document.getElementById('cropReset');
+        if (resetBtn) resetBtn.onclick = reset;
+        const close = () => { modal.style.display = 'none'; };
+        document.getElementById('cropCancel').onclick = close;
+        const closeX = document.getElementById('cropCancelX');
+        if (closeX) closeX.onclick = close;
+        // 确认:直接按当前视口从原图取样,避免先按显示尺寸重采样再二次压缩
         document.getElementById('cropOk').onclick = () => {
-            const wrap = img.parentElement;
+            if (!st.iw || !img.naturalWidth || !st.scale) return;
             const c = document.createElement('canvas');
             c.width = 200; c.height = 200;
-            const ctx = c.getContext('2d');
-            // 从img位置映射到canvas
-            const scale = this._cropScale;
-            const imgX = -parseFloat(img.style.left) / scale;
-            const imgY = -parseFloat(img.style.top) / scale;
-            const cropSize = wrap.clientWidth / scale;
-            ctx.drawImage(img, imgX, imgY, cropSize, cropSize, 0, 0, 200, 200);
-            const out = c.toDataURL('image/jpeg', 0.85);
+            const sw = st.w / st.scale;
+            c.getContext('2d').drawImage(img, -st.x / st.scale, -st.y / st.scale, sw, sw, 0, 0, 200, 200);
             modal.style.display = 'none';
-            this.saveUserAvatar(out);
+            this.saveUserAvatar(c.toDataURL('image/jpeg', 0.9));
         };
-        document.getElementById('cropCancel').onclick = () => { modal.style.display = 'none'; };
     },
     saveUserAvatar(dataUrl) {
-        // 先压缩到200x200再存,避免localStorage配额超限
+        // 裁剪结果已是 200×200 JPEG 时直接存,避免二次解码 + 二次压缩;
+        // 其他来源(外部调用)仍按 cover 压到 200×200
         const img = new Image();
         img.onload = () => {
-            const c = document.createElement('canvas');
             const size = 200;
-            c.width = size; c.height = size;
-            const ctx = c.getContext('2d');
-            // cover裁剪
-            const s = Math.max(size / img.width, size / img.height);
-            const dw = img.width * s, dh = img.height * s;
-            ctx.drawImage(img, (size - dw) / 2, (size - dh) / 2, dw, dh);
-            const compressed = c.toDataURL('image/jpeg', 0.85);
+            let compressed = dataUrl;
+            const reuse = img.width === size && img.height === size && /^data:image\/jpeg/i.test(dataUrl);
+            if (!reuse) {
+                const c = document.createElement('canvas');
+                c.width = size; c.height = size;
+                const ctx = c.getContext('2d');
+                // cover裁剪
+                const s = Math.max(size / img.width, size / img.height);
+                const dw = img.width * s, dh = img.height * s;
+                ctx.drawImage(img, (size - dw) / 2, (size - dh) / 2, dw, dh);
+                compressed = c.toDataURL('image/jpeg', 0.85);
+            }
             try {
                 localStorage.setItem('qfs_user_avatar', compressed);
             } catch(e) { console.warn('头像存储失败:', e); }
@@ -489,8 +538,19 @@ window.App = {
             reader.onload = (ev) => this.openAvatarCrop(ev.target.result);
             reader.readAsDataURL(f);
         };
-        if (pick && file1) { pick.addEventListener('click', () => file1.click()); file1.addEventListener('change', (e) => readFile(e.target.files[0])); }
-        if (change && file2) { change.addEventListener('click', () => file2.click()); file2.addEventListener('change', (e) => readFile(e.target.files[0])); }
+        // 选完清空 value:同一张图再选一次也会触发 change(否则第二次没反应)
+        const bind = (btn, file) => {
+            if (!btn || !file) return;
+            btn.addEventListener('click', () => file.click());
+            file.addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; readFile(f); });
+        };
+        bind(pick, file1);
+        bind(change, file2);
+        // Esc 关闭裁切弹窗(全局只绑一次)
+        document.addEventListener('keydown', (e) => {
+            const m = document.getElementById('avatarCropModal');
+            if (e.key === 'Escape' && m && m.style.display !== 'none') m.style.display = 'none';
+        });
     },
 
     /* ══ 画布元素 / 缩放平移交互 ══ */

@@ -958,16 +958,28 @@
     </div>
 
     <!-- 头像裁切弹窗 -->
-    <div id="avatarCropModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:10000;align-items:center;justify-content:center;">
-        <div style="background:#1e1e26;border-radius:12px;padding:20px;width:420px;max-width:90vw;">
-            <div style="color:#eee;font-size:16px;margin-bottom:12px;">调整头像</div>
-            <div style="position:relative;width:300px;height:300px;margin:0 auto;border-radius:50%;overflow:hidden;border:2px solid #555;cursor:move;">
-                <img id="cropImg" style="position:absolute;top:0;left:0;transform-origin:center;user-select:none;" draggable="false" />
+    <div id="avatarCropModal" class="modal-overlay" style="display:none">
+        <div class="modal-card avatar-crop-card">
+            <div class="modal-header">
+                <span class="modal-title">调整头像</span>
+                <button id="cropCancelX" class="modal-close" title="关闭">&times;</button>
             </div>
-            <div style="color:#999;font-size:12px;margin-top:8px;text-align:center;">拖动移动 · 滚轮缩放</div>
-            <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end;">
-                <button id="cropCancel" style="padding:8px 16px;background:#333;border:none;border-radius:6px;color:#eee;cursor:pointer;">取消</button>
-                <button id="cropOk" style="padding:8px 16px;background:#10b981;border:none;border-radius:6px;color:#fff;cursor:pointer;">确认</button>
+            <div class="modal-body">
+                <div id="avatarCropStage" class="avatar-crop-stage" aria-label="头像裁剪区">
+                    <img id="cropImg" alt="" draggable="false" />
+                </div>
+                <div class="avatar-crop-zoom">
+                    <span class="ac-label">缩放</span>
+                    <input type="range" id="cropZoom" min="100" max="400" step="1" value="100" />
+                    <span class="ac-val" id="cropZoomVal">100%</span>
+                </div>
+                <div class="avatar-crop-hint">拖动移动 · 滚轮缩放 · 双击复位</div>
+                <div class="avatar-crop-actions">
+                    <button id="cropReset" class="mini-btn">重置</button>
+                    <span class="ac-spacer"></span>
+                    <button id="cropCancel" class="mini-btn">取消</button>
+                    <button id="cropOk" class="mini-btn primary">确认</button>
+                </div>
             </div>
         </div>
     </div>
