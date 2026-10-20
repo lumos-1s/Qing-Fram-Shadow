@@ -754,14 +754,20 @@ ipcMain.handle('save-image-base64', async (_e, { data, filename }) => {
     const dir = validDir(st.lastExportDir) ? st.lastExportDir : null;
     // 目标目录已有同名文件时自动加号,再次导出数字继续递增
     const def = dir ? freeFilePath(dir, filename) : filename;
+    // 默认过滤器跟随目标文件名扩展名:此前 PNG 恒排第一,导 JPG/WebP 时保存框先显示「PNG 图片」,
+    // 一路回车就会拿到扩展名与内容不一致的文件。
+    const ext = String(path.extname(filename || '') || '.png').slice(1).toLowerCase();
+    const allFilters = [
+        { name: 'PNG 图片', extensions: ['png'] },
+        { name: 'JPEG 图片', extensions: ['jpg', 'jpeg'] },
+        { name: 'WebP 图片', extensions: ['webp'] }
+    ];
+    const matchFilter = allFilters.find(f => f.extensions.indexOf(ext) >= 0);
+    const filters = matchFilter ? [matchFilter].concat(allFilters.filter(f => f !== matchFilter)) : allFilters;
     const { canceled, filePath } = await dialog.showSaveDialog({
         title: '导出图片',
         defaultPath: def,
-        filters: [
-            { name: 'PNG 图片', extensions: ['png'] },
-            { name: 'JPEG 图片', extensions: ['jpg'] },
-            { name: 'WebP 图片', extensions: ['webp'] }
-        ]
+        filters: filters
     });
     if (canceled || !filePath) return false;
     fs.writeFileSync(filePath, Buffer.from(data, 'base64'));

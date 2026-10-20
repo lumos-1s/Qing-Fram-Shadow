@@ -178,7 +178,7 @@ html.dark .tbtn.primary { color: #0c1914; }
     .toolbar-group { gap: 2px; padding: 4px 5px; }
     .zoom-badge { display: none; }
 }
-@media (max-width: 1010px) {
+@media (max-width: 1060px) {
     #btnUndo, #btnRedo, #btnReset, #btnRandom { font-size: 0; gap: 0; padding: 6px 8px; }
 }
 
@@ -191,10 +191,16 @@ html.dark .tbtn.primary { color: #0c1914; }
 .inline-select:hover { border-color: var(--primary); }
 .inline-select option { color: var(--text); }
 
-/* 导出设置弹出面板(格式/质量/尺寸折叠进次级菜单) */
-.export-settings-wrap { position: relative; }
+/* 导出 = 分裂按钮:主按钮导出,右侧小箭头打开导出设置(以前是独立的「设置」文字按钮,看着像标签) */
+.export-split { position: relative; display: flex; align-items: center; flex: 0 0 auto; }
+.export-split #btnSave { border-radius: 9px 0 0 9px; }
+.export-split #btnExportSettings {
+    border-radius: 0 9px 9px 0; padding: 6px 6px;
+    box-shadow: inset 1px 0 0 rgba(0,0,0,.18), 0 4px 12px var(--primary-soft);
+}
+.export-split #btnExportSettings svg { display: block; }
 .export-pop {
-    position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
+    position: absolute; top: calc(100% + 8px); left: 0; right: auto; z-index: 60;
     min-width: 228px; padding: 8px;
     background: var(--surface); border: 1px solid var(--border-strong);
     border-radius: 12px; box-shadow: var(--shadow);

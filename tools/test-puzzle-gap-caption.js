@@ -219,6 +219,25 @@ const RUN = `(async () => {
       layout + '@4:3:缝隙仍 = 2*gapPx', '缝隙 ' + seams.map(r => r.len).join('/') + 'px / 2*gapPx = ' + (A1.geom.gapPx * 2).toFixed(2) + 'px');
   }
 
+  // ── 7. 分隔线轴位模型:拖一条轴不丢其他轴;切换布局不残留旧轴 ──
+  {
+    const h3 = window.__clampPuzzleAxes('h3', { v: [0.4] });
+    add(h3.v.length === 2 && window.__buildPuzzleSlots('h3', h3).length === 3,
+      'h3:拖第 1 条轴后仍保留 2 条竖轴(3 列)', JSON.stringify(h3.v));
+
+    const h2 = window.__clampPuzzleAxes('h2', { v: [0.4, 0.6], h: [0.4] });
+    add(h2.v.length === 1 && h2.h.length === 0 && window.__buildPuzzleSlots('h2', h2).length === 2,
+      'h2:切换布局残留的 h 轴不生效(仍 2 格)', JSON.stringify(h2));
+
+    const g9 = window.__clampPuzzleAxes('grid9', { v: [0.4], h: [0.4] });
+    add(g9.v.length === 2 && g9.h.length === 2 && window.__buildPuzzleSlots('grid9', g9).length === 9,
+      'grid9:拖一条轴不丢同方向另一条(仍 9 格)', JSON.stringify(g9));
+
+    const squeezed = window.__clampPuzzleAxes('h4', { v: [0.9, 0.9, 0.9] });
+    add(squeezed.v.every((v, i) => i === 0 || v - squeezed.v[i - 1] >= 0.12 - 1e-9),
+      'h4:三条轴挤在一起时强制 ≥12% 间距', JSON.stringify(squeezed.v));
+  }
+
   return res;
 })()`;
 

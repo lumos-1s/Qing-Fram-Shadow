@@ -23,6 +23,17 @@ window.App = Object.assign(window.App || {}, {
         return { originalPath: im.path, keepGps: !!(d.chkKeepGps && d.chkKeepGps.checked) };
     },
 
+    /* ── 导出总入口:工具栏主按钮 / Ctrl+E / 右键菜单共用 ──
+       只有切图页签要换通道(九宫格是一张图切成 n² 块,不是单图导出)。
+       拼图页签仍走主导出管线:exportImage 自己会渲染拼图成品,格式/质量/尺寸都跟随导出设置
+       (默认 JPG),不再被锁死在拼图面板按钮的固定档位上。 */
+    doExport() {
+        const active = this.dom.tabs && this.dom.tabs.querySelector('.tab.active');
+        const tab = active ? active.dataset.tab : '';
+        if (tab === 'grid') return this.exportGridCrop();
+        return this.exportImage();
+    },
+
     /* ── 导出:先选保存位置,再渲染导出画面,最后写盘 ── */
     async exportImage() {
         if (!this.image) { this.setStatus('请先导入照片'); return; }

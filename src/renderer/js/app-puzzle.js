@@ -46,6 +46,7 @@ window.App = Object.assign(window.App || {}, {
         pk.layoutType = layoutType;
         pk.axisVals = oldAxes || {};
         pk.enabled = 1;
+        this._puzzleAxisHover = null;
         this.migratePuzzle();
         this.ensurePuzzleSlotsCount(pk);
         this.reconcilePuzzleCaptions(pk);
@@ -168,9 +169,13 @@ window.App = Object.assign(window.App || {}, {
         if (/^s\d+$/.test(this._puzzleSlot)) {
             const si = parseInt(this._puzzleSlot.substring(1), 10);
             if (this._activePuzzleSlot !== si) { this._activePuzzleSlot = si; this.scheduleRender(); }
+        } else if (/^[vh]\d+$/.test(this._puzzleSlot) && this._activePuzzleSlot != null) {
+            // 选中的是间隙字幕 = 编辑间隙,不同时保留某一格的高亮/单图控件
+            this._activePuzzleSlot = null;
+            this.scheduleRender();
         }
-        this.loadCaptionFromModel();
-        this.renderCaptionEditorVisibility();
+        // onSettingCommit 里的刷新发生在读取新值之前,这里再刷一次,让标签/滑块跟上新选中
+        this.refreshPuzzleUI();
     },
 
     refreshPuzzleUI() {
@@ -233,24 +238,37 @@ window.App = Object.assign(window.App || {}, {
                 pick.value = '';
             } else if (typeof this._puzzleSlot === 'string' && pick.querySelector('option[value="' + this._puzzleSlot + '"]')) {
                 pick.value = this._puzzleSlot;
-            } else { this._puzzleSlot = 's0'; if (pick.querySelector('option[value="s0"]')) pick.value = 's0'; }
-            // 活跃槽位范围 + per-slot 滑块回读(未选中时跳过,避免自动回到槽位 0)
-            if (!isNone) {
-                if (this._activePuzzleSlot == null || this._activePuzzleSlot < 0 || this._activePuzzleSlot >= n) this._activePuzzleSlot = 0;
+            } else { this._puzzleSlot = ''; pick.value = ''; }
+            // 画布选中槽位是单图控件的唯一入口:没选中就禁用偏移/缩放,避免"控制整个拼图"时偷偷改某一格
+            const hasSlot = this._activePuzzleSlot != null && this._activePuzzleSlot >= 0 && this._activePuzzleSlot < n;
+            if (!hasSlot) this._activePuzzleSlot = null;
+            if (hasSlot) {
                 const sc = pk.slots[this._activePuzzleSlot] || {};
                 this.setSlotOffsetSliders(sc);
                 if ($('slSlotZoom')) $('slSlotZoom').value = sc.zoom != null ? sc.zoom : 100;
                 this.updateLabel('lblSlotZoom', (sc.zoom != null ? sc.zoom : 100) + '%');
             }
+            ['slSlotOffsetX', 'slSlotOffsetY', 'slSlotZoom'].forEach(id => {
+                const el = $(id);
+                if (!el) return;
+                el.disabled = !hasSlot;
+                if (hasSlot) el.removeAttribute('title');
+                else el.title = '先在画布上点击选中一个格子';
+            });
             const lbl = $('lblPuzzleSlot');
             if (lbl) {
                 if (!pk.enabled) lbl.textContent = '当前槽位：无（未启用）';
-                else if (isNone) lbl.textContent = `当前槽位:未选中 (布局 ${pk.layout})`;
-                else {
-                    const ai = this._activePuzzleSlot != null ? this._activePuzzleSlot : 0;
+                else if (hasSlot) {
+                    const ai = this._activePuzzleSlot;
                     const nm = this.slotImageName(ai);
                     lbl.textContent = `当前槽位:${ai + 1}/${n}${nm ? ` · ${nm}` : '（空）'} (布局 ${pk.layout})`;
                     lbl.title = nm || '';
+                } else if (/^[vh]\d+$/.test(this._puzzleSlot || '')) {
+                    lbl.textContent = `当前项:${this._puzzleSlot.toUpperCase()} 间隙字幕 (布局 ${pk.layout})`;
+                    lbl.title = '';
+                } else {
+                    lbl.textContent = `当前槽位:未选中 (布局 ${pk.layout})`;
+                    lbl.title = '';
                 }
             }
         }
@@ -495,8 +513,9 @@ window.App = Object.assign(window.App || {}, {
         this.onSettingCommit();
         const pk = this.template.puzzle;
         pk.enabled = 0;
-        this._puzzleSlot = 's0';
+        this._puzzleSlot = '';
         this._activePuzzleSlot = null;
+        this._puzzleAxisHover = null;
         this.saveCurrentTemplate();
         this.refreshPuzzleUI();
         this.toggleCaptionEditor(false);
@@ -521,52 +540,103 @@ window.App = Object.assign(window.App || {}, {
         };
     },
 
-    // 命中:轴 / 槽位
+    // 命中:分隔线 / 槽位
     puzzleHitTest(e) {
         const pk = this.tplPuzzle();
         if (!pk || !window.__buildPuzzleSlots) return null;
         const p = this.puzzlePx(e);
-        // 先检测是否在分隔线附近(±10px)
+        // 先检测是否在分隔线附近(屏幕约 ±6px,见 puzzleAxisAtPx)
         const axisHit = this.puzzleAxisAtPx(p.x, p.y);
-        if (axisHit) return { type: 'axis', dim: axisHit.dim, idx: axisHit.idx, x: p.x, y: p.y };
+        if (axisHit) return { type: 'axis', dim: axisHit.dim, idx: axisHit.idx, pos: axisHit.pos, x: p.x, y: p.y };
         const hit = this.puzzleSlotAtPx(p.x, p.y);
         return hit != null ? { type: 'slot', slot: hit, x: p.x, y: p.y } : null;
     },
 
-    // 检测鼠标是否在分隔线(轴线)附近,返回 {dim, idx} 或 null
+    // 检测鼠标是否在分隔线(轴线)附近,返回 {dim, idx, pos} 或 null。
+    // 容差按屏幕 CSS 像素换算:画布后备缓冲被 DPR/显示缩放放大后,固定 10 个后备像素
+    // 在屏幕上只有 2–3px,分隔线几乎点不中。
     puzzleAxisAtPx(x, y) {
         const pk = this.tplPuzzle();
         if (!pk || !pk.layout || pk.layout === 'single') return null;
-        const W = this.dom.canvas.width, H = this.dom.canvas.height;
+        const canvas = this.dom.canvas;
+        const W = canvas.width, H = canvas.height;
+        const rect = canvas.getBoundingClientRect();
+        const tol = rect.width > 0 ? Math.max(1, (W / rect.width) * 6) : 10;
         const axes = window.__clampPuzzleAxes ? window.__clampPuzzleAxes(pk.layout, pk.axisVals) : (pk.axisVals || {});
-        const tol = 10; // 像素容差
         // 竖轴(v):垂直线,检测 x
         const vList = (axes.v || []);
         for (let i = 0; i < vList.length; i++) {
             const ax = vList[i] * W;
-            if (Math.abs(x - ax) <= tol && y > 0 && y < H) return { dim: 'v', idx: i };
+            if (Math.abs(x - ax) <= tol && y > 0 && y < H) return { dim: 'v', idx: i, pos: vList[i] };
         }
         // 横轴(h):水平线,检测 y
         const hList = (axes.h || []);
         for (let i = 0; i < hList.length; i++) {
             const ay = hList[i] * H;
-            if (Math.abs(y - ay) <= tol && x > 0 && x < W) return { dim: 'h', idx: i };
+            if (Math.abs(y - ay) <= tol && x > 0 && x < W) return { dim: 'h', idx: i, pos: hList[i] };
         }
         return null;
     },
 
-    // 拖拽分隔线:更新轴位
+    // 悬停/拖动分隔线时记录状态,画布上画一条淡蓝高亮线(导出不画)
+    _setPuzzleAxisHover(ax) {
+        const a = ax ? ax.dim + ax.idx : '';
+        const b = this._puzzleAxisHover ? (this._puzzleAxisHover.dim + this._puzzleAxisHover.idx) : '';
+        if (a === b) return;
+        this._puzzleAxisHover = ax ? { dim: ax.dim, idx: ax.idx } : null;
+        this.scheduleRender();
+    },
+
+    // 拖拽分隔线:更新轴位。按当前轴列表夹在左右邻轴之间,不跨轴、不留 <12% 的窄格;
+    // 按下时记录 grabOff,拖动过程中分隔线不会跳到指针中心。
     puzzleDragAxis(pk, d, e) {
         const W = this.dom.canvas.width, H = this.dom.canvas.height;
         const p = this.puzzlePx(e);
+        const axes = window.__clampPuzzleAxes ? window.__clampPuzzleAxes(pk.layout, pk.axisVals) : (pk.axisVals || {});
+        const vals = axes[d.dim] || [];
+        if (d.idx < 0 || d.idx >= vals.length) return;
         if (!pk.axisVals) pk.axisVals = {};
-        if (d.dim === 'v') {
-            if (!pk.axisVals.v) pk.axisVals.v = [];
-            pk.axisVals.v[d.idx] = Math.max(0.12, Math.min(0.88, p.x / W));
-        } else {
-            if (!pk.axisVals.h) pk.axisVals.h = [];
-            pk.axisVals.h[d.idx] = Math.max(0.12, Math.min(0.88, p.y / H));
-        }
+        const MIN = 0.12;
+        const lo = (d.idx > 0 ? vals[d.idx - 1] : 0) + MIN;
+        const hi = (d.idx < vals.length - 1 ? vals[d.idx + 1] : 1) - MIN;
+        const raw = (d.dim === 'v' ? p.x / W : p.y / H) - (d.grabOff || 0);
+        let v = clampNum(raw, Math.max(MIN, lo), Math.min(1 - MIN, hi));
+        // 拖到接近默认分割比例时吸附,方便把某条分隔线拖回等高/等宽
+        const defs = window.__clampPuzzleAxes ? window.__clampPuzzleAxes(pk.layout, {}) : null;
+        const snap = defs && defs[d.dim] ? defs[d.dim][d.idx] : null;
+        if (snap != null && snap >= lo && snap <= hi && Math.abs(v - snap) <= 0.015) v = snap;
+        vals[d.idx] = v;
+        pk.axisVals[d.dim] = vals.slice();
+    },
+
+    // 恢复某条分隔线到布局默认比例(双击分隔线 / 右键菜单)
+    resetPuzzleAxis(dim, idx) {
+        const pk = this.tplPuzzle();
+        if (!pk || !window.__clampPuzzleAxes) return;
+        const axes = window.__clampPuzzleAxes(pk.layout, pk.axisVals);
+        const defs = window.__clampPuzzleAxes(pk.layout, {});
+        const list = axes[dim] || [];
+        const dlist = defs[dim] || [];
+        if (idx < 0 || idx >= list.length || dlist[idx] == null) return;
+        this.onSettingCommit();
+        list[idx] = dlist[idx];
+        const fixed = window.__clampPuzzleAxes(pk.layout, Object.assign({}, pk.axisVals, { [dim]: list }));
+        if (!pk.axisVals) pk.axisVals = {};
+        pk.axisVals[dim] = fixed[dim];
+        this.saveCurrentTemplate();
+        this.scheduleRender(true);
+        this.setStatus('分隔线已恢复默认比例');
+    },
+
+    // 恢复全部分隔线到布局默认比例
+    resetPuzzleAxes() {
+        const pk = this.tplPuzzle();
+        if (!pk) return;
+        this.onSettingCommit();
+        pk.axisVals = {};
+        this.saveCurrentTemplate();
+        this.scheduleRender(true);
+        this.setStatus('已恢复全部分隔线为默认比例');
     },
 
     // 画布像素→槽位索引(按引擎可见区域内缩 gap,间隙/边框处返回 null)
@@ -736,6 +806,21 @@ window.App = Object.assign(window.App || {}, {
         }
     },
 
+    // 点击图片以外(背景板/格间空隙/分隔线)时取消格子选中:
+    // 蓝框消失,滚轮/拖拽/单图滑块回到"整个拼图";若当前下拉选的是间隙字幕则保留,避免把字幕编辑器关掉。
+    clearActivePuzzleSlot(silent) {
+        const slotKey = typeof this._puzzleSlot === 'string' && /^s\d+$/.test(this._puzzleSlot);
+        if (this._activePuzzleSlot == null && !slotKey) return false;
+        // 先保存字幕编辑框里尚未提交的内容,再清选中(清完编辑器会收起)
+        if (slotKey) this.captureCaptionToModel(this._puzzleSlot);
+        this._activePuzzleSlot = null;
+        if (slotKey) this._puzzleSlot = '';
+        this.refreshPuzzleUI();
+        this.scheduleRender();
+        if (!silent) this.setStatus('已取消格子选中');
+        return true;
+    },
+
     // 点击画布选择当前编辑/渲染的槽位
     setActivePuzzleSlot(i) {
         this._activePuzzleSlot = i;
@@ -839,6 +924,13 @@ window.App = Object.assign(window.App || {}, {
     },
 
     async exportPuzzle() {
+        // 拼图导出跟随导出设置(默认 JPG):此前这里硬编码 PNG,想导 JPG 只能切到别的页签走主导出。
+        // 尺寸仍恒 4000(拼图版式坐标固定在 1000 单位),与主导出的「原图尺寸」档一致。
+        const fmt = (this.dom.selFormat && this.dom.selFormat.value) || 'jpeg';
+        const mime = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }[fmt] || 'image/jpeg';
+        const ext = fmt === 'jpeg' ? 'jpg' : fmt;
+        const qRaw = this.dom.slExportQuality ? parseInt(this.dom.slExportQuality.value, 10) : 92;
+        const quality = fmt === 'png' ? 1 : Math.min(1, Math.max(0.6, (qRaw || 92) / 100));
         const exportPuzzleNow = () => {
             if (!window.__renderPuzzle) { this.setStatus('拼图渲染不可用'); return Promise.resolve(false); }
             const prev = this.displayMax;
@@ -850,7 +942,18 @@ window.App = Object.assign(window.App || {}, {
             return (async () => {
                 try {
                     await this._awaitFrameRender(true);
-                    return this.dom.canvas.toDataURL('image/png').split(',')[1];
+                    let src = this.dom.canvas;
+                    if (fmt === 'jpeg') {
+                        // JPG 不支持透明:与主导出一致,先铺白底再合成
+                        const bg = document.createElement('canvas');
+                        bg.width = src.width; bg.height = src.height;
+                        const bgx = bg.getContext('2d');
+                        bgx.fillStyle = '#ffffff';
+                        bgx.fillRect(0, 0, bg.width, bg.height);
+                        bgx.drawImage(src, 0, 0);
+                        src = bg;
+                    }
+                    return src.toDataURL(mime, quality).split(',')[1];
                 } catch (e) {
                     console.error('[exportPuzzle] render failed', e);
                     this.setStatus('导出失败');
@@ -874,7 +977,7 @@ window.App = Object.assign(window.App || {}, {
         }
         const im0 = this.images && this.images.length ? this.images[this.currentIdx != null ? this.currentIdx : 0] : null;
         const pzName = im0 ? (im0.name || 'photo').replace(/\.[^.]+$/, '') : '';
-        const filename = pzName ? `${pzName}_拼图.png` : '拼图.png';
+        const filename = pzName ? `${pzName}_拼图.${ext}` : `拼图.${ext}`;
         const r = await window.qingframe.saveImage(base64, filename);
         if (r) this.setStatus('拼图已导出');
         else this.setStatus('导出失败');

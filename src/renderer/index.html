@@ -43,9 +43,11 @@
             <div class="toolbar-group">
                 <button id="btnOpen" class="tbtn" title="打开图片 (Ctrl+O)">导入照片</button>
                 <div class="sep"></div>
-                <button id="btnSave" class="tbtn primary" title="导出当前图片">导出</button>
-                <div class="export-settings-wrap" id="exportSettingsWrap">
-                    <button id="btnExportSettings" class="tbtn" title="导出格式 / 质量 / 尺寸">设置</button>
+                <div class="export-split" id="exportSettingsWrap">
+                    <button id="btnSave" class="tbtn primary" title="导出当前图片">导出</button>
+                    <button id="btnExportSettings" class="tbtn primary" title="导出设置：格式 / 质量 / 尺寸 / EXIF" aria-label="导出设置" aria-haspopup="true">
+                        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6.5 8 11l4.5-4.5"/></svg>
+                    </button>
                     <div class="export-pop" id="exportPop" style="display:none">
                         <div class="ep-row">
                             <label>格式</label>
@@ -831,7 +833,7 @@
                             </div>
                             <div class="btn-row btn-2">
                                 <button class="mini-btn" id="btnGridPreview">切分预览</button>
-                                <button class="mini-btn primary" id="btnGridExport">导出九宫格</button>
+                                <button class="mini-btn primary" id="btnGridExport">导出切图</button>
                             </div>
                             <div class="hint-box">单张：先预览 n² 格缩略图再导出；胶片条 Ctrl/Shift 多选：跳过预览，批量每张切 n² 张。留白让每块自带白边，适合直接发拼图。</div>
                         </div>

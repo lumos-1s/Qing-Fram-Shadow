@@ -1359,19 +1359,34 @@ function buildPuzzleSlots(layoutType, axes) {
     return rects;
 }
 
-// 钳制轴位:0.12–0.88,两轴间距≥0.12
+// 钳制轴位:只保留当前布局定义的那几条轴(切换布局后不残留旧轴),
+// 缺省位置按布局默认比例补全,范围 0.12–0.88、相邻轴间距≥0.12。
+// 旧实现直接 map 用户数组:拖一条轴只写入一个下标,其余轴会丢(3 列变 2 列),
+// 从其他布局带过来的 v/h 轴也会凭空多切一刀。
 function clampPuzzleAxes(layoutType, axes) {
     const def = PUZZLE_LAYOUT_AXES[layoutType] || PUZZLE_LAYOUT_AXES.single;
     const out = { v: [], h: [] };
+    const MIN = 0.12;
     for (const dim of ['v', 'h']) {
-        const list = (axes && axes[dim]) || def[dim] || [];
         const defs = def[dim] || [];
-        const vals = list.slice().map((x, i) => clamp(x == null ? (defs[i] != null ? defs[i] : 0.5) : x, 0.12, 0.88)).sort((a, b) => a - b);
-        if (vals.length > 1) {
-            for (let i = 1; i < vals.length; i++) {
-                if (vals[i] - vals[i - 1] < 0.12) { vals[i] = Math.min(0.88, vals[i - 1] + 0.12); }
-            }
+        const n = defs.length;
+        if (!n) continue;
+        const src = (axes && Array.isArray(axes[dim])) ? axes[dim] : [];
+        const vals = [];
+        for (let i = 0; i < n; i++) {
+            let v = (src[i] == null) ? defs[i] : Number(src[i]);
+            if (!isFinite(v)) v = defs[i];
+            vals.push(clamp(v, MIN, 1 - MIN));
         }
+        vals.sort((a, b) => a - b);
+        // 按"左侧还要放 i+1 个最小格、右侧还要放 n-i 个"先限位,
+        // 再从左往右补最小间距;这样两条轴不会撞在一起或越界。
+        for (let i = 0; i < n; i++) {
+            const lo = MIN + i * MIN;
+            const hi = 1 - MIN - (n - 1 - i) * MIN;
+            vals[i] = clamp(vals[i], lo, hi);
+        }
+        for (let i = 1; i < n; i++) vals[i] = Math.max(vals[i], vals[i - 1] + MIN);
         out[dim] = vals;
     }
     return out;
@@ -1557,6 +1572,20 @@ function renderPuzzle(app, compare, noSelection) {
     const hAxRow = axes.h || [], vAxRow = axes.v || [];
     const rowsN = hAxRow.length + 1;
 
+    // 选中格高亮(预览);导出(noSelection)时抑制,避免选中蓝边进入成品图
+    const drawSlotSel = (x, y, w, h) => {
+        if (noSelection) return;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(30,144,255,0.95)';
+        ctx.lineWidth = Math.max(2, Math.min(w, h) * 0.025);
+        ctx.strokeRect(x - 1.5, y - 1.5, w + 3, h + 3);
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([6, 5]);
+        ctx.strokeRect(x - 1.5, y - 1.5, w + 3, h + 3);
+        ctx.setLineDash([]);
+        ctx.restore();
+    };
     rectPx.forEach((r, i) => {
         const sc = slots[i] || {};
         const im = used[i] || null;
@@ -1564,6 +1593,8 @@ function renderPuzzle(app, compare, noSelection) {
         if (!im || !im.el) {
             ctx.fillStyle = 'rgba(224,224,224,1)';
             ctx.fillRect(rx, ry, rw, rh);
+            // 空格也画选中框:点它往往是为了把照片放进这一格
+            if (app._activePuzzleSlot === i) drawSlotSel(rx + gapPx, ry + gapPx, Math.max(1, rw - gapPx * 2), Math.max(1, rh - gapPx * 2));
             return;
         }
         ctx.save();
@@ -1617,19 +1648,8 @@ function renderPuzzle(app, compare, noSelection) {
         // 格子画面字幕:叠印在该格图片底部,宽度随格子自适应(门牌号 S<i>)
         const scap = (pk.captions && pk.captions[i]);
         if (scap && (scap.line1 || scap.line2)) drawPuzzleCaption(ctx, scap, { x: cx, y: cy, w: cw, h: chh }, 'bottom', capFs);
-        // 选中格高亮(画布点击选中的槽位);导出(noSelection)时抑制,避免选中蓝边进入成品图
-        if (app._activePuzzleSlot === i && !noSelection) {
-            ctx.save();
-            ctx.strokeStyle = 'rgba(30,144,255,0.95)';
-            ctx.lineWidth = Math.max(2, Math.min(cw, chh) * 0.025);
-            ctx.strokeRect(cx - 1.5, cy - 1.5, cw + 3, chh + 3);
-            ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([6, 5]);
-            ctx.strokeRect(cx - 1.5, cy - 1.5, cw + 3, chh + 3);
-            ctx.setLineDash([]);
-            ctx.restore();
-        }
+        // 选中格高亮(空格在分支里已画)
+        if (app._activePuzzleSlot === i) drawSlotSel(cx, cy, cw, chh);
     });
 
     if (gcs) {
@@ -1683,6 +1703,25 @@ function renderPuzzle(app, compare, noSelection) {
             ctx.drawImage(pick.el, pick.x - fit.dw / 2, pick.y - fit.dh / 2, fit.dw, fit.dh);
         }
         ctx.restore();
+    }
+
+    // 分隔线悬停/拖动高亮:只用于预览,导出(noSelection)不画进成品
+    if (!noSelection && app._puzzleAxisHover) {
+        const hax = app._puzzleAxisHover;
+        const apos = (axes[hax.dim] || [])[hax.idx];
+        if (apos != null) {
+            // 线宽按屏幕 2px 折算:画布常被缩放到 20–60% 显示,固定逻辑像素的线会细到看不见
+            let lw = 2;
+            try {
+                const rw = app.dom.canvas.getBoundingClientRect().width;
+                if (rw > 0) lw = Math.max(1, 2 * Wn / rw);
+            } catch (_) {}
+            ctx.save();
+            ctx.fillStyle = 'rgba(30,144,255,0.55)';
+            if (hax.dim === 'v') ctx.fillRect(px(apos) - lw / 2, 0, lw, Hn);
+            else ctx.fillRect(0, py(apos) - lw / 2, Wn, lw);
+            ctx.restore();
+        }
     }
 
     ctx.restore();

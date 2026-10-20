@@ -2,8 +2,9 @@
 //
 // 回归背景:setupShortcuts 里判断「优先删拼图字幕」的条件原本是
 //     this.template.puzzle && $('cbPuzzleGapPick').value
-// 而 refreshPuzzleUI 在 _puzzleSlot 为空时会**自动把下拉选成 's0'**
-// (app-puzzle.js,第一个选项是「不选中」value='' 但随后被覆盖)。
+// 当时 refreshPuzzleUI 在 _puzzleSlot 为空时会**自动把下拉选成 's0'**
+// (app-puzzle.js,第一个选项是「不选中」value='' 但随后被覆盖;现在改成"未点选 = 不选中",
+//  只有 setActivePuzzleSlot 显式选中才会写下拉,所以下面的 setup 会先模拟点选格子 0)。
 // 于是任何带 puzzle 字段的模板(哪怕拼图根本没启用)都让该 value 恒为 's0',
 // Delete 永远走 deleteCaption,画布上选中的元素一个都删不掉。
 // 现象:按 Delete 没反应,状态栏却提示「已删除字幕 S0」。
@@ -67,6 +68,8 @@ const setup = (opt) => `(async () => {
     A.imageTemplates.set(A.image, JSON.parse(JSON.stringify(A.template)));
     A.scheduleRender(true); await new Promise(r => setTimeout(r, 900));
     A.refreshPuzzleUI();
+    // 模拟用户在画布上点选第一个格子:选中改为显式(未点选时下拉为空,Delete 不该删字幕)
+    A.setActivePuzzleSlot(0);
     A.selectedEls = [{ kind: 'logo', obj: A.template.logoElements[0] }];
 
     const pick = A.$('cbPuzzleGapPick');

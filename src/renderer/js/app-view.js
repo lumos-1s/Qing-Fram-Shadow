@@ -51,6 +51,22 @@ window.App = Object.assign(window.App || {}, {
         if (name === 'logo') this.renderLogoPools();
         if (name === 'template') this.refreshTemplates();
         if (name === 'puzzle') this.refreshPuzzleUI();
+        this.updateExportEntry();
+    },
+
+    // 主导出按钮跟随当前页签:拼图/切图页签下它变成「导出拼图 / 导出切图」。
+    // 三个出口原先分散在工具栏和两个面板里,在拼图页签点「导出」却导出单图 ——
+    // 这也是"导出只有几百 KB"困惑的来源之一。
+    // 导出设置箭头保持常驻:三个通道都读格式/质量(拼图还读尺寸),没有"设置不适用"的页签。
+    updateExportEntry() {
+        const btn = this.dom.btnSave;
+        if (!btn) return;
+        const active = this.dom.tabs && this.dom.tabs.querySelector('.tab.active');
+        const tab = active ? active.dataset.tab : 'param';
+        const label = tab === 'puzzle' ? '导出拼图' : (tab === 'grid' ? '导出切图' : '导出');
+        if (btn.textContent !== label) btn.textContent = label;
+        btn.title = tab === 'puzzle' ? '导出拼图（格式/质量/尺寸按导出设置，默认 JPG）'
+            : tab === 'grid' ? '导出切图（格式/质量按导出设置）' : '导出当前图片';
     },
 
     setupShortcuts() {
@@ -118,7 +134,7 @@ window.App = Object.assign(window.App || {}, {
                 }
             }
             // 新增快捷键
-            else if (e.ctrlKey && e.key.toLowerCase() === 'e') { e.preventDefault(); this.exportImage(); }
+            else if (e.ctrlKey && e.key.toLowerCase() === 'e') { e.preventDefault(); this.doExport(); }
             else if (e.ctrlKey && e.key.toLowerCase() === 'd') { e.preventDefault(); this.applyBorderToSelected(); }
             else if (e.ctrlKey && e.key === '0') { e.preventDefault(); this.fitZoom(); }
             else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); this.saveTemplate(); }

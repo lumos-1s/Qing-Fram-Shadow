@@ -37,9 +37,9 @@ window.App = {
     _firstRenderDone: false,
     selectedEls: [],      // 画布元素选中集(引用自模板数组)
     _elClip: null,        // 复制的元素快照 {kind, el}
-    _puzzleSlot: 's0',       // 拼图当前编辑项('s0'..槽位 / 'v0'/'h0'..间隙)
+    _puzzleSlot: '',         // 拼图当前选中项('s0'..槽位 / 'v0'/'h0'..间隙);空 = 未选中
     _editingGap: null,       // 正在编辑的字幕门牌号('H0'/'V1'/'S2'),无则收起编辑器
-    _activePuzzleSlot: null, // 画布选中槽位(高亮 + 换图)
+    _activePuzzleSlot: null, // 画布选中槽位(蓝框 + 滚轮/拖拽/单图滑块);null = 控制整个拼图
     _puzzlePick: null,       // 拖拽抓取预览 {mode:'target'|'float',...}
     _puzzleDropTarget: null, // 拖拽互换预备目标格
     _skipPuzzleCapture: false,
@@ -191,7 +191,7 @@ window.App = {
     bind() {
         const d = this.dom;
         d.btnOpen.addEventListener('click', () => this.openImages());
-        d.btnSave.addEventListener('click', () => this.exportImage());
+        d.btnSave.addEventListener('click', () => this.doExport());
         if (d.btnExportSettings && d.exportPop) {
             d.btnExportSettings.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -203,7 +203,8 @@ window.App = {
                 if (open) this.updateExportSizeNote();
             });
             document.addEventListener('click', (ev) => {
-                if (d.exportPop.style.display === 'block' && d.exportPop && ev.target !== d.btnExportSettings && !d.exportPop.contains(ev.target)) {
+                // 用 contains 而不是 !==:箭头按钮里现在有 SVG,点的 target 是 <path> 不是按钮本身
+                if (d.exportPop.style.display === 'block' && !d.btnExportSettings.contains(ev.target) && !d.exportPop.contains(ev.target)) {
                     d.exportPop.style.display = 'none';
                 }
             });
@@ -476,10 +477,9 @@ window.App = {
         pane.addEventListener('wheel', e => {
             const pk = this.tplPuzzle();
             if (pk) {
-                // 拼图模式:滚轮只有悬停在"已选中"的格图上时才缩放该格图片;
-                // 其余情况(未悬停选中格)滚轮控制整个拼图(视口缩放),不依赖主图 this.image
-                const si = this.puzzleSlotAt(e);
-                if (si != null && si === this._activePuzzleSlot) { e.preventDefault(); this.puzzleWheelSlot(si, e.deltaY < 0 ? 1.1 : 1 / 1.1); return; }
+                // 拼图模式:只有画布上"选中"了格子,滚轮才缩放该格图片(不再看鼠标悬停在哪一格)。
+                // 未选中(刚进入拼图 / 点过图片以外)时滚轮缩放整个拼图视图,不依赖主图 this.image
+                if (this._activePuzzleSlot != null) { e.preventDefault(); this.puzzleWheelSlot(this._activePuzzleSlot, e.deltaY < 0 ? 1.1 : 1 / 1.1); return; }
                 if (this.image && stage.classList.contains('has-img')) { e.preventDefault(); this.zoomAt(e, stage, e.deltaY < 0 ? 1.1 : 1 / 1.1); }
                 return;
             }
@@ -503,9 +503,14 @@ window.App = {
                     e.preventDefault();
                     this.selectedEls = [];
                     this.refreshElList();
-                    // 拖拽分隔线调轴位
+                    // 拖拽分隔线调轴位;分隔线属于"图片以外",先把格子选中清掉(静默,避免调间距时刷提示)
                     if (hp.type === 'axis') {
-                        this._dragPz = { type: 'axis', dim: hp.dim, idx: hp.idx, sx: e.screenX, sy: e.screenY, moved: false };
+                        this.clearActivePuzzleSlot(true);
+                        // 记录按下点相对分隔线的偏移,拖动时线不会跳到指针中心
+                        const pp = this.puzzlePx(e);
+                        const raw = hp.dim === 'v' ? pp.x / canvas.width : pp.y / canvas.height;
+                        this._dragPz = { type: 'axis', dim: hp.dim, idx: hp.idx, sx: e.screenX, sy: e.screenY, moved: false, grabOff: raw - hp.pos };
+                        this._setPuzzleAxisHover(hp);
                         canvas.style.cursor = (hp.dim === 'v') ? 'col-resize' : 'row-resize';
                         return;
                     }
@@ -527,7 +532,8 @@ window.App = {
                     canvas.style.cursor = 'move';
                     return;
                 }
-                // 背景板/分割间隙:保持当前图片选择不取消,继续走右侧命中/画布平移
+                // 背景板/格间空隙 = 图片以外:取消格子选中(蓝框消失),之后的滚轮/拖拽控制整个拼图
+                this.clearActivePuzzleSlot();
             }
             const pt = this.screenToCanvas(e);
             const el = this.pickElement(pt);
@@ -550,6 +556,35 @@ window.App = {
             this._pan = { sx: e.screenX, sy: e.screenY, px: this.panX, py: this.panY };
             canvas.style.cursor = 'grabbing';
         });
+        // 悬停分隔线:换成 row/col-resize 光标 + 画布高亮线,让"可拖动"看得见
+        canvas.addEventListener('mousemove', e => {
+            if (this._dragPz || this._dragEl || this._pan) return;
+            const pk = this.tplPuzzle();
+            if (!pk) return;
+            const p = this.puzzlePx(e);
+            const ax = this.puzzleAxisAtPx(p.x, p.y);
+            if (ax) {
+                this._setPuzzleAxisHover(ax);
+                const cur = ax.dim === 'v' ? 'col-resize' : 'row-resize';
+                if (canvas.style.cursor !== cur) canvas.style.cursor = cur;
+            } else {
+                if (canvas.style.cursor === 'col-resize' || canvas.style.cursor === 'row-resize') canvas.style.cursor = '';
+                this._setPuzzleAxisHover(null);
+            }
+        });
+        canvas.addEventListener('mouseleave', () => {
+            if (this._dragPz) return;
+            if (canvas.style.cursor === 'col-resize' || canvas.style.cursor === 'row-resize') canvas.style.cursor = '';
+            this._setPuzzleAxisHover(null);
+        });
+        // 拼图选中是"图片以外一律取消":点舞台灰底/工具栏/左侧预设/胶片条/其他面板都清掉蓝框。
+        // 例外:画布本身(由上面的格子命中逻辑决定)和拼图面板(选择下拉/单图滑块/字幕编辑器要用当前选中)。
+        document.addEventListener('mousedown', e => {
+            if (this._activePuzzleSlot == null || e.button !== 0) return;
+            const t = e.target;
+            if (t && t.closest && t.closest('#previewCanvas, #panel-puzzle')) return;
+            this.clearActivePuzzleSlot();
+        }, true);
         window.addEventListener('mousemove', e => {
             if (this._dragPz) {
                 const pk = this.tplPuzzle();
@@ -619,6 +654,7 @@ window.App = {
                     this.saveCurrentTemplate();
                 }
                 canvas.style.cursor = '';
+                this._setPuzzleAxisHover(null);
             }
             if (this._dragEl) {
                 const moved = this._dragEl.moved;
@@ -633,6 +669,8 @@ window.App = {
         });
         // 鼠标移出窗口/窗口失焦时,强制清理所有拖动态(防止卡住)
         const cancelDrags = () => {
+            if (canvas.style.cursor === 'col-resize' || canvas.style.cursor === 'row-resize') canvas.style.cursor = '';
+            this._setPuzzleAxisHover(null);
             if (this._dragPz) {
                 this._puzzlePick = null;
                 this._dragPzInitOff = null;
@@ -659,6 +697,14 @@ window.App = {
         canvas.addEventListener('dblclick', e => {
             const pk = this.tplPuzzle();
             if (!pk) return;
+            // 双击分隔线:恢复这条线到布局默认比例(分隔线不可选中,不会和双击换图冲突)
+            const pp = this.puzzlePx(e);
+            const ax = this.puzzleAxisAtPx(pp.x, pp.y);
+            if (ax) {
+                e.preventDefault();
+                this.resetPuzzleAxis(ax.dim, ax.idx);
+                return;
+            }
             const si = this.puzzleSlotAt(e);
             if (si == null) return;
             e.preventDefault();
@@ -670,7 +716,15 @@ window.App = {
             const pk = this.tplPuzzle();
             if (pk) {
                 const hp = this.puzzleHitTest(e);
-                if (hp) {
+                if (hp && hp.type === 'axis') {
+                    e.preventDefault();
+                    this.openCtx(e.clientX, e.clientY, [
+                        ['恢复这条分隔线', () => this.resetPuzzleAxis(hp.dim, hp.idx)],
+                        ['恢复全部默认比例', () => this.resetPuzzleAxes()],
+                    ]);
+                    return;
+                }
+                if (hp && hp.type === 'slot') {
                     e.preventDefault();
                     this.setActivePuzzleSlot(hp.slot);
                     this.openCtx(e.clientX, e.clientY, [
