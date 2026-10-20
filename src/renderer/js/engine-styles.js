@@ -380,6 +380,13 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         }
         g.restore();
     }
+    function newspaperGeom(iw) {
+        const pad = Math.max(30, Math.round(iw * 0.04));
+        const mastH = Math.round(iw * 0.13);
+        const headH = Math.round(iw * 0.12);
+        const bottomH = Math.round(iw * 0.22);
+        return { pad, mastH, headH, bottomH, w: iw + pad * 2, h: 0 };
+    }
     function styleStampPostage(img, size, g, iw, ih, S) {
         const G = stampPostageGeom(iw, ih, size);
         const { padX, padTop, padBottom, d, stampW, stampH, stampX, stampY,
@@ -4745,10 +4752,8 @@ const w = natW;
                 return { w: iw + pad2 * 2, h: ih + pad2 * 2 + Math.round(iw * 0.07) };
             }
             case 'NEWSPAPER': {
-                const pad = Math.max(40, Math.round(iw * 0.04));
-                const headH = Math.round(iw * 0.12);
-                const capFs = Math.max(12, Math.round(headH * 0.18)); // 底部说明字号
-                return { w: iw + pad * 2, h: ih + pad * 2 + headH + Math.round(capFs * 1.8) + 24 };
+                const ng = newspaperGeom(iw);
+                return { w: ng.w, h: ih + ng.pad * 2 + ng.mastH + ng.headH + ng.bottomH };
             }
             case 'COLOR_PALETTE': {
                 const pad = Math.max(30, Math.round(iw * 0.03));
@@ -5446,30 +5451,133 @@ const w = natW;
     }
 
     // ══ 复古报纸 ══
-    // 与 styleDims('NEWSPAPER') 保持同一套尺寸(pad=max(40,iw*0.04),报头区 headH=round(iw*0.12),底部+50),
-    // 保证照片完整显示不被画布裁切
+    // 头版版式:报头 + 大标题 + 半调照片 + 三栏正文 + 页脚。
+    // 几何与 styleDims('NEWSPAPER') 共用 newspaperGeom,避免画布与照片错位。
     function styleNewspaper(img, size, g, iw, ih) {
-        const pad = Math.max(40, Math.round(iw * 0.04));
-        const headH = Math.round(iw * 0.12);
-        const capFs = Math.max(12, Math.round(headH * 0.18)); // 底部说明字号
-        const bottomH = Math.round(capFs * 1.8) + 24;
-        const w = iw + pad * 2, h = ih + pad * 2 + headH + bottomH;
-        // 报纸米黄底
-        g.fillStyle = '#f0e9d6'; g.fillRect(0, 0, w, h);
-        // 报头
-        g.fillStyle = '#1a1a1a';
-        g.font = 'bold ' + Math.max(24, Math.round(headH * 0.45)) + 'px Georgia, serif';
+        const G = newspaperGeom(iw);
+        const { pad, mastH, headH, bottomH } = G;
+        const w = iw + pad * 2, h = ih + pad * 2 + mastH + headH + bottomH;
+        // 旧报纸底:米黄渐变 + 轻微纸纹。
+        const paper = g.createLinearGradient(0, 0, w, h);
+        paper.addColorStop(0, '#f3ecd9'); paper.addColorStop(0.55, '#efe6d2'); paper.addColorStop(1, '#e7dcc5');
+        g.fillStyle = paper; g.fillRect(0, 0, w, h);
+        const rnd = styleNoise(iw, ih, 8081);
+        g.fillStyle = 'rgba(110,92,66,0.045)';
+        for (let i = 0; i < Math.min(520, Math.floor(w * h / 2600)); i++) {
+            const x = rnd(w), y = rnd(h), r = 0.4 + rnd(2) * 0.4;
+            g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill();
+        }
+        g.strokeStyle = 'rgba(26,26,26,0.18)'; g.lineWidth = 1;
+        g.strokeRect(12.5, 12.5, w - 25, h - 25);
+
+        // 报头信息行。
+        const metaFs = Math.max(8, Math.round(mastH * 0.095));
+        g.save();
+        g.font = 'bold ' + metaFs + 'px Georgia, serif';
+        g.fillStyle = '#413a2f';
+        g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+        g.fillText('VOL. CXXIV · NO. 87', pad, pad + Math.round(mastH * 0.10));
+        g.textAlign = 'right';
+        g.fillText('PRICE 25 CENTS', w - pad, pad + Math.round(mastH * 0.10));
+        // 报头。
         g.textAlign = 'center';
-        g.fillText('THE DAILY PHOTO', w / 2, pad + Math.round(headH * 0.42));
-        g.font = Math.max(11, Math.round(headH * 0.16)) + 'px serif';
-        g.fillText(new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' }), w / 2, pad + Math.round(headH * 0.72));
-        // 分隔线
-        g.fillRect(pad, pad + headH - 4, w - pad * 2, 2);
-        // 照片
-        g.drawImage(img, pad, pad + headH, iw, ih);
-        // 照片说明
-        g.font = 'italic ' + capFs + 'px serif';
-        g.fillText('— A captured moment in time', w / 2, pad + headH + ih + Math.round(bottomH * 0.62));
+        let mastFs = Math.max(24, Math.round(mastH * 0.48));
+        g.font = '700 ' + mastFs + 'px Georgia, "Times New Roman", serif';
+        while (mastFs > 18 && g.measureText('THE EVENING POST').width > iw * 0.94) {
+            mastFs--; g.font = '700 ' + mastFs + 'px Georgia, "Times New Roman", serif';
+        }
+        g.fillStyle = '#171512';
+        g.fillText('THE EVENING POST', w / 2, pad + Math.round(mastH * 0.56));
+        // 双线。
+        g.fillStyle = '#1b1b1b';
+        g.fillRect(pad, pad + Math.round(mastH * 0.72), iw, Math.max(2, Math.round(metaFs * 0.20)));
+        g.fillRect(pad, pad + Math.round(mastH * 0.72) + Math.max(4, Math.round(metaFs * 0.42)), iw, 1);
+        g.font = Math.max(9, Math.round(metaFs * 1.08)) + 'px Georgia, serif';
+        g.fillStyle = '#5d5342';
+        g.fillText('SATURDAY, JUNE 12, 1998', w / 2, pad + Math.round(mastH * 0.92));
+        g.restore();
+
+        // 大标题区:红色 EXTRA 标 + 标题 + 副题。
+        const kickY = pad + mastH + Math.max(6, Math.round(headH * 0.08));
+        const kickW = Math.max(58, Math.round(iw * 0.09)), kickH = Math.max(18, Math.round(headH * 0.25));
+        g.fillStyle = '#a8342a';
+        fillRoundRectCtx(g, pad, kickY, kickW, kickH, 2);
+        g.fillStyle = '#f6edd9';
+        g.font = '700 ' + Math.max(9, Math.round(kickH * 0.46)) + 'px Georgia, serif';
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText('EXTRA', pad + kickW / 2, kickY + kickH / 2 + 1);
+        let headFs = Math.max(25, Math.round(iw * 0.062));
+        g.font = '700 ' + headFs + 'px Georgia, "Times New Roman", serif';
+        while (headFs > 18 && g.measureText('THE WORLD IN FOCUS').width > iw * 0.95) {
+            headFs--; g.font = '700 ' + headFs + 'px Georgia, "Times New Roman", serif';
+        }
+        g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+        g.fillStyle = '#171512';
+        g.fillText('THE WORLD IN FOCUS', w / 2, pad + mastH + Math.round(headH * 0.62));
+        g.font = 'italic ' + Math.max(10, Math.round(iw * 0.018)) + 'px Georgia, serif';
+        g.fillStyle = '#5d5342';
+        g.fillText('A single frame from a longer story', w / 2, pad + mastH + Math.round(headH * 0.86));
+
+        // 照片 + 半调网点 + 印刷边框。
+        const px = pad, py = pad + mastH + headH;
+        g.drawImage(img, px, py, iw, ih);
+        const tile = newCanvas(6, 6);
+        const tg = tile.getContext('2d');
+        tg.fillStyle = 'rgba(0,0,0,0.58)';
+        tg.beginPath(); tg.arc(3, 3, 1.15, 0, 6.2832); tg.fill();
+        const pat = g.createPattern(tile, 'repeat');
+        if (pat) {
+            g.save(); g.globalAlpha = 0.08; g.fillStyle = pat;
+            g.fillRect(px, py, iw, ih); g.restore();
+        }
+        g.strokeStyle = '#1b1b1b'; g.lineWidth = 2;
+        g.strokeRect(px - 1, py - 1, iw + 2, ih + 2);
+
+        // 照片下方:说明 + 三栏正文 + 页脚。
+        const by = py + ih;
+        g.fillStyle = '#1b1b1b'; g.fillRect(pad, by + Math.max(8, Math.round(bottomH * 0.06)), iw, 2);
+        g.save();
+        g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+        g.font = 'italic ' + Math.max(13, Math.round(iw * 0.019)) + 'px Georgia, serif';
+        g.fillStyle = '#2a2620';
+        g.fillText('A moment in time, preserved in print.', w / 2, by + Math.round(bottomH * 0.17));
+        g.font = 'bold ' + Math.max(7, Math.round(iw * 0.010)) + 'px Georgia, serif';
+        g.fillStyle = '#7b6e58';
+        g.fillText('THE EVENING POST  ·  ARCHIVE', w / 2, by + Math.round(bottomH * 0.26));
+        g.restore();
+
+        const colGap = Math.max(12, Math.round(iw * 0.022));
+        const colW = (iw - colGap * 2) / 3;
+        const colTop = by + Math.round(bottomH * 0.36);
+        const cols = ['THE STORY', 'THE DETAILS', 'THE ARCHIVE'];
+        const folioY = h - Math.max(12, Math.round(bottomH * 0.07));
+        const lineH = Math.max(7, Math.round(bottomH * 0.055));
+        const maxLines = Math.max(3, Math.floor((folioY - (colTop + 12)) / lineH));
+        const lineCount = Math.min(10, maxLines);
+        g.save();
+        g.textBaseline = 'alphabetic';
+        for (let c = 0; c < 3; c++) {
+            const cx = pad + c * (colW + colGap);
+            g.textAlign = 'left';
+            g.font = '700 ' + Math.max(8, Math.round(iw * 0.0105)) + 'px Georgia, serif';
+            g.fillStyle = c === 0 ? '#a8342a' : '#332d24';
+            g.fillText(cols[c], cx, colTop);
+            g.fillStyle = 'rgba(27,27,27,0.35)';
+            g.fillRect(cx, colTop + 5, colW, 1);
+            for (let i = 0; i < lineCount; i++) {
+                const yy = colTop + 12 + i * lineH;
+                const ww = i === 0 ? 0.99 : 0.56 + ((i * 29 + c * 17) % 40) / 100;
+                g.fillStyle = i === 0 ? 'rgba(44,39,31,0.72)' : 'rgba(62,55,44,0.46)';
+                g.fillRect(cx, yy, Math.max(20, colW * ww), Math.max(2, Math.round(lineH * 0.26)));
+            }
+        }
+        g.font = 'bold ' + Math.max(7, Math.round(iw * 0.0085)) + 'px monospace';
+        g.fillStyle = '#6e614d';
+        g.textAlign = 'left';
+        g.fillText('THE EVENING POST', pad, h - Math.max(12, Math.round(bottomH * 0.07)));
+        g.textAlign = 'right';
+        g.fillText('PAGE 01  ·  ARCHIVE EDITION', w - pad, h - Math.max(12, Math.round(bottomH * 0.07)));
+        g.restore();
     }
 
 
