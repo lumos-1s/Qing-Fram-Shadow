@@ -3708,7 +3708,6 @@ const w = natW;
         _multiCache[key] = out.slice();
         return out;
     }
-    const COLOR_SWATCHES = ['rgb(220,80,60)', 'rgb(60,140,200)', 'rgb(240,200,50)', 'rgb(80,180,100)', 'rgb(180,100,180)'];
     function styleColorClassic(img, size, g, iw, ih, S) {
         const fs = Math.max(10, Math.round(autoExifSize(S.paramFs, iw)));
         const barH = Math.max(40, size, Math.round(fs * 5 / 3)), pad = Math.max(8, Math.floor(size / 2));
@@ -3748,33 +3747,171 @@ const w = natW;
         const fm = textMetrics(g, line, f, true, false, 0);
         drawTextL(g, line, 12, barY + swatchH + Math.floor((barH - swatchH + fm.ascent) / 2), 'rgb(60,60,60)', f, true, false, 0);
     }
+    // ══ 艺术卡:画廊色彩卡 ══
+    // 暖纸底 + 装裱照片 + 照片取色的色卡条 + 衬线品牌行 + 等宽 EXIF 行。
+    // 几何由 artCardGeom 统一给出,styleDims 与绘制共用,避免旧版「画布按两行文字算、
+    // 实际只画一条色带」导致品牌行被裁掉的问题。
+    function artCardGeom(iw, ih, size, S) {
+        const fs = Math.max(11, Math.round(autoExifSize((S && S.paramFs != null) ? S.paramFs : 12, iw)));
+        const fs2 = Math.max(9, Math.round(fs * 0.62));
+        const minSide = Math.min(iw, ih);
+        const padX = Math.min(Math.max(18, Math.round(size * 0.55)), Math.round(minSide * 0.09));
+        const padTop = padX;
+        const barTop = padTop + ih;
+        const ruleY = barTop + Math.round(fs * 1.15);
+        const brandBase = ruleY + Math.round(fs * 1.05);
+        const exifBase = brandBase + Math.round(fs2 * 1.9);
+        const h = exifBase + Math.round(fs2 * 1.5);
+        return { fs, fs2, padX, padTop, barTop, ruleY, brandBase, exifBase, w: iw + padX * 2, h };
+    }
+
+    function _artLuma(color) {
+        let r = 0, g = 0, b = 0;
+        const s = String(color || '');
+        const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(s);
+        if (rgb) { r = +rgb[1]; g = +rgb[2]; b = +rgb[3]; }
+        else {
+            const m = /^#?([0-9a-f]{6})$/i.exec(s);
+            if (!m) return 0;
+            const v = parseInt(m[1], 16);
+            r = (v >> 16) & 255; g = (v >> 8) & 255; b = v & 255;
+        }
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+
     function styleArtCard(img, size, g, iw, ih, S) {
-        const fs = Math.max(11, Math.round(autoExifSize(S.paramFs, iw)));
-        const barH = Math.max(36, size, Math.round(fs * 5 / 3)), pad = Math.max(8, Math.floor(size / 2));
-        const w = iw + pad * 2, h = ih + pad + barH;
-        g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
-        g.drawImage(img, pad, pad);
-        const barY = ih + pad;
-        const swatchH = Math.floor(barH * 2 / 3), swW = Math.floor(w / COLOR_SWATCHES.length);
-        for (let i = 0; i < COLOR_SWATCHES.length; i++) { g.fillStyle = COLOR_SWATCHES[i]; g.fillRect(i * swW, barY, swW, swatchH); }
-        const artBandY = barY + swatchH;
+        const G = artCardGeom(iw, ih, size, S);
+        const { fs, fs2, padX, padTop, w, h, ruleY, brandBase, exifBase } = G;
+
+        // 暖纸底:极轻的纵向渐变,避免纯白显得像未上色的模板
+        const paper = g.createLinearGradient(0, 0, 0, h);
+        paper.addColorStop(0, '#fbf8f2');
+        paper.addColorStop(1, '#f2ece1');
+        g.fillStyle = paper;
+        g.fillRect(0, 0, w, h);
+
+        // 照片装裱:白色卡纸 + 柔和投影 + 细描边
+        const mat = Math.max(6, Math.round(fs * 0.32));
+        const mx = padX - mat, my = padTop - mat;
+        g.save();
+        g.shadowColor = 'rgba(50,40,25,0.18)';
+        g.shadowBlur = Math.max(8, Math.round(fs * 0.55));
+        g.shadowOffsetY = Math.max(3, Math.round(fs * 0.18));
+        g.fillStyle = '#fffdf8';
+        g.fillRect(mx, my, iw + mat * 2, ih + mat * 2);
+        g.restore();
+        g.drawImage(img, padX, padTop, iw, ih);
+        const keyW = Math.max(1, Math.round(fs * 0.03));
+        g.strokeStyle = 'rgba(80,65,45,0.22)';
+        g.lineWidth = keyW;
+        g.strokeRect(mx + keyW / 2, my + keyW / 2, iw + mat * 2 - keyW, ih + mat * 2 - keyW);
+
+        // 分隔线:细、低对比,像画廊标签的横线
+        const lineH = Math.max(1, Math.round(fs * 0.035));
+        g.fillStyle = 'rgba(70,58,40,0.26)';
+        g.fillRect(padX, ruleY, iw, lineH);
+
+        // 照片取色色卡:按明度排序,浅→深,像一张配色研究卡
+        let pal = [];
+        try {
+            pal = extractMultipleDominant(img, 5).slice(0, 5)
+                .sort((a, b) => _artLuma(a) - _artLuma(b));
+        } catch (e) {
+            pal = ['#3a3a3a', '#6b6b6b', '#9a9a9a', '#c4c4c4', '#e2e2e2'];
+        }
+        const chip = Math.max(8, Math.round(fs * 0.95));
+        const chipGap = Math.max(4, Math.round(fs * 0.30));
+        const chipsW = pal.length * chip + Math.max(0, pal.length - 1) * chipGap;
+        const chipY = brandBase - chip;
+        const chipsX = w - padX - chipsW;
+        let chipX = chipsX;
+        for (let i = 0; i < pal.length; i++) {
+            const r = Math.max(1, Math.round(chip * 0.12));
+            g.beginPath();
+            if (g.roundRect) g.roundRect(chipX, chipY, chip, chip, r);
+            else g.rect(chipX, chipY, chip, chip);
+            g.fillStyle = pal[i];
+            g.fill();
+            g.strokeStyle = 'rgba(40,30,20,0.18)';
+            g.lineWidth = Math.max(1, Math.round(chip * 0.035));
+            g.stroke();
+            chipX += chip + chipGap;
+        }
+
+        // 品牌行:衬线 + 拉开字距;有 logo 时按既有 1/2/3 语义处理
         if (!brandHidden(S)) {
-            const model = 'GFX ' + S.cam.model;
-            const gfxW = textMetrics(g, 'GFX ', fs, false, true, 0).w;
-            const mfw = textMetrics(g, model, fs, false, true, 0);
-            const artBaseY = artBandY + Math.floor((barH - swatchH + fs) / 2);
-            const lwArt = brandMarkW(S, fs);
-            const onlyLogoArt = (S.brandLogo === 2 && lwArt > 0);
-            if (onlyLogoArt) {
-                const modelW = textMetrics(g, S.cam.model, fs, false, true, 0).w;
-                const xModel = w - pad - modelW;
-                drawBrandMark(g, S, logoCenterX(S, fs, xModel - gfxW, gfxW), artBaseY, fs);
-                drawTextL(g, S.cam.model, xModel, artBaseY, 'rgb(60,60,60)', fs, false, true, 0);
-            } else {
-                const lwArtUsed = drawBrandMark(g, S, S.brandLogo ? w - pad - mfw.w - brandMarkW(S, fs) : w - pad - mfw.w, artBaseY, fs);
-                drawTextL(g, model, w - pad - mfw.w + (S.brandLogo ? 0 : lwArtUsed), artBaseY, 'rgb(60,60,60)', fs, false, true, 0);
+            const brand = String((S.cam && S.cam.brand) || '').trim();
+            const model = String((S.cam && S.cam.model) || '').trim();
+            let label = brand ? (model ? brand.toUpperCase() + '  ' + model : brand.toUpperCase()) : model;
+            const onlyLogo = (S.brandLogo === 2 && brandMarkW(S, fs) > 0);
+            if (onlyLogo) label = model;
+
+            const brandColor = 'rgba(38,33,26,0.92)';
+            const track = ratio => Math.round(fs * ratio) + 'px';
+            const measure = (text, px) => {
+                if (!text) return 0;
+                g.save();
+                g.font = 'bold ' + px + "px 'Times New Roman', Cambria, serif";
+                g.letterSpacing = track(0.08);
+                const tw = g.measureText(text).width;
+                g.restore();
+                return tw;
+            };
+            const logoW0 = brandMarkW(S, fs);
+            const maxBrandW = Math.max(0, chipsX - chipGap * 2 - padX - logoW0);
+            let fsBrand = Math.round(fs * 1.15);
+            let tw = measure(label, fsBrand);
+            if (tw > maxBrandW && tw > 0) {
+                fsBrand = Math.max(Math.round(fs * 0.72), Math.floor(fsBrand * maxBrandW / tw));
+                tw = measure(label, fsBrand);
+            }
+            if (tw > maxBrandW && label) {
+                const chars = Array.from(label);
+                while (chars.length > 1 && measure(chars.join('') + '…', fsBrand) > maxBrandW) chars.pop();
+                label = chars.join('') + '…';
+            }
+
+            let tx = padX;
+            if (brandMarkW(S, fsBrand) > 0) {
+                tx += drawBrandMark(g, S, padX, brandBase, fsBrand);
+            }
+            if (label) {
+                g.save();
+                g.font = 'bold ' + fsBrand + "px 'Times New Roman', Cambria, serif";
+                g.letterSpacing = track(0.08);
+                g.fillStyle = brandColor;
+                g.textAlign = 'left';
+                g.textBaseline = 'alphabetic';
+                g.fillText(label, tx, brandBase);
+                g.letterSpacing = '0px';
+                g.restore();
             }
         }
+
+        // EXIF 行:跟随全局参数类型(0=完整 / 1=焦段光圈 / 2=日期),等宽、灰色、字距略开。
+        // 无相机信息时不画,避免 buildParamString 对空快门补出孤零零的 "s"。
+        const cam = S.cam || {};
+        const hasCam = ['focal', 'aperture', 'shutter', 'iso'].some(k => String(cam[k] || '').trim());
+        const exif = (S.paramType === 2 || hasCam)
+            ? String(buildParamString(cam, S.paramType != null ? S.paramType : 0) || '').trim()
+            : '';
+        g.save();
+        g.font = fs2 + "px Consolas, 'Courier New', monospace";
+        g.textBaseline = 'alphabetic';
+        g.textAlign = 'left';
+        g.letterSpacing = Math.round(fs2 * 0.08) + 'px';
+        g.fillStyle = 'rgba(70,60,45,0.62)';
+        if (exif) g.fillText(exif, padX, exifBase);
+        const exifW = exif ? g.measureText(exif).width : 0;
+        const mark = 'ART CARD';
+        const markW = g.measureText(mark).width;
+        if (exifW + markW + fs2 * 2 < iw) {
+            g.textAlign = 'right';
+            g.fillStyle = 'rgba(70,60,45,0.38)';
+            g.fillText(mark, w - padX, exifBase);
+        }
+        g.letterSpacing = '0px';
+        g.restore();
     }
     function styleFujiWhite(img, size, g, iw, ih, S) {
         const pad = Math.max(12, Math.round(iw * 0.02));
@@ -4253,7 +4390,10 @@ const w = natW;
                 const barH = Math.max(50, Math.floor(size * 4 / 3)), pad = pad2(8);
                 return { w: iw + pad * 2, h: ih + pad + barH };
             }
-            case 'ART_CARD':
+            case 'ART_CARD': {
+                const G = artCardGeom(iw, ih, size, S);
+                return { w: G.w, h: G.h };
+            }
             case 'FUJI_WHITE': {
                 const af = Math.max(11, Math.round(autoExifSize((S ? S.paramFs : 12), iw)));
                 const af2 = Math.round(af * 0.85);
