@@ -1,8 +1,8 @@
 const fs = require('fs');
 const presets = [
-    { name: '签名纪念', tag: '个性', style: 'SIGNATURE', signature: '— my memory —' },
-    { name: '签名+参数', tag: '个性', style: 'SIGN_PARAM', signature: '— my memory —' },
-    { name: '头像纪念', tag: '个性', style: 'AVATAR_MEMO', signature: '— my memory —' },
+    { name: '签名纪念', tag: '个性', style: 'SIGNATURE', signature: '' },
+    { name: '签名+参数', tag: '个性', style: 'SIGN_PARAM', signature: '' },
+    { name: '头像纪念', tag: '个性', style: 'AVATAR_MEMO', signature: '' },
 ];
 
 presets.forEach(p => {

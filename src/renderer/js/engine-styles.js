@@ -4885,7 +4885,7 @@ const w = natW;
         if (g.roundRect) { g.beginPath(); g.roundRect(pxx, pyy, pw, ph, cr); g.stroke(); }
         else { g.beginPath(); g.rect(pxx, pyy, pw, ph); g.stroke(); }
         // 签名行(照片下方居中, 跟随右侧栏签名设置: userSignature/signFont/signColor/signSize)
-        const sigStr3 = (S && S.userSignature) ? String(S.userSignature) : '✎ my memory';
+        const sigStr3 = (S && S.userSignature) ? String(S.userSignature) : '';
         g.fillStyle = (S && S.signColor) || '#8a8a92';
         g.font = 'italic ' + Math.round(iw * 0.02 * ((S && S.signSize) || 1)) + 'px "' + ((S && S.signFont) || 'Comic Sans MS') + '", cursive';
         g.textAlign = 'center';
@@ -5250,7 +5250,7 @@ const w = natW;
         g.save();
         g.translate(natW / 2, pad + ih + Math.round(bottomH * 0.6));
         g.rotate(-0.02);
-        g.fillText(S.userSignature || '— my memory —', 0, 0);
+        g.fillText(S.userSignature || '', 0, 0);
         g.restore();
         g.restore();
     }
@@ -5310,7 +5310,7 @@ const w = natW;
         g.font = 'italic ' + Math.round(iw * 0.022 * (S.signSize || 1)) + 'px "' + (S.signFont || 'Comic Sans MS') + '", cursive';
         g.textAlign = 'left';
         g.textBaseline = 'middle';
-        g.fillText(S.userSignature || '— my memory —', hasAv ? ax + avatarR + 12 : ax - avatarR, ay);
+        g.fillText(S.userSignature || '', hasAv ? ax + avatarR + 12 : ax - avatarR, ay);
         g.textBaseline = 'alphabetic';
 
         // ══ 右侧:品牌+参数,以参数行居中 ══
@@ -5430,7 +5430,7 @@ const w = natW;
         // 否则 signSize 放大 / 签名过长时会被画布边缘切掉。
         // 关掉头像时签名顶回底栏左缘(ax - avatarR),把头像腾出来的宽度还给签名。
         const signX = hasAv ? ax + avatarR + 16 : ax - avatarR;
-        const fit = fitSignText(g, S.userSignature || '— my memory —', Math.round(iw * 0.022 * (S.signSize || 1)), S.signFont,
+        const fit = fitSignText(g, S.userSignature || '', Math.round(iw * 0.022 * (S.signSize || 1)), S.signFont,
             w - pad - signX);
         g.textAlign = 'left';
         g.textBaseline = 'middle';
@@ -5484,7 +5484,7 @@ const w = natW;
         g.font = 'italic ' + Math.round(iw * 0.022 * (S.signSize || 1)) + 'px "' + (S.signFont || 'Comic Sans MS') + '", cursive';
         g.textAlign = 'left';
         g.textBaseline = 'middle';
-        g.fillText(S.userSignature || '— my memory —', ax + avatarR + 12, ay);
+        g.fillText(S.userSignature || '', ax + avatarR + 12, ay);
         g.textBaseline = 'alphabetic';
 
         // 右侧品牌+参数
@@ -5547,7 +5547,7 @@ const w = natW;
         g.save();
         g.translate(w / 2, barY + bottomH / 2);
         g.rotate(-0.015);
-        g.fillText(S.userSignature || '— my memory —', 0, 0);
+        g.fillText(S.userSignature || '', 0, 0);
         g.restore();
         g.textBaseline = 'alphabetic';
     }
@@ -5585,7 +5585,7 @@ const w = natW;
         g.font = 'italic ' + Math.round(iw * 0.022 * (S.signSize || 1)) + 'px "' + (S.signFont || 'Comic Sans MS') + '", cursive';
         g.textAlign = 'left';
         g.textBaseline = 'middle';
-        g.fillText(S.userSignature || '— my memory —', ax + avatarR + 16, ay);
+        g.fillText(S.userSignature || '', ax + avatarR + 16, ay);
         g.textBaseline = 'alphabetic';
         g.textAlign = 'right';
         g.fillStyle = 'rgba(255,255,255,0.6)';
@@ -5645,7 +5645,7 @@ const w = natW;
             g.shadowBlur = 0;
         }
         // 签名在头像右边(自动适配宽度);面板里关掉头像就顶回左下角,不留空档
-        const signTxt = S.userSignature || '— my memory —';
+        const signTxt = S.userSignature || '';
         const signX = hasAv ? ax + avatarR + 12 : ax - avatarR;
         const maxSignW = pad + iw - signX - 10;
         const fit = fitSignText(g, signTxt, Math.round(iw * 0.022 * (S.signSize || 1)), S.signFont, maxSignW);
@@ -5684,7 +5684,7 @@ const w = natW;
             g.shadowColor = 'rgba(0,0,0,0.3)'; g.shadowBlur = 6; g.stroke(); g.shadowBlur = 0;
         }
         // 签名在头像下方居中(自动缩窄 + 锚点夹进照片内)
-        const signTxt = S.userSignature || '— my memory —';
+        const signTxt = S.userSignature || '';
         const sideIn = Math.round(iw * 0.02);
         const fit = fitSignText(g, signTxt, Math.round(iw * 0.022 * (S.signSize || 1)), S.signFont,
             iw - sideIn * 2);
@@ -5729,7 +5729,7 @@ const w = natW;
             g.shadowColor = 'rgba(0,0,0,0.3)'; g.shadowBlur = 6; g.stroke(); g.shadowBlur = 0;
         }
         // 签名在头像左边(自动缩窄);面板里关掉头像时右缘对齐到照片右边距(原头像右缘)
-        const signTxt = S.userSignature || '— my memory —';
+        const signTxt = S.userSignature || '';
         const signRight = hasAv ? ax - avatarR - 12 : ax + avatarR;
         const maxSignW = signRight - pad - 10;
         const fit = fitSignText(g, signTxt, Math.round(iw * 0.022 * (S.signSize || 1)), S.signFont, maxSignW);
@@ -5757,7 +5757,7 @@ const w = natW;
         const globalAv = window.__qfsAvatarImg;
         const hasAv = !!(globalAv && globalAv.complete && globalAv.naturalWidth) && (S ? S.avatarShow !== 0 : true);
         // 先定签名:字号受"照片可用宽度"约束(长签名缩窄 / 极端情况省略号截断)
-        const signTxt = S.userSignature || '— my memory —';
+        const signTxt = S.userSignature || '';
         const availL2 = ax - pad - 10, availR2 = (pad + iw) - ax - 10;
         const fit2 = fitSignText(g, signTxt, Math.round(iw * 0.022 * (S.signSize || 1)), S.signFont,
             2 * Math.max(20, Math.min(availL2, availR2)));
@@ -5806,7 +5806,7 @@ const w = natW;
         const hasAv = !!(globalAv && globalAv.complete && globalAv.naturalWidth) && (S ? S.avatarShow !== 0 : true);
         // 先量签名宽度:字号受"照片可用宽度 − 头像块 − 间距 − 左右留白"约束,
         // 否则长签名在 signSize 放大后会把整行顶出照片右(左)边沿。
-        const signTxt = S.userSignature || '— my memory —';
+        const signTxt = S.userSignature || '';
         const gap = Math.round(iw * 0.015);
         const sideIn = Math.round(iw * 0.02);
         const fit = fitSignText(g, signTxt, Math.round(iw * 0.022 * (S.signSize || 1)), S.signFont,
