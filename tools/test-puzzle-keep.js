@@ -202,14 +202,18 @@ const RUN = `(async () => {
     add(/导出完成/.test(A.statusMsg || ''), '⑤ 主导出拼图(原图尺寸档)完成', A.statusMsg || '(空)');
     const f5 = EXPORTED && EXPORTED[0];
     let dim5 = null;
-    if (f5 && f5.data) {
+    if (f5 && (f5.bytes || f5.data)) {
       const im5 = new Image();
-      await new Promise(r => { im5.onload = r; im5.onerror = r; im5.src = 'data:image/jpeg;base64,' + f5.data; });
+      const src5 = f5.bytes
+        ? URL.createObjectURL(new Blob([f5.bytes], { type: 'image/jpeg' }))
+        : 'data:image/jpeg;base64,' + f5.data;
+      await new Promise(r => { im5.onload = r; im5.onerror = r; im5.src = src5; });
+      if (f5.bytes) URL.revokeObjectURL(src5);
       dim5 = { w: im5.naturalWidth, h: im5.naturalHeight };
     }
     add(!!(dim5 && Math.max(dim5.w, dim5.h) === 4000),
       '⑤ 主导出拼图原图尺寸档 → 长边 4000px(旧:1000~3000)',
-      dim5 ? dim5.w + 'x' + dim5.h + ' / ' + Math.round(f5.data.length * 0.75 / 1024) + 'KB' : '未捕获导出数据');
+      dim5 ? dim5.w + 'x' + dim5.h + ' / ' + Math.round((f5.bytes ? f5.bytes.length : f5.data.length * 0.75) / 1024) + 'KB' : '未捕获导出数据');
   } catch (e) {
     add(false, '探针执行异常', (e && e.message) || String(e));
   } finally {

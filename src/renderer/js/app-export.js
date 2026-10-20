@@ -73,7 +73,7 @@ window.App = Object.assign(window.App || {}, {
             const baseName = (j.im.name || 'photo').replace(/\.[^.]+$/, '');
             // 拼图是多图合成,没有单一拍摄信息来源 → 不带;其余按开关带原图路径
             return Object.assign(
-                { data: null, stem: `${baseName}${j.puzzle ? '_拼图' : '_边框'}`, ext },
+                { data: null, bytes: null, stem: `${baseName}${j.puzzle ? '_拼图' : '_边框'}`, ext },
                 j.puzzle ? {} : this._exportExifFor(j.im)
             );
         });
@@ -114,6 +114,15 @@ window.App = Object.assign(window.App || {}, {
             });
             return any;
         };
+        // 试渲染只服务于「元素随导出尺寸等比缩放」;拼图仍走原口径。整批都没有 logo/贴纸/
+        // 自由文字时,一次 UI 尺寸试渲染都不做 —— 3D 卡片这类重样式在 1800px 上就要 ~0.8s。
+        // 只要有一张需要,就沿用原口径(每张都试),_exportPathDpr 的取值顺序与之前一致。
+        const needProbe = jobs.some(j => {
+            if (j.puzzle) return true;
+            const tpl = j.useBase ? baseTemplate
+                : this.exportTemplateFor(j.im, this.images.indexOf(j.im), originalIdx, baseTemplate);
+            return this._hasScalableElements(tpl);
+        });
         const btnCancel = document.getElementById('btnExportCancel');
         try {
             // 导出按逻辑像素渲染(不乘 devicePixelRatio),保证导出分辨率与该选项/“原图尺寸”一致
@@ -133,15 +142,20 @@ window.App = Object.assign(window.App || {}, {
                 // 导出专用深拷贝:后续 scaleElPix 的缩放不会污染正在编辑的活模板与已存的 customSettings 快照
                 this.template = JSON.parse(JSON.stringify(srcTpl));
                 this.normalizeTemplate();
-                // 先按 UI 默认尺寸渲染一次,取得元素坐标的"基准画布宽度"
+                // 元素缩放基准:需要缩放元素时,先按 UI 默认尺寸试渲染一次,拿到"基准画布宽度"
                 this.displayMax = undefined;
                 delete this.exportScale;
                 // 让调度器里已排队的预览帧先跑完:导出期间 uiDprOverride=1,预览帧与导出帧
                 // 渲染到同一块 canvas,谁后跑谁定稿。不等它就导出会拿到"预览还没让位"的中间态。
-                await this.flushRender();
+                // 没有排队帧时不再主动多渲一帧:导出紧跟的全尺寸渲染会定稿,UI 尺寸试渲染只在
+                // needProbe(元素缩放)时才有意义。
+                if (this._renderRaf || this._renderDirty) await this.flushRender();
                 try {
-                    await this._awaitFrameRender(puzzle);
-                    const beforeW = Math.max(1, this.dom.canvas.width || 1);
+                    let beforeW = 0;
+                    if (needProbe) {
+                        await this._awaitFrameRender(puzzle);
+                        beforeW = Math.max(1, this.dom.canvas.width || 1);
+                    }
                     const targetPx = sizeOpt > 0 ? sizeOpt : Math.max(1, im.w || 1, im.h || 1);
                     this.displayMax = targetPx;
                     // 选了大尺寸选项时交出目标长边,由引擎上采样到该值(小图也能导出到所选尺寸)
@@ -168,14 +182,16 @@ window.App = Object.assign(window.App || {}, {
                     // 之后每张沿用 —— 这样 beforeW 仍是**逐张**测的,保留了原作者"每张各自以默认预览
                     // 尺寸为基准"的口径(批量导出时各图长宽比不同,不能用第 1 张的宽度顶替)。
                     // DPR=1 或相框通道时 pathDpr = 1,行为与改动前完全一致。
-                    if (!(this._exportPathDpr > 0)) {
-                        this._exportPathDpr = (uiMaxSave > 0) ? (uiMaxSave / beforeW) : 1;
-                    }
-                    const k = this.exportSizeScale(afterW, beforeW, this._exportPathDpr);
-                    // 元素坐标为基准画布像素:导出画布变大时等比放大,避免缩到角落
-                    // (this.template 是导出专用拷贝,副本随本循环丢弃,无需再按 1/k 还原)
-                    if (!puzzle && k !== 1 && scaleElPix(this.template, k)) {
-                        await this._awaitFrameRender();
+                    if (needProbe) {
+                        if (!(this._exportPathDpr > 0)) {
+                            this._exportPathDpr = (uiMaxSave > 0) ? (uiMaxSave / beforeW) : 1;
+                        }
+                        const k = this.exportSizeScale(afterW, beforeW, this._exportPathDpr);
+                        // 元素坐标为基准画布像素:导出画布变大时等比放大,避免缩到角落
+                        // (this.template 是导出专用拷贝,副本随本循环丢弃,无需再按 1/k 还原)
+                        if (!puzzle && k !== 1 && scaleElPix(this.template, k)) {
+                            await this._awaitFrameRender();
+                        }
                     }
                     this.displayMax = uiMaxSave;
                     let src = this.dom.canvas;
@@ -188,22 +204,26 @@ window.App = Object.assign(window.App || {}, {
                         bgx.drawImage(src, 0, 0);
                         src = bg;
                     }
-                    files[n].data = src.toDataURL(mime, quality).split(',')[1];
+                    const enc = await this._encodeExportCanvas(src, mime, quality);
+                    if (enc.bytes) { files[n].bytes = enc.bytes; files[n].data = null; }
+                    else { files[n].data = enc.data || null; files[n].bytes = null; }
                 } catch (e) {
                     files[n].data = null;
+                    files[n].bytes = null;
                 }
-                // 目录模式多张时逐张写盘并及时释放内存,避免全部 base64 同时驻留
-                if (files[n].data && loc.mode === 'dir' && jobs.length > 1) {
+                // 目录模式多张时逐张写盘并及时释放内存,避免全部编码结果同时驻留
+                if ((files[n].bytes || files[n].data) && loc.mode === 'dir' && jobs.length > 1) {
                     const wr = await window.qingframe.writeExportFiles({ location: loc, files: [files[n]] }) || {};
                     if (wr.ok) okCount++; else failCount++;
                     files[n].data = null;
-                } else if (!files[n].data) {
+                    files[n].bytes = null;
+                } else if (!files[n].bytes && !files[n].data) {
                     failCount++;
                 }
                 this.showExportProgress(n, jobs.length, im.name);
             }
             // 剩余文件(单文件模式 / 目录模式仅一张)统一写出;已取消导出则丢弃未写盘的结果
-            const pending = files.filter(f => !!f.data);
+            const pending = files.filter(f => !!(f.bytes || f.data));
             if (pending.length && !aborted) {
                 const r = await window.qingframe.writeExportFiles({ location: loc, files: pending }) || {};
                 okCount += r.ok || 0; failCount += r.fail || 0;
@@ -634,6 +654,29 @@ window.App = Object.assign(window.App || {}, {
     exportSizeScale(afterW, beforeW, pathDpr) {
         const p = (typeof pathDpr === 'number' && pathDpr > 0) ? pathDpr : 1;
         return afterW / Math.max(1, beforeW * p);
+    },
+
+    // 导出试渲染是否必要:口径与上面的 scaleElPix 完全一致。
+    // 没有这些元素时 beforeW/k/pathDpr 都不参与任何绘制,整批导出可跳过 UI 尺寸试渲染。
+    _hasScalableElements(tpl) {
+        if (!tpl) return false;
+        if ((tpl.logoElements || []).length) return true;
+        if (((tpl.decorConfig && tpl.decorConfig.stickers) || []).length) return true;
+        return (((tpl.decorConfig && tpl.decorConfig.textLines) || [])
+            .some(l => l && l.align === 'free'));
+    },
+
+    // 画布编码:JPEG 走异步 toBlob + 字节直传(实测与 toDataURL 逐字节相同,
+    // 见 OPTIMIZATIONS.md 第六节),省掉 base64 的 +33% 体积与一趟编解码,也不长时间占住渲染线程。
+    // PNG 的 toBlob 在 Chromium 里反而更慢,保持原来的同步路径。
+    async _encodeExportCanvas(cv, mime, quality) {
+        if (mime === 'image/jpeg' && typeof cv.toBlob === 'function') {
+            try {
+                const blob = await new Promise(res => cv.toBlob(res, mime, quality));
+                if (blob && blob.size > 0) return { bytes: new Uint8Array(await blob.arrayBuffer()) };
+            } catch (e) { /* 回退到同步编码 */ }
+        }
+        return { data: cv.toDataURL(mime, quality).split(',')[1] };
     },
 
     // 导出文件名:按图片原有名称命名;同一名称重复时,首张保留原名,后续追加 _1、_2…

@@ -42,6 +42,7 @@
 | 14 | **导出元素缩放补上通道 dpr**（`exportSizeScale` + `_exportPathDpr`）。原 `k = afterW/beforeW` 两次都在导出通道内测量（dpr 恒 1），看不见"预览画布 = `_logW × dpr`"与"导出画布 = `_logW × 1`"的差异 ⇒ 导出的 logo 大 dpr 倍、贴边锚点还会离边更远 | 16 项断言：第 1 张 `k == afterW/真实预览宽度`；**批量时每张用自己的 `beforeW`（这条是修补我上一轮引入的偏差）**；口径一致时 `k` 恰为 1；非法 `pathDpr` 退化为 1（⑥） |
 | 15 | `.qfs` 导出：旋转过的照片直接复用 `im.el`（尺寸吻合的 canvas，内容来自 JPEG ⇒ 不透明）当编码源 —— 「新建同尺寸画布 + 铺白底 + 1:1 blit」整步是空操作，省掉一块 96MB 画布与一次全分辨率 blit，**产物逐字节相同** | 9 项断言：尺寸严格一致才复用、`<img>` 一律不复用（可能有 alpha）、`customSettings` 保持同一引用（不再深拷贝）、默认值与旧实现一致（⑦） |
 | 16 | `.qfs` 用完显式释放画布后备缓冲（`c.width = c.height = 0`） | 24MP ≈ 96MB，不等 GC |
+| 20 | **导出只做一次全尺寸渲染 + JPEG `toBlob` 字节直传**：旧链路每张先 flush 预览帧、再按 UI 尺寸试渲染（只为求元素缩放基准 `beforeW`）、再全尺寸渲染；整批没有 logo/贴纸/自由文字时，后两次都不参与绘制。现在纯边框批次跳过试渲染（元素批次与拼图仍走原口径，`_exportPathDpr` 取值顺序不变）；JPEG 改 `await toBlob → arrayBuffer`，主进程直接吃 `Uint8Array`，PNG 因 `toBlob` 反而更慢保持原路 | 6000×4000 实拍（软件光栅）稳定态：浮影白框 375→273ms、富士白卡 509→332ms、背景模糊 2088→848ms、3D 卡片 2737→1024ms；6 个预设导出 SHA-256 与改前**逐字节一致**（含带 logo 用例）；批量目录 2 张、PNG 回退、EXIF/拼图/九宫格回归全过 |
 
 ## 五、工具链
 
@@ -78,12 +79,16 @@
    IPC 往返 base64 5.5/7.4ms vs Uint8Array 3.8/4.9ms，主进程 `Buffer.from(base64)` 另花 0.6–1.1ms。
    `blob.arrayBuffer()` 本身仅 1.6–1.9ms。
 
-**若切（需要拍板，改动点已探明，风险低）**
+**已切（0.1.12 后，实测见上）**
 
-- 渲染层 `app-export.js` 两处：`exportImage`（`files[n].data = src.toDataURL(...).split(',')[1]`）与
-  `_gridFiles`（逐块 `toDataURL`）→ 改 `await toBlob + arrayBuffer`，负载传 `Uint8Array`。
-- 主进程 `index.js` 写盘 handler：`Buffer.from(f.data, 'base64')`（exif-write.js `applyExifToExportItem`）
-  改为 `Buffer.from(arr.buffer, byteOffset, byteLength)`；`.qfs` 与其它 base64 路径不动。
+- 渲染层 `app-export.js`：`exportImage` 的 JPEG 走 `_encodeExportCanvas`（`toBlob + arrayBuffer`，负载传
+  `Uint8Array`）；`_gridFiles` 仍用 `toDataURL`（九宫格每块小、且未做同等的字节基线）。
+- 主进程 `exif-write.js` `applyExifToExportItem` 同时接受 `data(base64)` 与 `bytes(Uint8Array)`；
+  `.qfs` 与其它 base64 路径不动。
+- 真照片测试里 `toBlob` 只快 15%（197→167ms），不如高熵合成图的 33%，但仍是净收益 + 负载小 1/3 + 不阻塞渲染线程。
+- **PNG 实测反向**：同一张 24MP 画布 `toDataURL('image/png')` 1433ms、`toBlob` 1831ms，故 PNG 保留同步路径。
+- 同时跳过纯边框批次的两帧 UI 尺寸渲染（预览 flush + 元素试渲染）：3D 卡片/背景模糊这类重样式
+  单张从 ~2.7s/2.1s 降到 ~1.0s/0.85s；带 logo/贴纸/自由文字的批次仍按原口径先试渲染。
 - EXIF 移植、`freeFilePath`、进度事件都不受影响（两条路之后完全同路径）。
 - 注：**本机测试窗口**的画布编码带 APP2 ICC_PROFILE(472B)，而应用画布在 `test:srgb` 里测得 0 字节 ICC ——
   与页面色彩配置有关；但两条路在**同一画布**上标注与字节完全一致，故与本次取舍无关。
@@ -120,7 +125,7 @@ $env:STRESS_IN='<照片目录>'; $env:STRESS_OUT='<可写目录>'; npx electron 
 **B. 需要先拿到 `npm test` 基线才敢动**
 
 4. **每帧全模板深克隆**（`app-state.js:7` → `app.js` `cloneTemplate`，以及 `app-render.js:196`）：UI 组认定的单项最大收益（带 logoElements 时 0.5–3ms/帧）。但它有 **6 个读取点**（切图 1189 / 缩略图 1524 / 导出 `app-export.js:207` / 草稿 `app-draft.js:44` / 同步 `app-templates.js:567` / 帧内判定 `app-render.js:199`），延迟克隆漏接任何一个都会变成"编辑完快速切走再切回，改动没了"的**静默数据丢失**。
-5. **导出改 `toBlob` → `Uint8Array`**：8192 每张约省 35–45MB 峰值与一趟 base64。风险：可能与 `toDataURL` 的编码字节不同（**静默丢 sRGB**，而那正是 `test-export-srgb` 要防的"微信发灰"）；但那条测试跑的是 `design/regress.html` 自调 `toDataURL` 的路径，**不经过 `app-export`,抓不到这个回归**。**（2026-10-19 实测已排雷：同一画布两条路逐字节相同、标注一致、编码 −33%，见第六节；等拍板即可切）**
+5. ~~导出改 `toBlob` → `Uint8Array`~~ **已实施（见第四节 #20）**：不靠 `test-export-srgb` 抓这个回归，改用 6 个真实预设导出 SHA-256 与改前逐字节比对（含 ICC/EXIF 段）；另实测 PNG 的 `toBlob` 更慢，PNG 保留 `toDataURL`。
 6. **`willReadFrequently`**：可能让 CPU/GPU 光栅差 1 LSB —— 那等于改像素。必须先过 869 键基线。
 
 **C. 已评估后判定不划算**

@@ -862,8 +862,8 @@ ipcMain.handle('write-export-files', async (event, { location, files }) => {
     const written = new Set();
     try {
         for (const f of files) {
-            // 空 data 也算一格并上报,否则 done 会卡在倒数一格不动
-            if (!f || !f.data) { fail++; }
+            // 空 data/bytes 也算一格并上报,否则 done 会卡在倒数一格不动
+            if (!f || (!f.data && !f.bytes)) { fail++; }
             else {
                 try {
                     const destDir = (f.subdir && String(f.subdir).trim()) ? path.join(location.dir, String(f.subdir).trim()) : location.dir;

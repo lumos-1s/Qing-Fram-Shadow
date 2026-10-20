@@ -39,8 +39,9 @@ ipcMain.handle('write-export-files', (_e, { location, files }) => {
     let ok = 0, fail = 0, error = null;
     for (const f of files) {
         try {
-            if (location.mode === 'file') fs.writeFileSync(location.filePath, Buffer.from(f.data, 'base64'));
-            else fs.writeFileSync(path.join(location.dir, f.filename), Buffer.from(f.data, 'base64'));
+            const buf = f.bytes ? Buffer.from(f.bytes) : Buffer.from(f.data || '', 'base64');
+            if (location.mode === 'file') fs.writeFileSync(location.filePath, buf);
+            else fs.writeFileSync(path.join(location.dir, f.filename), buf);
             ok++;
         } catch (e) { fail++; error = String(e); }
     }

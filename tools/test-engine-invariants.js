@@ -243,6 +243,14 @@ console.log('─'.repeat(72));
     ok(near(App.exportSizeScale(4000, 1800, undefined), 4000 / 1800), '⑥ pathDpr=undefined 退化为 1');
     ok(near(App.exportSizeScale(4000, 1800, NaN), 4000 / 1800), '⑥ pathDpr=NaN 退化为 1');
 
+    // e. 试渲染跳过条件:只有 logo / 贴纸 / 自由文字会让 scaleElPix 生效
+    ok(App._hasScalableElements(null) === false, '⑥ 无模板:跳过试渲染');
+    ok(App._hasScalableElements({ baseMargin: { marginTop: 60 }, logoElements: [], decorConfig: { textLines: [{ align: 'bottom' }] } }) === false,
+        '⑥ 纯边框(锚点文字不缩放):跳过试渲染');
+    ok(App._hasScalableElements({ logoElements: [{ size: 10 }] }) === true, '⑥ 有 logo:保留试渲染');
+    ok(App._hasScalableElements({ decorConfig: { stickers: [{ x: 1 }] } }) === true, '⑥ 有贴纸:保留试渲染');
+    ok(App._hasScalableElements({ decorConfig: { textLines: [{ align: 'free', x: 1 }] } }) === true, '⑥ 有自由文字:保留试渲染');
+
     // e. 文件名去重:首张保留原名,后续追加 _1、_2
     const files = [{ stem: 'a_边框', ext: 'jpg' }, { stem: 'a_边框', ext: 'jpg' },
         { stem: 'a_边框', ext: 'jpg' }, { stem: 'b_拼图', ext: 'png' }];

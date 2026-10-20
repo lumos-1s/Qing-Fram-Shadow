@@ -150,10 +150,18 @@ async function applyExifToJpeg(jpegBuf, originalPath, keepGps) {
     }
 }
 
-// 便捷入口:直接吃渲染层 exportImage/_gridFiles 组装的导出条目 { data(base64), originalPath, keepGps }。
+// 便捷入口:直接吃渲染层 exportImage/_gridFiles 组装的导出条目 { data(base64) 或 bytes(Uint8Array), originalPath, keepGps }。
 // 主进程写盘 handler 与测试桩共用此函数,避免两处接线各自漂移。
 async function applyExifToExportItem(f) {
-    const buf = Buffer.from((f && f.data) || '', 'base64');
+    let buf;
+    if (f && f.bytes) {
+        const b = f.bytes;
+        buf = (ArrayBuffer.isView(b) && b.buffer)
+            ? Buffer.from(b.buffer, b.byteOffset, b.byteLength)
+            : Buffer.from(b);
+    } else {
+        buf = Buffer.from((f && f.data) || '', 'base64');
+    }
     if (!f || !f.originalPath) return buf;
     return applyExifToJpeg(buf, f.originalPath, !!f.keepGps);
 }
