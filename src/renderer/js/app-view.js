@@ -273,7 +273,7 @@ window.App = Object.assign(window.App || {}, {
         root.classList.toggle('dark');
     },
 
-    /* ── 登录 / 用户 ── */
+    /* ── 用户资料(仅本地,用于签名/头像) ── */
     user: null,
 
     async initLogin() {
@@ -324,9 +324,10 @@ window.App = Object.assign(window.App || {}, {
         try {
             await window.qingframe.saveUser(this.user);
             this.closeLoginModal();
-            this.setStatus(`已登录「${nickname}」`);
+            this.setStatus(`已保存用户「${nickname}」`);
+            this.updateTopBar();
         } catch (e) {
-            this.setStatus('登录失败：' + e.message);
+            this.setStatus('保存失败：' + e.message);
         }
         this.refreshLoginStatus();
     },
@@ -336,24 +337,27 @@ window.App = Object.assign(window.App || {}, {
             await window.qingframe.logoutUser();
             this.user = null;
             this.closeLoginModal();
-            this.setStatus('已退出登录');
+            // 旧版遗留键一并清掉,否则顶栏会从 localStorage 里读出一个已经不存在的名字
+            localStorage.removeItem('qfs_username');
+            localStorage.removeItem('qfs_nickname');
+            this.setStatus('已清除用户资料');
+            this.updateTopBar();
         } catch (e) {
-            this.setStatus('退出失败：' + e.message);
+            this.setStatus('清除失败：' + e.message);
         }
         this.refreshLoginStatus();
     },
 
     refreshLoginStatus() {
-        const el = this.dom.loginStatus;
-        if (this.user) {
-            const name = (this.user.nickname || this.user.username).trim();
-            el.textContent = name;
-            el.classList.add('logged-in');
-            el.title = '@' + this.user.username + ' · 点击管理';
-        } else {
-            el.textContent = '未登录';
-            el.classList.remove('logged-in');
-            el.title = '点击登录';
+        const pill = this.dom.loginStatus;
+        // 名字写在 span 上,不能写 pill.textContent —— 那会把头像和名字节点整个抹掉,
+        // 之后 updateTopBar 的 getElementById('topUserName'/'topAvatar') 全是 null(头像永远不显示)
+        const nameEl = document.getElementById('topUserName');
+        const name = this.user ? (this.user.nickname || this.user.username).trim() : '';
+        if (nameEl) nameEl.textContent = name || '设置用户';
+        if (pill) {
+            pill.classList.toggle('logged-in', !!this.user);
+            pill.title = this.user ? ('@' + this.user.username + ' · 点击管理') : '点击设置用户信息（用于签名/头像）';
         }
     },
 });

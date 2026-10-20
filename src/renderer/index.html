@@ -123,7 +123,7 @@
                 <div class="account" id="accountArea">
                     <div id="loginStatus" class="status-pill clickable" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 12px 4px 4px;">
                         <div id="topAvatar" style="width:28px;height:28px;border-radius:50%;background:#333;overflow:hidden;flex-shrink:0;border:1.5px solid #10b981;"></div>
-                        <span id="topUserName">未登录</span>
+                        <span id="topUserName">设置用户</span>
                     </div>
                 </div>
             </div>
@@ -526,6 +526,7 @@
                             <div class="param-row">
                                 <label>样式</label>
                                 <select id="cbCornerDecorType" class="ctl-sel">
+                                    <option value="none">无</option>
                                     <option value="line">直角</option>
                                     <option value="round">圆角</option>
                                     <option value="double">双线</option>
@@ -908,11 +909,11 @@
         </div>
     </div>
 
-    <!-- ═══ 登录弹窗 ═══ -->
+    <!-- ═══ 用户信息弹窗(仅本地:昵称/头像供「签名 / 头像」参数使用) ═══ -->
     <div id="loginModal" class="modal-overlay" style="display:none">
         <div class="modal-card">
             <div class="modal-header">
-                <span class="modal-title">用户登录</span>
+                <span class="modal-title">用户信息</span>
                 <button id="loginModalClose" class="modal-close" title="关闭">&times;</button>
             </div>
             <div class="modal-body">
@@ -933,9 +934,9 @@
                         <label for="loginNickname">昵称（选填）</label>
                         <input type="text" id="loginNickname" class="ctl-tx" placeholder="显示名称" maxlength="30" />
                     </div>
-                    <div class="login-hint">本地存储，无需密码。用于云市场等功能标识。</div>
+                    <div class="login-hint">仅保存在本机，无需密码。用于「签名 / 头像」参数。</div>
                     <div class="btn-row">
-                        <button id="loginSubmit" class="mini-btn primary">登录</button>
+                        <button id="loginSubmit" class="mini-btn primary">保存</button>
                     </div>
                 </div>
                 <div id="loginProfileView" style="display:none">
@@ -948,7 +949,7 @@
                     </div>
                     <div class="btn-row">
                         <button id="btnChangeAvatar" class="mini-btn">更换头像</button>
-                        <button id="loginLogout" class="mini-btn danger">退出登录</button>
+                        <button id="loginLogout" class="mini-btn danger" title="清除本机保存的用户名和昵称；头像会保留，可在「签名 / 头像」参数里使用">清除用户资料</button>
                     </div>
                     <input type="file" id="fileChangeAvatar" accept="image/*" style="display:none;" />
                 </div>

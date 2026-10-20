@@ -331,6 +331,16 @@ window.App = {
             this.template.paramColor = cbPC.value;
             this.onSettingChanged();
         });
+        // 角饰:关着时下面两项禁用;打开时若类型是「无」自动切到「直角」,否则勾了也不出效果。
+        // 这个监听要早于 bindInteractive 里的通用 change,先把 select 值改对再走提交。
+        const cbDecor = document.getElementById('cbCornerDecor');
+        if (cbDecor) {
+            cbDecor.addEventListener('change', () => {
+                const sel = document.getElementById('cbCornerDecorType');
+                if (cbDecor.checked && sel && sel.value === 'none') sel.value = 'line';
+                this.syncCornerDecorState();
+            });
+        }
         // 头像上传(存全局)
         const btnAv = document.getElementById('btnUploadAvatar'), fileAv = document.getElementById('fileAvatar');
         if (btnAv && fileAv) {
@@ -347,14 +357,26 @@ window.App = {
     },
 
     updateTopBar() {
-        const name = localStorage.getItem('qfs_username') || localStorage.getItem('qfs_nickname') || '';
+        // 名字以本地用户资料为准;旧版 qfs_username/qfs_nickname 只作兜底。
+        // 以前只读 localStorage:设置头像后 updateTopBar 会把顶栏名字刷回「未登录」。
+        const u = this.user;
+        const name = (u && (u.nickname || u.username)) || localStorage.getItem('qfs_username') || localStorage.getItem('qfs_nickname') || '';
         const topName = document.getElementById('topUserName');
         const topAv = document.getElementById('topAvatar');
-        if (topName) topName.textContent = name || '未登录';
+        if (topName) topName.textContent = name || '设置用户';
         if (topAv) {
             const av = localStorage.getItem('qfs_user_avatar');
             if (av) { topAv.style.background = 'url(' + av + ') center/cover'; topAv.textContent = ''; }
-            else { topAv.style.background = '#444'; topAv.textContent = '头'; }
+            else {
+                topAv.style.background = '#444';
+                // 没头像:有名字用首字,没有就「＋」,和旁边的「设置用户」呼应
+                topAv.style.display = 'flex';
+                topAv.style.alignItems = 'center';
+                topAv.style.justifyContent = 'center';
+                topAv.style.fontSize = '12px';
+                topAv.style.color = '#cfd6e4';
+                topAv.textContent = name ? name.charAt(0) : '＋';
+            }
         }
     },
     loadUserAvatar() {
@@ -1054,6 +1076,18 @@ window.App = {
         }
     },
 
+    // 角饰关着时,下面的「样式/大小」调了也不会画:直接禁用,避免"滑了没反应"。
+    syncCornerDecorState() {
+        const cb = document.getElementById('cbCornerDecor');
+        const on = !!(cb && cb.checked);
+        ['cbCornerDecorType', 'slCornerDecorSize'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = !on;
+            const row = el && el.closest('.param-row');
+            if (row) row.classList.toggle('row-disabled', !on);
+        });
+    },
+
     // 回显:模板 -> 控件
     refreshUI() {
         if (!this.template) return;
@@ -1205,6 +1239,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             if ($('cbCornerDecorType')) $('cbCornerDecorType').value = decor.cornerDecorType || 'line';
             if ($('slCornerDecorSize')) $('slCornerDecorSize').value = decor.cornerDecorSize || 30;
             this.updateLabel('lblCornerDecorSize', decor.cornerDecorSize || 30);
+            this.syncCornerDecorState();
 
             if ($('cbExifText')) $('cbExifText').checked = (decor.exifAutoText || 0) === 1;
 
@@ -2604,7 +2639,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
 
     /* ══ armLogoPlacement(logo) { … → app-elements.js ══ */
 
-    /* ══ 缩放 / 状态栏 / 主题 / 登录 → app-view.js ══ */
+    /* ══ 缩放 / 状态栏 / 主题 / 用户资料 → app-view.js ══ */
 
 };
 

@@ -406,9 +406,27 @@ html.dark #previewCanvas {
     transition: border-color .15s, transform .1s;
 }
 .thumb-item { position: relative; flex: 0 0 auto; }
+/* 批量勾选框只在「悬停胶片条 / 键盘聚焦 / 已勾选」时露出:42px 缩略图上常显太吵,
+   平时也不挡点击(pointer-events:none,点这个位置仍然是选图) */
 .thumb-item .thumb-check {
     position: absolute; top: 2px; left: 2px; width: 15px; height: 15px;
-    cursor: pointer; accent-color: var(--primary); z-index: 1;
+    cursor: pointer; z-index: 1;
+    appearance: none; -webkit-appearance: none;
+    display: grid; place-items: center;
+    background: rgba(10, 14, 20, .62);
+    border: 1.5px solid rgba(255, 255, 255, .92);
+    border-radius: 4px;
+    opacity: 0; pointer-events: none; transition: opacity .12s ease;
+}
+.thumb-strip:hover .thumb-check,
+.thumb-item .thumb-check:focus-visible,
+.thumb-item .thumb-check:checked { opacity: 1; pointer-events: auto; }
+.thumb-item .thumb-check:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.thumb-item .thumb-check:checked { background: var(--primary); border-color: var(--primary); }
+.thumb-item .thumb-check:checked::after {
+    content: ''; width: 7px; height: 4px;
+    border-left: 2px solid #06251c; border-bottom: 2px solid #06251c;
+    transform: rotate(-45deg) translate(.5px, -1px);
 }
 .thumb-strip .thumb:hover { transform: scale(1.06); }
 .thumb-strip .thumb.active { border-color: var(--primary); }
@@ -546,6 +564,8 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
 .param-row:focus-within { border-color: var(--primary); }
 .param-row:hover { border-color: var(--border-strong); }
 .param-row label { flex: 0 0 66px; color: var(--text-2); font-size: 12px; }
+/* 开关关着时"调了也不生效"的行(如角饰关着时的样式/大小) */
+.param-row.row-disabled { opacity: .45; }
 .param-row input[type=range] { flex: 1; min-width: 0; }
 .param-row .pval {
     flex: 0 0 46px; text-align: right; color: var(--text);
@@ -794,7 +814,7 @@ html.dark .icon-pool .icon-cell {
 .progress-wrap { width: 120px; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; display: none; }
 .progress-bar { height: 100%; width: 0; background: var(--primary-grad); transition: width .2s; border-radius: 3px; }
 
-/* ═══ 登录弹窗 ═══ */
+/* ═══ 弹窗(用户信息 / 关于 等) ═══ */
 .modal-overlay {
     position: fixed; inset: 0; z-index: 9999;
     background: rgba(0,0,0,.45);
