@@ -720,32 +720,152 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
     }
     // ── 四格创新边框:VHS录像带 / 老相册角贴 / 撕边电影票 / 水彩晕染 ──
     function styleVhsTape(img, size, g, iw, ih) {
-        const sidePad = Math.max(8, Math.floor(size / 4));
-        const barH = Math.max(28, Math.floor(size * 0.75));
-        const w = iw + sidePad * 2, h = ih + barH * 2;
-        g.fillStyle = '#0a0a0a';
-        g.fillRect(0, 0, w, h);
-        g.drawImage(img, sidePad, barH);
-        const fs = Math.max(12, Math.floor(barH * 0.32));
-        const cyTop = Math.floor(barH / 2), cyBot = barH + ih + Math.floor(barH / 2);
-        const baseYTop = cyTop + Math.floor(fs * 0.36);
-        const baseYBot = cyBot + Math.floor(fs * 0.36);
-        // REC 红点
-        const dotR = Math.max(5, Math.floor(fs * 0.36));
-        g.fillStyle = '#e63229';
-        g.beginPath(); g.arc(sidePad + dotR + 6, cyTop, dotR, 0, 6.2832); g.fill();
-        // 左上时间码
-        drawTextL(g, 'SP 12:34:56', sidePad + dotR * 2 + 14, baseYTop, '#7fffb0', fs, true, false, 0);
-        // 右上 PLAY(右对齐)
+        const padX = Math.max(14, Math.round(iw * 0.022), Math.round(size * 0.24));
+        const topH = Math.max(46, Math.round(iw * 0.065), Math.round(size * 1.05));
+        const botH = Math.max(64, Math.round(iw * 0.105), Math.round(size * 1.55));
+        const w = iw + padX * 2, h = ih + topH + botH;
+        const shellR = Math.max(8, Math.round(size * 0.22));
+        // 黑色磁带壳:用深灰渐变而不是纯黑,避免缩略图糊成一团。
+        g.fillStyle = '#08080a'; g.fillRect(0, 0, w, h);
+        const shell = g.createLinearGradient(0, 0, 0, h);
+        shell.addColorStop(0, '#1d1d21'); shell.addColorStop(0.52, '#121215'); shell.addColorStop(1, '#09090b');
+        g.fillStyle = shell;
+        roundRectPath(g, 2, 2, w - 4, h - 4, shellR); g.fill();
+        g.strokeStyle = 'rgba(255,255,255,0.10)'; g.lineWidth = 1;
+        roundRectPath(g, 2.5, 2.5, w - 5, h - 5, Math.max(2, shellR - 1)); g.stroke();
+        g.strokeStyle = 'rgba(0,0,0,0.65)'; g.lineWidth = 1;
+        roundRectPath(g, 1, 1, w - 2, h - 2, shellR); g.stroke();
+
+        // 顶部:磁带螺丝 + VHS 字标 + SP / T-120。
+        const screwR = Math.max(2.2, Math.round(size * 0.055));
+        const screwY = Math.max(9, Math.round(topH * 0.22));
+        for (const sx of [Math.max(8, Math.round(padX * 0.45)), w - Math.max(8, Math.round(padX * 0.45))]) {
+            g.fillStyle = '#2a2a2e'; g.beginPath(); g.arc(sx, screwY, screwR, 0, 6.2832); g.fill();
+            g.strokeStyle = '#4b4b52'; g.lineWidth = 1; g.beginPath(); g.arc(sx, screwY, screwR, 0, 6.2832); g.stroke();
+            g.strokeStyle = '#151518'; g.lineWidth = Math.max(1, Math.round(screwR * 0.4));
+            g.beginPath(); g.moveTo(sx - screwR * 0.55, screwY); g.lineTo(sx + screwR * 0.55, screwY); g.stroke();
+        }
+        const logoFs = Math.max(15, Math.round(topH * 0.42));
+        const logoX = padX;
+        const logoBase = Math.round(topH * 0.60);
+        g.fillStyle = '#e23b2e';
+        g.fillRect(logoX, logoBase - Math.round(logoFs * 0.74), Math.max(3, Math.round(logoFs * 0.11)), Math.round(logoFs * 0.82));
+        g.font = '900 ' + logoFs + 'px "Arial Black", Impact, sans-serif';
+        g.textBaseline = 'alphabetic'; g.textAlign = 'left'; g.fillStyle = '#f4f0e4';
+        g.fillText('VHS', logoX + Math.round(logoFs * 0.28), logoBase);
+        const subFs = Math.max(7, Math.round(topH * 0.14));
+        g.font = 'bold ' + subFs + 'px Arial, sans-serif';
+        g.fillStyle = 'rgba(220,215,200,0.55)';
+        g.fillText('VIDEO CASSETTE', logoX + Math.round(logoFs * 0.28), logoBase + Math.round(subFs * 1.45));
+
+        const pillW = Math.max(30, Math.round(topH * 0.62));
+        const pillH = Math.max(16, Math.round(topH * 0.36));
+        const pillX = w - padX - pillW, pillY = Math.round(topH * 0.20);
+        g.fillStyle = '#1e5d3f';
+        fillRoundRectCtx(g, pillX, pillY, pillW, pillH, Math.max(3, pillH * 0.25));
+        g.font = 'bold ' + Math.max(8, Math.round(pillH * 0.55)) + 'px monospace';
+        g.fillStyle = '#b9ffd0'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText('SP', pillX + pillW / 2, pillY + pillH / 2 + 1);
+        g.textAlign = 'right'; g.textBaseline = 'alphabetic';
+        g.font = 'bold ' + Math.max(8, Math.round(topH * 0.18)) + 'px monospace';
+        g.fillStyle = 'rgba(220,215,200,0.65)';
+        g.fillText('T-120', w - padX, Math.round(topH * 0.78));
+        g.textAlign = 'left';
+
+        // 相纸标签:照片四周留一圈旧纸边,让它像贴在磁带上的打印照片。
+        const paperOff = Math.max(5, Math.round(size * 0.11));
+        g.save();
+        g.shadowColor = 'rgba(0,0,0,0.58)';
+        g.shadowBlur = Math.max(6, Math.round(size * 0.18));
+        g.shadowOffsetY = Math.max(2, Math.round(size * 0.04));
+        g.fillStyle = '#e8dec6';
+        fillRoundRectCtx(g, padX - paperOff, topH - paperOff, iw + paperOff * 2, ih + paperOff * 2, Math.max(2, paperOff * 0.3));
+        g.restore();
+        g.drawImage(img, padX, topH);
+        g.strokeStyle = 'rgba(40,32,22,0.40)'; g.lineWidth = 1;
+        g.strokeRect(padX - 1.5, topH - 1.5, iw + 3, ih + 3);
+        g.strokeStyle = 'rgba(255,255,255,0.34)'; g.lineWidth = 1;
+        g.strokeRect(padX - paperOff + 1, topH - paperOff + 1, iw + paperOff * 2 - 2, ih + paperOff * 2 - 2);
+
+        // 录像带画面:细扫描线 + 极轻的色边,保留照片本身可读性。
+        g.save();
+        g.fillStyle = 'rgba(0,0,0,0.05)';
+        for (let yy = topH; yy < topH + ih; yy += 4) g.fillRect(padX, yy, iw, 1);
+        const fringeW = Math.max(2, Math.round(iw * 0.004));
+        g.fillStyle = 'rgba(0,255,180,0.035)'; g.fillRect(padX, topH, fringeW, ih);
+        g.fillStyle = 'rgba(255,40,80,0.025)'; g.fillRect(padX + iw - fringeW, topH, fringeW, ih);
+        g.restore();
+
+        // VHS 屏显。
+        const osdFs = Math.max(10, Math.round(iw * 0.016));
+        g.save();
+        g.shadowColor = 'rgba(0,0,0,0.85)'; g.shadowBlur = 3; g.shadowOffsetX = 1; g.shadowOffsetY = 1;
+        drawTextL(g, 'SP  12:34:56', padX + Math.round(osdFs * 0.8), topH + ih - Math.round(osdFs * 1.1), '#8dffb0', osdFs, true, true, 0);
         const playTxt = 'PLAY';
-        const playW = textMetrics(g, playTxt, fs, true, false, 0).w;
-        drawTextL(g, playTxt, w - sidePad - playW, baseYTop, '#cccccc', fs, true, false, 0);
-        // 左下时间码
-        drawTextL(g, 'SP 0:00:00', sidePad + 6, baseYBot, '#7fffb0', fs, true, false, 0);
-        // 右下 Hi-Fi(右对齐)
-        const hifiTxt = 'Hi-Fi STEREO';
-        const hifiW = textMetrics(g, hifiTxt, fs, true, false, 0).w;
-        drawTextL(g, hifiTxt, w - sidePad - hifiW, baseYBot, '#888888', fs, true, false, 0);
+        const playW = textMetrics(g, playTxt, osdFs, true, false, 0).w;
+        const playX = padX + iw - playW - Math.round(osdFs * 1.5);
+        const playY = topH + Math.round(osdFs * 1.7);
+        drawTextL(g, playTxt, playX, playY, '#f2f2ea', osdFs, true, false, 0);
+        g.fillStyle = '#f2f2ea';
+        const triX = playX + playW + Math.round(osdFs * 0.35);
+        g.beginPath();
+        g.moveTo(triX, playY - Math.round(osdFs * 0.68));
+        g.lineTo(triX + Math.round(osdFs * 0.52), playY - Math.round(osdFs * 0.35));
+        g.lineTo(triX, playY - Math.round(osdFs * 0.02));
+        g.closePath(); g.fill();
+        g.restore();
+
+        // 底部:手写标签 + 条码 + 一截走带噪点。
+        const labelY = topH + ih + Math.max(8, Math.round(botH * 0.12));
+        const labelH = botH - (labelY - (topH + ih)) - Math.max(6, Math.round(botH * 0.10));
+        const labelW = Math.round(iw * 0.64);
+        g.save();
+        g.shadowColor = 'rgba(0,0,0,0.35)'; g.shadowBlur = 4; g.shadowOffsetY = 2;
+        g.fillStyle = '#e6dcc3';
+        fillRoundRectCtx(g, padX, labelY, labelW, labelH, 3);
+        g.restore();
+        g.strokeStyle = 'rgba(120,100,75,0.35)'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(padX + 8, labelY + labelH * 0.58); g.lineTo(padX + labelW - 8, labelY + labelH * 0.58); g.stroke();
+        g.beginPath(); g.moveTo(padX + 8, labelY + labelH * 0.84); g.lineTo(padX + labelW - 8, labelY + labelH * 0.84); g.stroke();
+        g.fillStyle = '#b3372c';
+        g.fillRect(padX, labelY, Math.max(3, Math.round(labelW * 0.012)), labelH);
+        const handFs = Math.max(10, Math.round(labelH * 0.30));
+        g.font = 'bold ' + handFs + 'px "Segoe Print", "Comic Sans MS", cursive';
+        g.fillStyle = '#2f2a22'; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+        g.fillText('HOME VIDEO', padX + 10, labelY + labelH * 0.47);
+        const handFs2 = Math.max(8, Math.round(labelH * 0.20));
+        g.font = 'bold ' + handFs2 + 'px "Segoe Print", "Comic Sans MS", cursive';
+        g.fillStyle = 'rgba(55,45,35,0.78)';
+        g.fillText("SUMMER '98  ·  SP", padX + 11, labelY + labelH * 0.76);
+
+        const bcX = padX + labelW + Math.max(10, Math.round(iw * 0.025));
+        const bcW = Math.max(18, w - padX - bcX);
+        const bcY = labelY + Math.max(2, Math.round(labelH * 0.10));
+        const bcH = Math.max(12, Math.round(labelH * 0.44));
+        g.fillStyle = '#e6dcc3';
+        fillRoundRectCtx(g, bcX - 6, bcY - 5, bcW + 8, bcH + Math.max(12, labelH * 0.35) + 10, 2);
+        g.fillStyle = '#181716';
+        let bx = bcX, bi = 0;
+        while (bx < bcX + bcW) {
+            const bw = 1 + ((bi * 7 + 3) % 3);
+            const gap = 1 + ((bi * 5 + 1) % 2);
+            if (bx + bw > bcX + bcW) break;
+            g.fillRect(bx, bcY, bw, bcH);
+            bx += bw + gap; bi++;
+        }
+        g.font = 'bold ' + Math.max(7, Math.round(labelH * 0.16)) + 'px monospace';
+        g.fillStyle = '#2f2a22'; g.textAlign = 'center';
+        g.fillText('T-120', bcX + bcW / 2, bcY + bcH + Math.max(9, labelH * 0.18));
+        g.textAlign = 'left';
+
+        const noiseY = h - Math.max(4, Math.round(botH * 0.06));
+        for (let i = 0; i < Math.round(w / 12); i++) {
+            const nx = (i * 37 + 11) % w;
+            const nw = 5 + ((i * 13) % 17);
+            const colors = ['rgba(230,230,225,0.20)', 'rgba(120,255,180,0.25)', 'rgba(255,70,90,0.18)'];
+            g.fillStyle = colors[i % 3];
+            g.fillRect(nx, noiseY + (i % 2), Math.min(nw, w - nx), 1);
+        }
     }
     function styleAlbumCorner(img, size, g, iw, ih) {
         const pad = Math.max(40, Math.floor(size * 1.2));
@@ -4434,9 +4554,10 @@ const w = natW;
                 return { w: iw + pH * 2, h: ih + pH * 2 + Math.round(iw * 0.14) };
             }
             case 'VHS_TAPE': {
-                const sidePad = Math.max(8, Math.floor(size / 4));
-                const barH = Math.max(28, Math.floor(size * 0.75));
-                return { w: iw + sidePad * 2, h: ih + barH * 2 };
+                const padX = Math.max(14, Math.round(iw * 0.022), Math.round(size * 0.24));
+                const topH = Math.max(46, Math.round(iw * 0.065), Math.round(size * 1.05));
+                const botH = Math.max(64, Math.round(iw * 0.105), Math.round(size * 1.55));
+                return { w: iw + padX * 2, h: ih + topH + botH };
             }
             case 'ALBUM_CORNER': {
                 const pad = Math.max(40, Math.floor(size * 1.2));
