@@ -6997,15 +6997,15 @@ const w = natW;
             // 照片:contain × 方向默认缩放(竖图长>宽 0.95,横图 0.75;用户改过滑块则用用户值),上移一半(贴顶不裁切)
             const s0 = Math.min(cw / iw, ch / ih);
             let sc = (S.imgScale || 1);
-            if (sc === 1) sc = (ih > iw) ? 0.95 : 0.75;
+            if (sc === 1) sc = (ih > iw) ? 0.95 : 1.0;
             const pw = Math.round(iw * s0 * sc), ph = Math.round(ih * s0 * sc);
             const px = Math.round((cw - pw) / 2);
             const py = Math.max(0, Math.round((ch - ph) / 2) - Math.round(ph / 2));
             drawPhoto(px, py, pw, ph);
             // 文字区:照片底边 → 画布底边;字号随照片大小自适应(同背景模糊经典)
             const phBottom = py + ph;
-            const fs1b = Math.max(14, Math.round(cw * 0.026));
-            const fs2b = Math.max(11, Math.round(fs1b * 0.75));
+            const fs1b = Math.max(14, Math.round(cw * 0.036));
+            const fs2b = Math.max(11, Math.round(fs1b * 0.65));
             const minH = Math.round(fs1b + fs2b + cw * 0.02);
             const topY = Math.max(0, Math.min(phBottom, ch - minH));
             const maskH = ch - topY;
