@@ -6916,7 +6916,7 @@ const w = natW;
         const model = (S.exif.model || '').trim().toUpperCase();
         const first = useModel ? (make + (model ? ' ' + model : '')) : (S.userSignature || '');
         const year = new Date().getFullYear();
-        const text = first ? (first + '  |  PHOTOGRAPHY ©' + year) : ('PHOTOGRAPHY ©' + year);
+        const text = first ? (first + '  |  PHOTOGRAPHY © ' + year) : ('PHOTOGRAPHY © ' + year);
         // 三段同一字号,过长时先缩字号再省略号截断,始终压在原图底部同一位置
         const family = (S.signFont || 'Arial');
         let fs = Math.round(iw * 0.022 * (S.signSize || 1));
