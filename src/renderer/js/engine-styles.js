@@ -6953,10 +6953,51 @@ const w = natW;
         g.restore();
     }
 
-    // ══ 相机参数水印:原图满幅 + 底部居中两行(品牌 型号 / 焦距 光圈 快门 ISO) ══
-    // 纯原图直压白字(带轻投影),画布=原图尺寸,无边框无模糊;
-    // 参数取 EXIF(manualExif 优先/自动识别兜底),无 EXIF 时用该风格预设数据(cameraFor)。
+    // ══ 相机参数水印:底部居中两行(品牌 型号 / 焦距 光圈 快门 ISO) ══
+    // 开启背景模糊(signBgBlur)时:照片居中,四周模糊延伸铺满 1:1 画布,两行文字压在背景底部;
+    // 未开启时:纯原图直压白字(带轻投影)。参数取 EXIF(manualExif 优先/自动识别兜底)。
     function styleParamCredit(img, size, g, iw, ih, S, cwO, chO) {
+        const cam = S.cam || {};
+        const trim = (v) => (v == null ? '' : String(v).trim());
+        const line1 = [trim(cam.brand), trim(cam.model)].filter(Boolean).join(' ');
+        const line2 = [trim(cam.focal), trim(cam.aperture), trim(cam.shutter), trim(cam.iso)].filter(Boolean).join('  ');
+        const drawLine = (text, fs, font, ay, cx, maxW) => {
+            g.font = fs + 'px ' + font;
+            let f = fs;
+            if (g.measureText(text).width > maxW && f > 8) {
+                f = Math.max(8, Math.floor(f * maxW / g.measureText(text).width));
+                g.font = f + 'px ' + font;
+            }
+            g.fillText(text, cx, ay);
+        };
+        if (S.signBgBlur) {
+            // 背景模糊模式:画布=用户比例(1:1),照片 contain 居中,模糊延伸铺满,文字压背景底部
+            const cw = cwO || iw, ch = chO || ih;
+            g.save();
+            g.fillStyle = '#1a1a1a'; g.fillRect(0, 0, cw, ch);
+            g.filter = 'blur(' + signBlurRad(S) + 'px) brightness(0.55)';
+            const bs = Math.max(cw / iw, ch / ih);
+            g.drawImage(img, (cw - iw * bs) / 2, (ch - ih * bs) / 2, iw * bs, ih * bs);
+            g.filter = 'none';
+            g.restore();
+            const s = Math.min(cw / iw, ch / ih);
+            g.drawImage(img, (cw - iw * s) / 2, (ch - ih * s) / 2, iw * s, ih * s);
+            const maxW = cw - Math.round(cw * 0.08);
+            const fs1 = Math.max(14, Math.round(cw * 0.026));
+            const fs2 = Math.max(11, Math.round(fs1 * 0.75));
+            const ay2 = ch - Math.round(cw * 0.05);
+            const ay1 = ay2 - Math.round(cw * 0.052);
+            g.textAlign = 'center';
+            g.textBaseline = 'alphabetic';
+            g.fillStyle = '#fff';
+            g.shadowColor = 'rgba(0,0,0,0.5)';
+            g.shadowBlur = 3;
+            drawLine(line2, fs2, "'Consolas', 'Courier New', monospace", ay2, cw / 2, maxW);
+            drawLine(line1, fs1, "Arial, sans-serif", ay1, cw / 2, maxW);
+            g.shadowBlur = 0;
+            return;
+        }
+        // 纯原图直压:照片满幅,文字压照片底部
         const natW = iw, natH = ih;
         const cw = cwO || natW, ch = chO || natH;
         const ox = Math.max(0, Math.round((cw - natW) / 2));
@@ -6964,12 +7005,7 @@ const w = natW;
         g.save();
         g.translate(ox, oy);
         g.drawImage(img, 0, 0, iw, ih);
-        const cam = S.cam || {};
-        const trim = (v) => (v == null ? '' : String(v).trim());
-        const line1 = [trim(cam.brand), trim(cam.model)].filter(Boolean).join(' ');
-        const line2 = [trim(cam.focal), trim(cam.aperture), trim(cam.shutter), trim(cam.iso)].filter(Boolean).join('  ');
         const maxW = iw - Math.round(iw * 0.08);
-        // 行1(品牌 型号)大一号无衬线;行2(参数)小一号等宽,锚定底部居中
         const fs1 = Math.max(14, Math.round(iw * 0.026));
         const fs2 = Math.max(11, Math.round(fs1 * 0.75));
         const ay2 = ih - Math.round(iw * 0.05);
@@ -6979,17 +7015,8 @@ const w = natW;
         g.fillStyle = S.signColor || '#fff';
         g.shadowColor = 'rgba(0,0,0,0.5)';
         g.shadowBlur = 3;
-        const drawLine = (text, fs, font, ay) => {
-            g.font = fs + 'px ' + font;
-            let f = fs;
-            if (g.measureText(text).width > maxW && f > 8) {
-                f = Math.max(8, Math.floor(f * maxW / g.measureText(text).width));
-                g.font = f + 'px ' + font;
-            }
-            g.fillText(text, iw / 2, ay);
-        };
-        drawLine(line2, fs2, "'Consolas', 'Courier New', monospace", ay2);
-        drawLine(line1, fs1, "Arial, sans-serif", ay1);
+        drawLine(line2, fs2, "'Consolas', 'Courier New', monospace", ay2, iw / 2, maxW);
+        drawLine(line1, fs1, "Arial, sans-serif", ay1, iw / 2, maxW);
         g.shadowBlur = 0;
         g.restore();
     }
@@ -7065,7 +7092,7 @@ const w = natW;
                 //  BLUR_CLASSIC/BLUR_DATE 恒定模糊底;签名/头像/印象留白/logo参数 只在用户
                 //  开启「背景模糊」(signBgBlur)时才进入,未开模糊时保持原卡片样式不扩展。
                 const BLUR_FULLBLEED = ['BLUR_CLASSIC', 'BLUR_DATE', 'SIGNATURE', 'SIGN_PARAM', 'AVATAR_MEMO',
-                    'AV_OVERLAY', 'AV_OVERLAY_TR', 'AV_OVERLAY_BR', 'AV_OVERLAY_BC', 'AV_OVERLAY_BC2', 'PHOTO_CREDIT',
+                    'AV_OVERLAY', 'AV_OVERLAY_TR', 'AV_OVERLAY_BR', 'AV_OVERLAY_BC', 'AV_OVERLAY_BC2', 'PHOTO_CREDIT', 'PARAM_CREDIT',
                     'OVERLAY_PARAM_LEFT', 'OVERLAY_PARAM_RIGHT', 'OVERLAY_PARAM_BOTTOM', 'CARD_LOGO_PARAM'];
                 const blurMode = BLUR_FULLBLEED.indexOf(styleName) !== -1 &&
                     (styleName === 'BLUR_CLASSIC' || styleName === 'BLUR_DATE' || (S && S.signBgBlur));

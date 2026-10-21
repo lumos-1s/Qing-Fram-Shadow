@@ -228,7 +228,7 @@
         v.rowParamColor = sigCore;
         v.rowParamType = isBottomBar;
         v.rowParamPos = isBottomBar;
-        v.rowBgBlur = isPersonal || isOverlay || isLogoParam || s === 'PHOTO_CREDIT';
+        v.rowBgBlur = isPersonal || isOverlay || isLogoParam || s === 'PHOTO_CREDIT' || s === 'PARAM_CREDIT';
         v.rowBrandSize = IMPRESSION_STYLES.indexOf(s) >= 0 || WM_BRAND_STYLES.indexOf(s) >= 0;
         v.rowParamScale = IMPRESSION_STYLES.indexOf(s) >= 0 || isBlur || WM_PARAM_STYLES.indexOf(s) >= 0;
         v.rowBrandLogo = BRAND_LOGO_STYLES.indexOf(s) >= 0;

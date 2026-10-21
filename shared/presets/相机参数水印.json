@@ -13,11 +13,12 @@
   "paramType": 0,
   "paramPosition": "RIGHT",
   "photoFrameStyle": "PARAM_CREDIT",
+  "canvasRatio": "1:1",
   "photoFrameBorderSize": 100,
   "blurIntensity": 50,
   "userSignature": "",
   "signFont": "Arial",
-  "signBgBlur": 0,
+  "signBgBlur": 1,
   "signSize": 0.85,
   "signColor": ""
 }
