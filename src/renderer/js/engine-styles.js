@@ -6922,10 +6922,12 @@ const w = natW;
         let fs = Math.round(iw * 0.022 * (S.signSize || 1));
         const maxW = iw - Math.round(iw * 0.08);
         g.font = fs + 'px "' + family + '", sans-serif';
+        g.letterSpacing = Math.round(fs * 0.5) + 'px';
         let tw = g.measureText(text).width;
         if (tw > maxW && fs > 10) {
             fs = Math.max(10, Math.floor(fs * maxW / tw));
             g.font = fs + 'px "' + family + '", sans-serif';
+            g.letterSpacing = Math.round(fs * 0.5) + 'px';
             tw = g.measureText(text).width;
         }
         let str = text;
@@ -6937,7 +6939,7 @@ const w = natW;
         }
         // 压照片上的白字带轻投影保证可读;开模糊时也走白字
         g.fillStyle = S.signBgBlur ? '#fff' : (S.signColor || '#fff');
-        g.letterSpacing = Math.round(fs * 0.12);
+        g.letterSpacing = Math.round(fs * 0.5) + 'px';
         g.textAlign = 'center';
         g.textBaseline = 'alphabetic';
         const ay = ih - Math.round(iw * 0.045);
@@ -6945,7 +6947,7 @@ const w = natW;
         g.shadowBlur = S.signBgBlur ? 8 : 3;
         g.fillText(str, iw / 2, ay);
         g.shadowBlur = 0;
-        g.letterSpacing = 0;
+        g.letterSpacing = '0px';
         g.restore();
     }
 
