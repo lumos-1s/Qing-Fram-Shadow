@@ -6997,7 +6997,7 @@ const w = natW;
             // 照片:contain × 方向默认缩放(竖图长>宽 0.95,横图 0.75;用户改过滑块则用用户值),上移一半(贴顶不裁切)
             const s0 = Math.min(cw / iw, ch / ih);
             let sc = (S.imgScale || 1);
-            if (sc === 1) sc = (ih > iw) ? 0.95 : 1.0;
+            if (sc === 1) sc = (ih > iw) ? 0.90 : 0.95;
             const pw = Math.round(iw * s0 * sc), ph = Math.round(ih * s0 * sc);
             const px = Math.round((cw - pw) / 2);
             const py = Math.max(Math.round(cw * 0.04), Math.round((ch - ph) / 2) - Math.round(ph / 2));
