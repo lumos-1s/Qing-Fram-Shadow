@@ -6954,16 +6954,15 @@ const w = natW;
     }
 
     // ══ 相机参数水印:底部居中两行(品牌 型号 / 焦距 光圈 快门 ISO) ══
-    // 开启背景模糊(signBgBlur)时:照片居中(可缩放+圆角),四周模糊延伸铺满画布,文字压背景底部;
-    // 未开启时:照片满幅可缩放居中(圆角),文字压照片底部。照片圆角读 S.cornerAll 自绘
-    // (renderPhotoFrame 的 drawImage 劫持只对 3/5/9 参数形式生效,4 参数形式需风格自己裁)。
-    // 参数取 EXIF(manualExif 优先/自动识别兜底),无 EXIF 时用该风格预设数据(cameraFor)。
+    // 开启背景模糊(signBgBlur)时:背景模糊铺满 1:1 画布,照片 contain 居中(方向默认缩放:
+    // 竖图 0.95 / 横图 0.75,用户拖过缩放滑块则优先;上移一半贴顶不裁切),圆角自绘;
+    // 文字区=照片底边→画布底边(渐变压暗+字号随照片大小自适应,同背景模糊经典)。
+    // 未开启时:照片满幅可缩放居中,文字压照片底部。参数取 EXIF(manualExif 优先/自动识别兜底)。
     function styleParamCredit(img, size, g, iw, ih, S, cwO, chO) {
         const cam = S.cam || {};
         const trim = (v) => (v == null ? '' : String(v).trim());
         const line1 = [trim(cam.brand), trim(cam.model)].filter(Boolean).join(' ');
         const line2 = [trim(cam.focal), trim(cam.aperture), trim(cam.shutter), trim(cam.iso)].filter(Boolean).join('  ');
-        const sc = (S.imgScale || 1);
         const drawLine = (text, fs, font, ay, cx, maxW) => {
             g.font = fs + 'px ' + font;
             let f = fs;
@@ -6987,7 +6986,7 @@ const w = natW;
         };
         if (S.signBgBlur) {
             const cw = cwO || iw, ch = chO || ih;
-            // 背景模糊铺满(绕过圆角,保证无缺口)
+            // 背景模糊铺满(blurIntensity=100 → 模糊半径 60px),绕过圆角保证无缺口
             g.save();
             g.fillStyle = '#1a1a1a'; g.fillRect(0, 0, cw, ch);
             g.filter = 'blur(' + signBlurRad(S) + 'px) brightness(0.55)';
@@ -6995,22 +6994,40 @@ const w = natW;
             CanvasRenderingContext2D.prototype.drawImage.call(g, img, (cw - iw * bs) / 2, (ch - ih * bs) / 2, iw * bs, ih * bs);
             g.filter = 'none';
             g.restore();
-            // 照片 contain 居中 × 用户缩放,带圆角
-            const s = Math.min(cw / iw, ch / ih) * sc;
-            const pw2 = Math.round(iw * s), ph2 = Math.round(ih * s);
-            drawPhoto(Math.round((cw - pw2) / 2), Math.round((ch - ph2) / 2), pw2, ph2);
+            // 照片:contain × 方向默认缩放(竖图长>宽 0.95,横图 0.75;用户改过滑块则用用户值),上移一半(贴顶不裁切)
+            const s0 = Math.min(cw / iw, ch / ih);
+            let sc = (S.imgScale || 1);
+            if (sc === 1) sc = (ih > iw) ? 0.95 : 0.75;
+            const pw = Math.round(iw * s0 * sc), ph = Math.round(ih * s0 * sc);
+            const px = Math.round((cw - pw) / 2);
+            const py = Math.max(0, Math.round((ch - ph) / 2) - Math.round(ph / 2));
+            drawPhoto(px, py, pw, ph);
+            // 文字区:照片底边 → 画布底边;字号随照片大小自适应(同背景模糊经典)
+            const phBottom = py + ph;
+            const fs1b = Math.max(14, Math.round(cw * 0.026));
+            const fs2b = Math.max(11, Math.round(fs1b * 0.75));
+            const minH = Math.round(fs1b + fs2b + cw * 0.02);
+            const topY = Math.max(0, Math.min(phBottom, ch - minH));
+            const maskH = ch - topY;
+            const idealH = Math.round(fs1b + fs2b + cw * 0.03);
+            const k = Math.min(1.15, Math.max(0.7, maskH / idealH));
+            const sz1 = Math.round(fs1b * k), sz2 = Math.round(fs2b * k);
+            // 渐变压暗(照片底边下方)
+            const grad = g.createLinearGradient(0, topY, 0, ch);
+            grad.addColorStop(0, 'rgba(0,0,0,0)');
+            grad.addColorStop(1, 'rgba(0,0,0,0.78)');
+            g.fillStyle = grad;
+            g.fillRect(0, topY, cw, maskH);
             const maxW = cw - Math.round(cw * 0.08);
-            const fs1 = Math.max(14, Math.round(cw * 0.026));
-            const fs2 = Math.max(11, Math.round(fs1 * 0.75));
-            const ay2 = ch - Math.round(cw * 0.05);
-            const ay1 = ay2 - Math.round(cw * 0.052);
+            const ay2 = ch - Math.round(cw * 0.02);
+            const ay1 = ay2 - Math.round(sz2 * 1.25);
             g.textAlign = 'center';
             g.textBaseline = 'alphabetic';
             g.fillStyle = '#fff';
             g.shadowColor = 'rgba(0,0,0,0.5)';
-            g.shadowBlur = 3;
-            drawLine(line2, fs2, "'Consolas', 'Courier New', monospace", ay2, cw / 2, maxW);
-            drawLine(line1, fs1, "Arial, sans-serif", ay1, cw / 2, maxW);
+            g.shadowBlur = 2;
+            drawLine(line2, sz2, "'Consolas', 'Courier New', monospace", ay2, cw / 2, maxW);
+            drawLine(line1, sz1, "Arial, sans-serif", ay1, cw / 2, maxW);
             g.shadowBlur = 0;
             return;
         }
@@ -7021,7 +7038,7 @@ const w = natW;
         const oy = Math.max(0, Math.round((ch - natH) / 2));
         g.save();
         g.translate(ox, oy);
-        const pw = Math.round(iw * sc), ph = Math.round(ih * sc);
+        const pw = Math.round(iw * (S.imgScale || 1)), ph = Math.round(ih * (S.imgScale || 1));
         if (pw < iw || ph < ih) { g.fillStyle = '#1a1a1a'; g.fillRect(0, 0, iw, ih); }
         drawPhoto(Math.round((iw - pw) / 2), Math.round((ih - ph) / 2), pw, ph);
         const maxW = iw - Math.round(iw * 0.08);

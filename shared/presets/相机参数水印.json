@@ -15,7 +15,7 @@
   "photoFrameStyle": "PARAM_CREDIT",
   "canvasRatio": "1:1",
   "photoFrameBorderSize": 100,
-  "blurIntensity": 50,
+  "blurIntensity": 100,
   "userSignature": "",
   "signFont": "Arial",
   "signBgBlur": 1,
