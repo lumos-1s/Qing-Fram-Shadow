@@ -2801,7 +2801,7 @@ AV_OVERLAY:63,
 AV_OVERLAY_TR:64,
 AV_OVERLAY_BR:65,
 AV_OVERLAY_BC:66,
-AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:71 };
+AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:71, PHOTO_CREDIT:72 };
     const MASK48 = 0xffffffffffffn, MULT = 0x5deece66dn, INC = 0xbn;
     function javaRandom(seed64) {
         let s = (BigInt(seed64) ^ MULT) & MASK48;
@@ -4529,6 +4529,7 @@ const w = natW;
             // 真正以 #555/#444 为默认的绘制处自带 `S.signColor || '#555'` 写法，行为不变。
             signColor: String(t.signColor || ''),
             signIncludeModel: Number(t.signIncludeModel || 0),
+            creditMode: Number(t.creditMode || 0),
             avatarScale: Number(t.avatarScale || 0.85),
             avatarShow: t.avatarShow === undefined ? 1 : Number(t.avatarShow),
             signSize: Number(t.signSize || 1),
@@ -4994,7 +4995,8 @@ const w = natW;
             case 'AV_OVERLAY_TR':
             case 'AV_OVERLAY_BR':
             case 'AV_OVERLAY_BC':
-            case 'AV_OVERLAY_BC2': {
+            case 'AV_OVERLAY_BC2':
+            case 'PHOTO_CREDIT': {
                 const p = Math.max(20, Math.round(iw * 0.03));
                 return { w: iw + p * 2, h: ih + p * 2 };
             }
@@ -6884,6 +6886,71 @@ const w = natW;
         g.restore();
     }
 
+    // ══ 摄影署名水印:照片全幅 + 底部居中「署名 PHOTOGRAPHY ©年份」三段水印 ══
+    // creditMode:0=个性签名,1=相机型号(品牌+型号)。三段同一字号同一行,位置大小一致;
+    // signBgBlur=1 走模糊全出血(照片铺满边缘模糊延伸),=0 为白底卡;文字直体带轻投影。
+    function stylePhotoCredit(img, size, g, iw, ih, S, cwO, chO) {
+        const pad = Math.max(20, Math.round(iw * 0.03));
+        const natW = iw + pad * 2, natH = ih + pad * 2;
+        const cw = cwO || natW, ch = chO || natH;
+        const ox = Math.max(0, Math.round((cw - natW) / 2));
+        const oy = Math.max(0, Math.round((ch - natH) / 2));
+        if (S.signBgBlur) {
+            g.save();
+            g.fillStyle = '#1a1a1a'; g.fillRect(0, 0, cw, ch);
+            g.filter = 'blur(' + signBlurRad(S) + 'px) brightness(0.55)';
+            const bs = Math.max(cw / iw, ch / ih);
+            g.drawImage(img, (cw - iw * bs) / 2, (ch - ih * bs) / 2, iw * bs, ih * bs);
+            g.filter = 'none';
+            g.restore();
+        } else {
+            g.fillStyle = '#fff'; g.fillRect(0, 0, cw, ch);
+        }
+        g.save();
+        g.translate(ox, oy);
+        g.save();
+        if (S.signBgBlur) { g.shadowColor = 'rgba(0,0,0,0.5)'; g.shadowBlur = 20; g.shadowOffsetY = 8; }
+        g.drawImage(img, pad, pad, iw, ih);
+        g.restore();
+        // 第一段内容:个性签名 或 相机型号(品牌+型号,大写)。两段共用同一字号与锚点。
+        const useModel = Number(S.creditMode || 0) === 1;
+        const make = (S.exif.make || '').trim().toUpperCase();
+        const model = (S.exif.model || '').trim().toUpperCase();
+        const first = useModel ? (make + (model ? ' ' + model : '')) : (S.userSignature || '');
+        const year = new Date().getFullYear();
+        const text = first ? (first + '   PHOTOGRAPHY   ©' + year) : ('PHOTOGRAPHY   ©' + year);
+        // 三段同一字号,过长时先缩字号再省略号截断,始终保持压照片底部同一位置
+        const family = (S.signFont || 'Arial');
+        let fs = Math.round(iw * 0.022 * (S.signSize || 1));
+        const maxW = iw - Math.round(iw * 0.08);
+        g.font = fs + 'px "' + family + '", sans-serif';
+        let tw = g.measureText(text).width;
+        if (tw > maxW && fs > 10) {
+            fs = Math.max(10, Math.floor(fs * maxW / tw));
+            g.font = fs + 'px "' + family + '", sans-serif';
+            tw = g.measureText(text).width;
+        }
+        let str = text;
+        if (tw > maxW) {
+            const ell = '…';
+            const chars = Array.from(str);
+            while (chars.length > 1 && g.measureText(chars.join('') + ell).width > maxW) chars.pop();
+            str = chars.join('') + ell;
+        }
+        const color = S.signBgBlur ? '#fff' : (S.signColor || '#333');
+        g.fillStyle = color;
+        g.letterSpacing = Math.round(fs * 0.12);
+        g.textAlign = 'center';
+        g.textBaseline = 'alphabetic';
+        const ay = pad + ih - Math.round(iw * 0.045);
+        g.shadowColor = S.signBgBlur ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.35)';
+        g.shadowBlur = S.signBgBlur ? 8 : 3;
+        g.fillText(str, pad + iw / 2, ay);
+        g.shadowBlur = 0;
+        g.letterSpacing = 0;
+        g.restore();
+    }
+
     const draw = {
             SIMPLE: styleSimple, WHITE_PLAIN: styleWhitePlain, ROUNDED: styleRounded,
             FILM_STRIP: styleFilmStrip, FILM_TEAR: styleFilmTear, POLAROID: stylePolaroid,
@@ -6936,6 +7003,7 @@ const w = natW;
             AV_OVERLAY_BC2: styleAvOverlayBC2,
             GALLERY_MAT: styleGalleryMat,
             PARAM_STRIP: styleParamStrip,
+            PHOTO_CREDIT: stylePhotoCredit,
         }[styleName];
         const S = buildState(app, styleName, iw, ih, size);
 
@@ -6953,7 +7021,7 @@ const w = natW;
                 //  BLUR_CLASSIC/BLUR_DATE 恒定模糊底;签名/头像/印象留白/logo参数 只在用户
                 //  开启「背景模糊」(signBgBlur)时才进入,未开模糊时保持原卡片样式不扩展。
                 const BLUR_FULLBLEED = ['BLUR_CLASSIC', 'BLUR_DATE', 'SIGNATURE', 'SIGN_PARAM', 'AVATAR_MEMO',
-                    'AV_OVERLAY', 'AV_OVERLAY_TR', 'AV_OVERLAY_BR', 'AV_OVERLAY_BC', 'AV_OVERLAY_BC2',
+                    'AV_OVERLAY', 'AV_OVERLAY_TR', 'AV_OVERLAY_BR', 'AV_OVERLAY_BC', 'AV_OVERLAY_BC2', 'PHOTO_CREDIT',
                     'OVERLAY_PARAM_LEFT', 'OVERLAY_PARAM_RIGHT', 'OVERLAY_PARAM_BOTTOM', 'CARD_LOGO_PARAM'];
                 const blurMode = BLUR_FULLBLEED.indexOf(styleName) !== -1 &&
                     (styleName === 'BLUR_CLASSIC' || styleName === 'BLUR_DATE' || (S && S.signBgBlur));

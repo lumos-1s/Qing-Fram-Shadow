@@ -596,7 +596,7 @@ window.App = Object.assign(window.App || {}, {
         // 之外的「预设自带值」跑的)。预设显式写出来 = 预设说了算,哪怕写的是空串——
         // 票根/电影票四款用 userSignature:"" + avatarShow:0 表达「本预设默认不带签名/头像」,
         // 此时不能被上一份模板的签名盖回去。0 / '#fff' / 0.85 这些显式值本来就会保留。
-        for (const k of ['userSignature', 'signFont', 'signColor', 'avatarScale', 'signSize', 'signIncludeModel', 'avatarShow']) {
+        for (const k of ['userSignature', 'signFont', 'signColor', 'avatarScale', 'signSize', 'signIncludeModel', 'avatarShow', 'creditMode']) {
             if (prev[k] === undefined) continue;
             if (next[k] === undefined || next[k] === null) next[k] = prev[k];
         }

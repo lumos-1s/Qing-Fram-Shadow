@@ -61,6 +61,7 @@ window.App = {
                 if (s.signFont) this.template.signFont = s.signFont;
                 if (s.signColor) this.template.signColor = s.signColor;
                 if (s.signIncludeModel != null) this.template.signIncludeModel = s.signIncludeModel;
+                if (s.creditMode != null) this.template.creditMode = s.creditMode;
                 if (s.avatarScale) this.template.avatarScale = s.avatarScale;
                 if (s.signSize) this.template.signSize = s.signSize;
                 if (s.avatarShow !== undefined) this.template.avatarShow = s.avatarShow;
@@ -288,6 +289,8 @@ window.App = {
         if (cbC) cbC.addEventListener('change', () => { this.template.signColor = cbC.value; this.onSettingChanged(); });
         const chkSM = document.getElementById('chkSignModel');
         if (chkSM) chkSM.addEventListener('change', () => { this.template.signIncludeModel = chkSM.checked ? 1 : 0; this.onSettingChanged(); });
+        const cbCM = document.getElementById('cbCreditMode');
+        if (cbCM) cbCM.addEventListener('change', () => { this.template.creditMode = Number(cbCM.value) || 0; this.onSettingChanged(); });
         const chkBL = document.getElementById('chkBrandLogo');
         if (chkBL) chkBL.addEventListener('change', () => { this.template.brandLogo = Number(chkBL.value) || 0; this.onSettingChanged(); });
         const chkAS = document.getElementById('chkAvatarShow');
@@ -1199,6 +1202,7 @@ window.App = {
             if ($('cbSignFont')) $('cbSignFont').value = this.template.signFont || 'cursive';
             if ($('cbSignColor')) $('cbSignColor').value = this.template.signColor || '#555';
             if ($('chkSignModel')) $('chkSignModel').checked = !!(this.template.signIncludeModel);
+            if ($('cbCreditMode')) $('cbCreditMode').value = String(this.template.creditMode || 0);
             if ($('chkBrandLogo')) $('chkBrandLogo').value = String(this.template.brandLogo || 0);
             if ($('chkAvatarShow')) $('chkAvatarShow').checked = this.template.avatarShow !== 0;
             if ($('rgAvatarScale')) { const v = Math.round((this.template.avatarScale || 0.85) * 100); $('rgAvatarScale').value = v; if ($('valAvatarScale')) $('valAvatarScale').textContent = v + '%'; }

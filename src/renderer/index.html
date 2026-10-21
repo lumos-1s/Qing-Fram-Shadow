@@ -292,6 +292,13 @@
 
                         <div class="param-group">
                             <div class="pg-title collapsible">签名 / 头像</div>
+                            <div class="param-row" id="rowCreditMode" style="display:none;">
+                                <label>署名内容</label>
+                                <select id="cbCreditMode" class="ctl-sel">
+                                    <option value="0">个性签名</option>
+                                    <option value="1">相机型号</option>
+                                </select>
+                            </div>
                             <div class="param-row" id="rowSignText" style="display:none;">
                                 <label>个性签名</label>
                                 <input type="text" id="inpSignature" class="ctl-tx" placeholder="输入你的签名文字" />
@@ -299,6 +306,8 @@
                             <div class="param-row" id="rowSignFont" style="display:none;">
                                 <label>签名字体</label>
                                 <select id="cbSignFont" class="ctl-sel">
+                                    <option value="Arial">Arial无衬线</option>
+                                    <option value="Georgia">Georgia衬线</option>
                                     <option value="cursive">手写斜体</option>
                                     <option value="Bradley Hand">Bradley手写</option>
                                     <option value="Segoe Script">Script花体</option>

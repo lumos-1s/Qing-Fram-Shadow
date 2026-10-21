@@ -127,6 +127,7 @@
         PARAM_BOTTOM_SINGLE: { pf: true },
         PARAM_STRIP: { pf: true, cr: true, isc: true },
         PARAM_TOP_LEFT: { pf: true },
+        PHOTO_CREDIT: {  },
         PINBOARD_TAPE: {  },
         POLAROID: { pf: true },
         POLAROID_HAND: {  },
@@ -208,13 +209,15 @@
         // 签名/头像核心组:旧代码里 CARD_3D 先随组显示、再被单独隐藏,净效果等于不显示
         const sigCore = isPersonal || s === 'TICKET_STAMP' || s === 'STAMP_KRAFT' || s === 'STAMP_BLUEPRINT' || s === 'STAMP_REDSEAL' || s === 'STAMP_GOLD';
         // CARD_3D 只有签名文字四件套(内容/字体/颜色/字号),无头像,单独放行
-        const sigTextOnly = s === 'CARD_3D';
+        // PHOTO_CREDIT(摄影署名水印)同样只有签名四件套 + 署名内容切换,无头像
+        const sigTextOnly = s === 'CARD_3D' || s === 'PHOTO_CREDIT';
         // 票券家族(票根三变体 + 撕边电影票 + 复古登机牌):签名四件套 + 头像两件套。
         // 与 sigCore 分开放:票券引擎画的是自己的票面配色,不读 paramColor,
         // 所以它们只该看到签名/头像这六行,不该多出一行「参数颜色」。
         const sigTicket = s === 'TICKET_VINTAGE' || s === 'TICKET_SCRAP' || s === 'TICKET_CONCERT' || s === 'MOVIE_TICKET' || s === 'BOARDING_PASS';
         const v = {};
         v.rowSignModel = s === 'SIGN_PARAM';
+        v.rowCreditMode = s === 'PHOTO_CREDIT';
         v.rowSignText = sigCore || sigTextOnly || sigTicket;
         v.rowSignFont = sigCore || sigTextOnly || sigTicket;
         v.rowSignColor = sigCore || sigTextOnly || sigTicket;
@@ -224,7 +227,7 @@
         v.rowParamColor = sigCore;
         v.rowParamType = isBottomBar;
         v.rowParamPos = isBottomBar;
-        v.rowBgBlur = isPersonal || isOverlay || isLogoParam;
+        v.rowBgBlur = isPersonal || isOverlay || isLogoParam || s === 'PHOTO_CREDIT';
         v.rowBrandSize = IMPRESSION_STYLES.indexOf(s) >= 0 || WM_BRAND_STYLES.indexOf(s) >= 0;
         v.rowParamScale = IMPRESSION_STYLES.indexOf(s) >= 0 || isBlur || WM_PARAM_STYLES.indexOf(s) >= 0;
         v.rowBrandLogo = BRAND_LOGO_STYLES.indexOf(s) >= 0;
