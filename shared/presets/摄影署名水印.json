@@ -17,7 +17,7 @@
   "blurIntensity": 50,
   "userSignature": "",
   "signFont": "Arial",
-  "signBgBlur": 1,
+  "signBgBlur": 0,
   "signSize": 1,
   "signColor": "",
   "creditMode": 0

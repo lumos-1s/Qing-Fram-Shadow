@@ -4995,10 +4995,13 @@ const w = natW;
             case 'AV_OVERLAY_TR':
             case 'AV_OVERLAY_BR':
             case 'AV_OVERLAY_BC':
-            case 'AV_OVERLAY_BC2':
-            case 'PHOTO_CREDIT': {
+            case 'AV_OVERLAY_BC2': {
                 const p = Math.max(20, Math.round(iw * 0.03));
                 return { w: iw + p * 2, h: ih + p * 2 };
+            }
+            case 'PHOTO_CREDIT': {
+                // 画布=原图尺寸,照片满幅无任何边框/留白;文字直接叠在照片上
+                return { w: iw, h: ih };
             }
             case 'GALLERY_MAT': {
                 const refG = Math.min(iw, ih);
@@ -6886,12 +6889,11 @@ const w = natW;
         g.restore();
     }
 
-    // ══ 摄影署名水印:照片全幅 + 底部居中「署名 PHOTOGRAPHY ©年份」三段水印 ══
+    // ══ 摄影署名水印:原图满幅 + 底部居中「署名 | PHOTOGRAPHY ©年份」三段水印 ══
     // creditMode:0=个性签名,1=相机型号(品牌+型号)。三段同一字号同一行,位置大小一致;
-    // signBgBlur=1 走模糊全出血(照片铺满边缘模糊延伸),=0 为白底卡;文字直体带轻投影。
+    // 默认纯原图直加文字(白字带轻投影);signBgBlur=1 时才进入模糊压暗全出血模式。
     function stylePhotoCredit(img, size, g, iw, ih, S, cwO, chO) {
-        const pad = Math.max(20, Math.round(iw * 0.03));
-        const natW = iw + pad * 2, natH = ih + pad * 2;
+        const natW = iw, natH = ih;
         const cw = cwO || natW, ch = chO || natH;
         const ox = Math.max(0, Math.round((cw - natW) / 2));
         const oy = Math.max(0, Math.round((ch - natH) / 2));
@@ -6903,23 +6905,19 @@ const w = natW;
             g.drawImage(img, (cw - iw * bs) / 2, (ch - ih * bs) / 2, iw * bs, ih * bs);
             g.filter = 'none';
             g.restore();
-        } else {
-            g.fillStyle = '#fff'; g.fillRect(0, 0, cw, ch);
         }
+        // 原图满幅铺满画布(默认即此路径,无边框无背景)
         g.save();
         g.translate(ox, oy);
-        g.save();
-        if (S.signBgBlur) { g.shadowColor = 'rgba(0,0,0,0.5)'; g.shadowBlur = 20; g.shadowOffsetY = 8; }
-        g.drawImage(img, pad, pad, iw, ih);
-        g.restore();
-        // 第一段内容:个性签名 或 相机型号(品牌+型号,大写)。两段共用同一字号与锚点。
+        g.drawImage(img, 0, 0, iw, ih);
+        // 三段:署名 | PHOTOGRAPHY ©年份(年份自动取当年)。第一段=签名 或 相机型号。
         const useModel = Number(S.creditMode || 0) === 1;
         const make = (S.exif.make || '').trim().toUpperCase();
         const model = (S.exif.model || '').trim().toUpperCase();
         const first = useModel ? (make + (model ? ' ' + model : '')) : (S.userSignature || '');
         const year = new Date().getFullYear();
-        const text = first ? (first + '   PHOTOGRAPHY   ©' + year) : ('PHOTOGRAPHY   ©' + year);
-        // 三段同一字号,过长时先缩字号再省略号截断,始终保持压照片底部同一位置
+        const text = first ? (first + '   |  PHOTOGRAPHY ©' + year) : ('PHOTOGRAPHY ©' + year);
+        // 三段同一字号,过长时先缩字号再省略号截断,始终压在原图底部同一位置
         const family = (S.signFont || 'Arial');
         let fs = Math.round(iw * 0.022 * (S.signSize || 1));
         const maxW = iw - Math.round(iw * 0.08);
@@ -6937,15 +6935,15 @@ const w = natW;
             while (chars.length > 1 && g.measureText(chars.join('') + ell).width > maxW) chars.pop();
             str = chars.join('') + ell;
         }
-        const color = S.signBgBlur ? '#fff' : (S.signColor || '#333');
-        g.fillStyle = color;
+        // 压照片上的白字带轻投影保证可读;开模糊时也走白字
+        g.fillStyle = S.signBgBlur ? '#fff' : (S.signColor || '#fff');
         g.letterSpacing = Math.round(fs * 0.12);
         g.textAlign = 'center';
         g.textBaseline = 'alphabetic';
-        const ay = pad + ih - Math.round(iw * 0.045);
-        g.shadowColor = S.signBgBlur ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.35)';
+        const ay = ih - Math.round(iw * 0.045);
+        g.shadowColor = 'rgba(0,0,0,0.5)';
         g.shadowBlur = S.signBgBlur ? 8 : 3;
-        g.fillText(str, pad + iw / 2, ay);
+        g.fillText(str, iw / 2, ay);
         g.shadowBlur = 0;
         g.letterSpacing = 0;
         g.restore();
