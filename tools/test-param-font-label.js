@@ -45,6 +45,10 @@ const CHECK = `
 (async () => {
   const App = window.App;
   await App.loadPresets();
+  // 面板在无图时是 no-image,参数组整块 display:none,滑块量出来是 0px;
+  // 这里的精度断言只关心有图时的真实布局,先把空态撤掉。
+  const inspector = document.getElementById('inspector');
+  if (inspector) inspector.classList.remove('no-image');
   const val = document.getElementById('lblParamFontSize');
   const note = document.getElementById('lblParamFontNote');
   if (!val) throw new Error('找不到 lblParamFontSize');
