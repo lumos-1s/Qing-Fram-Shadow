@@ -54,6 +54,8 @@ Built with **Electron + Canvas 2D**. Runs fully offline.
 
 ## 技术栈 · Tech Stack
 
+[![Tech Stack](https://skillicons.dev/icons?i=js,html,css,electron,nodejs,npm,git,github)](https://skillicons.dev)
+
 | 层 Layer | 技术 Tech |
 |---|---|
 | 桌面壳 Desktop shell | Electron 31（主/渲染进程分离，`contextIsolation` 开启） |
