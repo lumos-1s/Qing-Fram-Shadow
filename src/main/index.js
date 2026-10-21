@@ -182,8 +182,8 @@ app.whenReady().then(() => {
   <title>Qing-Fram-Shadow-web Releases</title>
   <entry>
     <title>新版本可用</title>
-    <link href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/tag/v0.1.14"/>
-    <content type="html">导出提速: 纯边框只渲一次 + JPEG 字节直传, 3D卡片/背景模糊约快2.5倍; 头像裁剪重做(边界钳制/指针锚定缩放/滑杆复位); 新应用图标「墨玉金框」; 画布随窗口自适应 + 用户资料/角饰/缩略图交互修复; 清理预设占位签名</content>
+    <link href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/tag/v0.1.15"/>
+    <content type="html">重做「参数横条」预设: 暖纸接触印样 + 底部技术参数轨; 修复高分辨率照片下底部参数文字重叠; 窄列参数标签自适应字距</content>
   </entry>
 </feed>`;
     const patchUpdateHttpRequests = () => {
