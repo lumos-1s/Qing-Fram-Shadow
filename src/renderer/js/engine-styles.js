@@ -7000,7 +7000,7 @@ const w = natW;
             if (sc === 1) sc = (ih > iw) ? 0.95 : 1.0;
             const pw = Math.round(iw * s0 * sc), ph = Math.round(ih * s0 * sc);
             const px = Math.round((cw - pw) / 2);
-            const py = Math.max(0, Math.round((ch - ph) / 2) - Math.round(ph / 2));
+            const py = Math.max(Math.round(cw * 0.04), Math.round((ch - ph) / 2) - Math.round(ph / 2));
             drawPhoto(px, py, pw, ph);
             // 文字区:照片底边 → 画布底边;字号随照片大小自适应(同背景模糊经典)
             const phBottom = py + ph;
