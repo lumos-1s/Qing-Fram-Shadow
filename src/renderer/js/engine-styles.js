@@ -2801,7 +2801,7 @@ AV_OVERLAY:63,
 AV_OVERLAY_TR:64,
 AV_OVERLAY_BR:65,
 AV_OVERLAY_BC:66,
-AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:71, PHOTO_CREDIT:72 };
+AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:71, PHOTO_CREDIT:72, PARAM_CREDIT:73 };
     const MASK48 = 0xffffffffffffn, MULT = 0x5deece66dn, INC = 0xbn;
     function javaRandom(seed64) {
         let s = (BigInt(seed64) ^ MULT) & MASK48;
@@ -2888,6 +2888,7 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
         else if (['ART_CARD','COLOR_CLASSIC','COLOR_REFINED'].includes(styleName)) { b='GFX'; m='100S'; }
         else if (['WM_CLASSIC','WM_SINGLE','WM_BRAND_LOGO','WM_AI','BLUR_CLASSIC','BLUR_DATE','OVERLAY_PARAM_LEFT'].includes(styleName)) { b='SONY'; m='A7 IV'; }
         else if (styleName === 'CARD_PURE_LOGO') { b='LEICA'; m='Q3'; }
+        else if (styleName === 'PARAM_CREDIT') { b='CANON'; m='ILCE-7CM2'; }
         else if (['CARD_SIMPLE','PARAM_TOP_LEFT','PARAM_BOTTOM_LEFT','OVERLAY_PARAM_RIGHT'].includes(styleName)) { b='CANON'; m='EOS R5'; }
         else return { brand: '', model: '', focal: '', aperture: '', iso: '', shutter: '' };
         return { brand: b, model: m, focal: f(), aperture: a(), iso: i(), shutter: s() };
@@ -4999,7 +5000,8 @@ const w = natW;
                 const p = Math.max(20, Math.round(iw * 0.03));
                 return { w: iw + p * 2, h: ih + p * 2 };
             }
-            case 'PHOTO_CREDIT': {
+            case 'PHOTO_CREDIT':
+            case 'PARAM_CREDIT': {
                 // 画布=原图尺寸,照片满幅无任何边框/留白;文字直接叠在照片上
                 return { w: iw, h: ih };
             }
@@ -6951,6 +6953,47 @@ const w = natW;
         g.restore();
     }
 
+    // ══ 相机参数水印:原图满幅 + 底部居中两行(品牌 型号 / 焦距 光圈 快门 ISO) ══
+    // 纯原图直压白字(带轻投影),画布=原图尺寸,无边框无模糊;
+    // 参数取 EXIF(manualExif 优先/自动识别兜底),无 EXIF 时用该风格预设数据(cameraFor)。
+    function styleParamCredit(img, size, g, iw, ih, S, cwO, chO) {
+        const natW = iw, natH = ih;
+        const cw = cwO || natW, ch = chO || natH;
+        const ox = Math.max(0, Math.round((cw - natW) / 2));
+        const oy = Math.max(0, Math.round((ch - natH) / 2));
+        g.save();
+        g.translate(ox, oy);
+        g.drawImage(img, 0, 0, iw, ih);
+        const cam = S.cam || {};
+        const trim = (v) => (v == null ? '' : String(v).trim());
+        const line1 = [trim(cam.brand), trim(cam.model)].filter(Boolean).join(' ');
+        const line2 = [trim(cam.focal), trim(cam.aperture), trim(cam.shutter), trim(cam.iso)].filter(Boolean).join('  ');
+        const maxW = iw - Math.round(iw * 0.08);
+        // 行1(品牌 型号)大一号无衬线;行2(参数)小一号等宽,锚定底部居中
+        const fs1 = Math.max(14, Math.round(iw * 0.026));
+        const fs2 = Math.max(11, Math.round(fs1 * 0.75));
+        const ay2 = ih - Math.round(iw * 0.05);
+        const ay1 = ay2 - Math.round(iw * 0.052);
+        g.textAlign = 'center';
+        g.textBaseline = 'alphabetic';
+        g.fillStyle = S.signColor || '#fff';
+        g.shadowColor = 'rgba(0,0,0,0.5)';
+        g.shadowBlur = 3;
+        const drawLine = (text, fs, font, ay) => {
+            g.font = fs + 'px ' + font;
+            let f = fs;
+            if (g.measureText(text).width > maxW && f > 8) {
+                f = Math.max(8, Math.floor(f * maxW / g.measureText(text).width));
+                g.font = f + 'px ' + font;
+            }
+            g.fillText(text, iw / 2, ay);
+        };
+        drawLine(line2, fs2, "'Consolas', 'Courier New', monospace", ay2);
+        drawLine(line1, fs1, "Arial, sans-serif", ay1);
+        g.shadowBlur = 0;
+        g.restore();
+    }
+
     const draw = {
             SIMPLE: styleSimple, WHITE_PLAIN: styleWhitePlain, ROUNDED: styleRounded,
             FILM_STRIP: styleFilmStrip, FILM_TEAR: styleFilmTear, POLAROID: stylePolaroid,
@@ -7004,6 +7047,7 @@ const w = natW;
             GALLERY_MAT: styleGalleryMat,
             PARAM_STRIP: styleParamStrip,
             PHOTO_CREDIT: stylePhotoCredit,
+            PARAM_CREDIT: styleParamCredit,
         }[styleName];
         const S = buildState(app, styleName, iw, ih, size);
 

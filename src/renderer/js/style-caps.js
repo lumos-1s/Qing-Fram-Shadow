@@ -125,6 +125,7 @@
         OVERLAY_PARAM_RIGHT: { pf: true, cr: true, isc: true },
         PARAM_BOTTOM_LEFT: { pf: true },
         PARAM_BOTTOM_SINGLE: { pf: true },
+        PARAM_CREDIT: {  },
         PARAM_STRIP: { pf: true, cr: true, isc: true },
         PARAM_TOP_LEFT: { pf: true },
         PHOTO_CREDIT: {  },
