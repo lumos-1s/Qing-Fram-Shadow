@@ -4694,6 +4694,15 @@ const w = natW;
         };
     }
 
+    // 头像纪念几何:styleDims 与 styleAvatarMemo 必须同源。
+    // 旧版 styleDims 多算了 pad,且底栏按 iw*0.14 预留,而绘制按 iw*0.16,
+    // 画布底部会留下一条没有被填充的透明带(PNG 里看起来是黑条)。
+    function avatarMemoGeom(iw, ih) {
+        const pad = Math.max(30, Math.round(iw * 0.05));
+        const bottomH = Math.round(iw * 0.16);
+        return { pad, bottomH, w: iw + pad * 2, h: ih + pad + bottomH };
+    }
+
     function styleDims(name, iw, ih, size, S) {
         const pad2 = v => Math.max(v, Math.floor(size / 2));
         switch (name) {
@@ -4963,9 +4972,8 @@ const w = natW;
                 return { w: iw + p * 2, h: ih + p + bh };
             }
             case 'AVATAR_MEMO': {
-                const p = Math.max(30, Math.round(iw * 0.05));
-                const bh = Math.round(iw * 0.14);
-                return { w: iw + p * 2, h: ih + p * 2 + bh };
+                const am = avatarMemoGeom(iw, ih);
+                return { w: am.w, h: am.h };
             }
             case 'SIGN_BLUR': {
                 const p = Math.max(30, Math.round(iw * 0.04));
@@ -6423,9 +6431,9 @@ const w = natW;
 
     // ══ 头像纪念 ══
     function styleAvatarMemo(img, size, g, iw, ih, S, cwO, chO) {
-        const pad = Math.max(30, Math.round(iw * 0.05));
-        const bottomH = Math.round(iw * 0.16);
-        const natW = iw + pad * 2, natH = ih + pad + bottomH;
+        const AG = avatarMemoGeom(iw, ih);
+        const pad = AG.pad, bottomH = AG.bottomH;
+        const natW = AG.w, natH = AG.h;
         const cw = cwO || natW, ch = chO || natH;
         const ox = Math.max(0, Math.round((cw - natW) / 2));
         const oy = Math.max(0, Math.round((ch - natH) / 2));
