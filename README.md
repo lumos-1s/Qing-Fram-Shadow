@@ -1,71 +1,85 @@
-# 清框影 QingFramShadow · Frame Studio
+<p align="center">
+  <img src="assets/readme/hero.svg" width="100%" alt="清框影 QingFramShadow · Frame Studio — 本地照片加边框工具">
+</p>
 
-> 桌面照片加边框工具 —— 一键为照片添加艺术边框、光影氛围、Logo 水印与个性签名，支持多图拼贴和批量导出。全部渲染在本地完成，照片不上传。
->
-> A local-first desktop photo framing app —— add artistic frames, light effects, logo watermarks and personal signatures to photos, with collage layouts and batch export. Everything renders locally; your photos never leave your computer.
+<p align="center">
+  <strong>给照片一副好框，给参数一个位置。</strong><br>
+  本地优先的桌面照片加框工具：艺术边框、光影、Logo 水印、EXIF 与签名，一次完成。
+</p>
 
-[![stars](https://img.shields.io/github/stars/lumos-1s/Qing-Fram-Shadow-web?style=flat-square&color=blue)](https://github.com/lumos-1s/Qing-Fram-Shadow-web/stargazers)
-[![license](https://img.shields.io/github/license/lumos-1s/Qing-Fram-Shadow-web?style=flat-square&color=green)](LICENSE)
-[![version](https://img.shields.io/badge/version-0.1.7-orange?style=flat-square)](https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases)
-[![Electron](https://img.shields.io/badge/Electron-31-47848F?style=flat-square)]()
+<p align="center">
+  <sub>A local-first desktop photo framing app. Frames, light, logos, EXIF and signatures — rendered entirely on your machine.</sub>
+</p>
 
-Built with **Electron + Canvas 2D**. Runs fully offline.
-
-> **关键词 Keywords** · 照片加边框 photo frame · 水印 watermark · EXIF 相机参数 · 拼图 collage · 九宫格切图 grid slice · 艺术边框 artistic frames · 桌面工具 desktop app · Electron · Canvas 2D
-
----
-
-## 功能 · Features
-
-- **60+ 相框样式 / 80 个内置模板** —— 杂志、拍立得、撕纸、胶带、邮票、渐变卡片、漫画分镜、3D卡片、签名纪念、头像叠加等一键套用
-  **60+ frame styles / 80 built-in presets** — magazine, polaroid, torn paper, tape, stamp, gradient cards, comic panels, 3D card, signature memorials, avatar overlays, and more.
-
-- **精准参数调节** —— 圆角、边距、照片缩放/偏移、内阴影、外阴影、描边、投影、画布比例、纹理/渐变填充等实时调节
-  **Fine-grained controls** — corner radius, margins, photo scale/offset, inner & outer shadows, stroke, drop shadow, canvas ratio, texture/gradient fills; all updated live.
-
-- **光影氛围** —— 暗角、漏光、暖光、冷光等氛围叠加
-  **Light & mood** — vignette, light leaks, warm/cool glow overlays.
-
-- **Logo 水印** —— 品牌 Logo 与自定义图标水印，透明度、大小可调
-  **Logo watermarking** — brand logos and custom icon watermarks with adjustable opacity and size.
-
-- **相机参数与签名** —— EXIF 自动识别（品牌/型号/焦距/光圈/ISO/快门）可手动修改；个性签名与头像组合排版
-  **EXIF & signature** — auto-detected camera info (brand/model/focal/aperture/ISO/shutter), manually editable; personal signature and avatar layouts.
-
-- **模板系统** —— 保存 / 导入 `/ 导出`（.qfs 工程 与 .json）；已存模板管理：搜索、按标签分组、缩略图预览、应用、重命名、删除（带确认）
-  **Template manager** — save / import / export (`.qfs` projects & `.json`); search, tag groups, thumbnail previews, apply, rename, and confirmed deletes.
-
-- **快速预设** —— 复古胶片、证件照、自动取色边框
-  **Quick presets** — retro film, ID photo, auto color-pick border.
-
-- **拼图** —— 多图网格拼贴，间距、圆角、格间距与字幕可调
-  **Collage** — multi-photo grid layouts with adjustable gaps, corner radius and captions.
-
-- **批量处理** —— 批量导入，每张照片独立记忆模板、同步到选中、装框缩略图预览，一键批量导出
-  **Batch workflow** — import many photos, per-photo template memory, sync-to-selected, framed thumbnails, one-click batch export.
-
-- **导出** —— PNG / JPEG / WebP，质量可调，导出尺寸可选（原图 / 1080 / 2048 / 4096 / 8192px），选位置渲染写入，默认输出原图尺寸
-  **Export** — PNG / JPEG / WebP with adjustable quality; sizes from original to 8192px; pick a location then render & write; defaults to the original resolution.
-
-- **隐私** —— 全本地处理，无需登录，不上传照片
-  **隐私** — everything runs locally: no account, no uploads.
+<p align="center">
+  <a href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/stargazers"><img src="https://img.shields.io/github/stars/lumos-1s/Qing-Fram-Shadow-web?style=flat-square&color=blue" alt="GitHub stars"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/lumos-1s/Qing-Fram-Shadow-web?style=flat-square&color=green" alt="MIT License"></a>
+  <a href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases"><img src="https://img.shields.io/badge/version-0.1.14-orange?style=flat-square" alt="Version 0.1.14"></a>
+  <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-31-47848F?style=flat-square" alt="Electron 31"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4?style=flat-square" alt="Windows 10/11">
+</p>
 
 ---
 
-## 技术栈 · Tech Stack
+## 先看效果 · See it in action
 
-[![Tech Stack](https://skillicons.dev/icons?i=js,html,css,electron,nodejs,npm,git,github)](https://skillicons.dev)
+<p align="center">
+  <img src="assets/readme/app-ui.png" width="100%" alt="清框影应用界面：左侧预设库、中间套用复古双线边框的示例照片、右侧参数与 EXIF 面板">
+</p>
 
-| 层 Layer | 技术 Tech |
-|---|---|
-| 桌面壳 Desktop shell | Electron 31（主/渲染进程分离，`contextIsolation` 开启） |
-| 渲染 Rendering | 原生 HTML / CSS / JavaScript + Canvas 2D 离屏合成 |
-| 打包分发 Packaging | electron-builder（NSIS 安装版 + 便携版） |
-| 自动更新 Auto-update | electron-updater + GitHub Releases |
+<p align="center">
+  <sub>真实应用界面 · 套用「复古双线」预设 · 示例照片与参数为演示数据<br>Real UI with the “1970s Double Line” preset · demo photo and data</sub>
+</p>
 
----
+## 它是什么 · What it is
+
+**清框影 QingFramShadow** 是一款 Windows 桌面照片加框工具。它把「边框」当成一张可编辑的画布：先选一个模板定下气质，再调整边距、圆角、纹理、光影、Logo、相机参数与签名，最后按原图尺寸或指定尺寸导出。
+
+- **想让照片快速成片的人**：84 个模板直接套用，右侧参数实时预览。
+- **在意画质与隐私的人**：Canvas 2D 本地渲染，照片不上传，不登录。
+- **需要成批出图的人**：模板记忆、批量导入、同步到选中，一次导出。
+
+> **English** — A Windows desktop app for framing photos locally: 84 presets, 88 frame styles, live frame/light/logo/EXIF controls, reusable templates, collage, grid slicing and batch export. No account, no uploads.
+
+## 核心功能 · Features
+
+- **84 个内置模板 · 88 种边框风格** — 杂志、拍立得、撕纸、胶带、邮票、报纸、胶片、渐变卡、漫画分镜、3D 卡、签名纪念与头像叠加，以及证件照、自动取色边框等快速预设；选中即套用，再继续微调。
+- **参数实时可调** — 圆角、边距、照片缩放/偏移、内/外阴影、描边、投影、画布比例、纹理/渐变填充，改动即时反馈。
+- **光影与质感** — 暗角、漏光、暖光/冷光、胶片颗粒，以及纸张、布料等纹理，给整张成片统一的氛围。
+- **Logo、EXIF 与签名** — 品牌 Logo 或自定义图标水印；自动读取品牌、型号、焦距、光圈、ISO、快门，可手动修改；签名与头像组合排版。
+- **模板系统** — 保存/导入/导出 `.qfs` 工程与 `.json`；支持搜索、标签分组、缩略图预览、应用、重命名与带确认的删除。
+- **拼图与九宫格** — 多图网格拼贴，间距、圆角与字幕可调；九宫格切图把当前画布按 n×n 切成多张，预览确认后导出。
+- **批量处理** — 批量导入、逐张记忆模板、同步到选中、装框缩略图，一键批量导出。
+- **导出** — PNG / JPEG / WebP，质量可调；原图、1080、2048、4096、8192px；选好位置后渲染写入，默认原图尺寸。
+- **全本地** — 无需登录、不上传照片；照片、EXIF 与模板都留在本机。
+
+> **English** — 84 presets and 88 frame styles for magazine, polaroid, torn paper, tape, stamp, newspaper, film, gradient, comic, 3D card, signature and avatar layouts; live frame, shadow, texture and light controls; logo/EXIF/signature layers; `.qfs` and `.json` templates; collage, grid slicing and batch export; PNG/JPEG/WebP up to 8192px. Everything local.
+
+## 预设效果 · Preset Gallery
+
+<p align="center">
+  <img src="assets/readme/preset-wall.webp" width="100%" alt="六种预设的真实渲染：VHS 录像带、复古报纸、复古双线、仿古邮票、复古胶片撕裂、老相册角贴">
+</p>
+
+<p align="center">
+  <sub>六种预设的真实渲染 · 示例照片为项目自绘的黄昏湖面<br>Six real engine renders · sample photo: a self-drawn dusk lake</sub>
+</p>
+
+84 个模板覆盖复古胶片、拍立得、邮票、报纸、杂志、撕纸、胶带、漫画、证件照、拼图等方向；每个模板都能继续改边距、圆角、纹理、光影与文字。六张预设图都由引擎实际渲染，不是手工绘制的模拟效果，也没有使用图库或用户照片。
 
 ## 快速开始 · Quick Start
+
+**直接使用**：从 [Releases](https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases) 下载 Windows 安装版或便携版。
+
+**三步出片**：
+
+1. 打开应用，导入一张或多张照片。
+2. 在左侧选一个模板，在右侧调整边框、光影、Logo、EXIF 与签名。
+3. 点「导出」，选择 PNG / JPEG / WebP 与导出尺寸。
+
+> **English** — Download a Windows build from Releases, import photos, pick a preset, adjust the frame/light/logo/EXIF, then export as PNG, JPEG or WebP.
+
+**从源码运行**：
 
 ```bash
 # 安装依赖 / install dependencies
@@ -86,46 +100,20 @@ npm run dist:portable
 > 提示：Windows 上可双击根目录 `start.bat` 直接启动开发环境。
 > Tip: on Windows you can double-click `start.bat` in the project root to launch the dev environment.
 
-### 发布前自检 · Pre-release checks
+## 技术栈 · Tech Stack
 
-```bash
-npm run check         # ESLint + 预设/标记/能力表校验 + 主进程 I/O、图标、引擎不变量(纯 Node,不需要 GUI)
-npm test              # check + 24 个 Electron 用例(面板显隐、视觉回归 924 键等),&& 串联,单点失败即断
-npm run release       # 未压缩目录 → verify:dist 校验 → 打安装包 → verify:pkg 校验安装包
-```
+[![Tech Stack](https://skillicons.dev/icons?i=js,html,css,electron,nodejs,npm,git,github)](https://skillicons.dev)
 
-`npm run release` 等价于 `app:dir` + `verify:dist` + `dist`（`dist` 内含安装包构建 +
-`verify:pkg`）：一旦 `app.asar` 里出现 `shared/brandlogos/`，`verify:dist` 会以退出码 1
-中止，**不会**继续产出安装包。
+| 层 Layer | 技术 Tech |
+|---|---|
+| 桌面壳 Desktop shell | Electron 31（主/渲染进程分离，`contextIsolation` 开启） |
+| 渲染 Rendering | 原生 HTML / CSS / JavaScript + Canvas 2D 离屏合成 |
+| 打包分发 Packaging | electron-builder（NSIS 安装版 + 便携版） |
+| 自动更新 Auto-update | electron-updater + GitHub Releases |
 
-```bash
-npm run app:dir       # 只产出未压缩目录(供校验用)
-npm run verify:dist   # 检查 dist/ 下所有 app.asar:无品牌 Logo、预设/纹理数量与源码实测一致、产物新鲜
-npm run verify:pkg    # 另加安装包核验:Setup.exe 体积与 latest.yml 一致 + sha512 校验和逐字节复核
-```
+没有前端框架，也没有后端服务；边框、光影、文字与导出都在渲染进程的 Canvas 2D 里完成。
 
-`verify:dist` 的退出码：`0` 通过 / `1` 已确定的失败（Logo 泄漏、预设或纹理数量与源码不符、
-或没有任何可读产物）/ `2` 无法判定（仅产物早于源码改动这种拿不准的情况）。
-`verify:pkg`（`--installers` 模式）在此之上核对安装包与 `latest.yml` 的 size/sha512，
-不一致即退出码 1——`dist` / `release` / `release:publish` 都已在链尾自动执行。
-
-> 预设与纹理的**期望数量从 `shared/` 实测**，不写死在脚本里——加了预设就不必再改校验脚本。
-
-> **它同时检查产物新鲜度**：若 `app.asar` 比 `src/`、`shared/presets/`、`package.json`
-> 还旧，说明那是上一次构建的残留，会以退出码 2 拒绝通过——避免"改了配置但校验的是旧包"。
-
-> `brandlogos/` 是本机素材：它**不在版本库中**（见 `.gitignore`），也不随安装包分发。
-> 全新克隆的仓库不含该目录时，软件照常运行，只是「品牌 Logo」选择组为空、
-> 「按品牌自动配 Logo」不生效——相关素材需自行准备，见
-> [`THIRD-PARTY-ASSETS.md`](./THIRD-PARTY-ASSETS.md)。
->
-> `shared/brandlogos/` is a local-only asset directory: it is **not** tracked by git and is
-> excluded from installers. A fresh clone runs fine without it — the brand-logo picker is
-> simply empty. See `THIRD-PARTY-ASSETS.md`.
-
----
-
-## 目录结构 · Project Structure
+## 项目结构 · Project Structure
 
 ```
 ├─ src/
@@ -134,32 +122,58 @@ npm run verify:pkg    # 另加安装包核验:Setup.exe 体积与 latest.yml 一
 │  └─ renderer/      # 渲染进程：UI 与 Canvas 渲染引擎
 │                    #   renderer: UI and Canvas rendering engine
 ├─ shared/
-│  ├─ presets/       # 80 个内置模板（JSON 描述）
-│  │                 #   80 built-in preset templates (JSON)
-│  ├─ brandlogos/    # 品牌 Logo 素材（106 个文件 / 69 个品牌）
-│  │                 #   brand logo assets — 不随发行版分发,见 THIRD-PARTY-ASSETS.md
-│  └─ textures/      # 纹理素材 / texture assets (10)
+│  ├─ presets/       # 84 个内置模板（JSON 描述）
+│  │                 #   84 built-in preset templates (JSON)
+│  ├─ textures/      # 纹理素材 / texture assets (10)
+│  └─ brandlogos/    # 本机品牌 Logo 素材，不随发行版分发
+│                    #   local-only brand logos, excluded from distribution
+├─ assets/readme/    # README 头图、界面截图与预设效果墙
+├─ tools/            # 构建、校验与 Electron 测试辅助脚本
+├─ tests/            # 单元 / 视觉回归等测试
 ├─ start.bat         # Windows 快速启动脚本 / quick-launch script
 ├─ THIRD-PARTY-ASSETS.md  # 第三方素材归属说明 / asset attribution notice
 └─ package.json
 ```
 
-> ⚠️ `shared/brandlogos/` 中的品牌图形**不在 MIT 许可范围内**，也未随打包发行版分发
-> （已在 `package.json` 的 `build.files` 中排除）。品牌名称与图形仅用于标识照片的拍摄设备，
-> 本软件与任何品牌无授权或合作关系。详见 [`THIRD-PARTY-ASSETS.md`](./THIRD-PARTY-ASSETS.md)。
->
-> The brand artwork in `shared/brandlogos/` is **not** covered by the MIT License and is
-> excluded from distributed builds. Marks are used only to indicate the camera that took a
-> photo; this project is not affiliated with any brand. See `THIRD-PARTY-ASSETS.md`.
+## 开发与校验 · Development
+
+<details>
+<summary><strong>发布前自检 · Pre-release checks</strong></summary>
+
+```bash
+npm run check         # ESLint + 预设/标记/能力表校验 + 主进程 I/O、图标、引擎不变量（纯 Node，不需要 GUI）
+npm test              # check + Electron 用例（面板、拖动、视觉回归等；&& 串联，单点失败即断）
+npm run release       # 未压缩目录 → verify:dist 校验 → 打安装包 → verify:pkg 校验安装包
+```
+
+`npm run release` 等价于 `app:dir` + `verify:dist` + `dist`（`dist` 内含安装包构建 + `verify:pkg`）。`verify:dist` 会拦截品牌 Logo 泄漏、预设/纹理数量与源码不符、以及产物早于源码改动的情况；一旦发现，不会继续产出安装包。
+
+```bash
+npm run app:dir       # 只产出未压缩目录（供校验用）
+npm run verify:dist   # 检查 dist/ 下所有 app.asar：无品牌 Logo、预设/纹理数量与源码实测一致、产物新鲜
+npm run verify:pkg    # 另加安装包核验：Setup.exe 体积与 latest.yml 一致 + sha512 校验和逐字节复核
+```
+
+`verify:dist` 的退出码：`0` 通过 / `1` 已确定的失败（品牌 Logo 泄漏、预设或纹理数量与源码不符、或没有任何可读产物）/ `2` 无法判定（仅产物早于源码改动这种拿不准的情况）。`verify:pkg`（`--installers` 模式）在此基础上核对安装包与 `latest.yml` 的 size/sha512，不一致即退出码 1——`dist` / `release` / `release:publish` 都已在链尾自动执行。
+
+> 预设与纹理的期望数量从 `shared/` 实测，不写死在脚本里——加了预设就不必再改校验脚本。
+
+</details>
+
+## 素材与许可 · Assets & License
+
+代码采用 [MIT](./LICENSE) 许可。该许可仅覆盖 `src/` 下的源代码与 `shared/presets/` 中的原创模板；`shared/brandlogos/` 与 `shared/textures/` 中的素材不适用，其权利归各自权利人所有。
+
+- **品牌 Logo**：`shared/brandlogos/` 是本机素材，**不在版本库中**，也不随安装包分发。全新克隆缺少该目录时软件照常运行，只是「品牌 Logo」选择组为空、「按品牌自动配 Logo」不生效；相关素材需自行准备。品牌名称与图形仅用于标识照片的拍摄设备，本软件与任何品牌无授权或合作关系。
+- **纹理素材**：`shared/textures/` 中的纹理不适用 MIT 许可，权利归各自权利人所有。
+- **README 示例图**：示例照片为项目自绘的合成图；界面截图与预设效果由真实应用渲染，未使用图库或用户照片。
+
+详见 [`THIRD-PARTY-ASSETS.md`](./THIRD-PARTY-ASSETS.md)。
+
+> **English** — MIT covers the source code under `src/` and the original presets under `shared/presets/`. Brand logos are local-only: not tracked by git and excluded from installers; a fresh clone runs fine without them. Assets under `shared/textures/` are third-party material. See `THIRD-PARTY-ASSETS.md`.
 
 ---
 
-## License
+<sub>关键词 / Keywords：照片加边框 · 艺术边框 · 水印 · EXIF 相机参数 · 拼图 · 九宫格切图 · 批量导出 · 桌面工具 · Electron · Canvas 2D · photo frame · watermark · collage · grid slice · batch export</sub>
 
-代码采用 [MIT](./LICENSE) 许可。**该许可仅覆盖 `src/` 下的源代码与 `shared/presets/`
-中的原创模板**；`shared/brandlogos/` 与 `shared/textures/` 中的素材不适用，其权利归各自
-权利人所有 —— 详见 [`THIRD-PARTY-ASSETS.md`](./THIRD-PARTY-ASSETS.md)。
-
-The source code is [MIT](./LICENSE) licensed. This license covers the code under `src/` and
-the original templates in `shared/presets/` only. Assets in `shared/brandlogos/` and
-`shared/textures/` are excluded — see `THIRD-PARTY-ASSETS.md`.
+<p align="center"><sub>如果清框影对你有帮助，欢迎点一个 ⭐ Star。</sub></p>
