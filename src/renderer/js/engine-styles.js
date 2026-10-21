@@ -2801,7 +2801,7 @@ AV_OVERLAY:63,
 AV_OVERLAY_TR:64,
 AV_OVERLAY_BR:65,
 AV_OVERLAY_BC:66,
-AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70 };
+AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:71 };
     const MASK48 = 0xffffffffffffn, MULT = 0x5deece66dn, INC = 0xbn;
     function javaRandom(seed64) {
         let s = (BigInt(seed64) ^ MULT) & MASK48;
@@ -2883,7 +2883,7 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70 };
         if (noBrandModel) return { brand: '', model: '', focal: f(), aperture: a(), iso: '', shutter: '' };
         let b, m;
         if (['CARD_LEICA','CARD_LOGO_PARAM','CARD_IMMERSION','OVERLAY_LOGO_BOTTOM'].includes(styleName)) { b='LEICA'; m='M10-P'; }
-        else if (['FUJI_WHITE','OVERLAY_PARAM_BOTTOM'].includes(styleName)) { b='FUJIFILM'; m='X-T5'; }
+        else if (['FUJI_WHITE','OVERLAY_PARAM_BOTTOM','PARAM_STRIP'].includes(styleName)) { b='FUJIFILM'; m='X-T5'; }
         else if (['XIAOMI_IMP','IMP_FROSTED','IMP_CLASSIC'].includes(styleName)) { b='XIAOMI'; m='14 Ultra'; }
         else if (['ART_CARD','COLOR_CLASSIC','COLOR_REFINED'].includes(styleName)) { b='GFX'; m='100S'; }
         else if (['WM_CLASSIC','WM_SINGLE','WM_BRAND_LOGO','WM_AI','BLUR_CLASSIC','BLUR_DATE','OVERLAY_PARAM_LEFT'].includes(styleName)) { b='SONY'; m='A7 IV'; }
@@ -4676,6 +4676,24 @@ const w = natW;
     }
 
     // 成品尺寸(与原版几何一致)
+    // 参数横条几何:styleDims 在 renderPhotoFrame 之外,必须把几何函数放在同一层,
+    // 否则 styleDims 看不到它,整条风格会回退成原图。
+    function paramStripGeom(iw, ih, size) {
+        const ref = Math.min(iw, ih);
+        const pad = Math.max(24, Math.round(size * 0.35), Math.round(iw * 0.04));
+        const top = Math.max(46, Math.round(ref * 0.07));
+        const gap = Math.max(12, Math.round(ref * 0.024));
+        // 参数轨必须跟短边等比缩放:此前把 barH 封顶 196,但字号仍按 ref 放大,
+        // 高分辨率照片里三行文字会被压进同一个横条而互相重叠。
+        const barH = Math.max(112, Math.round(ref * 0.20));
+        const w = iw + pad * 2;
+        const barY = top + ih + gap;
+        return {
+            ref, pad, top, gap, barH, w, h: barY + barH,
+            photoX: pad, photoY: top, photoW: iw, photoH: ih, barY,
+        };
+    }
+
     function styleDims(name, iw, ih, size, S) {
         const pad2 = v => Math.max(v, Math.floor(size / 2));
         switch (name) {
@@ -4982,6 +5000,10 @@ const w = natW;
                 const innerG = gapG + filletG + frameG;
                 return { w: iw + innerG * 2 + matG * 2, h: ih + innerG * 2 + matG * 2 + labelH };
             }
+            case 'PARAM_STRIP': {
+                const ps = paramStripGeom(iw, ih, size);
+                return { w: ps.w, h: ps.h };
+            }
             case 'OVERLAY_PARAM_LEFT':
             case 'OVERLAY_PARAM_RIGHT': {
                 // 与 IMP_FROSTED 印象毛玻璃保持同一套尺寸(lw=max(180,iw*0.35),rp=lw/2,tbp=max(50,size*1.2))
@@ -5200,6 +5222,221 @@ const w = natW;
         g.textAlign = 'center'; g.textBaseline = 'middle';
         g.fillText(label, lx + lw2 / 2, ly + lh2 / 2 + 1);
         g.textAlign = 'start'; g.textBaseline = 'alphabetic';
+    }
+
+    // ══ 参数横条:暖纸卡 + 细边框照片 + 底部深色参数轨 ══
+    // 与旧版“整块白底 + 超大字一行 EXIF”不同:把参数拆成四列可读的技术标签,
+    // 品牌/机型占左侧,拍摄参数占右侧;上方留一条很小的接触印样信息。
+    function styleParamStrip(img, size, g, iw, ih, S) {
+        const G = paramStripGeom(iw, ih, size);
+        const { ref, pad, top, gap, barH, w, h, photoX, photoY, barY } = G;
+        const paperTop = '#f5f1e8', paperBottom = '#e9e2d4';
+        const cream = '#f5f1e8', muted = '#8e897e', accent = '#c45d38';
+        const barBg = '#1b1c19';
+
+        // 1) 暖纸底:轻微纵向渐变,避免整块死白
+        const bg = g.createLinearGradient(0, 0, 0, h);
+        bg.addColorStop(0, paperTop);
+        bg.addColorStop(1, paperBottom);
+        g.fillStyle = bg;
+        g.fillRect(0, 0, w, h);
+
+        // 2) 顶部接触印样信息
+        const headerFs = Math.max(8, Math.round(ref * 0.0125));
+        const headerY = Math.round(top * 0.55);
+        const mark = Math.max(5, Math.round(headerFs * 0.62));
+        g.fillStyle = accent;
+        g.fillRect(pad, headerY - mark, mark, mark);
+        g.fillStyle = muted;
+        g.font = '600 ' + headerFs + 'px Arial, sans-serif';
+        g.letterSpacing = Math.max(1, Math.round(headerFs * 0.18)) + 'px';
+        g.textAlign = 'left';
+        g.textBaseline = 'alphabetic';
+        g.fillText('CONTACT SHEET', pad + mark + Math.round(headerFs * 0.9), headerY);
+        g.letterSpacing = '0px';
+        g.fillStyle = muted;
+        g.font = '400 ' + headerFs + 'px "Courier New", monospace';
+        g.textAlign = 'right';
+        g.fillText('FRAME 01', w - pad, headerY);
+        g.textAlign = 'left';
+
+        // 细分隔线,像一张压在纸上的印样
+        g.fillStyle = 'rgba(23,24,21,0.16)';
+        g.fillRect(pad, top - Math.max(5, Math.round(gap * 0.35)), w - pad * 2, 1);
+
+        // 3) 照片:细边框 + 很轻的纸面投影(缩放/偏移仍按面板能力生效)
+        const sc = (S && S.imgScale) || 1;
+        const dw = iw * sc, dh = ih * sc;
+        const dx = photoX + (iw - dw) / 2 + ((S && S.imgOffsetX) || 0);
+        const dy = photoY + (ih - dh) / 2 + ((S && S.imgOffsetY) || 0);
+        const arc = Math.max(0, Math.min(Math.round((S && S.cornerAll) || 0), Math.floor(Math.min(iw, ih) / 2)));
+
+        g.save();
+        g.shadowColor = 'rgba(35,30,22,0.24)';
+        g.shadowBlur = Math.max(8, Math.round(ref * 0.018));
+        g.shadowOffsetY = Math.max(3, Math.round(ref * 0.006));
+        g.fillStyle = paperBottom;
+        if (arc > 0) {
+            roundRectPath(g, photoX, photoY, iw, ih, arc);
+            g.fill();
+        } else {
+            g.fillRect(photoX, photoY, iw, ih);
+        }
+        g.restore();
+
+        g.save();
+        if (arc > 0) {
+            roundRectPath(g, photoX, photoY, iw, ih, arc);
+            g.clip();
+        } else {
+            g.beginPath();
+            g.rect(photoX, photoY, iw, ih);
+            g.clip();
+        }
+        g.fillStyle = '#d8d0c0';
+        g.fillRect(photoX, photoY, iw, ih);
+        g.imageSmoothingEnabled = true;
+        g.drawImage(img, dx, dy, dw, dh);
+        g.restore();
+
+        g.save();
+        g.strokeStyle = 'rgba(23,24,21,0.82)';
+        g.lineWidth = Math.max(1, Math.round(ref * 0.0015));
+        if (arc > 0) {
+            roundRectPath(g, photoX + 0.5, photoY + 0.5, iw - 1, ih - 1, Math.max(0, arc - 0.5));
+            g.stroke();
+        } else {
+            g.strokeRect(photoX + 0.5, photoY + 0.5, iw - 1, ih - 1);
+        }
+        g.restore();
+
+        // 4) 底部参数轨:深色横条,左品牌、右四列参数
+        g.fillStyle = barBg;
+        g.fillRect(0, barY, w, barH);
+        g.fillStyle = 'rgba(255,255,255,0.08)';
+        g.fillRect(0, barY, w, 1);
+
+        const pfBase = (S && Number(S.paramFs) > 0) ? Number(S.paramFs) : 35;
+        const pfScale = Math.max(0.75, Math.min(1.8, pfBase / 35)) *
+            Math.max(0.6, Math.min(1.8, (S && Number(S.paramScale)) || 1));
+        const labelFs = Math.max(8, Math.round(ref * 0.0125 * Math.min(1.6, pfScale)));
+        const valueFs = Math.max(14, Math.round(ref * 0.027 * pfScale));
+        const brandFs = Math.max(16, Math.round(ref * 0.031));
+        const modelFs = Math.max(10, Math.round(ref * 0.016));
+        const contentW = w - pad * 2;
+        const leftW = Math.round(contentW * 0.27);
+        const dividerX = pad + leftW;
+        const statsX = dividerX + Math.max(18, Math.round(ref * 0.032));
+        const statsW = Math.max(1, w - pad - statsX);
+
+        // 左侧橙色定位线 + CAMERA / 品牌 / 机型
+        const accentW = Math.max(3, Math.round(ref * 0.0045));
+        const accentX = pad;
+        g.fillStyle = accent;
+        g.fillRect(accentX, barY + Math.round(barH * 0.25), accentW, Math.round(barH * 0.50));
+        const brandX = accentX + accentW + Math.max(10, Math.round(ref * 0.018));
+        const brand = String((S && S.cam && S.cam.brand) || '').trim().toUpperCase() || 'CAMERA';
+        const model = String((S && S.cam && S.cam.model) || '').trim();
+
+        g.textAlign = 'left';
+        g.textBaseline = 'alphabetic';
+        g.fillStyle = muted;
+        g.font = '600 ' + labelFs + 'px Arial, sans-serif';
+        g.letterSpacing = Math.max(1, Math.round(labelFs * 0.6)) + 'px';
+        g.fillText('CAMERA', brandX, barY + Math.round(barH * 0.30));
+        g.letterSpacing = '0px';
+
+        const brandFit = fitFont(g, brand, false, true, brandFs,
+            Math.max(20, leftW - (brandX - pad) - Math.round(ref * 0.012)), 0);
+        g.fillStyle = cream;
+        g.font = '700 ' + brandFit + 'px Arial, sans-serif';
+        g.letterSpacing = Math.max(1, Math.round(brandFit * 0.045)) + 'px';
+        g.fillText(brand, brandX, barY + Math.round(barH * 0.57));
+        g.letterSpacing = '0px';
+
+        const modelText = model || 'NO MODEL';
+        const modelFit = fitFont(g, modelText, true, false, modelFs,
+            Math.max(20, leftW - (brandX - pad) - Math.round(ref * 0.012)), 0);
+        g.fillStyle = muted;
+        g.font = '400 ' + modelFit + 'px "Courier New", monospace';
+        g.letterSpacing = Math.max(1, Math.round(modelFit * 0.10)) + 'px';
+        g.fillText(modelText, brandX, barY + Math.round(barH * 0.77));
+        g.letterSpacing = '0px';
+
+        // 分隔线
+        g.fillStyle = 'rgba(255,255,255,0.14)';
+        g.fillRect(dividerX, barY + Math.round(barH * 0.25), 1, Math.round(barH * 0.50));
+
+        // 参数列
+        const stats = paramStripStats(S && S.cam, S ? S.paramType : 0);
+        const cols = stats.length;
+        const colW = statsW / Math.max(1, cols);
+        const baseStatFs = cols >= 4 ? valueFs : Math.max(valueFs + 4, Math.round(ref * 0.036));
+        const statLabelY = barY + Math.round(barH * 0.36);
+        const statValueY = barY + Math.round(barH * 0.67);
+        // 标签是带字距的全大写词,不能再只按“裸字宽”去 fitFont:窄列里字距会把
+        // APERTURE / SHUTTER 顶到相邻列。这里统一把字号和字距一起收紧。
+        const statLabelMaxW = colW * 0.78;
+        let statLabelFs = Math.max(6, labelFs);
+        let statLabelTrack = Math.max(1, Math.round(statLabelFs * 0.55));
+        g.letterSpacing = '0px';
+        const widestStatLabelW = () => {
+            let mw = 0;
+            for (const st of stats) {
+                mw = Math.max(mw, textMetrics(g, st.label, statLabelFs, false, true, statLabelTrack).w);
+            }
+            return mw;
+        };
+        while (widestStatLabelW() > statLabelMaxW) {
+            if (statLabelTrack > 0) {
+                statLabelTrack--;
+            } else if (statLabelFs > 6) {
+                statLabelFs--;
+                statLabelTrack = Math.max(1, Math.round(statLabelFs * 0.55));
+            } else {
+                break;
+            }
+        }
+        for (let i = 0; i < cols; i++) {
+            if (i > 0) {
+                g.fillStyle = 'rgba(255,255,255,0.10)';
+                g.fillRect(Math.round(statsX + colW * i) - Math.round(ref * 0.012), barY + Math.round(barH * 0.27), 1, Math.round(barH * 0.46));
+            }
+            const x = Math.round(statsX + colW * i);
+            const valueFsFit = fitFont(g, stats[i].value, true, true, baseStatFs, colW * 0.82, 0);
+            g.textAlign = 'left';
+            g.fillStyle = muted;
+            g.font = '600 ' + statLabelFs + 'px Arial, sans-serif';
+            g.letterSpacing = statLabelTrack + 'px';
+            g.fillText(stats[i].label, x, statLabelY);
+            g.letterSpacing = '0px';
+
+            g.fillStyle = cream;
+            g.font = '600 ' + valueFsFit + 'px "Courier New", monospace';
+            g.fillText(stats[i].value, x, statValueY);
+        }
+        g.textAlign = 'left';
+        g.textBaseline = 'alphabetic';
+    }
+
+    function paramStripStats(cam, paramType) {
+        const c = cam || {};
+        const raw = v => String(v == null ? '' : v).trim();
+        const focal = raw(c.focal) ? raw(c.focal).replace(/\s*mm$/i, '') + 'mm' : '—';
+        let aperture = raw(c.aperture).replace(/^[fFƒ]\s*/, '').replace(/^\//, '');
+        if (aperture) aperture = 'f/' + aperture;
+        let shutter = raw(c.shutter).replace(/\s*秒$/, '');
+        if (shutter && !/s$/i.test(shutter)) shutter += 's';
+        const iso = raw(c.iso).replace(/^ISO\s*/i, '') || '—';
+        const all = [
+            { label: 'FOCAL', value: focal },
+            { label: 'APERTURE', value: aperture || '—' },
+            { label: 'SHUTTER', value: shutter || '—' },
+            { label: 'ISO', value: iso },
+        ];
+        if (paramType === 1) return all.slice(0, 2);
+        if (paramType === 2) return [{ label: 'DATE', value: dateYMD().replace(/\./g, ' / ') }];
+        return all;
     }
 
 
@@ -6690,6 +6927,7 @@ const w = natW;
             AV_OVERLAY_BC: styleAvOverlayBC,
             AV_OVERLAY_BC2: styleAvOverlayBC2,
             GALLERY_MAT: styleGalleryMat,
+            PARAM_STRIP: styleParamStrip,
         }[styleName];
         const S = buildState(app, styleName, iw, ih, size);
 
@@ -6786,6 +7024,7 @@ const w = natW;
             drawUserElements(g, t, canvas.width, canvas.height);
             app.applyZoomStyle();
         } catch (e) {
+            console.error('[engine-styles] 风格渲染失败:', styleName, e);
             // 与原版 apply 一致:出错回退为原图
             const scale = Math.min(1, displayMax / Math.max(iw, ih));
             canvas.width = Math.max(1, Math.round(iw * scale));
