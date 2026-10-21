@@ -6954,13 +6954,16 @@ const w = natW;
     }
 
     // ══ 相机参数水印:底部居中两行(品牌 型号 / 焦距 光圈 快门 ISO) ══
-    // 开启背景模糊(signBgBlur)时:照片居中,四周模糊延伸铺满 1:1 画布,两行文字压在背景底部;
-    // 未开启时:纯原图直压白字(带轻投影)。参数取 EXIF(manualExif 优先/自动识别兜底)。
+    // 开启背景模糊(signBgBlur)时:照片居中(可缩放+圆角),四周模糊延伸铺满画布,文字压背景底部;
+    // 未开启时:照片满幅可缩放居中(圆角),文字压照片底部。照片圆角读 S.cornerAll 自绘
+    // (renderPhotoFrame 的 drawImage 劫持只对 3/5/9 参数形式生效,4 参数形式需风格自己裁)。
+    // 参数取 EXIF(manualExif 优先/自动识别兜底),无 EXIF 时用该风格预设数据(cameraFor)。
     function styleParamCredit(img, size, g, iw, ih, S, cwO, chO) {
         const cam = S.cam || {};
         const trim = (v) => (v == null ? '' : String(v).trim());
         const line1 = [trim(cam.brand), trim(cam.model)].filter(Boolean).join(' ');
         const line2 = [trim(cam.focal), trim(cam.aperture), trim(cam.shutter), trim(cam.iso)].filter(Boolean).join('  ');
+        const sc = (S.imgScale || 1);
         const drawLine = (text, fs, font, ay, cx, maxW) => {
             g.font = fs + 'px ' + font;
             let f = fs;
@@ -6970,18 +6973,32 @@ const w = natW;
             }
             g.fillText(text, cx, ay);
         };
+        // 照片绘制:应用用户圆角(S.cornerAll,不超过短边一半)
+        const drawPhoto = (x, y, w, h) => {
+            const r = Math.min(S.cornerAll || 0, Math.min(w, h) / 2);
+            if (r > 0 && g.roundRect) {
+                g.save();
+                g.beginPath(); g.roundRect(x, y, w, h, r); g.clip();
+                g.drawImage(img, x, y, w, h);
+                g.restore();
+            } else {
+                g.drawImage(img, x, y, w, h);
+            }
+        };
         if (S.signBgBlur) {
-            // 背景模糊模式:画布=用户比例(1:1),照片 contain 居中,模糊延伸铺满,文字压背景底部
             const cw = cwO || iw, ch = chO || ih;
+            // 背景模糊铺满(绕过圆角,保证无缺口)
             g.save();
             g.fillStyle = '#1a1a1a'; g.fillRect(0, 0, cw, ch);
             g.filter = 'blur(' + signBlurRad(S) + 'px) brightness(0.55)';
             const bs = Math.max(cw / iw, ch / ih);
-            g.drawImage(img, (cw - iw * bs) / 2, (ch - ih * bs) / 2, iw * bs, ih * bs);
+            CanvasRenderingContext2D.prototype.drawImage.call(g, img, (cw - iw * bs) / 2, (ch - ih * bs) / 2, iw * bs, ih * bs);
             g.filter = 'none';
             g.restore();
-            const s = Math.min(cw / iw, ch / ih);
-            g.drawImage(img, (cw - iw * s) / 2, (ch - ih * s) / 2, iw * s, ih * s);
+            // 照片 contain 居中 × 用户缩放,带圆角
+            const s = Math.min(cw / iw, ch / ih) * sc;
+            const pw2 = Math.round(iw * s), ph2 = Math.round(ih * s);
+            drawPhoto(Math.round((cw - pw2) / 2), Math.round((ch - ph2) / 2), pw2, ph2);
             const maxW = cw - Math.round(cw * 0.08);
             const fs1 = Math.max(14, Math.round(cw * 0.026));
             const fs2 = Math.max(11, Math.round(fs1 * 0.75));
@@ -6997,14 +7014,16 @@ const w = natW;
             g.shadowBlur = 0;
             return;
         }
-        // 纯原图直压:照片满幅,文字压照片底部
+        // 纯原图直压:照片按 imgScale 缩放居中(缩小露深色底,放大居中裁切),带圆角
         const natW = iw, natH = ih;
         const cw = cwO || natW, ch = chO || natH;
         const ox = Math.max(0, Math.round((cw - natW) / 2));
         const oy = Math.max(0, Math.round((ch - natH) / 2));
         g.save();
         g.translate(ox, oy);
-        g.drawImage(img, 0, 0, iw, ih);
+        const pw = Math.round(iw * sc), ph = Math.round(ih * sc);
+        if (pw < iw || ph < ih) { g.fillStyle = '#1a1a1a'; g.fillRect(0, 0, iw, ih); }
+        drawPhoto(Math.round((iw - pw) / 2), Math.round((ih - ph) / 2), pw, ph);
         const maxW = iw - Math.round(iw * 0.08);
         const fs1 = Math.max(14, Math.round(iw * 0.026));
         const fs2 = Math.max(11, Math.round(fs1 * 0.75));
