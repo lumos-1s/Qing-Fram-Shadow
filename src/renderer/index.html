@@ -883,15 +883,45 @@
 
     <!-- ═══ 关于弹窗(版本信息 / 检查更新 / 导出诊断日志) ═══ -->
     <div id="aboutModal" class="modal-overlay" style="display:none">
-        <div class="modal-card" style="max-width:420px;width:90%;">
+        <div class="modal-card about-card">
             <div class="modal-header">
                 <span class="modal-title">关于 清框影</span>
                 <button id="aboutClose" class="modal-close" title="关闭">&times;</button>
             </div>
-            <div class="modal-body" style="line-height:1.9;font-size:13px;color:var(--text);">
+            <div class="modal-body about-body" style="line-height:1.9;font-size:13px;color:var(--text);">
                 <div style="font-weight:700;font-size:15px;margin-bottom:2px;">清框影 QingFramShadow</div>
-                <div id="aboutInfo" style="color:var(--text-dim);font-size:12px;">加载中…</div>
-                <div style="margin-top:12px;font-size:12px;color:var(--text-dim);">本地照片加框工具：60+ 相框样式、EXIF 参数识别、拼图与批量导出，全本地渲染，照片与设置不上传。</div>
+                <div id="aboutInfo" style="color:var(--text-3);font-size:12px;">加载中…</div>
+                <div style="margin-top:12px;font-size:12px;color:var(--text-3);">本地照片加框工具：60+ 相框样式、EXIF 参数识别、拼图与批量导出，全本地渲染，照片与设置不上传。</div>
+
+                <div class="about-section">
+                    <div class="about-section-title">快捷键</div>
+                    <div class="about-shortcuts">
+                        <span>导入照片</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>O</kbd></span>
+                        <span>撤销 / 重做</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Z</kbd><span class="about-sep">/</span><kbd>Ctrl</kbd><kbd>Y</kbd></span>
+                        <span>全选照片 / 画布元素</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>A</kbd></span>
+                        <span>导出当前图片</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>E</kbd></span>
+                        <span>复制图片</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>C</kbd></span>
+                        <span>复制 / 粘贴选中元素</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>C</kbd><span class="about-sep">/</span><kbd>Ctrl</kbd><kbd>V</kbd></span>
+                        <span>同步边框到勾选照片</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>D</kbd></span>
+                        <span>适应窗口</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>0</kbd></span>
+                        <span>保存模板</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd></span>
+                        <span>删除选中照片 / 元素</span><span class="about-keys"><kbd>Delete</kbd><span class="about-sep">/</span><kbd>Backspace</kbd></span>
+                        <span>微移选中元素（Shift = 10px）</span><span class="about-keys"><kbd>方向键</kbd></span>
+                        <span>切换照片</span><span class="about-keys"><kbd>←</kbd><kbd>→</kbd></span>
+                        <span>按住对比原图</span><span class="about-keys"><kbd>空格</kbd></span>
+                    </div>
+                    <div class="about-note">输入框聚焦时，快捷键暂不生效。</div>
+                </div>
+
+                <div class="about-section">
+                    <div class="about-section-title">用户协议 / 免责声明</div>
+                    <div class="about-legal">
+                        <p>本软件仅提供本地照片排版与导出工具，不存储、不传播用户照片。使用本软件导出成品，即表示您已阅读并同意以下声明：</p>
+                        <p><strong>1. 成品照片的商用、发布责任由用户承担。</strong>请自行确认照片内容、肖像权、著作权及发布平台规则。</p>
+                        <p><strong>2. 软件不对用户自行导入的 Logo / 图片主张任何权利。</strong>相关商标、著作权与使用授权由用户自行取得并负责。</p>
+                    </div>
+                </div>
+
                 <div class="btn-row" style="margin-top:14px;padding-left:0;padding-right:0;">
                     <button class="mini-btn" id="btnAboutCheck" title="检查是否有新版本">检查更新</button>
                     <button class="mini-btn" id="btnAboutIntro" title="重新查看三步上手引导">新手引导</button>

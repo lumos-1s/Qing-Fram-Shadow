@@ -840,6 +840,28 @@ html.dark .icon-pool .icon-cell {
 }
 .modal-close:hover { color: var(--rose); }
 .modal-body { padding: 16px 18px 18px; }
+
+/* 关于:快捷键 + 用户协议 / 免责声明 */
+.about-card { width: 560px; max-width: 92vw; max-height: 86vh; display: flex; flex-direction: column; }
+.about-body { overflow-y: auto; min-height: 0; }
+.about-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.about-section-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.about-shortcuts {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 14px;
+    font-size: 12px; line-height: 1.55; color: var(--text-2);
+}
+.about-keys { text-align: right; white-space: nowrap; color: var(--text-3); }
+.about-sep { margin: 0 3px; }
+.about-note { margin-top: 7px; font-size: 11px; line-height: 1.5; color: var(--text-3); }
+.about-legal { font-size: 12px; line-height: 1.75; color: var(--text-2); }
+.about-legal p + p { margin-top: 5px; }
+.about-legal strong { color: var(--text); font-weight: 700; }
+.about-card kbd {
+    display: inline-block; min-width: 18px; margin-left: 3px; padding: 1px 5px;
+    border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px;
+    background: var(--surface-alt); color: var(--text); font-family: inherit;
+    font-size: 11px; line-height: 1.45; text-align: center;
+}
 .login-field { margin-bottom: 12px; }
 .login-field label {
     display: block; font-size: 12px; font-weight: 600; color: var(--text-2);
