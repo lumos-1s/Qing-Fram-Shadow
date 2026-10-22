@@ -133,7 +133,7 @@ const SHOW_OK = new Set([
 //   才有的行),按新增行记账即可;下次 --update 重建快照后它们自然会进 rowIds,默认模式的"缺行"
 //   也就归零了。
 const NEW_ROWS = new Set(['rowCornerRadius', 'rowGlobalMargin', 'rowImgScale', 'rowAvatarShow',
-    'rowT2iColor', 'rowT2iEffect', 'rowT2iStyle']);
+    'rowCreditMode', 'rowT2iColor', 'rowT2iEffect', 'rowT2iStyle']);
 
 function drawKeys() {
     const src = fs.readFileSync(ENGINE, 'utf8');
