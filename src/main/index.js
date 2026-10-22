@@ -182,8 +182,8 @@ app.whenReady().then(() => {
   <title>Qing-Fram-Shadow-web Releases</title>
   <entry>
     <title>新版本可用</title>
-    <link href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/tag/v0.1.15"/>
-    <content type="html">重做「参数横条」预设: 暖纸接触印样 + 底部技术参数轨; 修复高分辨率照片下底部参数文字重叠; 窄列参数标签自适应字距</content>
+    <link href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/tag/v0.1.16"/>
+    <content type="html">新增「摄影署名水印」「相机参数水印」预设; 相机参数水印支持背景模糊、圆角、图片缩放与参数字号; 修复「头像纪念」底部透明黑条</content>
   </entry>
 </feed>`;
     const patchUpdateHttpRequests = () => {
