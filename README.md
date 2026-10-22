@@ -14,7 +14,7 @@
 <p align="center">
   <a href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/stargazers"><img src="https://img.shields.io/github/stars/lumos-1s/Qing-Fram-Shadow-web?style=flat-square&color=blue" alt="GitHub stars"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/github/license/lumos-1s/Qing-Fram-Shadow-web?style=flat-square&color=green" alt="MIT License"></a>
-  <a href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases"><img src="https://img.shields.io/badge/version-0.1.16-orange?style=flat-square" alt="Version 0.1.16"></a>
+  <a href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases"><img src="https://img.shields.io/badge/version-0.1.17-orange?style=flat-square" alt="Version 0.1.17"></a>
   <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-31-47848F?style=flat-square" alt="Electron 31"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4?style=flat-square" alt="Windows 10/11">
 </p>
