@@ -35,6 +35,9 @@ window.App = {
         'Segoe Script', 'Brush Script MT', 'Comic Sans MS', 'Impact', 'Papyrus', 'Ravie', 'Gigi', 'Chiller', 'Edwardian Script ITC', 'Monotype Corsiva', 'Snap ITC', 'Lucida Handwriting', 'Trebuchet MS', 'Copperplate Gothic Bold', 'Book Antiqua', 'Informal Roman', 'Bodoni MT'],
     _lastTplName: '',
     _firstRenderDone: false,
+    // 用户没填个性签名时的默认文案。票根/电影票等「签名行默认关」的风格例外,
+    // 见 StyleCaps.sigRowDefaultOff()。
+    DEFAULT_SIGNATURE: '清框影',
     selectedEls: [],      // 画布元素选中集(引用自模板数组)
     _elClip: null,        // 复制的元素快照 {kind, el}
     _puzzleSlot: '',         // 拼图当前选中项('s0'..槽位 / 'v0'/'h0'..间隙);空 = 未选中
@@ -383,16 +386,22 @@ window.App = {
             }
         }
     },
+    // 「签名/头像行」默认关的风格(票根/电影票):预设里的空签名就是「本预设不带签名」,
+    // 不能被默认签名重新带出来。这张名单只从 style-caps 取,避免引擎/预设两处各维护一份。
+    signatureDefaultOff(tpl) {
+        const style = tpl && tpl.photoFrameStyle;
+        return !!(window.StyleCaps && window.StyleCaps.sigRowDefaultOff && window.StyleCaps.sigRowDefaultOff(style));
+    },
+    // 用户没输入签名时,非票券风格统一显示「清框影」。只填空值,不覆盖用户已输入的内容。
+    fillDefaultSignature(tpl) {
+        if (!tpl || this.signatureDefaultOff(tpl)) return tpl;
+        if (!tpl.userSignature) tpl.userSignature = this.DEFAULT_SIGNATURE;
+        return tpl;
+    },
     loadUserAvatar() {
         this.updateTopBar();
-        // 「签名/头像行」默认关的风格(票根/电影票):预设里的空签名就是「本预设不带签名」,
-        // 启动时别拿「— 昵称 —」把它变成非空、把整行又带出来。用户想带的话,
-        // 面板里填一次签名即可(那是用户自己的值,优先级不变)。
-        const sigOff = !!(window.StyleCaps && window.StyleCaps.sigRowDefaultOff && window.StyleCaps.sigRowDefaultOff(this.template && this.template.photoFrameStyle));
-        if (this.template && !this.template.userSignature && !sigOff) {
-            const un = (this.user && this.user.nickname) || localStorage.getItem('qfs_nickname') || localStorage.getItem('qfs_username') || '';
-            if (un) this.template.userSignature = '— ' + un + ' —';
-        }
+        // 启动时模板可能还没建好;这里只负责已有的空签名,预设应用路径见 applyPreset。
+        this.fillDefaultSignature(this.template);
         const saved = localStorage.getItem('qfs_user_avatar');
         if (saved) {
             const img = new Image();
@@ -938,6 +947,7 @@ window.App = {
             },
             logoElements: [],
             paramFontSize: 33, paramType: 0, paramPosition: 'CENTER',
+            userSignature: this.DEFAULT_SIGNATURE,
             puzzle: {
                 enabled: 0, layout: 'single', layoutType: 0, gap: 6, slotFill: 'cover', bgMode: 0,
                 canvasRatio: 'auto', borderColor: 'ffffff', offsetX: 0, offsetY: 0, zoom: 100,

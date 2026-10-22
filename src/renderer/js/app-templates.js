@@ -427,8 +427,8 @@ window.App = Object.assign(window.App || {}, {
         const favs = this.getFavorites();
         const recent = this.getRecent();
         // 分组大标题的显示顺序:不在这里的 tag 会被排到最末尾(99 位),所以新加预设分类时必须登记。
-        // 「票根 / 邮票 / 个性」是最近重做的三组,提到最前;其余保持原有顺序(纯工具性的「水印」仍在最后)。
-        const order = ['票根', '邮票', '个性', '潮流', '高级感', '艺术', '极简', '胶片', '质感', '手作', '复古', '杂志', '水印', '氛围', '光影'];
+        // 「光影 / 水印」是优先入口,固定置顶;其余保持原有顺序。
+        const order = ['光影', '水印', '票根', '邮票', '个性', '潮流', '高级感', '艺术', '极简', '胶片', '质感', '手作', '复古', '杂志', '氛围'];
         const merge = { 创意: '潮流', 奢华: '高级感', 现代: '极简', 排版: '极简', 影院: '胶片', 星空: '氛围' };
         const groupIcons = {
             潮流: '🪩', 高级感: '💎', 艺术: '🎨', 极简: '⚪', 胶片: '🎞️', 质感: '🪵', 手作: '✂️',
@@ -599,6 +599,14 @@ window.App = Object.assign(window.App || {}, {
         for (const k of ['userSignature', 'signFont', 'signColor', 'avatarScale', 'signSize', 'signIncludeModel', 'avatarShow', 'creditMode']) {
             if (prev[k] === undefined) continue;
             if (next[k] === undefined || next[k] === null) next[k] = prev[k];
+        }
+
+        // 签名默认值:票券风格的显式空签名是设计的一部分,保持空白;其余风格里
+        // 预设的空串只是「没有自带签名」,用户已输入的内容优先,用户也没输入时
+        // 统一落到「清框影」。
+        if (!this.signatureDefaultOff(next)) {
+            if (!next.userSignature && prev.userSignature) next.userSignature = prev.userSignature;
+            this.fillDefaultSignature(next);
         }
 
         this.template = next;

@@ -61,7 +61,7 @@
         'CARD_LEICA', 'CARD_LOGO_PARAM', 'CARD_PURE_LOGO', 'CARD_SIMPLE', 'CARD_IMMERSION',
         'FUJI_WM_BRAND', 'DARK_BRAND_ONLY', 'OVERLAY_LOGO_BOTTOM',
         'SIGN_PARAM', 'SIGN_BLUR', 'BLUR_CLASSIC', 'BLUR_DATE',
-        'FUJI_WHITE', 'COLOR_CLASSIC', 'ART_CARD'
+        'FUJI_WHITE', 'COLOR_CLASSIC', 'ART_CARD', 'PARAM_CREDIT'
     ];
 
     // 非风格引擎路径(路线2 卡片 bgBlurEnable / 路线3 图层模板)的能力。
@@ -125,7 +125,7 @@
         OVERLAY_PARAM_RIGHT: { pf: true, cr: true, isc: true },
         PARAM_BOTTOM_LEFT: { pf: true },
         PARAM_BOTTOM_SINGLE: { pf: true },
-        PARAM_CREDIT: { cr: true, isc: true },
+        PARAM_CREDIT: { pf: true, cr: true, isc: true },
         PARAM_STRIP: { pf: true, cr: true, isc: true },
         PARAM_TOP_LEFT: { pf: true },
         PHOTO_CREDIT: {  },
