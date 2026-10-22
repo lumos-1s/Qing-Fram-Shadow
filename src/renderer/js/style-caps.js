@@ -228,7 +228,9 @@
         v.rowParamColor = sigCore;
         v.rowParamType = isBottomBar;
         v.rowParamPos = isBottomBar;
-        v.rowBgBlur = isPersonal || isOverlay || isLogoParam || s === 'PHOTO_CREDIT' || s === 'PARAM_CREDIT';
+        // PHOTO_CREDIT(摄影署名水印)的引擎虽支持 signBgBlur,但产品上先不暴露这个入口:
+        // 预设默认就是满幅原图 + 底部水印,避免用户在右侧误开模糊后还要找回来关。
+        v.rowBgBlur = isPersonal || isOverlay || isLogoParam || s === 'PARAM_CREDIT';
         v.rowBrandSize = IMPRESSION_STYLES.indexOf(s) >= 0 || WM_BRAND_STYLES.indexOf(s) >= 0;
         v.rowParamScale = IMPRESSION_STYLES.indexOf(s) >= 0 || isBlur || WM_PARAM_STYLES.indexOf(s) >= 0;
         v.rowBrandLogo = BRAND_LOGO_STYLES.indexOf(s) >= 0;
