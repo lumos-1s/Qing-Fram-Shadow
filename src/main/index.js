@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, protocol, net, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, protocol, net, shell, nativeImage, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -455,6 +455,21 @@ ipcMain.handle('show-item-in-folder', (_e, p) => {
         if (stat.isDirectory()) { shell.openPath(p); return { ok: true, opened: 'dir' }; }
         shell.showItemInFolder(p);
         return { ok: true, opened: 'file' };
+    } catch (e) { return { ok: false, message: e && e.message }; }
+});
+
+// 复制当前画布到系统剪贴板。只接受 data URL:渲染进程不能直接 require electron,
+// 由预加载脚本的 copyImage 通道接入。返回实际像素尺寸,供界面提示用。
+ipcMain.handle('copy-image', (_e, dataUrl) => {
+    try {
+        if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
+            return { ok: false, message: '图片数据无效' };
+        }
+        const img = nativeImage.createFromDataURL(dataUrl);
+        if (img.isEmpty()) return { ok: false, message: '图片解码失败' };
+        clipboard.writeImage(img);
+        const size = img.getSize();
+        return { ok: true, width: size.width, height: size.height };
     } catch (e) { return { ok: false, message: e && e.message }; }
 });
 

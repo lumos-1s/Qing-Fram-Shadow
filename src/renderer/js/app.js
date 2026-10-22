@@ -157,7 +157,7 @@ window.App = {
     cacheDom() {
         const $ = id => document.getElementById(id);
         this.dom = {
-            btnOpen: $('btnOpen'), btnSave: $('btnSave'), selFormat: $('selFormat'), selExportSize: $('selExportSize'),
+            btnOpen: $('btnOpen'), btnSave: $('btnSave'), btnCopy: $('btnCopy'), selFormat: $('selFormat'), selExportSize: $('selExportSize'),
             slExportQuality: $('slExportQuality'), exportSizeNote: $('exportSizeNote'),
             chkKeepExif: $('chkKeepExif'), chkKeepGps: $('chkKeepGps'),
             btnExportSettings: $('btnExportSettings'), exportPop: $('exportPop'),
@@ -193,6 +193,7 @@ window.App = {
         const d = this.dom;
         d.btnOpen.addEventListener('click', () => this.openImages());
         d.btnSave.addEventListener('click', () => this.doExport());
+        if (d.btnCopy) d.btnCopy.addEventListener('click', () => this.copyImage());
         if (d.btnExportSettings && d.exportPop) {
             d.btnExportSettings.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -862,6 +863,7 @@ window.App = {
                 ['撤销 (Ctrl+Z)', () => this.undo()],
                 ['重做 (Ctrl+Y)', () => this.redo()],
                 ['—', null],
+                ['复制图片 (Ctrl+Shift+C)', () => this.copyImage && this.copyImage()],
                 ['导出图片', () => this.doExport && this.doExport()],
             ]);
         });

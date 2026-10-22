@@ -34,6 +34,39 @@ window.App = Object.assign(window.App || {}, {
         return this.exportImage();
     },
 
+    /* ── 复制:把当前画布(所见即所得)写进系统剪贴板 ── */
+    // 直接用预览画布,不重渲染:不碰 displayMax / 模板深拷贝 / 元素缩放,零状态副作用。
+    // 画布分辨率 = 逻辑尺寸 × devicePixelRatio,常规窗口下长边约 1000~2000px,
+    // 足够微信、小红书(两家都会压到 1080 宽);要更大尺寸请走「导出」。
+    async copyImage() {
+        if (!this.image) { this.setStatus('请先导入照片'); return; }
+        const api = window.qingframe;
+        if (!api || !api.copyImage) { this.setStatus('当前环境不支持复制到剪贴板'); return; }
+        const btn = this.dom && this.dom.btnCopy;
+        if (btn && btn.disabled) return;
+        try {
+            if (btn) btn.disabled = true;
+            // 排队中的预览帧会改写同一块画布,先让它落定,否则可能复制到中间态
+            if (this._renderRaf || this._renderDirty) await this.flushRender();
+            const src = this.dom.canvas;
+            if (!src || !src.width || !src.height) { this.setStatus('画布还没准备好,请稍后再试'); return; }
+            // 垫白底:带圆角/留白的模板直接复制会得到透明 PNG,粘到不支持 alpha 的应用里会变黑
+            const out = document.createElement('canvas');
+            out.width = src.width; out.height = src.height;
+            const ctx = out.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, out.width, out.height);
+            ctx.drawImage(src, 0, 0);
+            const r = await api.copyImage(out.toDataURL('image/png'));
+            if (r && r.ok) this.setStatus(`已复制 ${r.width}×${r.height},可直接粘贴到微信 / 小红书`);
+            else this.setStatus('复制失败:' + ((r && r.message) || '剪贴板不可用'));
+        } catch (e) {
+            this.setStatus('复制失败:' + ((e && e.message) || '未知错误'));
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    },
+
     /* ── 导出:先选保存位置,再渲染导出画面,最后写盘 ── */
     async exportImage() {
         if (!this.image) { this.setStatus('请先导入照片'); return; }

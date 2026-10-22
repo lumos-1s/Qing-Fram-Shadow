@@ -69,6 +69,8 @@ window.App = Object.assign(window.App || {}, {
         const tab = active ? active.dataset.tab : 'param';
         const label = tab === 'puzzle' ? '导出拼图' : (tab === 'grid' ? '导出切图' : '导出');
         if (btn.textContent !== label) btn.textContent = label;
+        // 九宫格页签的产物是 n² 张图,画布不是最终成品,复制按钮在这个页签下没有意义
+        if (this.dom.btnCopy) this.dom.btnCopy.style.display = tab === 'grid' ? 'none' : '';
         btn.title = tab === 'puzzle' ? '导出拼图（格式/质量/尺寸按导出设置，默认 JPG）'
             : tab === 'grid' ? '导出切图（格式/质量按导出设置）' : '导出当前图片';
     },
@@ -101,6 +103,7 @@ window.App = Object.assign(window.App || {}, {
                     this.selectAllEls();
                 }
             }
+            else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'c') { if (typing) return; e.preventDefault(); this.copyImage && this.copyImage(); }
             else if (e.ctrlKey && e.key.toLowerCase() === 'c') { if (!typing) this.copyElement(); }
             else if (e.ctrlKey && e.key.toLowerCase() === 'v') { if (typing) return; e.preventDefault(); this.pasteElement(); }
             else if ((e.key === 'Delete' || e.key === 'Backspace') && !typing) {

@@ -179,7 +179,7 @@ html.dark .tbtn.primary { color: #0c1914; }
     .zoom-badge { display: none; }
 }
 @media (max-width: 1060px) {
-    #btnUndo, #btnRedo, #btnReset, #btnRandom { font-size: 0; gap: 0; padding: 6px 8px; }
+    #btnUndo, #btnRedo, #btnReset, #btnRandom, #btnCopy { font-size: 0; gap: 0; padding: 6px 8px; }
 }
 
 .inline-select {
