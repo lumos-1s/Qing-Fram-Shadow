@@ -9,9 +9,9 @@
 (function () {
     'use strict';
 
-    var LANG_KEY = 'qfs_lang';
+    let LANG_KEY = 'qfs_lang';
 
-    var DICT = {
+    let DICT = {
         /* ── 页签 / 顶栏 ── */
         '参数': 'Params', '边框': 'Frame', '光影': 'Light', '模板': 'Template',
         '拼图': 'Collage', '切图': 'Slice',         '详情': 'Details', '更新': 'Update',
@@ -21,7 +21,7 @@
 
         /* ── 通用词 ── */
         '保存': 'Save', '取消': 'Cancel', '确认': 'Confirm', '删除': 'Delete', '重命名': 'Rename',
-        '重置': 'Reset', '选择': 'Select', '名称': 'Name', '标签': 'Tag', '尺寸': 'Size',
+        '选择': 'Select', '名称': 'Name', '标签': 'Tag', '尺寸': 'Size',
         '大小': 'Size', '颜色': 'Color', '字体': 'Font', '字号': 'Font size', '样式': 'Style',
         '效果': 'Effect', '无': 'None', '正常': 'Normal', '自动': 'Auto', '选择图片': 'Choose image',
         '知道了': 'Got it', '继续上次会话': 'Resume last session', '开始使用': 'Get started',
@@ -34,7 +34,7 @@
 
         /* ── 参数页签:相机参数 / EXIF ── */
         '相机参数(自动识别)': 'Camera info (auto from EXIF)',
-        '参数库': 'Camera presets', '存入库': 'Save to library', '删除': 'Delete',
+        '参数库': 'Camera presets', '存入库': 'Save to library',
         '品牌': 'Brand', '型号': 'Model', '焦距': 'Focal length', '光圈': 'Aperture',
         '快门': 'Shutter', '相机型号': 'Camera model',
         'EXIF 参数条': 'EXIF param strip', '等效焦距换算': '35mm-equivalent focal',
@@ -142,44 +142,44 @@
     // 整词替换一段文本;返回替换后的值,未命中返回 null
     function translateText(s) {
         if (currentLang() !== 'en' || !s) return null;
-        var trimmed = s.trim();
+        let trimmed = s.trim();
         if (!trimmed) return null;
-        var en = DICT[trimmed];
+        let en = DICT[trimmed];
         if (en == null || en === trimmed) return null;
         // 保留首尾空白,替换中间部分
-        var lead = s.slice(0, s.indexOf(trimmed));
+        let lead = s.slice(0, s.indexOf(trimmed));
         return lead + en + s.slice(s.indexOf(trimmed) + trimmed.length);
     }
 
     function isSkippable(node) {
-        var tag = node.parentNode && node.parentNode.nodeName;
+        let tag = node.parentNode && node.parentNode.nodeName;
         return tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA';
     }
 
     function apply() {
         if (currentLang() !== 'en') return;
         // 1) 文本节点(整词命中才换;动态列表里未进词典的中文原样保留)
-        var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+        let walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
             acceptNode: function (n) { return isSkippable(n) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; }
         });
-        var nodes = [], n;
+        let nodes = [], n;
         while ((n = walker.nextNode())) nodes.push(n);
         nodes.forEach(function (tn) {
-            var rep = translateText(tn.nodeValue);
+            let rep = translateText(tn.nodeValue);
             if (rep != null) tn.nodeValue = rep;
         });
         // 2) placeholder 与 title 属性
         document.querySelectorAll('[placeholder],[title]').forEach(function (el) {
-            var p = translateText(el.getAttribute('placeholder'));
+            let p = translateText(el.getAttribute('placeholder'));
             if (p != null) el.setAttribute('placeholder', p);
-            var t = translateText(el.getAttribute('title'));
+            let t = translateText(el.getAttribute('title'));
             if (t != null) el.setAttribute('title', t);
         });
         // 3) select 未选中项的可见文案由文本节点覆盖,无需额外处理
     }
 
     function bindLangSwitch() {
-        var sel = document.getElementById('cbLang');
+        let sel = document.getElementById('cbLang');
         if (!sel) return;
         sel.value = currentLang();
         sel.addEventListener('change', function () {
@@ -200,7 +200,7 @@
     window.QfsI18n = {
         t: function (s) {
             if (currentLang() !== 'en' || !s) return s;
-            var en = DICT[String(s).trim()];
+            let en = DICT[String(s).trim()];
             return en != null ? en : s;
         },
         apply: apply,
