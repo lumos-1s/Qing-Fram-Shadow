@@ -1,8 +1,18 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('qingframe', {
     openImage: () => ipcRenderer.invoke('open-image'),
     openImages: () => ipcRenderer.invoke('open-images'),
+    openImageFolder: () => ipcRenderer.invoke('open-image-folder'),
+    collectImages: (paths) => ipcRenderer.invoke('collect-images', paths),
+    readClipboardImage: () => ipcRenderer.invoke('read-clipboard-image'),
+    // Electron 32 起 File.path 被移除;统一走 webUtils,旧版本回退到 file.path
+    getPathForFile: (file) => {
+        try {
+            if (webUtils && typeof webUtils.getPathForFile === 'function') return webUtils.getPathForFile(file);
+        } catch (e) { /* 回退 */ }
+        return (file && file.path) || '';
+    },
     listPresets: () => ipcRenderer.invoke('list-presets'),
     loadPreset: (name) => ipcRenderer.invoke('load-preset', name),
     loadAllPresets: () => ipcRenderer.invoke('load-all-presets'),

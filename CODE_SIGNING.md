@@ -1,15 +1,30 @@
 # Code signing policy
 
-Free code signing provided by SignPath.io, certificate by SignPath Foundation.
+Free code signing, when active, is provided by SignPath.io with a certificate
+issued to the SignPath Foundation.
 
 ## Current status
 
-The project is being prepared for SignPath Foundation signing. Until the first
-signed release is published, Windows artifacts on GitHub Releases are unsigned
-and must not be described as signed.
+**No Windows artifact is currently signed.** The project applied to the
+SignPath Foundation open-source program and was declined: the foundation grants
+certificates when a project has established public visibility (stars, forks,
+contributors, external references, sustained activity), and this project does
+not meet that bar yet. The project will reapply once it does.
 
-When signing is active, Windows shows **SignPath Foundation** as the publisher,
-because the certificate is issued to the foundation rather than to this project.
+Until then:
+
+- Artifacts on GitHub Releases are **unsigned**, and SmartScreen will warn on
+  first run. This is expected behaviour for unsigned software.
+- No release may be described as signed, and no one should claim that SignPath
+  Foundation vouches for the current binaries.
+- Verify downloads against the `sha512` in `latest.yml` — see
+  [Verifying an unsigned release](#verifying-an-unsigned-release).
+
+The workflow in `.github/workflows/release-signpath.yml` and the configuration
+in [`signpath/`](./signpath/) are kept in the repository, dormant: they only run
+via manual `workflow_dispatch` and require SignPath secrets that do not exist
+yet. Once an application is approved, they become the release path, and Windows
+will show **SignPath Foundation** as the publisher.
 
 ## What is signed
 
@@ -68,7 +83,27 @@ See [PRIVACY.md](./PRIVACY.md). Photos and project data are processed locally
 and are not uploaded. The app checks GitHub Releases for updates and may contact
 public GitHub proxy mirrors while checking. There is no analytics or telemetry.
 
-## Verifying a release
+## Verifying an unsigned release
+
+Unsigned builds cannot be verified by `Get-AuthenticodeSignature`, so compare
+the file against the `sha512` published in `latest.yml` on the release page.
+`latest.yml` stores Base64, while `Get-FileHash` prints hex; convert before
+comparing:
+
+```powershell
+$f = ".\Qingframe-Setup-<version>-x64.exe"
+$hex = (Get-FileHash -Algorithm SHA512 $f).Hash
+$bytes = [byte[]]::new($hex.Length / 2)
+for ($i = 0; $i -lt $hex.Length; $i += 2) {
+    $bytes[$i / 2] = [Convert]::ToByte($hex.Substring($i, 2), 16)
+}
+[Convert]::ToBase64String($bytes)   # must equal the sha512 in latest.yml
+```
+
+Also check that the size matches the `size` field in `latest.yml`. If either
+differs, do not run the file.
+
+## Verifying a signed release
 
 For a signed release, all of the following should be true:
 

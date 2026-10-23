@@ -35,32 +35,43 @@
 
 **清框影 QingFramShadow** 是一款 Windows 桌面照片加框工具。它把「边框」当成一张可编辑的画布：先选一个模板定下气质，再调整边距、圆角、纹理、光影、Logo、相机参数与签名，最后按原图尺寸或指定尺寸导出。
 
-- **想让照片快速成片的人**：84 个模板直接套用，右侧参数实时预览。
+- **想让照片快速成片的人**：87 个模板直接套用，右侧参数实时预览。
 - **在意画质与隐私的人**：Canvas 2D 本地渲染，照片不上传，不登录。
 - **需要成批出图的人**：模板记忆、批量导入、同步到选中，一次导出。
 
-> **English** — A Windows desktop app for framing photos locally: 84 presets, 88 frame styles, live frame/light/logo/EXIF controls, reusable templates, collage, grid slicing and batch export. No account, no uploads.
+> **English** — A Windows desktop app for framing photos locally: 87 presets, 92 frame styles, live frame/light/logo/EXIF controls, reusable templates, collage, grid slicing and batch export. No account, no uploads.
 
 <a id="download"></a>
 ## 下载 · Download
 
 从 [GitHub Releases](https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases) 下载 Windows 安装版（NSIS）或便携版。
 
-**Free code signing provided by SignPath.io, certificate by SignPath Foundation.** Windows release builds are produced by GitHub Actions and signed through SignPath Foundation; see the [code signing policy](./CODE_SIGNING.md). Until the first signed release is published, existing releases remain unsigned.
+**当前 Windows 产物未签名。** 安装包由 GitHub Actions 从本仓库构建；首次运行会遇到 SmartScreen「未知发布者」提示，处理方式见下方[安装提示](#smart-screen)，校验方式见[代码签名政策](./CODE_SIGNING.md)。
+
+> **English** — Windows builds are currently unsigned (SmartScreen will warn on first run). They are built by GitHub Actions from this repository. See [code signing policy](./CODE_SIGNING.md).
+
+<a id="smart-screen"></a>
+### 提示「未知发布者」怎么办 · SmartScreen note
+
+未签名软件首次运行会被 SmartScreen 拦截，这是预期行为，不代表文件被篡改：
+
+1. 在蓝色提示框点「更多信息 / More info」。
+2. 点「仍要运行 / Run anyway」，再在 UAC 里点「是 / Yes」。
+3. 不放心就先核对文件校验值（`certutil -hashfile <安装包> SHA256`），或改用免安装的便携版。
 
 ## 核心功能 · Features
 
-- **84 个内置模板 · 88 种边框风格** — 杂志、拍立得、撕纸、胶带、邮票、报纸、胶片、渐变卡、漫画分镜、3D 卡、签名纪念与头像叠加，以及证件照、自动取色边框等快速预设；选中即套用，再继续微调。
+- **87 个内置模板 · 92 种边框风格** — 杂志、拍立得、撕纸、胶带、邮票、报纸、胶片、渐变卡、漫画分镜、3D 卡、签名纪念与头像叠加，以及自动取色边框等快速预设；选中即套用，再继续微调。
 - **参数实时可调** — 圆角、边距、照片缩放/偏移、内/外阴影、描边、投影、画布比例、纹理/渐变填充，改动即时反馈。
 - **光影与质感** — 暗角、漏光、暖光/冷光、胶片颗粒，以及纸张、布料等纹理，给整张成片统一的氛围。
 - **Logo、EXIF 与签名** — 品牌 Logo 或自定义图标水印；自动读取品牌、型号、焦距、光圈、ISO、快门，可手动修改；签名与头像组合排版。
 - **模板系统** — 保存/导入/导出 `.qfs` 工程与 `.json`；支持搜索、标签分组、缩略图预览、应用、重命名与带确认的删除。
 - **拼图与九宫格** — 多图网格拼贴，间距、圆角与字幕可调；九宫格切图把当前画布按 n×n 切成多张，预览确认后导出。
-- **批量处理** — 批量导入、逐张记忆模板、同步到选中、装框缩略图，一键批量导出。
+- **批量处理** — 批量导入（支持整个文件夹与 HEIC，HEIC 自动读取 EXIF）、逐张记忆模板、同步到选中、装框缩略图，一键批量导出。
 - **导出** — PNG / JPEG / WebP，质量可调；原图、1080、2048、4096、8192px；选好位置后渲染写入，默认原图尺寸。
 - **全本地** — 无需登录、不上传照片；照片、EXIF 与模板都留在本机。
 
-> **English** — 84 presets and 88 frame styles for magazine, polaroid, torn paper, tape, stamp, newspaper, film, gradient, comic, 3D card, signature and avatar layouts; live frame, shadow, texture and light controls; logo/EXIF/signature layers; `.qfs` and `.json` templates; collage, grid slicing and batch export; PNG/JPEG/WebP up to 8192px. Everything local.
+> **English** — 87 presets and 92 frame styles for magazine, polaroid, torn paper, tape, stamp, newspaper, film, gradient, comic, 3D card, signature and avatar layouts; live frame, shadow, texture and light controls; logo/EXIF/signature layers; `.qfs` and `.json` templates; collage, grid slicing and batch export; PNG/JPEG/WebP up to 8192px. Everything local.
 
 ## 预设效果 · Preset Gallery
 
@@ -72,7 +83,7 @@
   <sub>六种预设的真实渲染 · 示例照片为项目自绘的黄昏湖面<br>Six real engine renders · sample photo: a self-drawn dusk lake</sub>
 </p>
 
-84 个模板覆盖复古胶片、拍立得、邮票、报纸、杂志、撕纸、胶带、漫画、证件照、拼图等方向；每个模板都能继续改边距、圆角、纹理、光影与文字。六张预设图都由引擎实际渲染，不是手工绘制的模拟效果，也没有使用图库或用户照片。
+87 个模板覆盖复古胶片、拍立得、邮票、报纸、杂志、撕纸、胶带、漫画、签名、拼图等方向；每个模板都能继续改边距、圆角、纹理、光影与文字。六张预设图都由引擎实际渲染，不是手工绘制的模拟效果，也没有使用图库或用户照片。
 
 ## 快速开始 · Quick Start
 
@@ -129,8 +140,8 @@ npm run dist:portable
 │  └─ renderer/      # 渲染进程：UI 与 Canvas 渲染引擎
 │                    #   renderer: UI and Canvas rendering engine
 ├─ shared/
-│  ├─ presets/       # 84 个内置模板（JSON 描述）
-│  │                 #   84 built-in preset templates (JSON)
+│  ├─ presets/       # 87 个内置模板（JSON 描述）
+│  │                 #   87 built-in preset templates (JSON)
 │  ├─ textures/      # 纹理素材 / texture assets (10)
 │  └─ brandlogos/    # 本机品牌 Logo 素材，不随发行版分发
 │                    #   local-only brand logos, excluded from distribution
@@ -169,11 +180,17 @@ npm run verify:pkg    # 另加安装包核验：Setup.exe 体积与 latest.yml �
 
 ## 代码签名政策 · Code signing policy
 
-**Free code signing provided by SignPath.io, certificate by SignPath Foundation.**
+**Windows 产物目前未签名。** 本项目曾向 [SignPath Foundation](https://signpath.org/) 申请开源项目的免费代码签名；因项目公开可见度尚未达到该计划的门槛（其评审看的是 Star、Fork、外部引用与社区活跃度等公开信号），申请未获通过，达到条件后会重新申请。
 
-Windows 发布包由 GitHub Actions 从本仓库构建，并通过 SignPath Foundation 签名。系统会显示发布者为 **SignPath Foundation**。签名范围、团队角色、审批流程与验签方法见 [`CODE_SIGNING.md`](./CODE_SIGNING.md)；联网与隐私说明见 [`PRIVACY.md`](./PRIVACY.md)。
+在获得签名之前：
 
-> 当前状态：SignPath 接入正在准备中。在首个签名版本发布前，GitHub Releases 上的 Windows 产物仍是未签名版本。Current status: SignPath onboarding is in progress; releases published before the first signed build are unsigned.
+- GitHub Releases 上的安装包与便携版都是**未签名产物**，首次运行会出现 SmartScreen「未知发布者」提示；这是未签名软件的正常行为，处理方式见[安装提示](#smart-screen)。
+- 请只从本仓库 Releases 页面下载，并按 [`CODE_SIGNING.md`](./CODE_SIGNING.md#verifying-an-unsigned-release) 核对校验值。
+- **任何称清框影已由 SignPath Foundation 签名的说法，对当前版本都不成立。**
+
+签名范围、审批流程与验签方法（签名启用后适用）见 [`CODE_SIGNING.md`](./CODE_SIGNING.md)；联网与隐私说明见 [`PRIVACY.md`](./PRIVACY.md)。
+
+> **English** — Windows builds are unsigned for now. An application to the SignPath Foundation OSS program was declined because the project does not yet meet the program's public-visibility bar; the project will reapply. Do not describe any current release as signed. See [`CODE_SIGNING.md`](./CODE_SIGNING.md) for verification.
 
 ## 素材与许可 · Assets & License
 

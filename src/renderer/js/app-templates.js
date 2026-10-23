@@ -286,18 +286,15 @@ window.App = Object.assign(window.App || {}, {
         this.setStatus(`已导入配置「${r.name}」（照片不变，边框/参数已还原）`);
     },
 
-    applyQuickPreset(kind) {
+    applyQuickPreset() {
         if (!this.presets.length) { this.setStatus('预设库未加载'); return; }
+        const p = this.presets.find(x => /胶片/i.test(x.templateName));
+        if (!p) { this.setStatus('未找到复古胶片预设'); return; }
         this.onSettingCommit();
-        let p = null;
-        if (kind === 'film') p = this.presets.find(x => /胶片/i.test(x.templateName)) || this.presets[0];
-        else p = this.presets.find(x => /证件照/i.test(x.templateName)) || this.presets[0];
-        if (p) {
-            // 走 applyPreset 统一入口,保留用户的 logo/贴纸/自由文字(见 applyPreset 注释)。
-            // undo 快照已由上面的 onSettingCommit() 压入,这里不要重复 pushUndo。
-            this.applyPreset(p);
-            this.setStatus(`已应用预设「${p.templateName}」`);
-        }
+        // 走 applyPreset 统一入口,保留用户的 logo/贴纸/自由文字(见 applyPreset 注释)。
+        // undo 快照已由上面的 onSettingCommit() 压入,这里不要重复 pushUndo。
+        this.applyPreset(p);
+        this.setStatus(`已应用预设「${p.templateName}」`);
     },
 
     async autoColorBorder() {

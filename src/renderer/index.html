@@ -42,6 +42,7 @@
 
             <div class="toolbar-group">
                 <button id="btnOpen" class="tbtn" title="打开图片 (Ctrl+O)">导入照片</button>
+                <button id="btnOpenFolder" class="tbtn" title="导入整个文件夹（含子文件夹） (Ctrl+Shift+O)">导入文件夹</button>
                 <div class="sep"></div>
                 <div class="export-split" id="exportSettingsWrap">
                     <button id="btnSave" class="tbtn primary" title="导出当前图片">导出</button>
@@ -163,7 +164,7 @@
                             <path d="M21 15.5l-4.4-4.2a1 1 0 0 0-1.4 0L8 18"/>
                         </svg>
                     </div>
-                    <div class="ph-text">点击「导入照片」或将照片拖到此处<br/><span class="ph-sub">支持单个或批量导入</span></div>
+                    <div class="ph-text">点击「导入照片 / 导入文件夹」或将照片拖到此处<br/><span class="ph-sub">支持 JPG / PNG / WebP / BMP / HEIC，可拖入整个文件夹</span></div>
                     <button id="btnRestoreDraft" class="tbtn restore-draft-btn" style="display:none" title="恢复上次会话的照片和模板">继续上次会话</button>
                 </div>
                 <div id="thumbStrip" class="thumb-strip"></div>
@@ -720,9 +721,8 @@
                         </div>
                         <div class="param-group">
                             <div class="pg-title collapsible">快速预设</div>
-                            <div class="btn-row btn-2">
+                            <div class="btn-row">
                                 <button class="mini-btn" id="btnQuickFilm">复古胶片</button>
-                                <button class="mini-btn" id="btnQuickIdCard">证件照</button>
                             </div>
                             <div class="btn-row">
                                 <button class="mini-btn" id="btnAutoColorBorder">自动取色边框</button>
@@ -891,12 +891,14 @@
             <div class="modal-body about-body" style="line-height:1.9;font-size:13px;color:var(--text);">
                 <div style="font-weight:700;font-size:15px;margin-bottom:2px;">清框影 QingFramShadow</div>
                 <div id="aboutInfo" style="color:var(--text-3);font-size:12px;">加载中…</div>
-                <div style="margin-top:12px;font-size:12px;color:var(--text-3);">本地照片加框工具：60+ 相框样式、EXIF 参数识别、拼图与批量导出，全本地渲染，照片与设置不上传。</div>
+                <div style="margin-top:12px;font-size:12px;color:var(--text-3);">本地照片加框工具：87 个模板、92 种边框风格、EXIF 参数识别、拼图与批量导出，全本地渲染，照片与设置不上传。</div>
 
                 <div class="about-section">
                     <div class="about-section-title">快捷键</div>
                     <div class="about-shortcuts">
                         <span>导入照片</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>O</kbd></span>
+                        <span>导入文件夹</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>O</kbd></span>
+                        <span>粘贴剪贴板图片</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>V</kbd></span>
                         <span>撤销 / 重做</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Z</kbd><span class="about-sep">/</span><kbd>Ctrl</kbd><kbd>Y</kbd></span>
                         <span>全选照片 / 画布元素</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>A</kbd></span>
                         <span>导出当前图片</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>E</kbd></span>
@@ -939,9 +941,9 @@
             </div>
             <div class="modal-body" style="line-height:1.9;font-size:13px;color:var(--text);">
                 <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">三步上手，全程本地处理，照片与设置不上传。</div>
-                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>① 导入照片</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">点击左上角「导入照片」，或直接把图片拖进窗口</div></div>
-                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>② 选择边框</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">左侧浏览 60+ 相框样式，点一下套用；拼图、九宫格切图也在左侧</div></div>
-                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:6px;"><b>③ 调参导出</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">右侧调整参数 / 签名 / Logo / 品牌水印，满意后点「保存图片」导出</div></div>
+                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>① 导入照片</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">点击左上角「导入照片 / 导入文件夹」，或直接把图片、文件夹拖进窗口；也支持 Ctrl+V 粘贴截图</div></div>
+                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>② 选择边框</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">左侧浏览 87 个模板、92 种边框风格，点一下套用；拼图、九宫格切图也在左侧</div></div>
+                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:6px;"><b>③ 调参导出</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">右侧调整参数 / 签名 / Logo / 品牌水印，满意后点「导出」</div></div>
             </div>
             <div class="modal-actions">
                 <button id="btnIntroDone" class="ub-btn primary">开始使用</button>

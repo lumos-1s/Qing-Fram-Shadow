@@ -12,6 +12,9 @@
 
     function pad0(n) { return n < 10 ? '0' + n : '' + n; }
     function dateYMD() { return NOW.getFullYear() + '.' + pad0(NOW.getMonth() + 1) + '.' + pad0(NOW.getDate()); }
+    function dateTimeYMD() {
+        return dateYMD() + ' ' + pad0(NOW.getHours()) + ':' + pad0(NOW.getMinutes()) + ':' + pad0(NOW.getSeconds());
+    }
 
     // ── 工具 ──
     function newCanvas(w, h) {
@@ -5226,6 +5229,8 @@ const w = natW;
                 }
                 return { w: iw, h: ih };
             }
+            case 'LIQUID_GLASS':
+                return { w: iw, h: ih };
             case 'GALLERY_MAT': {
                 const refG = Math.min(iw, ih);
                 const matG = Math.max(70, Math.round(refG * 0.09));
@@ -7414,6 +7419,288 @@ const w = natW;
         g.restore();
     }
 
+    // ══ 液态玻璃 (Liquid Glass) ══
+    // 复刻 com.dengziwl.bk 的 LiquidGlassWatermarkRenderer / LiquidGlassBackdropRenderer:
+    // 全出血照片 + 底部胶囊玻璃条。玻璃条不是简单的半透明矩形,而是:
+    //   背景裁切 → 饱和度 1.5 → 高斯模糊(8dp × haze)→ 圆角 SDF 折射(24dp × strength)
+    //   → 暗色 tint → 45° 高光描边,最后叠白字(品牌/机型 + 参数/日期)。
+    // 几何与 APK 一致:左右 8dp、底 6dp、高 45dp,dp = 画布宽 / 375;圆角 = 条高/2。
+    function lgRoundRect(g, x, y, w, h, r) {
+        const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+        g.beginPath();
+        if (typeof g.roundRect === 'function') { g.roundRect(x, y, w, h, rr); return; }
+        g.moveTo(x + rr, y);
+        g.arcTo(x + w, y, x + w, y + h, rr);
+        g.arcTo(x + w, y + h, x, y + h, rr);
+        g.arcTo(x, y + h, x, y, rr);
+        g.arcTo(x, y, x + w, y, rr);
+        g.closePath();
+    }
+
+    function liquidGlassGeom(iw, ih) {
+        const scale = Math.max(iw / 375, 0.01);
+        const side = 8 * scale, bottomPad = 6 * scale;
+        const left = side, right = Math.max(side, iw - side);
+        const bottom = Math.max(0, ih - bottomPad);
+        const capH = Math.min(Math.max(1, 45) * scale, ih);
+        const top = Math.max(0, bottom - capH);
+        const w = Math.max(1, right - left), h = Math.max(1, bottom - top);
+        return { scale, left, top, right, bottom, w, h, radius: h / 2, side, bottomPad };
+    }
+
+    // 圆角矩形 SDF 折射。与 AGSL 版逐像素同构:边缘处采样向内偏移(圆环映射),
+    // 偏移量在胶囊边缘最大、向内 refractionHeight 处衰减到 0。只处理边缘带,内部整行跳过。
+    function liquidGlassRefract(data, w, h, radius, dp, strength) {
+        const refH = 24 * dp * strength;
+        if (!(refH > 0.5) || strength <= 0) return;
+        const amount = -24 * dp * strength;
+        const src = data.data;
+        const dst = new Uint8ClampedArray(src);
+        const hw = w / 2, hh = h / 2;
+        const inW = hw - radius, inH = hh - radius;
+        const gradR = Math.min(radius * 1.5, Math.min(hw, hh));
+        const ginW = hw - gradR, ginH = hh - gradR;
+        for (let y = 0; y < h; y++) {
+            const cy = y + 0.5 - hh, acy = Math.abs(cy);
+            const qy = acy - inH, qyG = acy - ginH;
+            const oy = qy > 0 ? qy : 0;
+            const row = y * w;
+            for (let x = 0; x < w; x++) {
+                const cx = x + 0.5 - hw, acx = Math.abs(cx);
+                const qx = acx - inW;
+                const ox = qx > 0 ? qx : 0;
+                const outside = Math.sqrt(ox * ox + oy * oy) - radius;
+                const inside = Math.min(Math.max(qx, qy), 0);
+                const sd = outside + inside;
+                if (-sd >= refH) continue;
+                // 与 gradSdRoundedRect 同构(含 circleMap 的位移量)
+                const gqx = acx - ginW, gqy = qyG;
+                let gx, gy;
+                if (gqx >= 0 || gqy >= 0) {
+                    const nx = gqx > 0 ? gqx : 0, ny = gqy > 0 ? gqy : 0;
+                    const nl = Math.sqrt(nx * nx + ny * ny) || 1;
+                    gx = (cx < 0 ? -1 : 1) * nx / nl;
+                    gy = (cy < 0 ? -1 : 1) * ny / nl;
+                } else {
+                    const sx = gqx >= gqy ? 1 : 0;
+                    gx = (cx < 0 ? -1 : 1) * sx;
+                    gy = (cy < 0 ? -1 : 1) * (1 - sx);
+                }
+                const gl = Math.sqrt(gx * gx + gy * gy);
+                if (gl < 1e-6) continue;
+                const t = 1 + Math.min(sd, 0) / refH;
+                const disp = (1 - Math.sqrt(Math.max(0, 1 - t * t))) * amount / gl;
+                let sx = x + 0.5 + disp * gx - 0.5;
+                let sy = y + 0.5 + disp * gy - 0.5;
+                if (sx < 0) sx = 0; else if (sx > w - 1) sx = w - 1;
+                if (sy < 0) sy = 0; else if (sy > h - 1) sy = h - 1;
+                const x0 = sx | 0, y0 = sy | 0;
+                const x1 = x0 + 1 < w ? x0 + 1 : w - 1;
+                const y1 = y0 + 1 < h ? y0 + 1 : h - 1;
+                const fx = sx - x0, fy = sy - y0;
+                const i00 = (y0 * w + x0) * 4, i10 = (y0 * w + x1) * 4;
+                const i01 = (y1 * w + x0) * 4, i11 = (y1 * w + x1) * 4;
+                const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy);
+                const w01 = (1 - fx) * fy, w11 = fx * fy;
+                const o = (row + x) * 4;
+                for (let ch = 0; ch < 3; ch++) {
+                    dst[o + ch] = src[i00 + ch] * w00 + src[i10 + ch] * w10 + src[i01 + ch] * w01 + src[i11 + ch] * w11;
+                }
+                dst[o + 3] = 255;
+            }
+        }
+        data.data.set(dst);
+    }
+
+    // 玻璃底板:只渲染胶囊区域,上限 2048(APK 为 4096;这里是每帧实时预览,分辨率对模糊底不可见)。
+    function liquidGlassBitmap(img, iw, ih, geo, S) {
+        const cap = Math.min(1, 2048 / Math.max(geo.w, geo.h));
+        const gw = Math.max(1, Math.round(geo.w * cap));
+        const gh = Math.max(1, Math.round(geo.h * cap));
+        const dp = geo.scale * cap;
+        // 面板的「背景模糊程度」直接映射 APK 的 haze:50 → 1(参考图观感),0 → 全清,100 → 2。
+        const haze = Math.max(0, Math.min(2, (S && S.blurIntensity != null ? S.blurIntensity : 50) / 50));
+        const blurPx = 8 * dp * haze;
+        const pad = Math.ceil(blurPx * 2) + 4;
+
+        // 1) 背景:按胶囊坐标系裁切,四周多画 pad 供模糊采样,避免边缘发黑。
+        const pc = newCanvas(gw + pad * 2, gh + pad * 2);
+        const pg = pc.getContext('2d');
+        const padCss = pad / cap;
+        const bx0 = geo.left - padCss, by0 = geo.top - padCss;
+        const bx1 = geo.right + padCss, by1 = geo.bottom + padCss;
+        const sx = Math.max(0, bx0), sy = Math.max(0, by0);
+        const ex = Math.min(iw, bx1), ey = Math.min(ih, by1);
+        if (ex > sx && ey > sy) {
+            pg.drawImage(img, sx, sy, ex - sx, ey - sy,
+                (sx - bx0) * cap, (sy - by0) * cap, (ex - sx) * cap, (ey - sy) * cap);
+        }
+
+        const glass = newCanvas(gw, gh);
+        const g = glass.getContext('2d');
+        g.imageSmoothingEnabled = true;
+        const filters = ['saturate(1.5)'];
+        if (blurPx > 0.05) filters.push('blur(' + blurPx.toFixed(2) + 'px)');
+        g.filter = filters.join(' ');
+        g.drawImage(pc, -pad, -pad);
+        g.filter = 'none';
+
+        // 2) 折射(逐像素)
+        const strength = 0.3; // APK 默认 liquidGlassStrength=30
+        try {
+            const im = g.getImageData(0, 0, gw, gh);
+            liquidGlassRefract(im, gw, gh, Math.min(gh / 2, gw / 2), dp, strength);
+            g.putImageData(im, 0, 0);
+        } catch (e) { /* 取像素失败时保留未折射版本 */ }
+
+        // 3) 暗色 tint(APK: rgba(18,18,18, 0.4*haze);上限 0.45 避免滑块拉满后死黑)
+        const tintA = Math.min(0.45, 0.4 * haze);
+        if (tintA > 0.001) {
+            g.fillStyle = 'rgba(18,18,18,' + tintA.toFixed(3) + ')';
+            g.fillRect(0, 0, gw, gh);
+        }
+
+        // 4) 45° 高光:APK 用 RuntimeShader 按法线强度画整圈描边,这里用加法混合的模糊描边近似
+        const lw = Math.max(1, 2 * Math.ceil(Math.min(0.5 * dp, Math.min(gw, gh) / 2)));
+        const inset = lw / 2;
+        g.save();
+        g.globalCompositeOperation = 'lighter';
+        g.strokeStyle = 'rgba(255,255,255,0.5)';
+        g.lineWidth = lw;
+        if (0.25 * dp > 0.05) g.filter = 'blur(' + (0.25 * dp).toFixed(2) + 'px)';
+        lgRoundRect(g, inset, inset, Math.max(1, gw - lw), Math.max(1, gh - lw),
+            Math.max(1, Math.min(gh / 2, gw / 2) - inset));
+        g.stroke();
+        g.restore();
+        return glass;
+    }
+
+    function lgFitFont(g, text, basePx, weight, maxW, step) {
+        let px = basePx;
+        const minPx = basePx * 0.5;
+        g.font = weight + ' ' + px + 'px ' + LG_FONT;
+        while (px > minPx && g.measureText(text).width > maxW) {
+            px -= step;
+            g.font = weight + ' ' + px + 'px ' + LG_FONT;
+        }
+        return px;
+    }
+
+    const LG_FONT = '"Segoe UI", "Helvetica Neue", Arial, "Microsoft YaHei", sans-serif';
+
+    function styleLiquidGlass(img, size, g, iw, ih, S) {
+        const geo = liquidGlassGeom(iw, ih);
+        const scale = geo.scale, capW = geo.w, capH = geo.h;
+        const radius = geo.radius;
+
+        // 照片满幅(APK 先铺黑底再画图,透明 PNG 不会漏出画布底色)
+        g.fillStyle = '#000000';
+        g.fillRect(0, 0, iw, ih);
+        g.drawImage(img, 0, 0, iw, ih);
+
+        // 投影:rgba(0,0,0,0.1), blur 24dp, offsetY 4dp
+        g.save();
+        g.shadowColor = 'rgba(0,0,0,0.1)';
+        g.shadowBlur = 24 * scale;
+        g.shadowOffsetY = 4 * scale;
+        g.fillStyle = '#000000';
+        lgRoundRect(g, geo.left, geo.top, capW, capH, radius);
+        g.fill();
+        g.restore();
+
+        // 玻璃底板 + 胶囊裁切
+        const glass = liquidGlassBitmap(img, iw, ih, geo, S);
+        g.save();
+        lgRoundRect(g, geo.left, geo.top, capW, capH, radius);
+        g.clip();
+        g.drawImage(glass, geo.left, geo.top, capW, capH);
+        g.restore();
+
+        // ── 文案 ──
+        const cam = (S && S.cam) || {};
+        const hidden = brandHidden(S);
+        const im = (!hidden && S && S.brandLogoImg && S.brandLogoImg.complete && S.brandLogoImg.naturalWidth > 0)
+            ? S.brandLogoImg : null;
+        const wantsLogo = !!(im && S && (S.brandLogo === 1 || S.brandLogo === 2));
+        let brand = hidden ? '' : (prettyBrand(cam.brand) || 'QINGFRAME');
+        if (wantsLogo && S.brandLogo === 2) brand = '';
+        let model = hidden ? '' : (cam.model ? String(cam.model).toUpperCase() : (cam.brand ? '' : 'QINGFRAME 100'));
+        if (!brand && !model && !hidden && !wantsLogo) brand = 'QINGFRAME';
+
+        let focal = String(cam.focal || '35mm');
+        if (/^\d+(\.\d+)?$/.test(focal)) focal += 'mm';
+        const ap = String(cam.aperture || 'f/1.8').replace(/^f\//i, 'F');
+        let shut = String(cam.shutter || '1/125').toUpperCase();
+        if (!/S$/.test(shut)) shut += 'S';
+        let iso = String(cam.iso || 'ISO 300');
+        if (!/^ISO/i.test(iso)) iso = 'ISO ' + iso;
+        const paramText = [focal, ap, shut, iso].filter(Boolean).join('  ');
+        const dateText = dateTimeYMD();
+
+        const padX = 24 * scale;
+        const step = 0.25 * scale;
+        const maxRightW = Math.max(1, (capW - padX * 2) * 0.45);
+        const textFs = lgFitFont(g, paramText, 11 * scale, 700, maxRightW, step);
+        const dateFs = lgFitFont(g, dateText, 8 * scale, 400, maxRightW, step);
+        g.font = '700 ' + textFs + 'px ' + LG_FONT;
+        const textW = g.measureText(paramText).width;
+        g.font = '400 ' + dateFs + 'px ' + LG_FONT;
+        const dateW = g.measureText(dateText).width;
+        const rightW = Math.min(maxRightW, Math.max(textW, dateW));
+        const rightX = geo.right - padX - rightW;
+        const dividerX = rightX - 6 * scale;
+        // APK 无论 logo 位图是否存在,都按 24dp 预留中间 logo 槽(见 drawContent 的 f6/f11),
+        // 左侧品牌名因此有固定可用宽度;只在真要画 logo 时才有图像落进这个槽。
+        const logoSlot = Math.min(24 * scale, capH);
+        const logoX = dividerX - 6 * scale - logoSlot;
+        const leftX = geo.left + padX;
+        const leftMaxW = Math.max(1, (logoX - leftX) - 12 * scale);
+
+        const brandFs = lgFitFont(g, brand, 11 * scale, 700, leftMaxW, step);
+        const modelFs = lgFitFont(g, model, 7.5 * scale, 400, leftMaxW, step);
+
+        const h1 = 23 * scale, h2 = 17 * scale;
+        const blockTop = geo.top + capH / 2 - (h1 + h2) / 2;
+        const base1 = blockTop + 0.75 * h1;
+        const base2 = blockTop + h1 + 0.7 * h2;
+
+        g.textAlign = 'left';
+        g.textBaseline = 'alphabetic';
+        g.letterSpacing = '0px';
+        if (brand) {
+            g.font = '700 ' + brandFs + 'px ' + LG_FONT;
+            g.fillStyle = '#ffffff';
+            g.fillText(brand.toUpperCase(), leftX, base1);
+        }
+        if (model) {
+            g.font = '400 ' + modelFs + 'px ' + LG_FONT;
+            g.fillStyle = 'rgba(255,255,255,0.957)';
+            g.fillText(model, leftX, base2);
+        }
+
+        if (wantsLogo) {
+            const lw = im.naturalWidth, lh = im.naturalHeight;
+            const k = Math.min(logoSlot / lw, logoSlot / lh);
+            const dw = lw * k, dh = lh * k;
+            g.drawImage(im, logoX + (logoSlot - dw) / 2, geo.top + capH / 2 - dh / 2, dw, dh);
+        }
+
+        // 竖分隔线:alpha 198/255,宽 0.5dp,上下各内缩 9dp
+        g.strokeStyle = 'rgba(255,255,255,0.776)';
+        g.lineWidth = Math.max(1, 0.5 * scale);
+        g.beginPath();
+        g.moveTo(dividerX, geo.top + 9 * scale);
+        g.lineTo(dividerX, geo.top + capH - 9 * scale);
+        g.stroke();
+
+        g.font = '700 ' + textFs + 'px ' + LG_FONT;
+        g.fillStyle = '#ffffff';
+        g.fillText(paramText, rightX, base1);
+        g.font = '400 ' + dateFs + 'px ' + LG_FONT;
+        g.fillStyle = 'rgba(255,255,255,0.957)';
+        g.fillText(dateText, rightX, base2);
+    }
+
     const draw = {
             SIMPLE: styleSimple, WHITE_PLAIN: styleWhitePlain, ROUNDED: styleRounded,
             FILM_STRIP: styleFilmStrip, FILM_TEAR: styleFilmTear, POLAROID: stylePolaroid,
@@ -7452,6 +7739,7 @@ const w = natW;
             WAX_SEAL: styleWaxSeal, PRISMATIC: stylePrismatic,
             CYBER_GLITCH: styleCyberGlitch, POLAROID_HAND: stylePolaroidHand,
             TORN_JOURNAL: styleTornJournal, CARD_3D: styleCard3D,
+            LIQUID_GLASS: styleLiquidGlass,
             COMIC_PANEL: styleComicPanel, POP_COMIC: stylePopComic, NEWSPAPER: styleNewspaper,
             COLOR_PALETTE: styleColorPalette,
             SIGNATURE: styleSignature, SIGN_PARAM: styleSignParam,

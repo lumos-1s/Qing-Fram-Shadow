@@ -160,7 +160,7 @@ window.App = {
     cacheDom() {
         const $ = id => document.getElementById(id);
         this.dom = {
-            btnOpen: $('btnOpen'), btnSave: $('btnSave'), btnCopy: $('btnCopy'), selFormat: $('selFormat'), selExportSize: $('selExportSize'),
+            btnOpen: $('btnOpen'), btnOpenFolder: $('btnOpenFolder'), btnSave: $('btnSave'), btnCopy: $('btnCopy'), selFormat: $('selFormat'), selExportSize: $('selExportSize'),
             slExportQuality: $('slExportQuality'), exportSizeNote: $('exportSizeNote'),
             chkKeepExif: $('chkKeepExif'), chkKeepGps: $('chkKeepGps'),
             btnExportSettings: $('btnExportSettings'), exportPop: $('exportPop'),
@@ -195,6 +195,7 @@ window.App = {
     bind() {
         const d = this.dom;
         d.btnOpen.addEventListener('click', () => this.openImages());
+        if (d.btnOpenFolder) d.btnOpenFolder.addEventListener('click', () => this.openImageFolder());
         d.btnSave.addEventListener('click', () => this.doExport());
         if (d.btnCopy) d.btnCopy.addEventListener('click', () => this.copyImage());
         if (d.btnExportSettings && d.exportPop) {
@@ -873,6 +874,7 @@ window.App = {
                 ['重做 (Ctrl+Y)', () => this.redo()],
                 ['—', null],
                 ['复制图片 (Ctrl+Shift+C)', () => this.copyImage && this.copyImage()],
+                ['粘贴剪贴板图片 (Ctrl+Shift+V)', () => this.pasteImageFromClipboard()],
                 ['导出图片', () => this.doExport && this.doExport()],
             ]);
         });
@@ -1519,70 +1521,61 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         this.setStatus('照片已旋转 90°(再次右键可继续旋转)');
     },
 
-    /* ══ 照片导入(拖拽/多选共用) ══ */
-    async addImageFiles(files) {
-        const images = files.filter(f => /^image\//i.test(f.type) || /\.(jpe?g|png|webp|bmp)$/i.test(f.name));
-        if (!images.length) { this.setStatus('不支持的文件格式'); return; }
-        const skipped = files.length - images.length;
-        const total = images.length;
+    /* ══ 照片导入(拖拽/文件夹/多选共用) ══ */
+    // 拖放只负责拿路径,递归收集与 EXIF 解析都放主进程(文件夹也走同一条路)
+    async importPaths(paths) {
+        if (!paths || !paths.length) return;
+        const res = await window.qingframe.collectImages(paths);
+        if (!res || !res.items || !res.items.length) {
+            this.setStatus('没有找到可导入的图片');
+            return;
+        }
+        await this.importPicked(res.items, res.skipped);
+    },
+
+    // 统一导入入口:items 为 [{name,path,size,exif}],按 3 并发加载,顺序保持不变
+    async importPicked(items, skipped) {
+        if (!items || !items.length) { this.setStatus('没有找到可导入的图片'); return; }
+        const total = items.length;
         this.showImportProgress(total);
+        const results = new Array(total).fill(null);
         let done = 0;
+        let next = 0;
         const tick = (name) => { done++; this.setImportProgress(done, total, name); };
+        const worker = async () => {
+            for (;;) {
+                const i = next++;
+                if (i >= total) return;
+                try { results[i] = await this.imageFromPick(items[i]); }
+                catch (e) { results[i] = null; }
+                tick(items[i].name);
+            }
+        };
         try {
-            // 载入任务按 3 并发池跑:旧写法 Promise.allSettled(images.map(...)) 会让几十张
-            // 24MP 大图同时开跑,解码缓冲/像素位图同时驻留直接把内存顶爆(拖拽导入后卡死的来源之一)
-            const results = new Array(images.length).fill(null);
-            let next = 0;
-            const loadOne = async (i) => {
-                const r = await this.loadFile(images[i]);
-                if (!r || !r.url) { tick(images[i].name); return null; }
-                const img = new Image();
-                const loadedOk = await new Promise(res => { img.onload = () => res(true); img.onerror = () => res(false); img.src = r.url; });
-                if (!loadedOk || !img.naturalWidth) { tick(images[i].name); if (r.revoke) r.revoke(); return null; }
-                const rawExif = (r.buffer && window.__parseExif) ? window.__parseExif(r.buffer) : {};
-                const exif = window.__exifSummary ? window.__exifSummary(rawExif) : {};
-                const oriented = await this.applyOrientation(img, exif.orientation);
-                if (r.revoke) r.revoke();
-                const useEl = oriented ? oriented.el : img;
-                const w = oriented ? oriented.w : img.naturalWidth;
-                const h = oriented ? oriented.h : img.naturalHeight;
-                tick(images[i].name);
-                return { el: useEl, name: images[i].name, w, h, exif, customSettings: null };
-            };
-            const worker = async () => {
-                for (;;) {
-                    const i = next++;
-                    if (i >= images.length) return;
-                    try { results[i] = await loadOne(i); }
-                    catch (e) { results[i] = null; }
-                }
-            };
-            await Promise.all(Array.from({ length: Math.min(3, images.length) }, worker));
+            // 3 并发:几十张 24MP 大图同时解码会把内存顶爆;顺序由 results 下标保证
+            await Promise.all(Array.from({ length: Math.min(3, total) }, worker));
             let loaded = 0;
-            for (let i = 0; i < results.length; i++) {
-                const im = results[i];
+            for (const im of results) {
                 if (!im) continue;
                 this.images.push(im);
-                this.queueThumb(im);
                 loaded++;
             }
-            if (loaded) {
-                if (typeof this.scheduleDraft === 'function') this.scheduleDraft();
+            if (!loaded) { this.setStatus('图片加载失败'); return; }
+            if (typeof this.scheduleDraft === 'function') this.scheduleDraft();
+            const pk = this.tplPuzzle && this.tplPuzzle();
+            if (pk && this.image) {
+                // 拼图进行中导入:保留当前主图与拼图模板,新图先只进胶片条
                 this.buildThumbnails();
-                const pk = this.tplPuzzle && this.tplPuzzle();
-                if (pk && this.image) {
-                    // 拼图进行中导入:保留当前主图与拼图模板(旧写法 defaultTemplate+selectImage 会把
-                    // 画面瞬间打回单张照片,看起来就像"拼图丢了");新图先只进胶片条,想拼进来点「重拼」或拖进格子
-                    this.saveCurrentTemplate();
-                    this.scheduleRender(true);
-                    this.setStatus(`已导入 ${loaded} 张图片，拼图保持在「${this.image.name || '当前照片'}」上（可点「重拼」把新图填进格子）`);
-                } else {
-                    this.template = this.defaultTemplate();
-                    this.normalizeTemplate();
-                    this.selectImage(this.images.length - loaded);
-                    this.setStatus(`已导入 ${loaded} 张图片${skipped ? '，跳过 ' + skipped + ' 个不支持的文件' : ''}`);
-                }
-            } else if (skipped) this.setStatus('不支持的文件格式');
+                this.saveCurrentTemplate();
+                this.scheduleRender(true);
+                this.setStatus(`已导入 ${loaded} 张图片，拼图保持在「${this.image.name || '当前照片'}」上（可点「重拼」把新图填进格子）`);
+            } else {
+                this.template = this.defaultTemplate();
+                this.normalizeTemplate();
+                this.buildThumbnails();
+                this.selectImage(this.images.length - loaded);
+                this.setStatus(`已导入 ${loaded} 张图片${skipped ? '，跳过 ' + skipped + ' 个不支持的文件' : ''}`);
+            }
         } finally {
             this.finishImportProgress();
         }
@@ -1610,13 +1603,6 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         if (this.dom.importProgressFill) this.dom.importProgressFill.style.width = '100%';
         if (this.dom.importProgressText) this.dom.importProgressText.textContent = '导入完成';
         setTimeout(() => { prog.style.display = 'none'; }, 420);
-    },
-
-    async loadFile(file) {
-        // ObjectURL 直接引用磁盘(内存不再产生 base64 字符串);buffer 仅临时用于 EXIF 解析
-        const url = URL.createObjectURL(file);
-        const buf = await file.arrayBuffer().catch(() => null);
-        return { url, buffer: buf, revoke: () => URL.revokeObjectURL(url) };
     },
 
     async applyOrientation(img, orientation) {
@@ -1805,30 +1791,25 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
     async openImages() {
         const res = await window.qingframe.openImages();
         if (!res || !res.length) return;
-        this.showImportProgress(res.length);
-        let loaded = 0;
-        try {
-            for (let i = 0; i < res.length; i++) {
-                const idx = await this.appendImageFromPick(res[i]);
-                if (idx >= 0) loaded++;
-                this.setImportProgress(i + 1, res.length, res[i].name);
-            }
-        } finally {
-            this.finishImportProgress();
-        }
-        if (!loaded) { this.setStatus('图片加载失败'); return; }
-        if (typeof this.scheduleDraft === 'function') this.scheduleDraft();
-        const pk = this.tplPuzzle && this.tplPuzzle();
-        if (pk && this.image) {
-            // 拼图进行中导入:同 addImageFiles,保留当前主图与拼图模板,不打回单图
-            this.buildThumbnails();
-            this.saveCurrentTemplate();
-            this.scheduleRender(true);
-            this.setStatus(`已导入 ${loaded} 张图片，拼图保持在「${this.image.name || '当前照片'}」上（可点「重拼」把新图填进格子）`);
+        await this.importPicked(res, 0);
+    },
+
+    // 文件夹导入:主进程递归收集(含子文件夹),HEIC 也在这一步进入
+    async openImageFolder() {
+        const res = await window.qingframe.openImageFolder();
+        if (!res) return;
+        if (!res.items || !res.items.length) {
+            this.setStatus('该文件夹里没有支持的图片');
             return;
         }
-        this.selectImage(this.images.length - loaded);
-        this.setStatus('已导入 ' + loaded + ' 张图片');
+        await this.importPicked(res.items, res.skipped);
+    },
+
+    // 系统剪贴板图片(截图/网页复制)导入
+    async pasteImageFromClipboard() {
+        const res = await window.qingframe.readClipboardImage();
+        if (!res) { this.setStatus('剪贴板里没有图片'); return; }
+        await this.importPicked([res], 0);
     },
 
     // 双击格子:系统文件选择框替换该格照片(自动加入胶片条并合成刷新)
@@ -2175,8 +2156,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         bindBtn('btnCamLibDel', () => this.deleteCamLibEntry());
         const camSel = $('cbCamLib');
         if (camSel) camSel.addEventListener('change', () => { if (camSel.value) this.applyCamLibEntry(camSel.value); else this.refreshCamLibSelect(); });
-        bindBtn('btnQuickFilm', () => this.applyQuickPreset('film'));
-        bindBtn('btnQuickIdCard', () => this.applyQuickPreset('idcard'));
+        bindBtn('btnQuickFilm', () => this.applyQuickPreset());
         bindBtn('btnAutoColorBorder', () => this.autoColorBorder());
         bindBtn('btnEditGapCaption', () => this.addEditGapCaption());
         bindBtn('btnDeleteGapCaption', () => this.deleteCaption());

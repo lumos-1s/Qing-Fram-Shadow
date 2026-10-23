@@ -87,7 +87,8 @@ window.App = Object.assign(window.App || {}, {
             }
             if (typing && !e.ctrlKey) return;
 
-            if (e.ctrlKey && e.key.toLowerCase() === 'o') { e.preventDefault(); this.openImages(); }
+            if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'o') { e.preventDefault(); this.openImageFolder(); }
+            else if (e.ctrlKey && e.key.toLowerCase() === 'o') { e.preventDefault(); this.openImages(); }
             else if (e.ctrlKey && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); this.undo(); }
             else if ((e.ctrlKey && e.key.toLowerCase() === 'y') || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'z')) { e.preventDefault(); this.redo(); }
             else if (e.ctrlKey && e.key.toLowerCase() === 'a') {
@@ -105,7 +106,14 @@ window.App = Object.assign(window.App || {}, {
             }
             else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'c') { if (typing) return; e.preventDefault(); this.copyImage && this.copyImage(); }
             else if (e.ctrlKey && e.key.toLowerCase() === 'c') { if (!typing) this.copyElement(); }
-            else if (e.ctrlKey && e.key.toLowerCase() === 'v') { if (typing) return; e.preventDefault(); this.pasteElement(); }
+            else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'v') { if (typing) return; e.preventDefault(); this.pasteImageFromClipboard(); }
+            else if (e.ctrlKey && e.key.toLowerCase() === 'v') {
+                if (typing) return;
+                e.preventDefault();
+                // 有元素剪贴板时保持原行为;否则尝试把系统剪贴板里的截图/图片导入
+                if (this._elClip) this.pasteElement();
+                else this.pasteImageFromClipboard();
+            }
             else if ((e.key === 'Delete' || e.key === 'Backspace') && !typing) {
                 e.preventDefault();
                 // 优先处理批量勾选的照片(Ctrl+A 全选后按 Delete = 删掉全部勾选的)。
@@ -189,7 +197,11 @@ window.App = Object.assign(window.App || {}, {
             const types = Array.from(e.dataTransfer && e.dataTransfer.types || []);
             const osDrop = types.some(t => String(t).toLowerCase() === 'files');
             const files = osDrop ? Array.from(e.dataTransfer.files || []) : [];
-            if (files.length) this.addImageFiles(files);
+            if (!files.length) return;
+            // 统一走路径:文件与文件夹都能处理,HEIC 由主进程解码
+            const paths = files.map(f => window.qingframe.getPathForFile(f)).filter(Boolean);
+            if (!paths.length) { this.setStatus('无法读取拖入文件的路径'); return; }
+            this.importPaths(paths);
         });
     },
 

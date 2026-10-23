@@ -20,6 +20,24 @@ protocol.registerSchemesAsPrivileged([
 const { readExif } = require('./exif-read');
 // EXIF 写回:导出 JPEG 时把原图 EXIF 移植进成品(默认剥 GPS),任何失败静默回退。
 const exifWrite = require('./exif-write');
+// HEIC/HEIF 解码:Chromium 不支持 HEIC,主进程转 JPEG 后经 qflocal:// 交给渲染进程。
+const { isHeic, heicFileToJpeg, HEIC_EXTS } = require('./heic');
+// HEIC 的 EXIF 走 exifr(自定义 exif-read 只认 JPEG);输出与 exifSummary 同字段。
+const { readHeicExif } = require('./heic-exif');
+
+// 照片导入支持的扩展名(HEIC 由主进程解码,对渲染进程透明)
+const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp'].concat(HEIC_EXTS.map(e => e.slice(1)));
+const IMAGE_FILTERS = [{ name: '图片', extensions: IMAGE_EXTS }];
+
+// 照片 EXIF 统一入口:JPEG 走轻量头部解析,HEIC 走 exifr;HEIC 读不到时返回空结果。
+async function readPhotoExif(filePath) {
+    if (isHeic(filePath)) {
+        const exif = await readHeicExif(filePath);
+        if (exif && Object.keys(exif).length) return exif;
+        return {};
+    }
+    return readExif(filePath);
+}
 
 if (!app.requestSingleInstanceLock()) {
     // 静默退出会把"我明明重启了却还是旧代码"变成一个查不出来的谜:
@@ -66,16 +84,27 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
-    protocol.handle('qflocal', (request) => {
+    protocol.handle('qflocal', async (request) => {
         try {
             const u = new URL(request.url);
             const filePath = u.searchParams.get('p');
             if (!filePath || !fs.existsSync(filePath)) return new Response('Not Found', { status: 404 });
+            // HEIC/HEIF:Chromium 无法解码,先转成 JPEG 再返回;其他格式保持零拷贝流式读取。
+            if (isHeic(filePath)) {
+                try {
+                    const jpg = await heicFileToJpeg(filePath);
+                    return new Response(jpg, { headers: { 'content-type': 'image/jpeg' } });
+                } catch (e) {
+                    console.warn('[heic] 解码失败:', e && e.message);
+                    return new Response('HEIC decode failed', { status: 415 });
+                }
+            }
             return net.fetch(pathToFileURL(filePath).href);
         } catch (e) {
             return new Response('Not Found', { status: 404 });
         }
     });
+    cleanupPasteDir();
     createWindow();
 
     // ── 自动更新:仅打包后(app.isPackaged)生效;启动静默检查,事件经 webContents 推给渲染进程做 UI ──
@@ -716,18 +745,83 @@ ipcMain.handle('save-prefs', (_e, prefs) => {
     return { ok: true };
 });
 
+// ── 照片收集:文件/文件夹拖放与「导入文件夹」共用 ──
+// 递归深度与数量都设上限,避免误拖整个磁盘或 node_modules 时卡死。
+const IMAGE_EXT_SET = new Set(IMAGE_EXTS);
+const collectImageFiles = async (inputPaths, limit) => {
+    const out = [];
+    const seen = new Set();
+    let skipped = 0;
+    const max = limit || 1000;
+    const walk = async (p, depth) => {
+        if (out.length >= max || depth > 8) return;
+        let st;
+        try { st = await fs.promises.stat(p); } catch (e) { skipped++; return; }
+        if (st.isDirectory()) {
+            let entries = [];
+            try { entries = await fs.promises.readdir(p, { withFileTypes: true }); } catch (e) { skipped++; return; }
+            entries.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }));
+            for (const ent of entries) {
+                if (out.length >= max) break;
+                if (ent.name.startsWith('.')) continue;
+                await walk(path.join(p, ent.name), depth + 1);
+            }
+            return;
+        }
+        if (!st.isFile()) { skipped++; return; }
+        const ext = path.extname(p).slice(1).toLowerCase();
+        if (!IMAGE_EXT_SET.has(ext)) { skipped++; return; }
+        const real = path.resolve(p);
+        if (seen.has(real)) return;
+        seen.add(real);
+        out.push({ name: path.basename(p), path: real, size: st.size });
+    };
+    for (const p of inputPaths) await walk(String(p || ''), 0);
+    return { items: out, skipped };
+};
+
+// EXIF 头部解析很便宜,但仍限制 6 并发,批量导入几百张时不让主进程排队太久。
+const attachExif = async (items) => {
+    const out = new Array(items.length);
+    let next = 0;
+    const worker = async () => {
+        for (;;) {
+            const i = next++;
+            if (i >= items.length) return;
+            out[i] = Object.assign({}, items[i], { exif: await readPhotoExif(items[i].path) });
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, items.length) }, worker));
+    return out;
+};
+
+// 粘贴图片落在 userData/paste:草稿恢复仍能找到文件;启动时清掉 7 天前的旧文件。
+const pasteDir = () => path.join(app.getPath('userData'), 'paste');
+const cleanupPasteDir = async () => {
+    const dir = pasteDir();
+    try {
+        const names = await fs.promises.readdir(dir);
+        const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
+        for (const n of names) {
+            const fp = path.join(dir, n);
+            const st = await fs.promises.stat(fp).catch(() => null);
+            if (st && st.mtimeMs < cutoff) await fs.promises.unlink(fp).catch(() => {});
+        }
+    } catch (e) { /* 目录不存在时忽略 */ }
+};
+
 ipcMain.handle('open-image', async () => {
     const st = loadState();
     const { canceled, filePaths } = await dialog.showOpenDialog({
         title: '选择照片',
         defaultPath: validDir(st.lastOpenDir) ? st.lastOpenDir : undefined,
-        filters: [{ name: '图片', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }],
+        filters: IMAGE_FILTERS,
         properties: ['openFile']
     });
     if (canceled || filePaths.length === 0) return null;
     saveState({ lastOpenDir: path.dirname(filePaths[0]) });
     const fp = filePaths[0];
-    return { name: path.basename(fp), path: fp, size: fs.statSync(fp).size, exif: await readExif(fp) };
+    return { name: path.basename(fp), path: fp, size: fs.statSync(fp).size, exif: await readPhotoExif(fp) };
 });
 
 ipcMain.handle('open-images', async () => {
@@ -735,19 +829,59 @@ ipcMain.handle('open-images', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
         title: '选择照片（可多选，第一张会成为当前主图）',
         defaultPath: validDir(st.lastOpenDir) ? st.lastOpenDir : undefined,
-        filters: [{ name: '图片', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }],
+        filters: IMAGE_FILTERS,
         properties: ['openFile', 'multiSelections']
     });
     if (canceled || !filePaths.length) return null;
     saveState({ lastOpenDir: path.dirname(filePaths[0]) });
     // 并发解析 EXIF:头部读取后单张约 1ms,但串行 await 会线性累加(Promise.all 保序)
     const items = await Promise.all(filePaths.map(async (fp) => ({
-        name: path.basename(fp), path: fp, size: fs.statSync(fp).size, exif: await readExif(fp)
+        name: path.basename(fp), path: fp, size: fs.statSync(fp).size, exif: await readPhotoExif(fp)
     })));
     return items;
 });
 
-ipcMain.handle('read-exif', (_e, filePath) => readExif(String(filePath || '')));
+// 拖放:渲染进程只拿得到 File 对象,这里把路径交给主进程统一递归收集(含文件夹)
+ipcMain.handle('collect-images', async (_e, paths) => {
+    if (!Array.isArray(paths) || !paths.length) return { items: [], skipped: 0 };
+    const r = await collectImageFiles(paths);
+    return { items: await attachExif(r.items), skipped: r.skipped };
+});
+
+ipcMain.handle('open-image-folder', async () => {
+    const st = loadState();
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: '选择照片文件夹（含子文件夹）',
+        defaultPath: validDir(st.lastOpenDir) ? st.lastOpenDir : undefined,
+        properties: ['openDirectory']
+    });
+    if (canceled || !filePaths.length) return null;
+    saveState({ lastOpenDir: filePaths[0] });
+    const r = await collectImageFiles([filePaths[0]]);
+    return { items: await attachExif(r.items), skipped: r.skipped };
+});
+
+// 从系统剪贴板读图片(截图/网页复制):落盘为 PNG,后续与普通导入完全一致
+ipcMain.handle('read-clipboard-image', async () => {
+    try {
+        const img = clipboard.readImage();
+        if (!img || img.isEmpty()) return null;
+        const dir = pasteDir();
+        await fs.promises.mkdir(dir, { recursive: true });
+        const fp = path.join(dir, `paste-${Date.now()}.png`);
+        await fs.promises.writeFile(fp, img.toPNG());
+        const size = img.getSize();
+        return {
+            name: path.basename(fp), path: fp, size: fs.statSync(fp).size,
+            width: size.width, height: size.height, exif: {}
+        };
+    } catch (e) {
+        console.warn('[clipboard] 读取图片失败:', e && e.message);
+        return null;
+    }
+});
+
+ipcMain.handle('read-exif', (_e, filePath) => readPhotoExif(String(filePath || '')));
 
 // 贴纸 / 自定义图标:体积小且须内嵌进模板(导出/导入不丢),仍走 base64 dataUrl
 ipcMain.handle('open-sticker-image', async () => {
