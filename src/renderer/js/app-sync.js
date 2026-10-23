@@ -22,6 +22,12 @@ window.App = Object.assign(window.App || {}, {
         const applied = this.cloneTemplate();
         if (!applied) return 0;
         delete applied.puzzle;
+        // 横竖混排自适应(模板页签 cbSyncAdapt,默认开):目标图与源图尺寸/方向不一致时,
+        // 边距与圆角按目标尺寸换算,避免"横向调好的边框同步到竖图后留白比例失衡"。
+        // 关闭时保持旧口径:逐字复制边距。
+        const adapt = !(typeof this.$ === 'function') || !this.$('cbSyncAdapt') || this.$('cbSyncAdapt').checked;
+        const srcEl = this.image.el;
+        const srcW = srcEl ? srcEl.naturalWidth : 0, srcH = srcEl ? srcEl.naturalHeight : 0;
         const overwrite = list.filter(i => !!this.getTpl(this.images[i]));
         if (opts && opts.confirm && overwrite.length && !window.confirm(
             `将把当前边框同步到 ${list.length} 张照片，其中 ${overwrite.length} 张已有边框会被覆盖。\n\n继续?`)) {
@@ -33,6 +39,10 @@ window.App = Object.assign(window.App || {}, {
             const im = this.images[i];
             if (!im) continue;
             const tgtSnap = JSON.parse(JSON.stringify(applied));
+            const tgtEl = im.el;
+            if (adapt && srcW > 0 && srcH > 0 && tgtEl && tgtEl.naturalWidth > 0) {
+                this._adaptTplToSize(tgtSnap, srcW, srcH, tgtEl.naturalWidth, tgtEl.naturalHeight);
+            }
             const prev = this.getTpl(im);
             // 贴纸/自由文字/拼图：源图的不带过去（沿用旧口径），目标图自己的保留 ——
             // 这三类随各图独立记忆，同步只动边框本身
@@ -77,6 +87,38 @@ window.App = Object.assign(window.App || {}, {
         }
         if (count && typeof this.scheduleDraft === 'function') this.scheduleDraft();
         return count;
+    },
+
+    // 尺寸/方向适配:把按源图调好的绝对边距换算到目标图尺寸。
+    //   · 四边各自按同轴比例缩放(top/bottom×ky,left/right×kx):横→竖时竖直留白相对变厚、
+    //     水平留白相对变薄,视觉比例与源图一致;参数条等"贴照片下沿"的内容方向不变,不交换轴;
+    //   · refTop/refBottom/refLeft/refRight(统一边距的基准值)同比例换算,globalMargin 保持不变;
+    //   · 圆角按几何均值 √(kx·ky) 缩放(圆角同时受两个方向约束,取折中);
+    //   · 显式 paramFontSize(>0,绝对 px)同样按几何均值缩放;0(自适应)不动,引擎会按目标图重算。
+    _adaptTplToSize(tpl, sw, sh, tw, th) {
+        if (!tpl || sw <= 0 || sh <= 0 || tw <= 0 || th <= 0) return;
+        const kx = tw / sw, ky = th / sh;
+        const kr = Math.sqrt(kx * ky);
+        const m = tpl.baseMargin;
+        if (m) {
+            const scalePair = (valKey, refKey, k) => {
+                if (m[valKey] != null) m[valKey] = Math.max(0, Math.round(m[valKey] * k));
+                if (m[refKey] != null) m[refKey] = Math.max(0, Math.round(m[refKey] * k));
+            };
+            scalePair('marginTop', 'refTop', ky);
+            scalePair('marginBottom', 'refBottom', ky);
+            scalePair('marginLeft', 'refLeft', kx);
+            scalePair('marginRight', 'refRight', kx);
+        }
+        const cc = tpl.cornerConfig;
+        if (cc && kr !== 1) {
+            ['cornerRadiusAll', 'cornerRadiusTL', 'cornerRadiusTR', 'cornerRadiusBL', 'cornerRadiusBR'].forEach(k => {
+                if (cc[k] != null) cc[k] = Math.max(0, Math.round(cc[k] * kr));
+            });
+        }
+        if (tpl.paramFontSize > 0 && kr !== 1) {
+            tpl.paramFontSize = Math.max(2, Math.round(tpl.paramFontSize * kr));
+        }
     },
 
     // 单张同步：右键菜单「同步边框」（落在单张缩略图上）。指向明确，不弹覆盖确认
