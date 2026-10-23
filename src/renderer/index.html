@@ -396,6 +396,10 @@
                                 <label>EXIF 参数条</label>
                                 <input type="checkbox" id="cbExifText" class="ctl-chk" checked="checked" />
                             </div>
+                            <div class="param-row chk-row">
+                                <label>等效焦距换算</label>
+                                <input type="checkbox" id="cbFocalEq" class="ctl-chk" title="按机型画幅把实际焦距换算成 35mm 等效,如 50mm → (75mm 等效);手机照片不支持" />
+                            </div>
                         </div>
                     </div>
 
@@ -1053,6 +1057,7 @@
     <div id="errToast" class="err-toast"></div>
 
     <script src="js/errguard.js"></script>
+    <script src="js/cropfactor.js"></script>
     <script src="js/exif.js"></script>
     <script src="js/presets.js"></script>
     <script src="js/engine.js"></script>

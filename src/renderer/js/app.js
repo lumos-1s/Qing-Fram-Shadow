@@ -1055,6 +1055,7 @@ window.App = {
         if (fgv > 0) le.filmGrainEnable = 1;
 
         if ($('cbExifText')) decor.exifAutoText = $('cbExifText').checked ? 1 : 0;
+        if ($('cbFocalEq')) this.template.focalEq = $('cbFocalEq').checked ? 1 : 0;
         decor.cornerDecorEnable = ($('cbCornerDecor') && $('cbCornerDecor').checked) ? 1 : 0;
         decor.cornerDecorType = $('cbCornerDecorType') ? $('cbCornerDecorType').value : 'line';
         decor.cornerDecorSize = $('slCornerDecorSize') ? parseInt($('slCornerDecorSize').value, 10) : 30;
@@ -1081,7 +1082,15 @@ window.App = {
         const el = $('exifLine'), txt = $('exifLineText');
         if (el && txt) {
             if (m && (m.brand || m.model || m.focal || m.aperture || m.iso || m.shutter)) {
-                const parts = [m.brand && m.model ? `${m.brand} ${m.model}` : (m.brand || m.model), m.focal, m.aperture, m.iso, m.shutter].filter(Boolean);
+                // 等效焦距开着时,预览行与成片水印保持同一口径
+                let focal = m.focal || '';
+                if ((this.template.focalEq || 0) === 1 && focal) {
+                    const auto = (this.image && this.image.exif) || {};
+                    const make = m.brand || auto.make || '';
+                    const model = m.model || auto.model || '';
+                    if (window.CropFactor) focal = window.CropFactor.formatFocalWithEq(focal, make, model);
+                }
+                const parts = [m.brand && m.model ? `${m.brand} ${m.model}` : (m.brand || m.model), focal, m.aperture, m.iso, m.shutter].filter(Boolean);
                 txt.textContent = parts.join(' · ');
                 el.style.display = '';
             } else { el.style.display = 'none'; }
@@ -1320,6 +1329,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             this.syncCornerDecorState();
 
             if ($('cbExifText')) $('cbExifText').checked = (decor.exifAutoText || 0) === 1;
+            if ($('cbFocalEq')) $('cbFocalEq').checked = (this.template.focalEq || 0) === 1;
 
             this.refreshElList();
             this.refreshTemplateFields();
@@ -2066,7 +2076,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
 
         // 复选框 -> onSettingCommit
         const chks = ['cbCornerLock', 'cbShadow', 'cbGlow', 'cbTearEnable',
-            'cbVignette', 'cbLightLeak', 'cbCornerDecor', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText'];
+            'cbVignette', 'cbLightLeak', 'cbCornerDecor', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq'];
         chks.forEach(id => {
             const el = $(id);
             if (el) el.addEventListener('change', () => this.onSettingCommit());

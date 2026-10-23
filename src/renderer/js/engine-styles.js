@@ -4679,6 +4679,14 @@ const w = natW;
         const rawPf = t.paramFontSize != null ? t.paramFontSize : 35;
         const autoPf = Math.max(20, Math.min(64, Math.round(Math.min(iw, ih) / 45)));
         const cam = cameraFor(styleName, iw, ih, exif);
+        // 等效焦距换算(可选,cbFocalEq → t.focalEq):按机型画幅把实际焦距显示为 35mm 等效。
+        // 只在照片真实带品牌/型号 EXIF 时换算;引擎的随机演示参数与手机照片(画幅无公认系数)
+        // 都保持原样。cam 是 cameraFor 每次新建的对象,原地改 focal 不影响别处。
+        if ((t.focalEq || 0) === 1 && (exif.make || exif.model) && exif.focal
+            && camHasData(exif) && typeof window !== 'undefined' && window.CropFactor) {
+            const withEq = window.CropFactor.formatFocalWithEq(exif.focal, exif.make, exif.model);
+            if (withEq && withEq !== exif.focal) cam.focal = withEq;
+        }
         // 相机品牌->logo 图(勾选 brandLogo 且按品牌名匹配到品牌池时预载)
         // 变体按背景明暗选:同一品牌有黑白两版时,深背景用 White、浅背景用 Black/Color。
         let brandLogoImg = null, brandLogoData = '';
