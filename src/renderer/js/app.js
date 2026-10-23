@@ -2170,6 +2170,8 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         bindBtn('btnImportTemplate', () => this.importTemplate());
         bindBtn('btnExportConfig', () => this.exportConfig());
         bindBtn('btnImportConfig', () => this.importConfig());
+        bindBtn('btnCopyShareCode', () => this.copyShareCode());
+        bindBtn('btnImportShareCode', () => this.importShareCode());
         bindBtn('btnCamLibSave', () => this.saveCurrentCamLib());
         bindBtn('btnCamLibRename', () => this.renameCamLibEntry());
         bindBtn('btnCamLibDel', () => this.deleteCamLibEntry());

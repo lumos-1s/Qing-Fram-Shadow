@@ -286,6 +286,77 @@ window.App = Object.assign(window.App || {}, {
         this.setStatus(`已导入配置「${r.name}」（照片不变，边框/参数已还原）`);
     },
 
+    /* ══ 模板分享码 ══
+       把「导出配置」同一份 bundle 压成一段可复制的文本(QFSCFG1:<base64>),粘贴即可导入。
+       用途:不开文件传输,聊天窗口/邮件/评论区直接发;配合仓库 Discussions 的模板分享区用。
+       照片不带(与导出配置同口径);含自定义 Logo 的模板分享码会比较大(base64 图像数据),属预期。 */
+
+    // Unicode 安全的 JSON ↔ base64(TextEncoder 中转,避免 btoa 对中文抛异常)
+    _jsonToB64(json) {
+        const bytes = new TextEncoder().encode(json);
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+            bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        }
+        return btoa(bin);
+    },
+    _b64ToJson(b64) {
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new TextDecoder().decode(bytes);
+    },
+
+    async copyShareCode() {
+        if (!this.template) { this.setStatus('没有可分享的配置'); return; }
+        this.syncModelFromUI();
+        const name = (this.$('tfTemplateName') && this.$('tfTemplateName').value.trim()) || '我的配置';
+        const bundle = {
+            v: 1,
+            kind: 'qfs-config',
+            app: 'qingframe-web',
+            name,
+            exportedAt: new Date().toISOString(),
+            template: this.cloneTemplate()
+        };
+        const code = 'QFSCFG1:' + this._jsonToB64(JSON.stringify(bundle));
+        try {
+            await navigator.clipboard.writeText(code);
+            this.setStatus(`分享码已复制(约 ${Math.round(code.length / 1024)} KB),直接粘贴发给对方即可`);
+        } catch (e) {
+            this.setStatus('复制失败：' + (e && e.message || e));
+        }
+    },
+
+    async importShareCode() {
+        const text = await this.promptText('粘贴分享码(QFSCFG1: 开头),确认后导入', '');
+        if (text == null) return; // 用户取消
+        const code = String(text).replace(/\s+/g, '');
+        if (!code) { this.setStatus('分享码为空'); return; }
+        if (code.indexOf('QFSCFG1:') !== 0) { this.setStatus('导入失败：不是有效的分享码(应以 QFSCFG1: 开头)'); return; }
+        let data;
+        let shareName = '';
+        try {
+            data = JSON.parse(this._b64ToJson(code.slice(8)));
+        } catch (e) {
+            this.setStatus('导入失败：分享码内容无法识别(可能复制不完整)');
+            return;
+        }
+        if (!data || typeof data !== 'object') { this.setStatus('导入失败：分享码内容无法识别'); return; }
+        if (data.kind === 'qfs-config' && data.template && typeof data.template === 'object') { shareName = String(data.name || ''); data = data.template; }
+        if (!data || typeof data !== 'object' || typeof data.photoFrameStyle !== 'string') {
+            this.setStatus('导入失败：不是有效的清框影配置分享码');
+            return;
+        }
+        this.onSettingCommit();
+        this.template = JSON.parse(JSON.stringify(data));
+        this.normalizeTemplate();
+        this.saveCurrentTemplate();
+        this.refreshUI();
+        this.scheduleRender(true);
+        this.setStatus(`已从分享码导入「${(shareName || data.templateName || '未命名配置')}」（照片不变，边框/参数已还原）`);
+    },
+
     applyQuickPreset(kind) {
         if (!this.presets.length) { this.setStatus('预设库未加载'); return; }
         this.onSettingCommit();
