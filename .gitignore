@@ -18,3 +18,9 @@ shared/brandlogos/
 
 # NSIS 打包临时目录(信任区,避免火绒拦截)
 .build-tmp/
+
+# SignPath workflow 的临时上传/下载目录(CI 生成,不提交)
+signpath/app/
+signpath/app-signed/
+signpath/installers/
+signpath/installers-signed/

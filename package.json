@@ -54,6 +54,9 @@
     "app:dir": "electron-builder --win --dir",
     "verify:dist": "node tools/verify-dist.js",
     "verify:pkg": "node tools/verify-dist.js --installers",
+    "prepare:app-update": "node tools/prepare-app-update.js",
+    "refresh:release": "node tools/refresh-release-metadata.js",
+    "verify:signatures": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-signatures.ps1",
     "release": "electron-builder --win --dir && node tools/verify-dist.js && electron-builder --win && node tools/verify-dist.js --installers",
     "release:publish": "electron-builder --win --dir && node tools/verify-dist.js && electron-builder --win --publish always && node tools/verify-dist.js --installers",
     "dist": "electron-builder --win && node tools/verify-dist.js --installers",
@@ -88,7 +91,11 @@
       "target": [
         "nsis",
         "portable"
-      ]
+      ],
+      "signtoolOptions": {
+        "publisherName": "CN=SignPath Foundation, O=SignPath Foundation, L=Lewes, S=Delaware, C=US"
+      },
+      "verifyUpdateCodeSignature": true
     },
     "nsis": {
       "oneClick": false,
@@ -106,7 +113,8 @@
     "@electron/asar": "^3.4.1",
     "electron": "^31.0.0",
     "electron-builder": "^26.0.0",
-    "eslint": "^8.57.0"
+    "eslint": "^8.57.0",
+    "js-yaml": "^4.3.2"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"

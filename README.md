@@ -41,6 +41,13 @@
 
 > **English** — A Windows desktop app for framing photos locally: 84 presets, 88 frame styles, live frame/light/logo/EXIF controls, reusable templates, collage, grid slicing and batch export. No account, no uploads.
 
+<a id="download"></a>
+## 下载 · Download
+
+从 [GitHub Releases](https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases) 下载 Windows 安装版（NSIS）或便携版。
+
+**Free code signing provided by SignPath.io, certificate by SignPath Foundation.** Windows release builds are produced by GitHub Actions and signed through SignPath Foundation; see the [code signing policy](./CODE_SIGNING.md). Until the first signed release is published, existing releases remain unsigned.
+
 ## 核心功能 · Features
 
 - **84 个内置模板 · 88 种边框风格** — 杂志、拍立得、撕纸、胶带、邮票、报纸、胶片、渐变卡、漫画分镜、3D 卡、签名纪念与头像叠加，以及证件照、自动取色边框等快速预设；选中即套用，再继续微调。
@@ -159,6 +166,14 @@ npm run verify:pkg    # 另加安装包核验：Setup.exe 体积与 latest.yml �
 > 预设与纹理的期望数量从 `shared/` 实测，不写死在脚本里——加了预设就不必再改校验脚本。
 
 </details>
+
+## 代码签名政策 · Code signing policy
+
+**Free code signing provided by SignPath.io, certificate by SignPath Foundation.**
+
+Windows 发布包由 GitHub Actions 从本仓库构建，并通过 SignPath Foundation 签名。系统会显示发布者为 **SignPath Foundation**。签名范围、团队角色、审批流程与验签方法见 [`CODE_SIGNING.md`](./CODE_SIGNING.md)；联网与隐私说明见 [`PRIVACY.md`](./PRIVACY.md)。
+
+> 当前状态：SignPath 接入正在准备中。在首个签名版本发布前，GitHub Releases 上的 Windows 产物仍是未签名版本。Current status: SignPath onboarding is in progress; releases published before the first signed build are unsigned.
 
 ## 素材与许可 · Assets & License
 

@@ -1,0 +1,21 @@
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file path="Qingframe-Setup-${version}-x64.exe"
+             product-name="清框影"
+             product-version="${version}"
+             file-version="${version}"
+             company-name="Qingframe">
+      <authenticode-sign hash-algorithm="sha256" />
+    </pe-file>
+    <pe-file path="Qingframe-Portable-${version}-x64.exe"
+             product-name="清框影"
+             product-version="${version}"
+             file-version="${version}"
+             company-name="Qingframe">
+      <authenticode-sign hash-algorithm="sha256" />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>
