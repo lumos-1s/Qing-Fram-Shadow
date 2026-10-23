@@ -25,7 +25,7 @@ window.App = Object.assign(window.App || {}, {
         // 横竖混排自适应(模板页签 cbSyncAdapt,默认开):目标图与源图尺寸/方向不一致时,
         // 边距与圆角按目标尺寸换算,避免"横向调好的边框同步到竖图后留白比例失衡"。
         // 关闭时保持旧口径:逐字复制边距。
-        const adapt = !this.$('cbSyncAdapt') || this.$('cbSyncAdapt').checked;
+        const adapt = !(typeof this.$ === 'function') || !this.$('cbSyncAdapt') || this.$('cbSyncAdapt').checked;
         const srcEl = this.image.el;
         const srcW = srcEl ? srcEl.naturalWidth : 0, srcH = srcEl ? srcEl.naturalHeight : 0;
         const overwrite = list.filter(i => !!this.getTpl(this.images[i]));
