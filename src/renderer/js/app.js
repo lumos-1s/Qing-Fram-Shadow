@@ -1073,7 +1073,43 @@ window.App = {
         const manual = {};
         v.forEach(([k, val]) => { if (val) manual[k] = val; });
         this.template.manualExif = Object.keys(manual).length ? manual : null;
+        this.syncFilmDate();
         this.updateExifLine();
+    },
+
+    // 胶片日期角标(cbFilmDate/tfFilmDate → decor.textLines 里一条 filmDate 标记的自由文字):
+    // 复用现成的元素体系(画布拖拽 / 缩放 / 模板保存 / .qfs 序列化 / 全部相框风格渲染),
+    // 样式锁定为橙色胶片机日期印记;关闭开关即整条摘除,不留残渣。
+    syncFilmDate() {
+        const $ = this.$;
+        const t = this.template;
+        if (!t) return;
+        const decor = t.decorConfig || (t.decorConfig = {});
+        if (!decor.textLines) decor.textLines = [];
+        const enable = $('cbFilmDate') && $('cbFilmDate').checked;
+        const line = decor.textLines.find(l => l && l.filmDate === 1);
+        if (!enable) {
+            const i = decor.textLines.indexOf(line);
+            if (i >= 0) decor.textLines.splice(i, 1);
+            return;
+        }
+        const text = ($('tfFilmDate') ? String($('tfFilmDate').value).trim() : '') || "'98 7 12";
+        if (!line) {
+            // 默认落位:画布右下角(与自由文字 x/y 同一口径);用户可在画布上拖动微调
+            const cv = this.dom && this.dom.canvas;
+            const w = (cv && cv.width) || 1000, h = (cv && cv.height) || 800;
+            decor.textLines.push({
+                filmDate: 1, align: 'free',
+                text: text,
+                x: Math.round(w * 0.87), y: Math.round(h * 0.915),
+                fontSize: Math.max(14, Math.round(h * 0.028)),
+                fontFamily: 'Arial', fontWeight: 700,
+                colorHex: 'ffa22e', opacity: 92,
+                letterSpacing: 1,
+            });
+        } else {
+            line.text = text;
+        }
     },
 
     updateExifLine() {
@@ -1330,6 +1366,11 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
 
             if ($('cbExifText')) $('cbExifText').checked = (decor.exifAutoText || 0) === 1;
             if ($('cbFocalEq')) $('cbFocalEq').checked = (this.template.focalEq || 0) === 1;
+
+            // 胶片日期角标回显:开关跟 textLines 里有无 filmDate 行走,文字输入框保持用户手输内容
+            const fdLine = ((this.template.decorConfig && this.template.decorConfig.textLines) || []).find(l => l && l.filmDate === 1);
+            if ($('cbFilmDate')) $('cbFilmDate').checked = !!fdLine;
+            if ($('tfFilmDate') && fdLine) $('tfFilmDate').value = String(fdLine.text || '');
 
             this.refreshElList();
             this.refreshTemplateFields();
@@ -2076,7 +2117,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
 
         // 复选框 -> onSettingCommit
         const chks = ['cbCornerLock', 'cbShadow', 'cbGlow', 'cbTearEnable',
-            'cbVignette', 'cbLightLeak', 'cbCornerDecor', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq'];
+            'cbVignette', 'cbLightLeak', 'cbCornerDecor', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq', 'cbFilmDate'];
         chks.forEach(id => {
             const el = $(id);
             if (el) el.addEventListener('change', () => this.onSettingCommit());
@@ -2103,7 +2144,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             el.addEventListener('change', () => this.onSettingCommit());
         });
         const texts = ['tfExifBrand', 'tfExifModel', 'tfExifFocal', 'tfExifAperture', 'tfExifIso', 'tfExifShutter',
-            'tfStrokeDash', 'tfTemplateName', 'tfTemplateTag', 'tfCapLine1', 'tfCapLine2'];
+            'tfStrokeDash', 'tfTemplateName', 'tfTemplateTag', 'tfCapLine1', 'tfCapLine2', 'tfFilmDate'];
         texts.forEach(id => {
             const el = $(id);
             if (!el) return;
