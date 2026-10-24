@@ -80,6 +80,23 @@ window.App = {
         } catch (_) {}
     },
 
+    // macOS 显示 ⌘,Windows/Linux 显示 Ctrl
+    modKeyLabel() {
+        return (window.qingframe && window.qingframe.isMac) ? '⌘' : 'Ctrl';
+    },
+
+    // 静态 HTML 里的 title/kbd 是按 Windows 写的;macOS 启动后统一替换显示。
+    // 动态 title 在设置处自己用 modKeyLabel(),这里只处理首屏已有节点。
+    adaptMacLabels() {
+        if (!(window.qingframe && window.qingframe.isMac)) return;
+        document.querySelectorAll('[title]').forEach(el => {
+            if (el.title && el.title.includes('Ctrl')) el.title = el.title.replace(/Ctrl/g, '⌘');
+        });
+        document.querySelectorAll('kbd').forEach(el => {
+            if (el.textContent.trim() === 'Ctrl') el.textContent = '⌘';
+        });
+    },
+
     init() {
         this.initSplash();
         this.cacheDom();
@@ -93,8 +110,9 @@ window.App = {
         this.setupShortcuts();
         this.setupPanelInteractions();
         // 工具栏按钮tooltip
+        const mod = this.modKeyLabel();
         const tips = {
-            btnUndo: '撤销 (Ctrl+Z)', btnRedo: '重做 (Ctrl+Y)',
+            btnUndo: `撤销 (${mod}+Z)`, btnRedo: `重做 (${mod}+Y)`,
             btnReset: '重置', btnRandom: '随机预设',
             btnFit: '适应窗口', btnOpen: '导入照片',
         };
@@ -102,6 +120,7 @@ window.App = {
             const el = document.getElementById(id);
             if (el) el.title = tip;
         });
+        this.adaptMacLabels();
         document.querySelectorAll('.pg-title.collapsible').forEach(t => {
             if (t._bound) return;
             t._bound = true;
@@ -612,7 +631,7 @@ window.App = {
             const sel = this.selectedEls[0];
             if (sel && sel.kind) {
                 // 元素操作:Ctrl+滚轮 旋转,普通滚轮 缩放
-                const rot = e.ctrlKey || e.shiftKey;
+                const rot = e.metaKey || e.ctrlKey || e.shiftKey;
                 this.nudgeElement(sel, rot ? 'rot' : 'scale', e.deltaY < 0 ? 1 : -1);
                 return;
             }
@@ -839,6 +858,7 @@ window.App = {
         });
         // 桌面右键菜单:拼图格子 / 画布空白处
         canvas.addEventListener('contextmenu', e => {
+            const mod = this.modKeyLabel();
             const pk = this.tplPuzzle();
             if (pk) {
                 const hp = this.puzzleHitTest(e);
@@ -870,11 +890,11 @@ window.App = {
                 ['对比原图 (空格按住)', () => this.toggleCompare && this.toggleCompare()],
                 ['旋转 90°', () => this.rotateCurrentPhoto()],
                 ['—', null],
-                ['撤销 (Ctrl+Z)', () => this.undo()],
-                ['重做 (Ctrl+Y)', () => this.redo()],
+                [`撤销 (${mod}+Z)`, () => this.undo()],
+                [`重做 (${mod}+Y)`, () => this.redo()],
                 ['—', null],
-                ['复制图片 (Ctrl+Shift+C)', () => this.copyImage && this.copyImage()],
-                ['粘贴剪贴板图片 (Ctrl+Shift+V)', () => this.pasteImageFromClipboard()],
+                [`复制图片 (${mod}+Shift+C)`, () => this.copyImage && this.copyImage()],
+                [`粘贴剪贴板图片 (${mod}+Shift+V)`, () => this.pasteImageFromClipboard()],
                 ['导出图片', () => this.doExport && this.doExport()],
             ]);
         });
@@ -2038,7 +2058,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             t.title = im.name;
             t.addEventListener('click', e => {
                 // 单击 = 选中并切换为当前主图(恢复该图自己的边框模板);Ctrl/Shift+单击 = 追加/取消多选
-                if (e.shiftKey || e.ctrlKey) { e.stopPropagation(); this.toggleSelect(i); return; }
+                if (e.shiftKey || e.ctrlKey || e.metaKey) { e.stopPropagation(); this.toggleSelect(i); return; }
                 this.selectImage(i);
             });
             const cb = document.createElement('input');

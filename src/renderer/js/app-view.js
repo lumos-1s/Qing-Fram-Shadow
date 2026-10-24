@@ -76,7 +76,10 @@ window.App = Object.assign(window.App || {}, {
     },
 
     setupShortcuts() {
+        // macOS 用 Command,Windows/Linux 用 Ctrl;其余逻辑完全一致
+        const isMac = !!(window.qingframe && window.qingframe.isMac);
         document.addEventListener('keydown', e => {
+            const mod = isMac ? e.metaKey : e.ctrlKey;
             // 输入框/文本域聚焦时不触发快捷键(避免打字冲突)
             const tag = (document.activeElement && document.activeElement.tagName) || '';
             // range 滑块(透明度/缩放/旋转)聚焦不算打字:否则拖完滑块按 Delete 删不掉选中元素
@@ -85,13 +88,15 @@ window.App = Object.assign(window.App || {}, {
                 const itype = ((document.activeElement.type) || 'text').toLowerCase();
                 typing = ['text', 'search', 'number', 'password', 'email', 'url', 'tel'].includes(itype);
             }
-            if (typing && !e.ctrlKey) return;
+            if (typing && !mod) return;
+            // 文本编辑里 Cmd/Ctrl+A/Z/Y 交给系统,不要抢成画布全选/撤销
+            if (typing && ['a', 'z', 'y'].includes(e.key.toLowerCase())) return;
 
-            if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'o') { e.preventDefault(); this.openImageFolder(); }
-            else if (e.ctrlKey && e.key.toLowerCase() === 'o') { e.preventDefault(); this.openImages(); }
-            else if (e.ctrlKey && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); this.undo(); }
-            else if ((e.ctrlKey && e.key.toLowerCase() === 'y') || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'z')) { e.preventDefault(); this.redo(); }
-            else if (e.ctrlKey && e.key.toLowerCase() === 'a') {
+            if (mod && e.shiftKey && e.key.toLowerCase() === 'o') { e.preventDefault(); this.openImageFolder(); }
+            else if (mod && e.key.toLowerCase() === 'o') { e.preventDefault(); this.openImages(); }
+            else if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); this.undo(); }
+            else if ((mod && e.key.toLowerCase() === 'y') || (mod && e.shiftKey && e.key.toLowerCase() === 'z')) { e.preventDefault(); this.redo(); }
+            else if (mod && e.key.toLowerCase() === 'a') {
                 e.preventDefault();
                 // 有图片时全选缩略图(批量勾选),再按一次取消全选;无图片则回退画布元素全选
                 if (this.images && this.images.length) {
@@ -104,10 +109,10 @@ window.App = Object.assign(window.App || {}, {
                     this.selectAllEls();
                 }
             }
-            else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'c') { if (typing) return; e.preventDefault(); this.copyImage && this.copyImage(); }
-            else if (e.ctrlKey && e.key.toLowerCase() === 'c') { if (!typing) this.copyElement(); }
-            else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'v') { if (typing) return; e.preventDefault(); this.pasteImageFromClipboard(); }
-            else if (e.ctrlKey && e.key.toLowerCase() === 'v') {
+            else if (mod && e.shiftKey && e.key.toLowerCase() === 'c') { if (typing) return; e.preventDefault(); this.copyImage && this.copyImage(); }
+            else if (mod && e.key.toLowerCase() === 'c') { if (!typing) this.copyElement(); }
+            else if (mod && e.shiftKey && e.key.toLowerCase() === 'v') { if (typing) return; e.preventDefault(); this.pasteImageFromClipboard(); }
+            else if (mod && e.key.toLowerCase() === 'v') {
                 if (typing) return;
                 e.preventDefault();
                 // 有元素剪贴板时保持原行为;否则尝试把系统剪贴板里的截图/图片导入
@@ -149,10 +154,10 @@ window.App = Object.assign(window.App || {}, {
                 }
             }
             // 新增快捷键
-            else if (e.ctrlKey && e.key.toLowerCase() === 'e') { e.preventDefault(); this.doExport(); }
-            else if (e.ctrlKey && e.key.toLowerCase() === 'd') { e.preventDefault(); this.applyBorderToSelected(); }
-            else if (e.ctrlKey && e.key === '0') { e.preventDefault(); this.fitZoom(); }
-            else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); this.saveTemplate(); }
+            else if (mod && e.key.toLowerCase() === 'e') { e.preventDefault(); this.doExport(); }
+            else if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); this.applyBorderToSelected(); }
+            else if (mod && e.key === '0') { e.preventDefault(); this.fitZoom(); }
+            else if (mod && e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); this.saveTemplate(); }
             // Compositor 借鉴:选中元素时方向键微移(1px/次,Shift=10px);无选中元素时左右键仍切图
             else if (this.selectedEls && this.selectedEls.length && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
                 e.preventDefault();

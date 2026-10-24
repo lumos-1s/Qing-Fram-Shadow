@@ -1,0 +1,57 @@
+name: Build macOS (unsigned)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'src/**'
+      - 'shared/**'
+      - 'build/**'
+      - 'tools/render-app-icon.js'
+      - '.github/workflows/build-macos.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 60
+    env:
+      # 未配置 Developer ID 时明确关闭自动发现/自动签名,产物为 unsigned DMG/ZIP
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Static checks
+        run: npm run check
+
+      - name: Build universal DMG + ZIP
+        run: npx electron-builder --mac --universal --publish never --config.mac.notarize=false
+
+      - name: Show artifacts
+        run: ls -lh dist
+
+      - name: Upload unsigned macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qingframe-macos-unsigned
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/latest-mac.yml
+          if-no-files-found: error
+          retention-days: 14
