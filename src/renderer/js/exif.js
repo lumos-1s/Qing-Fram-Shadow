@@ -94,6 +94,7 @@
             // parseIFD 以 EXIF tag 数字为键;统一常量
             const T_MAKE = 0x010F, T_MODEL = 0x0110, T_ORIENT = 0x0112;
             const T_EXPOSURE = 0x829A, T_FNUMBER = 0x829D, T_ISO = 0x8827, T_ISO2 = 0x8833, T_FOCAL = 0x920A;
+            const T_FOCAL35 = 0xA405; // FocalLengthIn35mmFilm:相机/手机写好的 35mm 等效焦距
             const str = v => Array.isArray(v) ? (v[0] || '') : v;
             if (raw[T_MAKE]) out.make = String(str(raw[T_MAKE])).trim();
             if (raw[T_MODEL]) out.model = String(str(raw[T_MODEL])).trim();
@@ -106,6 +107,9 @@
             if (fn) { const v = num(fn.num, fn.den); if (v) out.aperture = 'f/' + v.toFixed(1).replace('.0', ''); }
             const fl = raw[T_FOCAL];
             if (fl) { const v = num(fl.num, fl.den); if (v) out.focal = Math.round(v) + 'mm'; }
+            // 0xA405 是 SHORT;parseIFD 在 count=1 时给数字,count>1 时给数组,两种都收
+            const f35 = Array.isArray(raw[T_FOCAL35]) ? raw[T_FOCAL35][0] : raw[T_FOCAL35];
+            if (Number(f35) > 0) out.focal35 = Number(f35);
             const isoRaw = raw[T_ISO] != null ? raw[T_ISO] : raw[T_ISO2];
             const isoV = Array.isArray(isoRaw) ? isoRaw[0] : isoRaw;
             if (isoV) out.iso = 'ISO' + isoV;

@@ -894,8 +894,6 @@ function backdropStats(ctx, x, y, w, h) {
     ctx.save();
     const fs = autoExifTextSize(line, cw);
     ctx.font = `${line.fontWeight || 400} ${fs}px "${line.fontFamily || 'Microsoft YaHei'}"`;
-    // 字距(0/1 档):胶片日期角标等场合需要松字距;letterSpacing 属于 canvas 绘图状态,由 save/restore 兜底
-    if (line.letterSpacing) ctx.letterSpacing = Math.round(fs * 0.1) + 'px';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     let fill = rgba(parseColor(line.colorHex, line.opacity));

@@ -4671,6 +4671,7 @@ const w = natW;
             make: (manual.brand || '').trim() || auto.make || '',
             model: (manual.model || '').trim() || auto.model || '',
             focal: (manual.focal || '').trim() || auto.focal || '',
+            focal35: Number(auto.focal35) || 0,
             aperture: (manual.aperture || '').trim() || auto.aperture || '',
             iso: (manual.iso || '').trim() || auto.iso || '',
             shutter: (manual.shutter || '').trim() || auto.shutter || '',
@@ -4679,13 +4680,16 @@ const w = natW;
         const rawPf = t.paramFontSize != null ? t.paramFontSize : 35;
         const autoPf = Math.max(20, Math.min(64, Math.round(Math.min(iw, ih) / 45)));
         const cam = cameraFor(styleName, iw, ih, exif);
-        // 等效焦距换算(可选,cbFocalEq → t.focalEq):按机型画幅把实际焦距显示为 35mm 等效。
-        // 只在照片真实带品牌/型号 EXIF 时换算;引擎的随机演示参数与手机照片(画幅无公认系数)
-        // 都保持原样。cam 是 cameraFor 每次新建的对象,原地改 focal 不影响别处。
-        if ((t.focalEq || 0) === 1 && (exif.make || exif.model) && exif.focal
-            && camHasData(exif) && typeof window !== 'undefined' && window.CropFactor) {
-            const withEq = window.CropFactor.formatFocalWithEq(exif.focal, exif.make, exif.model);
-            if (withEq && withEq !== exif.focal) cam.focal = withEq;
+        // 等效焦距(可选,cbFocalEq → t.focalEq):只认 EXIF 里相机写好的
+        // FocalLengthIn35mmFilm(0xA405)。勾选后相机焦距直接显示换算值(35mm → 53mm),
+        // 不再并列实际焦距;没有这个标签就保持实际焦距,不按机型猜画幅。
+        // 手动改过焦距时按原图比例换算,避免把原图的等效值硬套到新焦距上。
+        // cam 是 cameraFor 每次新建的对象,原地改 focal 不影响别处。
+        if ((t.focalEq || 0) === 1 && exif.focal35 > 0 && exif.focal
+            && camHasData(exif) && typeof window !== 'undefined' && window.FocalEq) {
+            const eq = window.FocalEq.equivalentFor(exif.focal, auto.focal, exif.focal35);
+            const converted = window.FocalEq.format(exif.focal, eq);
+            if (converted && converted !== exif.focal) cam.focal = converted;
         }
         // 相机品牌->logo 图(勾选 brandLogo 且按品牌名匹配到品牌池时预载)
         // 变体按背景明暗选:同一品牌有黑白两版时,深背景用 White、浅背景用 Black/Color。
@@ -6607,7 +6611,7 @@ const w = natW;
         // ══ 右侧:品牌+参数,以参数行居中 ══
         const rx = w - pad;
         // 先测参数行宽度
-        const paramStr = (S.exif.focal||'') + '  ' + (S.exif.aperture||'') + '  ' + (S.exif.iso||'') + '  ' + (S.exif.shutter||'');
+        const paramStr = ((S.cam && S.cam.focal) || S.exif.focal || '') + '  ' + (S.exif.aperture||'') + '  ' + (S.exif.iso||'') + '  ' + (S.exif.shutter||'');
         g.font = fs + 'px sans-serif';
         const pw = g.measureText(paramStr).width;
         const cxRight = rx - pw / 2; // 参数行中心x
@@ -6780,7 +6784,7 @@ const w = natW;
 
         // 右侧品牌+参数
         const rx = w - pad;
-        const paramStr = (S.exif.focal||'') + '  ' + (S.exif.aperture||'') + '  ' + (S.exif.iso||'') + '  ' + (S.exif.shutter||'');
+        const paramStr = ((S.cam && S.cam.focal) || S.exif.focal || '') + '  ' + (S.exif.aperture||'') + '  ' + (S.exif.iso||'') + '  ' + (S.exif.shutter||'');
         g.font = fs + 'px sans-serif';
         const pw = g.measureText(paramStr).width;
         const cxRight = rx - pw / 2;

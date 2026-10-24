@@ -22,14 +22,8 @@ const OPTS = {
     reviveValues: false
 };
 
-async function readHeicExif(filePath) {
-    if (!exifr) return {};
-    let raw;
-    try {
-        raw = await exifr.parse(filePath, OPTS);
-    } catch (e) {
-        return {};
-    }
+// 纯映射:和 exifSummary 的字段口径保持一致。抽出来是为了能直接单测,不必造 HEIC 文件。
+function mapHeicExif(raw) {
     if (!raw) return {};
     const out = {};
     if (raw.Make) out.make = String(raw.Make).trim();
@@ -44,10 +38,25 @@ async function readHeicExif(filePath) {
     if (Number.isFinite(f) && f > 0) out.aperture = 'f/' + f.toFixed(1).replace('.0', '');
     const fl = Number(raw.FocalLength);
     if (Number.isFinite(fl) && fl > 0) out.focal = Math.round(fl) + 'mm';
+    // FocalLengthIn35mmFormat = EXIF 0xA405;不同 exifr 版本/文件可能用 Film 命名,两种都收。
+    const f35Raw = raw.FocalLengthIn35mmFormat != null ? raw.FocalLengthIn35mmFormat : raw.FocalLengthIn35mmFilm;
+    const f35 = Number(f35Raw);
+    if (Number.isFinite(f35) && f35 > 0) out.focal35 = f35;
     const isoRaw = Array.isArray(raw.ISO) ? raw.ISO[0] : raw.ISO;
     const iso = Number(isoRaw);
     if (Number.isFinite(iso) && iso > 0) out.iso = 'ISO' + iso;
     return out;
 }
 
-module.exports = { readHeicExif };
+async function readHeicExif(filePath) {
+    if (!exifr) return {};
+    let raw;
+    try {
+        raw = await exifr.parse(filePath, OPTS);
+    } catch (e) {
+        return {};
+    }
+    return mapHeicExif(raw);
+}
+
+module.exports = { readHeicExif, mapHeicExif };

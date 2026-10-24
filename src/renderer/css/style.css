@@ -582,6 +582,10 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
     font-size: 11px; line-height: 1.2; white-space: nowrap;
 }
 .param-row .pval-note:empty { display: none; }
+/* 等效焦距状态说明:可能包含“未写入 0xA405”这类长句,允许换行,不要撑出面板 */
+#focalEqHint { white-space: normal; line-height: 1.45; }
+/* EXIF 参数条状态说明:解释开关只对通用/卡片模板生效,允许换行 */
+#exifTextHint { white-space: normal; line-height: 1.45; }
 .param-row select, .param-row input[type=text], .param-row .ctl-tx, .param-row .ctl-sel, .param-row .ctl-num {
     flex: 1; min-width: 0; border: 1px solid var(--border-strong);
     border-radius: 9px; background: var(--surface); padding: 5px 7px; font-size: 12px; color: var(--text);

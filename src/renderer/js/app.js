@@ -1056,6 +1056,8 @@ window.App = {
 
         if ($('cbExifText')) decor.exifAutoText = $('cbExifText').checked ? 1 : 0;
         if ($('cbFocalEq')) this.template.focalEq = $('cbFocalEq').checked ? 1 : 0;
+        this.updateFocalEqHint();
+        this.updateExifTextHint();
         decor.cornerDecorEnable = ($('cbCornerDecor') && $('cbCornerDecor').checked) ? 1 : 0;
         decor.cornerDecorType = $('cbCornerDecorType') ? $('cbCornerDecorType').value : 'line';
         decor.cornerDecorSize = $('slCornerDecorSize') ? parseInt($('slCornerDecorSize').value, 10) : 30;
@@ -1073,43 +1075,7 @@ window.App = {
         const manual = {};
         v.forEach(([k, val]) => { if (val) manual[k] = val; });
         this.template.manualExif = Object.keys(manual).length ? manual : null;
-        this.syncFilmDate();
         this.updateExifLine();
-    },
-
-    // 胶片日期角标(cbFilmDate/tfFilmDate → decor.textLines 里一条 filmDate 标记的自由文字):
-    // 复用现成的元素体系(画布拖拽 / 缩放 / 模板保存 / .qfs 序列化 / 全部相框风格渲染),
-    // 样式锁定为橙色胶片机日期印记;关闭开关即整条摘除,不留残渣。
-    syncFilmDate() {
-        const $ = this.$;
-        const t = this.template;
-        if (!t) return;
-        const decor = t.decorConfig || (t.decorConfig = {});
-        if (!decor.textLines) decor.textLines = [];
-        const enable = $('cbFilmDate') && $('cbFilmDate').checked;
-        const line = decor.textLines.find(l => l && l.filmDate === 1);
-        if (!enable) {
-            const i = decor.textLines.indexOf(line);
-            if (i >= 0) decor.textLines.splice(i, 1);
-            return;
-        }
-        const text = ($('tfFilmDate') ? String($('tfFilmDate').value).trim() : '') || "'98 7 12";
-        if (!line) {
-            // 默认落位:画布右下角(与自由文字 x/y 同一口径);用户可在画布上拖动微调
-            const cv = this.dom && this.dom.canvas;
-            const w = (cv && cv.width) || 1000, h = (cv && cv.height) || 800;
-            decor.textLines.push({
-                filmDate: 1, align: 'free',
-                text: text,
-                x: Math.round(w * 0.87), y: Math.round(h * 0.915),
-                fontSize: Math.max(14, Math.round(h * 0.028)),
-                fontFamily: 'Arial', fontWeight: 700,
-                colorHex: 'ffa22e', opacity: 92,
-                letterSpacing: 1,
-            });
-        } else {
-            line.text = text;
-        }
     },
 
     updateExifLine() {
@@ -1118,20 +1084,99 @@ window.App = {
         const el = $('exifLine'), txt = $('exifLineText');
         if (el && txt) {
             if (m && (m.brand || m.model || m.focal || m.aperture || m.iso || m.shutter)) {
-                // 等效焦距开着时,预览行与成片水印保持同一口径
+                // 等效焦距开着时,预览行与成片水印保持同一口径:
+                // 直接用换算值替换实际焦距(35mm → 53mm),只认 EXIF 0xA405,不按机型猜画幅。
                 let focal = m.focal || '';
-                if ((this.template.focalEq || 0) === 1 && focal) {
+                if ((this.template.focalEq || 0) === 1 && focal && window.FocalEq) {
                     const auto = (this.image && this.image.exif) || {};
-                    const make = m.brand || auto.make || '';
-                    const model = m.model || auto.model || '';
-                    if (window.CropFactor) focal = window.CropFactor.formatFocalWithEq(focal, make, model);
+                    const eq = window.FocalEq.equivalentFor(focal, auto.focal, auto.focal35);
+                    focal = window.FocalEq.format(focal, eq);
                 }
                 const parts = [m.brand && m.model ? `${m.brand} ${m.model}` : (m.brand || m.model), focal, m.aperture, m.iso, m.shutter].filter(Boolean);
                 txt.textContent = parts.join(' · ');
                 el.style.display = '';
             } else { el.style.display = 'none'; }
         }
-        },
+        this.updateExifTextHint();
+    },
+
+    // 等效焦距状态提示:勾选前就告诉用户“会不会变/变成多少”,
+    // 避免“勾了没反应”被误认为功能坏了。
+    updateFocalEqHint() {
+        const el = this.$('focalEqHint');
+        if (!el) return;
+        const t = this.template;
+        if (!this.image || !t) { el.textContent = '导入照片后显示换算结果'; return; }
+        const auto = (this.image.exif && typeof this.image.exif === 'object') ? this.image.exif : {};
+        const manual = (t.manualExif && typeof t.manualExif === 'object') ? t.manualExif : {};
+        const actual = (manual.focal || '').trim() || auto.focal || '';
+        const f35 = Number(auto.focal35) || 0;
+        if (!(f35 > 0)) {
+            el.textContent = '当前照片未写入 35mm 等效焦距（EXIF 0xA405），勾选后保持实际焦距';
+            return;
+        }
+        if (!actual || !window.FocalEq) {
+            el.textContent = '当前照片缺少实际焦距，无法换算';
+            return;
+        }
+        const eq = window.FocalEq.equivalentFor(actual, auto.focal, f35);
+        if (!(eq > 0)) {
+            el.textContent = '当前照片缺少实际焦距，无法换算';
+            return;
+        }
+        const actualMm = window.FocalEq.parseMm(actual);
+        const actualText = actualMm ? actualMm + 'mm' : actual;
+        if (actualMm && Math.abs(actualMm - eq) < 0.5) {
+            el.textContent = '当前照片为全画幅（等效值=实际值）：' + actualText + '，勾选后不变';
+            return;
+        }
+        const converted = window.FocalEq.format(actual, eq);
+        el.textContent = ((t.focalEq || 0) === 1 ? '已启用：' : '勾选后：') + actualText + ' → ' + converted;
+    },
+
+    // EXIF 参数条状态提示:说明开关的真实作用范围。
+    // 相框风格(photoFrameStyle)由 engine-styles 自己画参数条,buildState.useExif 恒为 true,
+    // 不读取 decor.exifAutoText;只有通用图层/卡片模板走 engine.js 的 drawDecoration 时才生效。
+    updateExifTextHint() {
+        const el = this.$('exifTextHint');
+        if (!el) return;
+        const t = this.template;
+        if (!t) { el.textContent = ''; return; }
+        const pf = String(t.photoFrameStyle || '').toUpperCase();
+        if (pf && pf !== 'NONE') {
+            el.textContent = '仅对通用/卡片模板生效；当前相框风格的参数条由风格自身控制';
+            return;
+        }
+        const decor = t.decorConfig || {};
+        const lines = decor.textLines || [];
+        const anchor = lines.find(l => l && l.text && String(l.text).trim() && (l.align === 'bottom' || l.align === 'exif'));
+        const auto = (this.image && this.image.exif && typeof this.image.exif === 'object') ? this.image.exif : {};
+        const manual = (t.manualExif && typeof t.manualExif === 'object') ? t.manualExif : {};
+        const hasExif = [
+            ['brand', 'make'], ['model', 'model'], ['focal', 'focal'],
+            ['aperture', 'aperture'], ['iso', 'iso'], ['shutter', 'shutter'],
+        ].some(([mk, ak]) => {
+            const mv = manual[mk] != null ? String(manual[mk]).trim() : '';
+            const av = auto[ak] != null ? String(auto[ak]).trim() : '';
+            return !!(mv || av);
+        });
+        const on = (decor.exifAutoText || 0) === 1;
+        if (anchor) {
+            let txt = String(anchor.text).trim();
+            if (txt.length > 18) txt = txt.slice(0, 18) + '…';
+            el.textContent = on
+                ? '已启用：底部“' + txt + '”已替换为 EXIF 参数条'
+                : '勾选后：底部“' + txt + '”会替换为 EXIF 参数条';
+            return;
+        }
+        if (!hasExif) {
+            el.textContent = '当前照片没有 EXIF 参数，勾选后也不会显示';
+            return;
+        }
+        el.textContent = on
+            ? '已启用：照片下方留白显示 EXIF 参数条'
+            : '勾选后：在照片下方留白显示 EXIF 参数条';
+    },
 
     // 全局边距:按参考值等比缩放四边
     applyGlobalMargin(scale, setSlider) {
@@ -1366,11 +1411,8 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
 
             if ($('cbExifText')) $('cbExifText').checked = (decor.exifAutoText || 0) === 1;
             if ($('cbFocalEq')) $('cbFocalEq').checked = (this.template.focalEq || 0) === 1;
-
-            // 胶片日期角标回显:开关跟 textLines 里有无 filmDate 行走,文字输入框保持用户手输内容
-            const fdLine = ((this.template.decorConfig && this.template.decorConfig.textLines) || []).find(l => l && l.filmDate === 1);
-            if ($('cbFilmDate')) $('cbFilmDate').checked = !!fdLine;
-            if ($('tfFilmDate') && fdLine) $('tfFilmDate').value = String(fdLine.text || '');
+            this.updateFocalEqHint();
+            this.updateExifTextHint();
 
             this.refreshElList();
             this.refreshTemplateFields();
@@ -2117,7 +2159,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
 
         // 复选框 -> onSettingCommit
         const chks = ['cbCornerLock', 'cbShadow', 'cbGlow', 'cbTearEnable',
-            'cbVignette', 'cbLightLeak', 'cbCornerDecor', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq', 'cbFilmDate'];
+            'cbVignette', 'cbLightLeak', 'cbCornerDecor', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq'];
         chks.forEach(id => {
             const el = $(id);
             if (el) el.addEventListener('change', () => this.onSettingCommit());
@@ -2144,7 +2186,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             el.addEventListener('change', () => this.onSettingCommit());
         });
         const texts = ['tfExifBrand', 'tfExifModel', 'tfExifFocal', 'tfExifAperture', 'tfExifIso', 'tfExifShutter',
-            'tfStrokeDash', 'tfTemplateName', 'tfTemplateTag', 'tfCapLine1', 'tfCapLine2', 'tfFilmDate'];
+            'tfStrokeDash', 'tfTemplateName', 'tfTemplateTag', 'tfCapLine1', 'tfCapLine2'];
         texts.forEach(id => {
             const el = $(id);
             if (!el) return;
