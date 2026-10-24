@@ -861,6 +861,17 @@ html.dark .icon-pool .icon-cell {
 .about-desc { margin-top: 13px; font-size: 12px; line-height: 1.75; color: var(--text-2); }
 .about-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 14px; }
 .about-actions .mini-btn { flex: 0 0 auto; }
+.mini-btn:disabled { opacity: .55; cursor: default; transform: none; }
+.about-status-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    min-height: 17px; margin-top: 8px; font-size: 11.5px; line-height: 1.45;
+}
+.about-status { color: var(--text-3); }
+.about-status.ok { color: var(--primary); }
+.about-status.warn { color: var(--amber); }
+.about-status.error { color: var(--rose); }
+.about-status-row .about-link, .about-diag-status .about-link { font-size: 11.5px; }
+.about-diag-status { min-height: 16px; margin-top: 7px; overflow-wrap: anywhere; }
 .about-details {
     margin-top: 10px; padding: 9px 11px; border: 1px solid var(--border);
     border-radius: 10px; background: var(--bg-soft);
@@ -898,6 +909,7 @@ html.dark .icon-pool .icon-cell {
     font: inherit; font-size: 11.5px; cursor: pointer;
 }
 .about-link:hover { text-decoration: underline; }
+.about-link:focus-visible { outline-offset: 1px; border-radius: 2px; }
 .about-credits { font-size: 11.5px; line-height: 1.7; color: var(--text-2); }
 .about-legal { font-size: 12px; line-height: 1.75; color: var(--text-2); }
 .about-legal p + p { margin-top: 5px; }

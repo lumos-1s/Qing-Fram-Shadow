@@ -390,6 +390,7 @@ window.App = Object.assign(window.App || {}, {
         this.splashStatus('正在加载预设…');
         try { this.presets = await window.__loadAllPresets(); }
         catch (e) { this.presets = []; }
+        if (typeof this.updateStatsText === 'function') this.updateStatsText();
         this.buildTree();
         this.refreshCamLibSelect();
         // 首帧预设选择不在启动路径上执行:先把窗口/预设树渲染出来,选择推迟到

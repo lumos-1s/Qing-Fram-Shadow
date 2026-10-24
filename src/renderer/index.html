@@ -896,11 +896,11 @@
     </div>
 
     <!-- ═══ 关于弹窗(版本信息 / 检查更新 / 诊断日志) ═══ -->
-    <div id="aboutModal" class="modal-overlay" style="display:none">
-        <div class="modal-card about-card">
+    <div id="aboutModal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" aria-describedby="aboutTagline">
+        <div class="modal-card about-card" tabindex="-1">
             <div class="modal-header">
-                <span class="modal-title">关于 清框影</span>
-                <button id="aboutClose" class="modal-close" title="关闭">&times;</button>
+                <span class="modal-title" id="aboutTitle">关于 清框影</span>
+                <button id="aboutClose" class="modal-close" title="关闭" aria-label="关闭关于窗口">&times;</button>
             </div>
             <div class="modal-body about-body">
                 <div class="about-hero">
@@ -908,17 +908,21 @@
                     <div class="about-hero-text">
                         <div class="about-name">清框影 <span>QingFramShadow</span></div>
                         <div id="aboutInfo" class="about-version">加载中…</div>
-                        <div class="about-tagline">本地照片加框工具 · 照片与设置不上传</div>
+                        <div id="aboutTagline" class="about-tagline">本地照片加框工具 · 照片与设置不上传</div>
                     </div>
                 </div>
 
-                <div class="about-desc">87 个模板、92 种边框风格、EXIF 参数识别、拼图与批量导出，全本地渲染。</div>
+                <div class="about-desc"><span id="aboutStatsText">87 个模板、92 种边框风格</span>、EXIF 参数识别、拼图与批量导出，全本地渲染。</div>
 
                 <div class="about-actions">
                     <button class="mini-btn primary" id="btnAboutCheck" title="检查是否有新版本">检查更新</button>
                     <button class="mini-btn" id="btnAboutIntro" title="重新查看三步上手引导">新手引导</button>
                     <button class="mini-btn" id="btnAboutHome" title="打开 GitHub 项目主页">项目主页</button>
                     <button class="mini-btn" id="btnAboutIssues" title="反馈问题或建议">问题反馈</button>
+                </div>
+                <div class="about-status-row">
+                    <span id="aboutUpdateStatus" class="about-status" role="status" aria-live="polite"></span>
+                    <button class="about-link" id="aboutUpdateAction" type="button" style="display:none"></button>
                 </div>
 
                 <details class="about-details">
@@ -927,7 +931,7 @@
                         <span>导入照片</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>O</kbd></span>
                         <span>导入文件夹</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>O</kbd></span>
                         <span>粘贴剪贴板图片</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>V</kbd></span>
-                        <span>撤销 / 重做</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Z</kbd><span class="about-sep">/</span><kbd>Ctrl</kbd><kbd>Y</kbd></span>
+                        <span>撤销 / 重做</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Z</kbd><span class="about-sep">/</span><kbd>Ctrl</kbd><kbd>Y</kbd><span class="about-sep">/</span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Z</kbd></span>
                         <span>全选照片 / 画布元素</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>A</kbd></span>
                         <span>导出当前图片</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>E</kbd></span>
                         <span>复制图片</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>C</kbd></span>
@@ -940,13 +944,14 @@
                         <span>切换照片</span><span class="about-keys"><kbd>←</kbd><kbd>→</kbd></span>
                         <span>按住对比原图</span><span class="about-keys"><kbd>空格</kbd></span>
                     </div>
-                    <div class="about-note">输入框聚焦时，快捷键暂不生效。</div>
+                    <div class="about-note">输入框聚焦时，无修饰键快捷键停用；A/Z/Y 的全选、撤销、重做保留给文本编辑。</div>
                 </details>
 
                 <details class="about-details">
                     <summary>系统信息与诊断</summary>
                     <div class="about-kv">
                         <span>版本</span><b id="aboutRuntimeVersion">-</b>
+                        <span>安装类型</span><b id="aboutPackageType">-</b>
                         <span>运行时</span><b id="aboutRuntimeElectron">-</b>
                         <span>系统</span><b id="aboutRuntimePlatform">-</b>
                         <span>数据目录</span><code id="aboutDataDir">-</code>
@@ -956,6 +961,7 @@
                         <button class="about-link" id="btnOpenDataDir" title="在资源管理器中打开设置与缓存目录">打开数据目录</button>
                         <button class="about-link" id="btnExportDiag" title="遇到问题时一键打包应用信息与操作记录">导出诊断日志</button>
                     </div>
+                    <div id="aboutDiagStatus" class="about-status about-diag-status" role="status" aria-live="polite"></div>
                 </details>
 
                 <details class="about-details">
@@ -996,7 +1002,7 @@
             <div class="modal-body" style="line-height:1.9;font-size:13px;color:var(--text);">
                 <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">三步上手，全程本地处理，照片与设置不上传。</div>
                 <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>① 导入照片</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">点击左上角「导入照片 / 导入文件夹」，或直接把图片、文件夹拖进窗口；也支持 Ctrl+V 粘贴截图</div></div>
-                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>② 选择边框</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">左侧浏览 87 个模板、92 种边框风格，点一下套用；拼图、九宫格切图也在左侧</div></div>
+                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>② 选择边框</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">左侧浏览 <span id="introStatsText">87 个模板、92 种边框风格</span>，点一下套用；拼图、九宫格切图也在左侧</div></div>
                 <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:6px;"><b>③ 调参导出</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">右侧调整参数 / 签名 / Logo / 品牌水印，满意后点「导出」</div></div>
             </div>
             <div class="modal-actions">

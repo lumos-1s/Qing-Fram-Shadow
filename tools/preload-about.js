@@ -1,0 +1,43 @@
+// 关于页 / 更新状态 / 诊断反馈测试专用 preload。
+// 与 tools/preload-measure.js 分开,避免给其它 Electron 用例引入 updater 定时器。
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('qingframe', {
+    openImage: () => ipcRenderer.invoke('open-image'),
+    openImages: () => ipcRenderer.invoke('open-images'),
+    listPresets: () => ipcRenderer.invoke('list-presets'),
+    loadPreset: (name) => ipcRenderer.invoke('load-preset', name),
+    saveImage: () => ipcRenderer.invoke('save-image-base64'),
+    saveImagesBatch: () => ipcRenderer.invoke('save-images-batch'),
+    pickExportLocation: () => ipcRenderer.invoke('pick-export-location'),
+    writeExportFiles: () => ipcRenderer.invoke('write-export-files'),
+    listLogos: () => ipcRenderer.invoke('list-logos'),
+    listTextures: () => ipcRenderer.invoke('list-textures'),
+    saveTemplate: () => ipcRenderer.invoke('save-template'),
+    listTemplates: () => ipcRenderer.invoke('list-templates'),
+    loadTemplate: () => ipcRenderer.invoke('load-template'),
+    deleteTemplate: () => ipcRenderer.invoke('delete-template'),
+    renameTemplate: () => ipcRenderer.invoke('rename-template'),
+    exportTemplate: () => ipcRenderer.invoke('export-template'),
+    importTemplate: () => ipcRenderer.invoke('import-template'),
+    exportQfs: () => ipcRenderer.invoke('export-qfs'),
+    openQfs: () => ipcRenderer.invoke('open-qfs'),
+    getUser: () => ipcRenderer.invoke('get-user'),
+    saveUser: () => ipcRenderer.invoke('save-user'),
+    logoutUser: () => ipcRenderer.invoke('logout-user'),
+    getPrefs: () => ipcRenderer.invoke('get-prefs'),
+    savePrefs: (p) => ipcRenderer.invoke('save-prefs', p),
+    readExif: () => ipcRenderer.invoke('read-exif'),
+    openStickerImage: () => ipcRenderer.invoke('open-sticker-image'),
+    getAppInfo: () => ipcRenderer.invoke('get-app-info'),
+    platform: process.platform,
+    isMac: process.platform === 'darwin',
+    openExternal: (url) => ipcRenderer.invoke('open-external', url),
+    openDataDir: () => ipcRenderer.invoke('open-data-dir'),
+    copyText: (text) => ipcRenderer.invoke('copy-text', text),
+    saveDiagnosticsFile: (text) => ipcRenderer.invoke('save-diagnostics', text),
+    checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+    startUpdateDownload: () => ipcRenderer.invoke('start-update-download'),
+    quitAndInstall: () => ipcRenderer.invoke('quit-and-install'),
+    onUpdaterEvent: () => () => {}
+});

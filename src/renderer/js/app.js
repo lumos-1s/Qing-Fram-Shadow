@@ -2324,19 +2324,28 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         bindBtn('btnCheckUpdate', () => this.checkUpdates());
         bindBtn('btnAbout', () => this.openAbout());
         bindBtn('aboutClose', () => this.closeAbout());
-        bindBtn('btnAboutCheck', () => { this.closeAbout(); this.checkUpdates(); });
+        bindBtn('btnAboutCheck', () => this.checkUpdatesFromAbout());
         bindBtn('btnAboutIntro', () => { this.closeAbout(); this.showIntroAgain(); });
+        bindBtn('aboutUpdateAction', () => this.aboutUpdateActionClick());
+        const repo = 'https://github.com/lumos-1s/Qing-Fram-Shadow';
         const aboutLinks = {
-            btnAboutHome: 'https://github.com/lumos-1s/Qing-Fram-Shadow-web',
-            btnAboutIssues: 'https://github.com/lumos-1s/Qing-Fram-Shadow-web/issues',
-            btnAboutReleases: 'https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases',
-            btnAboutThirdParty: 'https://github.com/lumos-1s/Qing-Fram-Shadow-web/blob/main/THIRD-PARTY-ASSETS.md',
-            btnAboutLicense: 'https://github.com/lumos-1s/Qing-Fram-Shadow-web/blob/main/LICENSE',
-            btnAboutPrivacy: 'https://github.com/lumos-1s/Qing-Fram-Shadow-web/blob/main/PRIVACY.md',
+            btnAboutHome: repo,
+            btnAboutIssues: repo + '/issues',
+            btnAboutReleases: repo + '/releases',
+            btnAboutThirdParty: repo + '/blob/main/THIRD-PARTY-ASSETS.md',
+            btnAboutLicense: repo + '/blob/main/LICENSE',
+            btnAboutPrivacy: repo + '/blob/main/PRIVACY.md',
         };
         Object.entries(aboutLinks).forEach(([id, url]) => bindBtn(id, () => this.openExternal(url)));
         const aboutModal = $('aboutModal');
         if (aboutModal) aboutModal.addEventListener('click', (e) => { if (e.target === aboutModal) this.closeAbout(); });
+        // 关于弹窗的键盘闭环:Esc 关闭,Tab 在弹窗内循环(关闭后焦点回到触发按钮)。
+        document.addEventListener('keydown', (e) => {
+            const m = $('aboutModal');
+            if (!m || m.style.display === 'none') return;
+            if (e.key === 'Escape') { e.preventDefault(); this.closeAbout(); return; }
+            if (e.key === 'Tab') this.trapFocus(m, e);
+        });
         bindBtn('btnIntroDone', () => this.closeIntro());
         const introModal = $('introModal');
         if (introModal) introModal.addEventListener('click', (e) => { if (e.target === introModal) this.closeIntro(); });
@@ -2767,37 +2776,88 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         });
     },
 
+    // 关于页/新手引导的数量统一从运行时数据生成,避免写死数字后腐烂。
+    updateStatsText() {
+        const presetCount = Array.isArray(this.presets) ? this.presets.length : 0;
+        const caps = window.StyleCaps;
+        const styleCount = (caps && caps.MEASURED) ? Object.keys(caps.MEASURED).length : 0;
+        if (!presetCount || !styleCount) return;
+        const text = presetCount + ' 个模板、' + styleCount + ' 种边框风格';
+        const about = this.$('aboutStatsText');
+        if (about) about.textContent = text;
+        const intro = this.$('introStatsText');
+        if (intro) intro.textContent = text;
+    },
+
     // 打开"关于"弹窗并填充版本/系统信息
     async openAbout() {
+        this._aboutReturnFocus = document.activeElement;
         const api = window.qingframe;
         let info = {};
         try { if (api && api.getAppInfo) info = (await api.getAppInfo()) || {}; } catch (e) {}
+        this._aboutInfo = info;
         const platform = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }[info.platform] || info.platform || '未知系统';
         const arch = { x64: 'x64', arm64: 'ARM64', ia32: 'x86' }[info.arch] || info.arch || '';
         const packageType = !info.packaged ? '开发模式' : (info.portable ? '便携版' : '安装版');
+        const osRelease = info.osRelease || '';
         const setText = (id, text) => { const n = this.$(id); if (n) n.textContent = text; };
         setText('aboutInfo', ['版本 ' + (info.version || '?'), platform + (arch ? ' ' + arch : ''), packageType].join(' · '));
         setText('aboutRuntimeVersion', 'v' + (info.version || '?'));
+        setText('aboutPackageType', packageType);
         setText('aboutRuntimeElectron', 'Electron ' + (info.electron || '?') + ' · Chrome ' + (info.chrome || '?') + ' · Node ' + (info.node || '?'));
-        setText('aboutRuntimePlatform', platform + (arch ? ' ' + arch : ''));
+        setText('aboutRuntimePlatform', platform + (arch ? ' ' + arch : '') + (osRelease ? ' · ' + osRelease : ''));
         setText('aboutDataDir', info.userData || '-');
+        this.updateStatsText();
+        this._setAboutDiagStatus('');
+        this.syncAboutUpdateState();
         const m = this.$('aboutModal');
         if (m) m.style.display = 'flex';
+        setTimeout(() => { const c = this.$('aboutClose'); if (c) c.focus({ preventScroll: true }); }, 0);
+    },
+    // 把 Tab 焦点限制在弹窗内;关闭后由 closeAbout 还给触发按钮。
+    trapFocus(container, e) {
+        const selector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
+        const items = Array.from(container.querySelectorAll(selector)).filter(el => {
+            if (el.hidden || el.getAttribute('aria-hidden') === 'true') return false;
+            const cs = getComputedStyle(el);
+            if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+            return el.getClientRects().length > 0;
+        });
+        if (!items.length) {
+            e.preventDefault();
+            const card = container.querySelector('.about-card');
+            if (card) card.focus();
+            return;
+        }
+        const first = items[0], last = items[items.length - 1];
+        if (!container.contains(document.activeElement)) {
+            e.preventDefault();
+            (e.shiftKey ? last : first).focus();
+            return;
+        }
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     },
     async openExternal(url) {
         const api = window.qingframe;
-        if (!api || !api.openExternal) { this.setStatus('当前无法打开链接'); return; }
-        const r = await api.openExternal(url).catch(() => ({ ok: false }));
-        if (!r || !r.ok) this.setStatus('打开链接失败');
+        if (!api || !api.openExternal) { this.setStatus('当前无法打开链接'); return { ok: false, message: '当前无法打开链接' }; }
+        const r = await api.openExternal(url).catch((e) => ({ ok: false, message: (e && e.message) || '打开链接失败' }));
+        if (!r || !r.ok) this.setStatus('打开链接失败：' + ((r && r.message) || '未知原因'));
+        return r || { ok: false, message: '打开链接失败' };
     },
     closeAbout() {
         const m = this.$('aboutModal');
         if (m) m.style.display = 'none';
+        const back = this._aboutReturnFocus;
+        this._aboutReturnFocus = null;
+        const target = (back && back !== document.body && document.contains(back)) ? back : this.$('btnAbout');
+        if (target && typeof target.focus === 'function') setTimeout(() => target.focus({ preventScroll: true }), 0);
     },
 
     // 新手引导:首次启动展示 3 步上手,点"开始使用"后记 localStorage,不再弹出
     showIntroIfNeeded() {
         try { if (localStorage.getItem('qfs_intro_done') === '1') return; } catch (e) {}
+        this.updateStatsText();
         const m = this.$('introModal');
         if (m) m.style.display = 'flex';
     },
@@ -2809,6 +2869,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
     // 从"关于"重新查看新手引导:先清标记再弹出,下次重启仍按首次逻辑判断
     showIntroAgain() {
         try { localStorage.removeItem('qfs_intro_done'); } catch (e) {}
+        this.updateStatsText();
         const m = this.$('introModal');
         if (m) m.style.display = 'flex';
     },

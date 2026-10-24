@@ -1,8 +1,13 @@
 const { app, BrowserWindow, ipcMain, dialog, protocol, net, shell, nativeImage, clipboard, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { pathToFileURL } = require('url');
 const { createStateStore } = require('./state');
+
+// 仓库改名后统一从这里取,避免菜单 / 更新源 / 下载兜底 / 外链白名单各写一份。
+const REPO_URL = 'https://github.com/lumos-1s/Qing-Fram-Shadow';
+const REPO_PATH = '/lumos-1s/Qing-Fram-Shadow';
 
 // 打包版与开发版数据隔离:发布版用独立 userData,首次启动头像/用户名等默认全空,
 // 也不会读到开发机(含开发者自己)已保存的旧登录数据。
@@ -148,7 +153,7 @@ const setupMacMenu = () => {
             submenu: [
                 {
                     label: '项目主页',
-                    click: () => shell.openExternal('https://github.com/lumos-1s/Qing-Fram-Shadow-web')
+                    click: () => shell.openExternal(REPO_URL)
                 }
             ]
         }
@@ -209,7 +214,7 @@ app.whenReady().then(() => {
     // "Cannot parse releases feed: Unable to find latest version on GitHub"。
     // 检查前并行探测各镜像,按列表顺序取第一个返回合法 JSON(tag_name)的写进 activeProxy;
     // 全部不可用则维持原顺序(检查照旧失败,推给 UI 的文案会被翻译成可读版本)。
-    const CHECK_LATEST_URL = 'https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/latest';
+    const CHECK_LATEST_URL = REPO_URL + '/releases/latest';
     const CHECK_PROBE_TIMEOUT_MS = 5000;
     const probeProxyForCheck = async () => {
         if (GH_PROXIES.length < 2) return; // 用户用 QINGFRAME_PROXY 指定了镜像时尊重其选择
@@ -287,10 +292,10 @@ app.whenReady().then(() => {
     // 这份静态 feed 只作动态取数失败时的兜底(更新检查不会因此断掉, 只是说明退回这条)。
     const FAKE_ATOM_XML = `<?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
-  <title>Qing-Fram-Shadow-web Releases</title>
+  <title>清框影 Releases</title>
   <entry>
     <title>新版本可用</title>
-    <link href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/tag/v0.1.16"/>
+    <link href="${REPO_URL}/releases/tag/v0.1.16"/>
     <content type="html">新增「摄影署名水印」「相机参数水印」预设; 相机参数水印支持背景模糊、圆角、图片缩放与参数字号; 修复「头像纪念」底部透明黑条</content>
   </entry>
 </feed>`;
@@ -332,7 +337,7 @@ app.whenReady().then(() => {
                                 if (!info || !info.tag_name) throw new Error('releases/latest 无 tag_name');
                                 return `<?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
-  <title>Qing-Fram-Shadow-web Releases</title>
+  <title>清框影 Releases</title>
   <entry>
     <title>${esc(info.name || info.tag_name)}</title>
     <link href="${base}/tag/${esc(info.tag_name)}"/>
@@ -489,7 +494,7 @@ app.whenReady().then(() => {
                     const raw = (typeof file.url === 'string') ? file.url : (file.url && file.url.href);
                     const githubUrl = /^https?:\/\//.test(raw || '')
                         ? raw
-                        : `https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases/download/${info.tag}/${raw}`;
+                        : `${REPO_URL}/releases/download/${info.tag}/${raw}`;
                     candidates = await rankProxies(githubUrl);
                     if (candidates) activeProxy = candidates[0];
                 }
@@ -554,16 +559,18 @@ ipcMain.handle('get-app-info', () => ({
     packaged: app.isPackaged,
     // electron-builder 的 portable 目标会注入这两个变量;安装版/开发版没有
     portable: !!(process.env.PORTABLE_EXECUTABLE_DIR || process.env.PORTABLE_EXECUTABLE_FILE),
+    osRelease: os.release(),
     userData: app.getPath('userData'),
     appPath: app.getAppPath()
 }));
 
-// 关于页只允许打开本项目 GitHub 链接,避免渲染进程拿到任意 openExternal 能力
+// 关于页只允许打开本项目 GitHub 链接,避免渲染进程拿到任意 openExternal 能力。
+// 路径必须正好是仓库主页或以 / 结尾,防止 "Qing-Fram-Shadow-xxx" 一类前缀误匹配。
 ipcMain.handle('open-external', async (_e, url) => {
     try {
         const u = new URL(String(url));
-        if (u.protocol !== 'https:' || u.hostname !== 'github.com'
-            || !u.pathname.startsWith('/lumos-1s/Qing-Fram-Shadow-web')) {
+        const pathOk = u.pathname === REPO_PATH || u.pathname.startsWith(REPO_PATH + '/');
+        if (u.protocol !== 'https:' || u.hostname !== 'github.com' || !pathOk) {
             return { ok: false, message: '不允许的链接' };
         }
         await shell.openExternal(u.toString());
@@ -586,6 +593,17 @@ ipcMain.handle('show-item-in-folder', (_e, p) => {
         if (stat.isDirectory()) { shell.openPath(p); return { ok: true, opened: 'dir' }; }
         shell.showItemInFolder(p);
         return { ok: true, opened: 'file' };
+    } catch (e) { return { ok: false, message: e && e.message }; }
+});
+
+// 复制文本到剪贴板:关于页诊断信息优先走这里,避免 file:// 下 navigator.clipboard
+// 权限差异导致复制失败。限制 2MB,防止误传超大内容卡住主进程。
+ipcMain.handle('copy-text', (_e, text) => {
+    try {
+        const s = String(text || '');
+        if (s.length > 2 * 1024 * 1024) return { ok: false, message: '文本过大' };
+        clipboard.writeText(s);
+        return { ok: true };
     } catch (e) { return { ok: false, message: e && e.message }; }
 });
 

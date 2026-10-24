@@ -562,6 +562,171 @@ window.App = Object.assign(window.App || {}, {
         const nm = document.getElementById('updateNotesModal');
         if (nm) nm.addEventListener('click', (e) => { if (e.target === nm) this.hideUpdateNotes(); });
     },
+
+    // ── 关于页内联状态(避免结果落到被弹窗遮住的主界面状态栏) ──
+    _setAboutUpdateStatus(text, tone) {
+        const el = document.getElementById('aboutUpdateStatus');
+        if (!el) return;
+        el.textContent = text || '';
+        el.className = 'about-status' + (tone ? ' ' + tone : '');
+    },
+    _setAboutUpdateAction(label, mode) {
+        const el = document.getElementById('aboutUpdateAction');
+        if (!el) return;
+        if (!label) {
+            el.style.display = 'none';
+            el.textContent = '';
+            el.dataset.mode = '';
+            return;
+        }
+        el.textContent = label;
+        el.dataset.mode = mode || '';
+        el.style.display = '';
+    },
+    _setAboutDiagStatus(text, tone) {
+        const el = document.getElementById('aboutDiagStatus');
+        if (!el) return;
+        el.textContent = text || '';
+        el.className = 'about-status about-diag-status' + (tone ? ' ' + tone : '');
+    },
+    _aboutReleasesUrl() {
+        return 'https://github.com/lumos-1s/Qing-Fram-Shadow/releases';
+    },
+    // 打开关于页时,把之前静默检查/下载留下的状态带进来。
+    syncAboutUpdateState() {
+        const info = this._aboutInfo || {};
+        this._setAboutUpdateAction('');
+        if (!info.packaged) { this._setAboutUpdateStatus('开发模式：不检查更新'); return; }
+        if (info.portable) {
+            this._setAboutUpdateStatus('便携版不支持自动更新', 'warn');
+            this._setAboutUpdateAction('前往 Releases', 'releases');
+            return;
+        }
+        const st = this._updater && this._updater.state;
+        if (st === 'available') {
+            const v = this._updateInfo && this._updateInfo.version;
+            this._setAboutUpdateStatus('发现新版本' + (v ? ' v' + v : ''), 'ok');
+            this._setAboutUpdateAction('立即更新', 'download');
+        } else if (st === 'not-available') {
+            this._setAboutUpdateStatus('已是最新版本', 'ok');
+        } else if (st === 'progress') {
+            const p = (typeof this._updateProgress === 'number') ? ' ' + this._updateProgress + '%' : '…';
+            this._setAboutUpdateStatus('正在下载更新' + p);
+        } else if (st === 'downloaded') {
+            this._setAboutUpdateStatus('更新已下载，重启生效', 'ok');
+            this._setAboutUpdateAction('立即重启', 'install');
+        } else if (st === 'error') {
+            this._setAboutUpdateStatus('更新失败：' + (this._updaterError || '网络异常'), 'error');
+            this._setAboutUpdateAction(this._updateInfo ? '重试下载' : '重试检查', this._updateInfo ? 'download' : 'check');
+        } else {
+            this._setAboutUpdateStatus('');
+        }
+    },
+    // updater 事件到达时同步关于页;即使弹窗没开也记录状态,下次打开可恢复。
+    _syncAboutUpdaterEvent(ev) {
+        const info = this._aboutInfo || {};
+        if (!info.packaged || info.portable) return;
+        if (ev.type === 'available') {
+            this._setAboutUpdateStatus('发现新版本' + (ev.version ? ' v' + ev.version : ''), 'ok');
+            this._setAboutUpdateAction('立即更新', 'download');
+        } else if (ev.type === 'not-available') {
+            this._setAboutUpdateStatus('已是最新版本', 'ok');
+            this._setAboutUpdateAction('');
+        } else if (ev.type === 'progress') {
+            const p = Math.max(0, Math.min(100, Math.round((ev.percent || 0) * 10) / 10));
+            this._setAboutUpdateStatus('正在下载更新 ' + p + '%');
+            this._setAboutUpdateAction('');
+        } else if (ev.type === 'downloaded') {
+            this._setAboutUpdateStatus('更新已下载，重启生效', 'ok');
+            this._setAboutUpdateAction('立即重启', 'install');
+        } else if (ev.type === 'error') {
+            this._setAboutUpdateStatus('更新失败：' + (ev.message || '网络异常'), 'error');
+            this._setAboutUpdateAction(this._updateInfo ? '重试下载' : '重试检查', this._updateInfo ? 'download' : 'check');
+        }
+    },
+    async checkUpdatesFromAbout() {
+        const info = this._aboutInfo || {};
+        const api = window.qingframe;
+        if (!info.packaged) { this._setAboutUpdateStatus('开发模式：不检查更新'); return; }
+        if (info.portable) {
+            this._setAboutUpdateStatus('便携版不支持自动更新', 'warn');
+            this._setAboutUpdateAction('前往 Releases', 'releases');
+            return;
+        }
+        if (!api || !api.checkForUpdates) {
+            this._setAboutUpdateStatus('当前版本不支持自动更新', 'warn');
+            this._setAboutUpdateAction('前往 Releases', 'releases');
+            return;
+        }
+        // 下载中/已下载时不要再触发检查,避免把状态拉回"检查中"。
+        const st = this._updater && this._updater.state;
+        if (st === 'progress') {
+            this._setAboutUpdateStatus('更新正在下载中…');
+            return;
+        }
+        if (st === 'downloaded') {
+            this._setAboutUpdateStatus('更新已下载，重启生效', 'ok');
+            this._setAboutUpdateAction('立即重启', 'install');
+            return;
+        }
+        if (this._aboutChecking) return;
+        this._aboutChecking = true;
+        this._aboutUpdateSeen = '';
+        this._updateProgress = null;
+        this._updaterError = '';
+        const btn = document.getElementById('btnAboutCheck');
+        if (btn) btn.disabled = true;
+        this._setAboutUpdateAction('');
+        this._setAboutUpdateStatus('正在检查更新…');
+        const r = await api.checkForUpdates().catch((e) => ({ ok: false, message: (e && e.message) || '检查失败' }));
+        this._aboutChecking = false;
+        if (btn) btn.disabled = false;
+        if (r && r.ok) {
+            if (!this._aboutUpdateSeen) this._setAboutUpdateStatus('检查完成，未发现新版本', 'ok');
+        } else {
+            const msg = (r && r.message) || '网络异常';
+            if (/当前版本不支持在线自动更新/.test(msg)) {
+                // 未生成 app-update.yml 的目录版 / 不支持自动更新的构建:不是网络错误,给手动入口。
+                this._setAboutUpdateStatus('当前版本不支持自动更新', 'warn');
+                this._setAboutUpdateAction('前往 Releases', 'releases');
+            } else if (this._aboutUpdateSeen !== 'error') {
+                this._setAboutUpdateStatus('检查更新失败：' + msg, 'error');
+                this._setAboutUpdateAction('重试检查', 'check');
+            }
+        }
+    },
+    async aboutStartDownload() {
+        const api = window.qingframe;
+        if (!api || !api.startUpdateDownload) {
+            this._setAboutUpdateStatus('当前版本不支持自动更新', 'warn');
+            this._setAboutUpdateAction('前往 Releases', 'releases');
+            return;
+        }
+        this._setAboutUpdateAction('');
+        this._setAboutUpdateStatus('正在准备下载更新…');
+        const r = await api.startUpdateDownload().catch((e) => ({ ok: false, message: (e && e.message) || '下载失败' }));
+        if (r && r.ok === false) {
+            this._setAboutUpdateStatus('下载更新失败：' + ((r && r.message) || '网络异常'), 'error');
+            this._setAboutUpdateAction('重试下载', 'download');
+        } else if (this._aboutUpdateSeen !== 'downloaded') {
+            // 正常情况下 downloaded 事件会先到;这里兜底,避免一直停在"准备下载"。
+            this._setAboutUpdateStatus('更新已下载，重启生效', 'ok');
+            this._setAboutUpdateAction('立即重启', 'install');
+        }
+    },
+    async aboutUpdateActionClick() {
+        const el = document.getElementById('aboutUpdateAction');
+        const mode = el ? el.dataset.mode : '';
+        const api = window.qingframe;
+        if (mode === 'releases') {
+            const r = await this.openExternal(this._aboutReleasesUrl());
+            if (!r || !r.ok) this._setAboutUpdateStatus('打开 Releases 失败，请检查网络', 'error');
+            return;
+        }
+        if (mode === 'install') { if (api && api.quitAndInstall) api.quitAndInstall(); return; }
+        if (mode === 'download') { await this.aboutStartDownload(); return; }
+        if (mode === 'check') { await this.checkUpdatesFromAbout(); }
+    },
     showUpdateNotes() {
         const m = document.getElementById('updateNotesModal'), b = document.getElementById('updateNotesBody');
         if (!m || !b) return;
@@ -582,6 +747,11 @@ window.App = Object.assign(window.App || {}, {
     _onUpdaterEvent(ev) {
         if (!this._updater) this._updater = {};
         this._updater.state = ev.type;
+        this._aboutUpdateSeen = ev.type;
+        if (ev.type === 'available') this._updateInfo = { version: ev.version, releaseNotes: ev.releaseNotes };
+        else if (ev.type === 'progress') this._updateProgress = Math.max(0, Math.min(100, Math.round((ev.percent || 0) * 10) / 10));
+        else if (ev.type === 'error') this._updaterError = ev.message || '网络异常';
+        this._syncAboutUpdaterEvent(ev);
         const $ = this.$;
         const b = $('updateBanner'), t = $('updateBannerText');
         if (!b || !t) return;
@@ -665,10 +835,12 @@ window.App = Object.assign(window.App || {}, {
         const packageType = !info.packaged ? '开发模式' : (info.portable ? '便携版' : '安装版');
         const lines = [];
         lines.push('清框影 诊断日志');
-        lines.push('导出时间: ' + new Date().toLocaleString('zh-CN', { hour12: false }));
+        lines.push('生成时间: ' + new Date().toLocaleString('zh-CN', { hour12: false }));
         lines.push('版本: ' + (info.version || '未知'));
+        lines.push('安装类型: ' + packageType);
         lines.push('Electron: ' + (info.electron || '') + ' · Chrome: ' + (info.chrome || '') + ' · Node: ' + (info.node || ''));
-        lines.push('平台: ' + (info.platform || '') + ' ' + (info.arch || '') + ' (' + packageType + ')');
+        lines.push('平台: ' + (info.platform || '') + ' ' + (info.arch || ''));
+        lines.push('系统版本: ' + (info.osRelease || '未知'));
         lines.push('userData: ' + (info.userData || ''));
         lines.push('appPath: ' + (info.appPath || ''));
         lines.push('');
@@ -678,35 +850,91 @@ window.App = Object.assign(window.App || {}, {
     },
     async exportDiagnostics() {
         const api = window.qingframe;
-        if (!api || !api.getAppInfo) { this.setStatus('开发模式下不可导出诊断日志'); return; }
+        if (!api || !api.getAppInfo) {
+            this._setAboutDiagStatus('开发模式下不可导出诊断日志', 'warn');
+            this.setStatus('开发模式下不可导出诊断日志');
+            return;
+        }
         this.diagLog('导出诊断日志');
+        this._setAboutDiagStatus('正在生成诊断日志…');
         const text = await this.buildDiagnosticsText();
+        if (!text) {
+            this._setAboutDiagStatus('诊断信息生成失败', 'error');
+            this.setStatus('诊断信息生成失败');
+            return;
+        }
         // 不用 catch 吞错:把 invoke 的真实失败原因透传出来(常见:主进程没重启,handler 未注册)
         let r;
         try { r = await api.saveDiagnosticsFile(text); }
         catch (e) { r = { ok: false, message: (e && e.message) || '保存失败' }; }
-        if (r && r.ok) this.setStatus('诊断日志已保存: ' + (r.path || ''));
-        else if (r && r.canceled) this.setStatus('已取消导出诊断日志');
-        else this.setStatus('诊断日志导出失败: ' + ((r && r.message) || '未知原因'));
+        if (r && r.ok) {
+            const msg = '诊断日志已保存: ' + (r.path || '');
+            this._setAboutDiagStatus(msg, 'ok');
+            this.setStatus(msg);
+        } else if (r && r.canceled) {
+            this._setAboutDiagStatus('已取消导出诊断日志');
+            this.setStatus('已取消导出诊断日志');
+        } else {
+            const msg = '诊断日志导出失败: ' + ((r && r.message) || '未知原因');
+            this._setAboutDiagStatus(msg, 'error');
+            this.setStatus(msg);
+        }
     },
     async copyDiagnostics() {
         const api = window.qingframe;
-        if (!api || !api.getAppInfo) { this.setStatus('开发模式下不可复制诊断信息'); return; }
+        if (!api || !api.getAppInfo) {
+            this._setAboutDiagStatus('开发模式下不可复制诊断信息', 'warn');
+            this.setStatus('开发模式下不可复制诊断信息');
+            return;
+        }
         this.diagLog('复制诊断信息');
+        this._setAboutDiagStatus('正在生成诊断信息…');
         const text = await this.buildDiagnosticsText();
-        if (!text) return;
-        try {
-            await navigator.clipboard.writeText(text);
+        if (!text) {
+            this._setAboutDiagStatus('诊断信息生成失败', 'error');
+            this.setStatus('诊断信息生成失败');
+            return;
+        }
+        let ok = false, message = '';
+        // 主进程 clipboard 最稳;保留 navigator.clipboard 作为旧主进程/测试环境的回退。
+        if (api.copyText) {
+            const r = await api.copyText(text).catch((e) => ({ ok: false, message: (e && e.message) || '剪贴板不可用' }));
+            ok = !!(r && r.ok);
+            message = (r && r.message) || '';
+        }
+        if (!ok) {
+            try {
+                await navigator.clipboard.writeText(text);
+                ok = true;
+            } catch (e) {
+                message = (e && e.message) || message || '剪贴板不可用';
+            }
+        }
+        if (ok) {
+            this._setAboutDiagStatus('诊断信息已复制到剪贴板', 'ok');
             this.setStatus('诊断信息已复制到剪贴板');
-        } catch (e) {
-            this.setStatus('复制失败: ' + ((e && e.message) || '剪贴板不可用'));
+        } else {
+            const msg = '复制失败: ' + (message || '剪贴板不可用');
+            this._setAboutDiagStatus(msg, 'error');
+            this.setStatus(msg);
         }
     },
     async openDataDir() {
         const api = window.qingframe;
-        if (!api || !api.openDataDir) { this.setStatus('当前无法打开数据目录'); return; }
+        if (!api || !api.openDataDir) {
+            this._setAboutDiagStatus('当前无法打开数据目录', 'warn');
+            this.setStatus('当前无法打开数据目录');
+            return;
+        }
+        this._setAboutDiagStatus('正在打开数据目录…');
         const r = await api.openDataDir().catch(() => ({ ok: false }));
-        if (!r || !r.ok) this.setStatus('打开数据目录失败: ' + ((r && r.message) || '未知原因'));
+        if (r && r.ok) {
+            this._setAboutDiagStatus('已打开数据目录', 'ok');
+        } else {
+            const msg = '打开数据目录失败: ' + ((r && r.message) || '未知原因');
+            this._setAboutDiagStatus(msg, 'error');
+            this.setStatus(msg);
+        }
     },
 
     // 导出时元素尺寸/锚点偏移要乘的倍数。抽成纯函数便于单测(见 tools/test-engine-invariants.js ⑥):

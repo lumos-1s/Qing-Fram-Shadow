@@ -12,9 +12,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/stargazers"><img src="https://img.shields.io/github/stars/lumos-1s/Qing-Fram-Shadow-web?style=flat-square&color=blue" alt="GitHub stars"></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/github/license/lumos-1s/Qing-Fram-Shadow-web?style=flat-square&color=green" alt="MIT License"></a>
-  <a href="https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases"><img src="https://img.shields.io/badge/version-0.1.18-orange?style=flat-square" alt="Version 0.1.18"></a>
+  <a href="https://github.com/lumos-1s/Qing-Fram-Shadow/stargazers"><img src="https://img.shields.io/github/stars/lumos-1s/Qing-Fram-Shadow?style=flat-square&color=blue" alt="GitHub stars"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/lumos-1s/Qing-Fram-Shadow?style=flat-square&color=green" alt="MIT License"></a>
+  <a href="https://github.com/lumos-1s/Qing-Fram-Shadow/releases"><img src="https://img.shields.io/badge/version-0.1.18-orange?style=flat-square" alt="Version 0.1.18"></a>
   <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-31-47848F?style=flat-square" alt="Electron 31"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4?style=flat-square" alt="Windows 10/11">
 </p>
@@ -44,7 +44,7 @@
 <a id="download"></a>
 ## 下载 · Download
 
-从 [GitHub Releases](https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases) 下载 Windows 安装版（NSIS）或便携版。
+从 [GitHub Releases](https://github.com/lumos-1s/Qing-Fram-Shadow/releases) 下载 Windows 安装版（NSIS）或便携版。
 
 **当前 Windows 产物未签名。** 安装包由 GitHub Actions 从本仓库构建；首次运行会遇到 SmartScreen「未知发布者」提示，处理方式见下方[安装提示](#smart-screen)，校验方式见[代码签名政策](./CODE_SIGNING.md)。
 
@@ -87,7 +87,7 @@
 
 ## 快速开始 · Quick Start
 
-**直接使用**：从 [Releases](https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases) 下载 Windows 安装版或便携版。
+**直接使用**：从 [Releases](https://github.com/lumos-1s/Qing-Fram-Shadow/releases) 下载 Windows 安装版或便携版。
 
 **三步出片**：
 

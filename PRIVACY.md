@@ -16,7 +16,7 @@ The application checks GitHub Releases for updates:
 
 - On startup (after a short delay), and when you choose "check for updates".
 - It requests release metadata from
-  `https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases`.
+  `https://github.com/lumos-1s/Qing-Fram-Shadow/releases`.
 - To find a working source, it may also contact the public mirrors
   `https://ghproxy.net`, `https://ghfast.top`, and `https://gh-proxy.com`, as
   configured in `src/main/index.js`. You can override the mirror with the
@@ -37,7 +37,7 @@ manually if you want a complete cleanup.
 ## Contact
 
 Privacy questions can be raised at
-<https://github.com/lumos-1s/Qing-Fram-Shadow-web/issues>.
+<https://github.com/lumos-1s/Qing-Fram-Shadow/issues>.
 
 Except for the update checks described above, this program will not transfer
 any information to other networked systems unless specifically requested by the
