@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('qingframe', {
     platform: process.platform,
     isMac: process.platform === 'darwin',
     showItemInFolder: (p) => ipcRenderer.invoke('show-item-in-folder', p),
+    openExternal: (url) => ipcRenderer.invoke('open-external', url),
+    openDataDir: () => ipcRenderer.invoke('open-data-dir'),
     copyImage: (dataUrl) => ipcRenderer.invoke('copy-image', dataUrl),
     saveDiagnosticsFile: (text) => ipcRenderer.invoke('save-diagnostics', text),
     checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),

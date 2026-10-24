@@ -552,9 +552,32 @@ ipcMain.handle('get-app-info', () => ({
     platform: process.platform,
     arch: process.arch,
     packaged: app.isPackaged,
+    // electron-builder 的 portable 目标会注入这两个变量;安装版/开发版没有
+    portable: !!(process.env.PORTABLE_EXECUTABLE_DIR || process.env.PORTABLE_EXECUTABLE_FILE),
     userData: app.getPath('userData'),
     appPath: app.getAppPath()
 }));
+
+// 关于页只允许打开本项目 GitHub 链接,避免渲染进程拿到任意 openExternal 能力
+ipcMain.handle('open-external', async (_e, url) => {
+    try {
+        const u = new URL(String(url));
+        if (u.protocol !== 'https:' || u.hostname !== 'github.com'
+            || !u.pathname.startsWith('/lumos-1s/Qing-Fram-Shadow-web')) {
+            return { ok: false, message: '不允许的链接' };
+        }
+        await shell.openExternal(u.toString());
+        return { ok: true };
+    } catch (e) { return { ok: false, message: e && e.message }; }
+});
+
+ipcMain.handle('open-data-dir', async () => {
+    try {
+        const p = app.getPath('userData');
+        const err = await shell.openPath(p);
+        return err ? { ok: false, message: err } : { ok: true, path: p };
+    } catch (e) { return { ok: false, message: e && e.message }; }
+});
 // 导出完成后在资源管理器中显示文件/目录(不再只显示一串路径文本)
 ipcMain.handle('show-item-in-folder', (_e, p) => {
     try {

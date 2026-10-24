@@ -2326,6 +2326,15 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         bindBtn('aboutClose', () => this.closeAbout());
         bindBtn('btnAboutCheck', () => { this.closeAbout(); this.checkUpdates(); });
         bindBtn('btnAboutIntro', () => { this.closeAbout(); this.showIntroAgain(); });
+        const aboutLinks = {
+            btnAboutHome: 'https://github.com/lumos-1s/Qing-Fram-Shadow-web',
+            btnAboutIssues: 'https://github.com/lumos-1s/Qing-Fram-Shadow-web/issues',
+            btnAboutReleases: 'https://github.com/lumos-1s/Qing-Fram-Shadow-web/releases',
+            btnAboutThirdParty: 'https://github.com/lumos-1s/Qing-Fram-Shadow-web/blob/main/THIRD-PARTY-ASSETS.md',
+            btnAboutLicense: 'https://github.com/lumos-1s/Qing-Fram-Shadow-web/blob/main/LICENSE',
+            btnAboutPrivacy: 'https://github.com/lumos-1s/Qing-Fram-Shadow-web/blob/main/PRIVACY.md',
+        };
+        Object.entries(aboutLinks).forEach(([id, url]) => bindBtn(id, () => this.openExternal(url)));
         const aboutModal = $('aboutModal');
         if (aboutModal) aboutModal.addEventListener('click', (e) => { if (e.target === aboutModal) this.closeAbout(); });
         bindBtn('btnIntroDone', () => this.closeIntro());
@@ -2758,19 +2767,28 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         });
     },
 
-    // 打开"关于"弹窗并填充版本信息
+    // 打开"关于"弹窗并填充版本/系统信息
     async openAbout() {
         const api = window.qingframe;
         let info = {};
         try { if (api && api.getAppInfo) info = (await api.getAppInfo()) || {}; } catch (e) {}
-        const el = this.$('aboutInfo');
-        if (el) el.textContent = '版本 ' + (info.version || '?')
-            + ' · Electron ' + (info.electron || '?')
-            + ' · Chrome ' + (info.chrome || '?')
-            + ' · ' + (info.platform || '') + ' ' + (info.arch || '')
-            + (info.packaged ? '' : ' (开发模式)');
+        const platform = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }[info.platform] || info.platform || '未知系统';
+        const arch = { x64: 'x64', arm64: 'ARM64', ia32: 'x86' }[info.arch] || info.arch || '';
+        const packageType = !info.packaged ? '开发模式' : (info.portable ? '便携版' : '安装版');
+        const setText = (id, text) => { const n = this.$(id); if (n) n.textContent = text; };
+        setText('aboutInfo', ['版本 ' + (info.version || '?'), platform + (arch ? ' ' + arch : ''), packageType].join(' · '));
+        setText('aboutRuntimeVersion', 'v' + (info.version || '?'));
+        setText('aboutRuntimeElectron', 'Electron ' + (info.electron || '?') + ' · Chrome ' + (info.chrome || '?') + ' · Node ' + (info.node || '?'));
+        setText('aboutRuntimePlatform', platform + (arch ? ' ' + arch : ''));
+        setText('aboutDataDir', info.userData || '-');
         const m = this.$('aboutModal');
         if (m) m.style.display = 'flex';
+    },
+    async openExternal(url) {
+        const api = window.qingframe;
+        if (!api || !api.openExternal) { this.setStatus('当前无法打开链接'); return; }
+        const r = await api.openExternal(url).catch(() => ({ ok: false }));
+        if (!r || !r.ok) this.setStatus('打开链接失败');
     },
     closeAbout() {
         const m = this.$('aboutModal');

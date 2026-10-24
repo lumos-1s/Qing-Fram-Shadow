@@ -652,25 +652,35 @@ window.App = Object.assign(window.App || {}, {
         window.addEventListener('unhandledrejection', (e) => { this.diagLog && this.diagLog('[Promise异常] ' + ((e && e.reason && e.reason.message) || e.reason)); });
         const bd = document.getElementById('btnExportDiag');
         if (bd) bd.addEventListener('click', () => this.exportDiagnostics());
+        const bc = document.getElementById('btnCopyDiag');
+        if (bc) bc.addEventListener('click', () => this.copyDiagnostics());
+        const bo = document.getElementById('btnOpenDataDir');
+        if (bo) bo.addEventListener('click', () => this.openDataDir());
     },
-    async exportDiagnostics() {
+    async buildDiagnosticsText() {
         const api = window.qingframe;
-        if (!api || !api.getAppInfo) { this.setStatus('开发模式下不可导出诊断日志'); return; }
-        this.diagLog('导出诊断日志');
+        if (!api || !api.getAppInfo) return '';
         let info = {};
         try { info = (await api.getAppInfo()) || {}; } catch (e) { this.diagLog('[异常] 读取应用信息失败: ' + e.message); }
+        const packageType = !info.packaged ? '开发模式' : (info.portable ? '便携版' : '安装版');
         const lines = [];
         lines.push('清框影 诊断日志');
         lines.push('导出时间: ' + new Date().toLocaleString('zh-CN', { hour12: false }));
         lines.push('版本: ' + (info.version || '未知'));
         lines.push('Electron: ' + (info.electron || '') + ' · Chrome: ' + (info.chrome || '') + ' · Node: ' + (info.node || ''));
-        lines.push('平台: ' + (info.platform || '') + ' ' + (info.arch || '') + (info.packaged ? ' (打包版)' : ' (开发模式)'));
+        lines.push('平台: ' + (info.platform || '') + ' ' + (info.arch || '') + ' (' + packageType + ')');
         lines.push('userData: ' + (info.userData || ''));
         lines.push('appPath: ' + (info.appPath || ''));
         lines.push('');
         lines.push('── 操作日志(最近 ' + ((this._diagBuf || []).length) + ' 条) ──');
         (this._diagBuf || []).forEach(l => lines.push(l));
-        const text = lines.join('\n');
+        return lines.join('\n');
+    },
+    async exportDiagnostics() {
+        const api = window.qingframe;
+        if (!api || !api.getAppInfo) { this.setStatus('开发模式下不可导出诊断日志'); return; }
+        this.diagLog('导出诊断日志');
+        const text = await this.buildDiagnosticsText();
         // 不用 catch 吞错:把 invoke 的真实失败原因透传出来(常见:主进程没重启,handler 未注册)
         let r;
         try { r = await api.saveDiagnosticsFile(text); }
@@ -678,6 +688,25 @@ window.App = Object.assign(window.App || {}, {
         if (r && r.ok) this.setStatus('诊断日志已保存: ' + (r.path || ''));
         else if (r && r.canceled) this.setStatus('已取消导出诊断日志');
         else this.setStatus('诊断日志导出失败: ' + ((r && r.message) || '未知原因'));
+    },
+    async copyDiagnostics() {
+        const api = window.qingframe;
+        if (!api || !api.getAppInfo) { this.setStatus('开发模式下不可复制诊断信息'); return; }
+        this.diagLog('复制诊断信息');
+        const text = await this.buildDiagnosticsText();
+        if (!text) return;
+        try {
+            await navigator.clipboard.writeText(text);
+            this.setStatus('诊断信息已复制到剪贴板');
+        } catch (e) {
+            this.setStatus('复制失败: ' + ((e && e.message) || '剪贴板不可用'));
+        }
+    },
+    async openDataDir() {
+        const api = window.qingframe;
+        if (!api || !api.openDataDir) { this.setStatus('当前无法打开数据目录'); return; }
+        const r = await api.openDataDir().catch(() => ({ ok: false }));
+        if (!r || !r.ok) this.setStatus('打开数据目录失败: ' + ((r && r.message) || '未知原因'));
     },
 
     // 导出时元素尺寸/锚点偏移要乘的倍数。抽成纯函数便于单测(见 tools/test-engine-invariants.js ⑥):

@@ -845,11 +845,37 @@ html.dark .icon-pool .icon-cell {
 .modal-close:hover { color: var(--rose); }
 .modal-body { padding: 16px 18px 18px; }
 
-/* 关于:快捷键 + 用户协议 / 免责声明 */
-.about-card { width: 560px; max-width: 92vw; max-height: 86vh; display: flex; flex-direction: column; }
-.about-body { overflow-y: auto; min-height: 0; }
-.about-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
-.about-section-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+/* 关于:品牌头 + 快捷键 / 诊断 / 许可 / 免责声明 */
+.about-card { width: 600px; max-width: 92vw; max-height: 86vh; display: flex; flex-direction: column; }
+.about-body { overflow-y: auto; min-height: 0; font-size: 13px; line-height: 1.75; color: var(--text); }
+.about-hero { display: flex; align-items: center; gap: 14px; }
+.about-logo {
+    width: 56px; height: 56px; flex: 0 0 auto; border-radius: 14px;
+    box-shadow: var(--shadow-sm); background: var(--surface-alt);
+}
+.about-hero-text { min-width: 0; }
+.about-name { font-size: 16px; font-weight: 700; line-height: 1.3; color: var(--text); }
+.about-name span { margin-left: 4px; font-size: 11px; font-weight: 500; color: var(--text-3); }
+.about-version { margin-top: 3px; font-size: 11.5px; color: var(--text-3); }
+.about-tagline { margin-top: 2px; font-size: 11.5px; color: var(--text-3); }
+.about-desc { margin-top: 13px; font-size: 12px; line-height: 1.75; color: var(--text-2); }
+.about-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 14px; }
+.about-actions .mini-btn { flex: 0 0 auto; }
+.about-details {
+    margin-top: 10px; padding: 9px 11px; border: 1px solid var(--border);
+    border-radius: 10px; background: var(--bg-soft);
+}
+.about-details > summary {
+    cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-2);
+    list-style: none; user-select: none;
+}
+.about-details > summary::-webkit-details-marker { display: none; }
+.about-details > summary::before {
+    content: '▸'; display: inline-block; width: 14px; color: var(--text-3);
+    transition: transform .15s ease;
+}
+.about-details[open] > summary::before { transform: rotate(90deg); }
+.about-details[open] > summary { margin-bottom: 8px; }
 .about-shortcuts {
     display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 14px;
     font-size: 12px; line-height: 1.55; color: var(--text-2);
@@ -857,9 +883,31 @@ html.dark .icon-pool .icon-cell {
 .about-keys { text-align: right; white-space: nowrap; color: var(--text-3); }
 .about-sep { margin: 0 3px; }
 .about-note { margin-top: 7px; font-size: 11px; line-height: 1.5; color: var(--text-3); }
+.about-kv {
+    display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 4px 10px;
+    font-size: 11.5px; line-height: 1.6; color: var(--text-3);
+}
+.about-kv b { color: var(--text-2); font-weight: 600; overflow-wrap: anywhere; }
+.about-kv code {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 11px; color: var(--text-2); overflow-wrap: anywhere;
+}
+.about-links { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; }
+.about-link {
+    padding: 0; border: none; background: none; color: var(--primary);
+    font: inherit; font-size: 11.5px; cursor: pointer;
+}
+.about-link:hover { text-decoration: underline; }
+.about-credits { font-size: 11.5px; line-height: 1.7; color: var(--text-2); }
 .about-legal { font-size: 12px; line-height: 1.75; color: var(--text-2); }
 .about-legal p + p { margin-top: 5px; }
 .about-legal strong { color: var(--text); font-weight: 700; }
+.about-footer {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
+    margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--text-3);
+}
+.about-footer .about-link { font-size: 11px; }
 .about-card kbd {
     display: inline-block; min-width: 18px; margin-left: 3px; padding: 1px 5px;
     border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px;
