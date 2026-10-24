@@ -165,9 +165,10 @@ app.whenReady().then(async () => {
     const dbg = win.webContents.debugger;
     dbg.attach('1.3');
 let done = false;
-    // 全量 78 个预设串行拖动约 19 分钟;看门狗只防「真死锁/无限挂起」,不提前打断慢速正常进程
+    // 预设数量会增长(当前 87 个),按 20 秒/个留足余量;看门狗只防「真死锁/无限挂起」,不提前打断慢速正常进程
+    const watchdogMs = Math.max(1300000, count * 20000);
     (async () => {
-        await new Promise(r => setTimeout(r, 1300000));
+        await new Promise(r => setTimeout(r, watchdogMs));
         if (done) return;
         let crash = 'unknown'; try { crash = win.webContents.isCrashed(); } catch (e) { crash = 'ERR'; }
         let ping = 'timeout'; try {
