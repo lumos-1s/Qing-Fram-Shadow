@@ -43,6 +43,9 @@ contextBridge.exposeInMainWorld('qingframe', {
     readExif: (filePath) => ipcRenderer.invoke('read-exif', filePath),
     openStickerImage: () => ipcRenderer.invoke('open-sticker-image'),
     getAppInfo: () => ipcRenderer.invoke('get-app-info'),
+    // 给渲染层同步判断平台用;不需要异步 invoke 就能决定快捷键显示/行为
+    platform: process.platform,
+    isMac: process.platform === 'darwin',
     showItemInFolder: (p) => ipcRenderer.invoke('show-item-in-folder', p),
     copyImage: (dataUrl) => ipcRenderer.invoke('copy-image', dataUrl),
     saveDiagnosticsFile: (text) => ipcRenderer.invoke('save-diagnostics', text),

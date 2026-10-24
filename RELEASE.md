@@ -89,3 +89,45 @@ GitHub Releases 里没有 `latest.yml` + 新版安装包，旧版就永远查不
 - **token 权限**：Personal Access Token 需要 `repo` 权限（创建 Release、上传 asset）。不要提交到 git。
 - **差量更新（blockmap）**：electron-updater 会对比新旧安装包的数据块，只下载变化部分。三个前提：① 新版发布时上传 `.blockmap`（见上一步产物清单）；② 旧版发布时也上传过 `.blockmap`（否则查不到差量基准，退化为全量）；③ 本机更新缓存里有旧版安装包 `%LOCALAPPDATA%\qingframe-web-updater\installer.exe` —— 0.1.12 起应用会在每次下载完成后自动"留种"它，更早的版本需手工放入。任一前提缺失只会退化为全量下载，不会把更新装坏。
 - **更新下载镜像（0.1.12 起）**：点"立即更新"时先对 GH_PROXIES 三个镜像实测速度、选最快者下载，失败自动换源重试；主进程日志 `[updater] 镜像测速(B/s)` 记录当时的实测值。镜像速度随时间剧烈波动（实测同一镜像一小时内可从 1.8MB/s 掉到连不上），排障"更新慢"时先看这一行。
+
+## 五、macOS 构建（准备中）
+
+macOS 目标已加入 `package.json` 的 `build.mac`：universal（Intel + Apple Silicon）DMG + ZIP，最低 macOS 10.15，ZIP 供 electron-updater 使用。
+
+**本地/CI 未签名构建**（需要 macOS；Windows 不能交叉打包 DMG）：
+
+```bash
+npm ci
+npm run check
+npm run dist:mac
+```
+
+产物：
+
+- `dist/Qingframe-<version>-universal.dmg`（手动安装）
+- `dist/Qingframe-<version>-universal.zip`（自动更新用）
+- `dist/latest-mac.yml`
+
+仓库里新增了 `.github/workflows/build-macos.yml`，手动触发即可在 `macos-14` 上构建未签名产物并上传为 Actions artifact。未签名 DMG 在 Gatekeeper 下会被拦截，测试机可右键“打开”，或执行：
+
+```bash
+xattr -cr "/Applications/清框影.app"
+```
+
+**签名/公证（正式分发和自动更新必需）**：
+
+- Apple Developer Program（Developer ID Application 证书）。
+- GitHub Actions secrets / 本地环境：
+  - `CSC_LINK`（.p12 的 base64 或路径）
+  - `CSC_KEY_PASSWORD`
+  - `APPLE_ID`
+  - `APPLE_APP_SPECIFIC_PASSWORD`
+  - `APPLE_TEAM_ID`
+- 未签名构建显式设 `CSC_IDENTITY_AUTO_DISCOVERY=false`；正式构建不要设。
+- 公证通过后，用户首次打开才不会被 Gatekeeper 拦；macOS 自动更新（Squirrel.Mac）也要求 app 已签名。
+
+**发布顺序建议**：
+
+1. 先跑 `Build macOS (unsigned)`，在真实 Mac 上验证界面、拖拽、导入/导出、HEIC、快捷键。
+2. 拿到 Developer ID 后，在 macOS 上配置签名/公证，生成 `latest-mac.yml` 并创建 draft Release。
+3. 发布前用旧版 macOS 安装包验证更新；未签名版本不要作为“支持自动更新”的正式版发布。

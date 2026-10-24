@@ -64,7 +64,11 @@
     "release": "electron-builder --win --dir && node tools/verify-dist.js && electron-builder --win && node tools/verify-dist.js --installers",
     "release:publish": "electron-builder --win --dir && node tools/verify-dist.js && electron-builder --win --publish always && node tools/verify-dist.js --installers",
     "dist": "electron-builder --win && node tools/verify-dist.js --installers",
-    "dist:portable": "electron-builder --win portable"
+    "dist:portable": "electron-builder --win portable",
+    "gen:icon:mac": "node tools/run-electron.js tools/render-app-icon.js --size 1024 --out build/icon.png",
+    "app:dir:mac": "electron-builder --mac --dir",
+    "dist:mac": "electron-builder --mac --universal",
+    "release:mac": "electron-builder --mac --universal --publish always"
   },
   "author": "Qingframe",
   "license": "MIT",
@@ -96,6 +100,38 @@
         "nsis",
         "portable"
       ]
+    },
+    "mac": {
+      "category": "public.app-category.photography",
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "artifactName": "Qingframe-${version}-${arch}.${ext}",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "minimumSystemVersion": "10.15",
+      "darkModeSupport": true,
+      "extendInfo": {
+        "CFBundleDisplayName": "清框影",
+        "NSHumanReadableCopyright": "Copyright © 2026 清框影"
+      }
+    },
+    "dmg": {
+      "artifactName": "Qingframe-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,

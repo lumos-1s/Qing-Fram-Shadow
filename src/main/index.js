@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, protocol, net, shell, nativeImage, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, protocol, net, shell, nativeImage, clipboard, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -83,7 +83,86 @@ const createWindow = () => {
     return win;
 };
 
+// macOS 的菜单栏是全局的,不能像 Windows 那样 autoHideMenuBar 了事。
+// 快捷键默认交给渲染进程(Cmd+Z/C/V/A 等要操作画布元素),因此菜单项用
+// registerAccelerator:false:菜单里仍显示快捷键,但不抢键盘事件。
+const setupMacMenu = () => {
+    if (process.platform !== 'darwin') return;
+    const devItems = app.isPackaged ? [] : [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' }
+    ];
+    const template = [
+        {
+            label: '清框影',
+            submenu: [
+                { role: 'about' },
+                { type: 'separator' },
+                { role: 'services' },
+                { type: 'separator' },
+                { role: 'hide' },
+                { role: 'hideOthers' },
+                { role: 'unhide' },
+                { type: 'separator' },
+                { role: 'quit' }
+            ]
+        },
+        {
+            label: '文件',
+            submenu: [
+                { role: 'close' }
+            ]
+        },
+        {
+            label: '编辑',
+            submenu: [
+                { role: 'undo', registerAccelerator: false },
+                { role: 'redo', registerAccelerator: false },
+                { type: 'separator' },
+                { role: 'cut', registerAccelerator: false },
+                { role: 'copy', registerAccelerator: false },
+                { role: 'paste', registerAccelerator: false },
+                { role: 'selectAll', registerAccelerator: false }
+            ]
+        },
+        {
+            label: '显示',
+            submenu: [
+                ...devItems,
+                { role: 'togglefullscreen' }
+            ]
+        },
+        {
+            label: '窗口',
+            submenu: [
+                { role: 'minimize' },
+                { role: 'zoom' },
+                { type: 'separator' },
+                { role: 'front' }
+            ]
+        },
+        {
+            label: '帮助',
+            submenu: [
+                {
+                    label: '项目主页',
+                    click: () => shell.openExternal('https://github.com/lumos-1s/Qing-Fram-Shadow-web')
+                }
+            ]
+        }
+    ];
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+    app.setAboutPanelOptions({
+        applicationName: '清框影',
+        applicationVersion: app.getVersion(),
+        copyright: 'Copyright © 2026 清框影'
+    });
+};
+
 app.whenReady().then(() => {
+    setupMacMenu();
     protocol.handle('qflocal', async (request) => {
         try {
             const u = new URL(request.url);
@@ -341,11 +420,11 @@ app.whenReady().then(() => {
     };
     let updater = null;
     if (app.isPackaged) {
-        // portable 单文件版不生成 app-update.yml,electron-updater 读取时会抛
+        // portable 单文件版/未打包开发版不生成 app-update.yml,electron-updater 读取时会抛
         // ENOENT 导致启动后弹"检查更新失败";没有该文件就直接跳过自动更新。
         const updateYml = path.join(process.resourcesPath, 'app-update.yml');
         if (!fs.existsSync(updateYml)) {
-            console.warn('[updater] 未发现 app-update.yml(portable 版),自动更新已跳过');
+            console.warn('[updater] 未发现 app-update.yml(便携版/开发版),自动更新已跳过');
         } else {
         try {
             const { autoUpdater } = require('electron-updater');
@@ -375,7 +454,7 @@ app.whenReady().then(() => {
         }
     }
     ipcMain.handle('check-for-updates', async () => {
-        if (!updater) return { ok: false, message: '当前为便携版,不支持在线自动更新,请到 GitHub Releases 下载新版' };
+        if (!updater) return { ok: false, message: '当前版本不支持在线自动更新,请到 GitHub Releases 下载新版' };
         try {
             await probeProxyForCheck().catch(() => {});
             await withTimeout(updater.checkForUpdates(), CHECK_TIMEOUT_MS, '检查更新');
@@ -392,7 +471,7 @@ app.whenReady().then(() => {
     });
     let updateDownloadInFlight = false; // 防连点:测速+下载+自动重试全程只允许一个在飞
     ipcMain.handle('start-update-download', async () => {
-        if (!updater) return { ok: false, message: '当前为便携版,不支持在线自动更新,请到 GitHub Releases 下载新版' };
+        if (!updater) return { ok: false, message: '当前版本不支持在线自动更新,请到 GitHub Releases 下载新版' };
         if (updateDownloadInFlight) return { ok: false, message: '更新下载已在进行中' };
         updateDownloadInFlight = true;
         try {

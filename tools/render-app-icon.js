@@ -1,16 +1,27 @@
 'use strict';
-// 由 design/icon.svg 生成应用图标 src/main/icon.png(512×512,圆角外透明)。
+// 由 design/icon.svg 生成应用图标(默认 src/main/icon.png,512×512,圆角外透明)。
 //
 // 图标只保留一份矢量源:窗口图标(BrowserWindow)、安装包/快捷方式(electron-builder win.icon)
 // 都读这个 PNG。改完 SVG 跑一次 `npm run gen:icon` 即可,不用手工截图。
+// macOS 需要 1024×1024: `npm run gen:icon:mac` 生成 build/icon.png。
 const { app, BrowserWindow } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const SRC = path.join(ROOT, 'design', 'icon.svg');
-const OUT = path.join(ROOT, 'src', 'main', 'icon.png');
-const SIZE = 512;
+const ARGS = process.argv.slice(2);
+function argValue(name) {
+    const i = ARGS.indexOf(name);
+    return i >= 0 ? ARGS[i + 1] : null;
+}
+const OUT = argValue('--out')
+    ? path.resolve(ROOT, argValue('--out'))
+    : path.join(ROOT, 'src', 'main', 'icon.png');
+const SIZE = Number(argValue('--size') || 512);
+if (!Number.isInteger(SIZE) || SIZE < 16 || SIZE > 4096) {
+    throw new Error('--size 必须是 16..4096 的整数');
+}
 
 app.whenReady().then(async () => {
     const svg = fs.readFileSync(SRC, 'utf8');
@@ -35,6 +46,7 @@ app.whenReady().then(async () => {
     const buf = Buffer.from(dataUrl.replace(/^data:image\/png;base64,/, ''), 'base64');
     const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20);
     if (w !== SIZE || h !== SIZE) throw new Error(`生成的 PNG 尺寸不对:${w}x${h}`);
+    fs.mkdirSync(path.dirname(OUT), { recursive: true });
     fs.writeFileSync(OUT, buf);
     console.log(`已生成 ${path.relative(ROOT, OUT)}  ${w}x${h}  ${(buf.length / 1024).toFixed(0)}KB`);
     app.exit(0);
