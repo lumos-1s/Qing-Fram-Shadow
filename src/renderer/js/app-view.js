@@ -331,7 +331,7 @@ window.App = Object.assign(window.App || {}, {
         const name = (this.user.nickname || this.user.username).trim();
         const av = localStorage.getItem('qfs_user_avatar');
         if (av) { d.loginAvatar.style.background = 'url(' + av + ') center/cover'; d.loginAvatar.textContent = ''; }
-        else { d.loginAvatar.style.background = '#444'; d.loginAvatar.textContent = ''; }
+        else { d.loginAvatar.style.background = 'var(--avatar-bg)'; d.loginAvatar.textContent = ''; }
         d.loginDisplayName.textContent = name;
         d.loginUsernameDisplay.textContent = '@' + this.user.username;
     },

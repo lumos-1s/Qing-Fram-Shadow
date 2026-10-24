@@ -397,13 +397,13 @@ window.App = {
             const av = localStorage.getItem('qfs_user_avatar');
             if (av) { topAv.style.background = 'url(' + av + ') center/cover'; topAv.textContent = ''; }
             else {
-                topAv.style.background = '#444';
+                topAv.style.background = 'var(--avatar-bg)';
                 // 没头像:有名字用首字,没有就「＋」,和旁边的「设置用户」呼应
                 topAv.style.display = 'flex';
                 topAv.style.alignItems = 'center';
                 topAv.style.justifyContent = 'center';
                 topAv.style.fontSize = '12px';
-                topAv.style.color = '#cfd6e4';
+                topAv.style.color = 'var(--avatar-fg)';
                 topAv.textContent = name ? name.charAt(0) : '＋';
             }
         }
