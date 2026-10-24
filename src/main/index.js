@@ -65,6 +65,16 @@ if (!app.requestSingleInstanceLock()) {
     const TEMPLATES_DIR = path.join(app.getPath('userData'), 'templates');
     const { loadState, saveState, validDir, freeFilePath } = createStateStore(path.join(app.getPath('userData'), 'state.json'));
 
+// ── 自定义标题栏:窗口控制(最小化/最大化切换/关闭)与最大化状态推送 ──
+ipcMain.on('win-minimize', (e) => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.minimize(); });
+ipcMain.on('win-toggle-max', (e) => { const w = BrowserWindow.fromWebContents(e.sender); if (!w) return; if (w.isMaximized()) w.unmaximize(); else w.maximize(); });
+ipcMain.on('win-close', (e) => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.close(); });
+const wireTitleBar = (win) => {
+    const pushMax = () => { if (!win.isDestroyed()) win.webContents.send('win-maximized', win.isMaximized()); };
+    win.on('maximize', pushMax);
+    win.on('unmaximize', pushMax);
+};
+
 const createWindow = () => {
     const win = new BrowserWindow({
         width: 1400,
@@ -76,6 +86,9 @@ const createWindow = () => {
         icon: path.join(__dirname, 'icon.png'),
         show: false,
         autoHideMenuBar: true,
+        // 自定义标题栏:Windows 全自绘(frame:false);mac 隐藏原生标题栏但保留红绿灯
+        frame: process.platform === 'win32' ? false : true,
+        titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -84,6 +97,7 @@ const createWindow = () => {
         }
     });
     win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+    wireTitleBar(win);
     win.once('ready-to-show', () => win.show());
     return win;
 };

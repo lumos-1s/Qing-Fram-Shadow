@@ -1060,3 +1060,28 @@ button.tbtn:focus-visible, .mini-btn:focus-visible, .st-btn:focus-visible { outl
 .grid-preview-zoom img { max-width: 100%; max-height: 60vh; border-radius: 6px; border: 1px solid var(--border-strong); }
 .grid-preview-zoom-cap { font-size: 12px; color: #bbb; margin: 8px 0; }
 .grid-preview-zoom .mini-btn { margin-top: 4px; }
+
+/* ═══ 自定义标题栏 ═══ */
+.titlebar {
+    -webkit-app-region: drag;
+    display: flex; align-items: center; flex: none;
+    height: 36px; padding-left: 14px;
+    background: var(--bg); border-bottom: 1px solid var(--border);
+    user-select: none;
+}
+.titlebar-title { font-size: 12px; letter-spacing: .4px; color: var(--text-3); white-space: nowrap; overflow: hidden; }
+.titlebar-controls { -webkit-app-region: no-drag; display: flex; align-items: stretch; height: 100%; margin-left: auto; }
+.tb-btn {
+    width: 46px; border: 0; padding: 0; margin: 0;
+    background: transparent; color: var(--text-2);
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: default;
+}
+.tb-btn:hover { background: var(--border-strong); color: var(--text); }
+.tb-close:hover { background: #e81123; color: #fff; }
+.tb-btn .ico-restore { display: none; }
+.tb-btn.is-max .ico-max { display: none; }
+.tb-btn.is-max .ico-restore { display: inline-flex; }
+/* mac:保留系统红绿灯,隐藏自绘按钮 */
+body.platform-darwin .titlebar { padding-left: 80px; }
+body.platform-darwin .titlebar-controls { display: none; }

@@ -64,5 +64,16 @@ contextBridge.exposeInMainWorld('qingframe', {
         const l = (_e, payload) => cb(payload);
         ipcRenderer.on('export-progress', l);
         return () => ipcRenderer.removeListener('export-progress', l);
+    },
+    // 自定义标题栏窗口控制
+    winControls: {
+        minimize: () => ipcRenderer.send('win-minimize'),
+        toggleMaximize: () => ipcRenderer.send('win-toggle-max'),
+        close: () => ipcRenderer.send('win-close'),
+        onMaximizedChange: (cb) => {
+            const l = (_e, v) => cb(v);
+            ipcRenderer.on('win-maximized', l);
+            return () => ipcRenderer.removeListener('win-maximized', l);
+        }
     }
 });

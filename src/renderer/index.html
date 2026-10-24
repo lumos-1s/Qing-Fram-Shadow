@@ -27,6 +27,23 @@
 
     <div id="app">
 
+        <!-- ═══ 自定义标题栏(Windows 自绘窗口控制;mac 保留红绿灯) ═══ -->
+        <div id="titlebar" class="titlebar">
+            <div class="titlebar-title">清框影 · 照片加框</div>
+            <div class="titlebar-controls">
+                <button id="tbMin" class="tb-btn" title="最小化" aria-label="最小化">
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><line x1="1" y1="5" x2="9" y2="5"/></svg>
+                </button>
+                <button id="tbMax" class="tb-btn" title="最大化" aria-label="最大化">
+                    <svg class="ico-max" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1.2" y="1.2" width="7.6" height="7.6" rx="1"/></svg>
+                    <svg class="ico-restore" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1.4" y="3" width="5.6" height="5.6" rx="1"/><path d="M3 3 V1.4 H8.6 V7 H7"/></svg>
+                </button>
+                <button id="tbClose" class="tb-btn tb-close" title="关闭" aria-label="关闭">
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M1.5 1.5 L8.5 8.5 M8.5 1.5 L1.5 8.5"/></svg>
+                </button>
+            </div>
+        </div>
+
         <!-- ═══ 顶部工具栏 ═══ -->
         <header id="toolbar">
             <div class="brand">

@@ -2907,3 +2907,20 @@ function dashToArray(v) {
 }
 
 document.addEventListener('DOMContentLoaded', () => App.init());
+// ═══ 自定义标题栏:窗口控制按钮(仅 Windows 显示;mac 走系统红绿灯) ═══
+(function initTitleBar() {
+    const qf = window.qingframe;
+    if (!qf || !qf.platform) return;
+    document.body.classList.add('platform-' + qf.platform);
+    const wc = qf.winControls;
+    if (!wc || qf.platform === 'darwin') return;
+    const min = document.getElementById('tbMin');
+    const max = document.getElementById('tbMax');
+    const close = document.getElementById('tbClose');
+    if (min) min.addEventListener('click', () => wc.minimize());
+    if (close) close.addEventListener('click', () => wc.close());
+    if (max) {
+        max.addEventListener('click', () => wc.toggleMaximize());
+        if (wc.onMaximizedChange) wc.onMaximizedChange((v) => max.classList.toggle('is-max', !!v));
+    }
+})();
