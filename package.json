@@ -95,11 +95,7 @@
       "target": [
         "nsis",
         "portable"
-      ],
-      "signtoolOptions": {
-        "publisherName": "CN=SignPath Foundation, O=SignPath Foundation, L=Lewes, S=Delaware, C=US"
-      },
-      "verifyUpdateCodeSignature": true
+      ]
     },
     "nsis": {
       "oneClick": false,

@@ -13,6 +13,12 @@ GitHub Releases 里没有 `latest.yml` + 新版安装包，旧版就永远查不
 
 ## 二、签名发布（推荐，SignPath Foundation）
 
+> **⚠ 当前状态（2026-10-24）：SignPath Foundation 申请被拒（缺少公众信任信号），签名流程暂停。**
+> 在重新申请有结果之前，请继续使用下方「三、本地未签名发布」发版；
+> `package.json` 中 `build.win` 的 `signtoolOptions.publisherName` 与 `verifyUpdateCodeSignature`
+> 已暂时移除——否则新版本 `app-update.yml` 会强制校验 SignPath 签名，之后发未签名版本会导致
+> 已装该版的用户自动更新验签失败。申请通过后再把这两项原样加回，并改走本节流程。
+
 首个签名版本开始，Windows 发布走 GitHub Actions + SignPath Foundation。不要再使用本地未签名的 `release:publish` 发布新版本。签名政策、角色和验签说明见 [`CODE_SIGNING.md`](./CODE_SIGNING.md)。
 
 **一次性准备**（详见 [`signpath/README.md`](./signpath/README.md)）：
