@@ -497,7 +497,11 @@ window.App = Object.assign(window.App || {}, {
         const recent = this.getRecent();
         // 分组大标题的显示顺序:不在这里的 tag 会被排到最末尾(99 位),所以新加预设分类时必须登记。
         // 「光影 / 水印」是优先入口,固定置顶;其余保持原有顺序。
-        const order = ['光影', '水印', '票根', '邮票', '个性', '潮流', '高级感', '艺术', '极简', '胶片', '质感', '手作', '复古', '杂志', '氛围'];
+        const DEFAULT_ORDER = ['光影', '水印', '票根', '邮票', '个性', '潮流', '高级感', '艺术', '极简', '胶片', '质感', '手作', '复古', '杂志', '氛围'];
+        // 分组可拖拽排序:用户自定义顺序存 localStorage,未收录的新分类按默认顺序补尾
+        let order = this._loadGroupOrder();
+        if (!order || !order.length) order = DEFAULT_ORDER.slice();
+        else for (const g of DEFAULT_ORDER) if (!order.includes(g)) order.push(g);
         const merge = { 创意: '潮流', 奢华: '高级感', 现代: '极简', 排版: '极简', 影院: '胶片', 星空: '氛围' };
         const groupIcons = {
             潮流: '🪩', 高级感: '💎', 艺术: '🎨', 极简: '⚪', 胶片: '🎞️', 质感: '🪵', 手作: '✂️',
@@ -592,7 +596,8 @@ window.App = Object.assign(window.App || {}, {
             groupEl.className = 'preset-group' + ((f && groups.get(grp).length) || grp === defOpen ? ' open' : '');
             const name = document.createElement('div');
             name.className = 'group-name';
-            name.title = '点击展开/收起';
+            name.title = '点击展开/收起 · 拖动排序';
+            name.draggable = true;
             const caret = document.createElement('span');
             caret.className = 'caret';
             caret.textContent = '\u25B8';
@@ -607,12 +612,62 @@ window.App = Object.assign(window.App || {}, {
             name.addEventListener('click', () => {
                 groupEl.classList.toggle('open');
             });
+            /* 拖拽排序:拖动本组标题到其他组标题上/下,重排分类顺序 */
+            name.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', grp);
+                e.dataTransfer.effectAllowed = 'move';
+                name.classList.add('dragging');
+            });
+            name.addEventListener('dragover', (e) => {
+                if (!e.dataTransfer.types || !e.dataTransfer.types.includes('text/plain')) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                const r = name.getBoundingClientRect();
+                const before = e.clientY < r.top + r.height / 2;
+                name.classList.toggle('drop-before', before);
+                name.classList.toggle('drop-after', !before);
+            });
+            name.addEventListener('dragleave', () => name.classList.remove('drop-before', 'drop-after'));
+            name.addEventListener('drop', (e) => {
+                e.preventDefault();
+                name.classList.remove('drop-before', 'drop-after');
+                const src = e.dataTransfer.getData('text/plain');
+                if (!src || src === grp) return;
+                const r = name.getBoundingClientRect();
+                this.reorderGroups(src, grp, e.clientY < r.top + r.height / 2);
+            });
+            name.addEventListener('dragend', () => {
+                document.querySelectorAll('.group-name.dragging, .group-name.drop-before, .group-name.drop-after')
+                    .forEach(el => el.classList.remove('dragging', 'drop-before', 'drop-after'));
+            });
             groupEl.appendChild(name);
             tree.appendChild(groupEl);
             for (const p of groups.get(grp)) groupEl.appendChild(renderItem(p, grp));
         }
     },
     filterTree(v) { this.buildTree(v); },
+
+    /* ══ 分组拖拽排序 ══ */
+    _loadGroupOrder() {
+        try { const v = localStorage.getItem('qfs_group_order'); return v ? JSON.parse(v) : null; }
+        catch { return null; }
+    },
+    _saveGroupOrder(arr) {
+        try { localStorage.setItem('qfs_group_order', JSON.stringify(arr)); } catch {}
+    },
+    reorderGroups(srcGrp, tgtGrp, before) {
+        let order = this._loadGroupOrder();
+        if (!order || !order.length) order = ['光影', '水印', '票根', '邮票', '个性', '潮流', '高级感', '艺术', '极简', '胶片', '质感', '手作', '复古', '杂志', '氛围'];
+        for (const g of ['光影', '水印', '票根', '邮票', '个性', '潮流', '高级感', '艺术', '极简', '胶片', '质感', '手作', '复古', '杂志', '氛围']) if (!order.includes(g)) order.push(g);
+        const si = order.indexOf(srcGrp);
+        if (si < 0) return;
+        order.splice(si, 1);
+        const ti = order.indexOf(tgtGrp);
+        if (ti < 0) { order.push(srcGrp); }
+        else order.splice(before ? ti : ti + 1, 0, srcGrp);
+        this._saveGroupOrder(order);
+        this.buildTree(this._searchVal || '');
+    },
 
     selectPreset(p, itemEl) {
         this.pushUndo();

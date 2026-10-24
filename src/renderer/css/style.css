@@ -1114,3 +1114,10 @@ body.platform-darwin .titlebar-controls { display: none; }
 .export-main { display: inline-flex; align-items: center; gap: var(--sp-1-5); padding-left: 13px; padding-right: 13px; }
 .export-main .btn-ico { flex: none; }
 .export-main span { line-height: 1; }
+
+/* ═══ 分组拖拽排序 ═══ */
+.preset-group .group-name[draggable="true"] { cursor: grab; }
+.preset-group .group-name[draggable="true"]:active { cursor: grabbing; }
+.group-name.dragging { opacity: .45; }
+.group-name.drop-before { box-shadow: inset 0 2px 0 var(--primary); }
+.group-name.drop-after { box-shadow: inset 0 -2px 0 var(--primary); }
