@@ -24,3 +24,17 @@ signpath/app/
 signpath/app-signed/
 signpath/installers/
 signpath/installers-signed/
+
+# 根目录散落的临时/发布产物(2026-10-25 清理)
+.idea/
+.workbuddy/
+debug.log
+start.log
+*.exit
+.tmp_*.py
+release-*.log
+design/_preset-preview-tmp.html
+build-release-*.ps1
+
+# 用户本地项目目录(严禁入库)
+nwu2027/
