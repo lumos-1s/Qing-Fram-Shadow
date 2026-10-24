@@ -1107,3 +1107,6 @@ body.platform-darwin .titlebar-controls { display: none; }
 .group-name.dragging { opacity: .45; }
 .group-name.drop-before { box-shadow: inset 0 2px 0 var(--primary); }
 .group-name.drop-after { box-shadow: inset 0 -2px 0 var(--primary); }
+
+/* 键盘焦点不显示系统默认焦点环(用户确认不需要 Tab 焦点提示) */
+:focus-visible { outline: none; }
