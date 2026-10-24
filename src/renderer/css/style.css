@@ -1085,3 +1085,11 @@ button.tbtn:focus-visible, .mini-btn:focus-visible, .st-btn:focus-visible { outl
 /* mac:保留系统红绿灯,隐藏自绘按钮 */
 body.platform-darwin .titlebar { padding-left: 80px; }
 body.platform-darwin .titlebar-controls { display: none; }
+
+/* ═══ 标题栏应用图标(墨玉金框,与 design/icon.svg 同源) ═══ */
+.titlebar-icon { flex: none; margin-right: 7px; border-radius: 3.5px; box-shadow: 0 0 0 1px rgba(255,255,255,.07); }
+
+/* ═══ 导出主按钮强化:图标+文字,视觉权重最高 ═══ */
+.export-main { display: inline-flex; align-items: center; gap: 6px; padding-left: 13px; padding-right: 13px; }
+.export-main .btn-ico { flex: none; }
+.export-main span { line-height: 1; }

@@ -29,6 +29,19 @@
 
         <!-- ═══ 自定义标题栏(Windows 自绘窗口控制;mac 保留红绿灯) ═══ -->
         <div id="titlebar" class="titlebar">
+            <svg class="titlebar-icon" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                <defs>
+                    <linearGradient id="tbIconGold" gradientUnits="userSpaceOnUse" x1="4" y1="4" x2="14" y2="14">
+                        <stop offset="0" stop-color="#F6E3AC"/>
+                        <stop offset="0.45" stop-color="#DCBA79"/>
+                        <stop offset="1" stop-color="#A6814B"/>
+                    </linearGradient>
+                </defs>
+                <rect x="0.6" y="0.6" width="16.8" height="16.8" rx="3.6" fill="#101719"/>
+                <rect x="3.3" y="4" width="11.4" height="10" rx="1.8" fill="none" stroke="url(#tbIconGold)" stroke-width="1.5"/>
+                <path d="M9 5.2 V12.8" stroke="url(#tbIconGold)" stroke-width="1.1" stroke-linecap="round"/>
+                <path d="M9 9 H13.6" stroke="url(#tbIconGold)" stroke-width="1.1" stroke-linecap="round"/>
+            </svg>
             <div class="titlebar-title">清框影 · 照片加框</div>
             <div class="titlebar-controls">
                 <button id="tbMin" class="tb-btn" title="最小化" aria-label="最小化">
@@ -62,7 +75,10 @@
                 <button id="btnOpenFolder" class="tbtn" title="导入整个文件夹（含子文件夹） (Ctrl+Shift+O)">导入文件夹</button>
                 <div class="sep"></div>
                 <div class="export-split" id="exportSettingsWrap">
-                    <button id="btnSave" class="tbtn primary" title="导出当前图片">导出</button>
+                    <button id="btnSave" class="tbtn primary export-main" title="导出当前图片">
+                        <svg class="btn-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5 V10"/><path d="M4.6 6.6 8 10l3.4-3.4"/><path d="M2.6 12.4 H13.4"/></svg>
+                        <span>导出</span>
+                    </button>
                     <button id="btnExportSettings" class="tbtn primary" title="导出设置：格式 / 质量 / 尺寸 / EXIF" aria-label="导出设置" aria-haspopup="true">
                         <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6.5 8 11l4.5-4.5"/></svg>
                     </button>
