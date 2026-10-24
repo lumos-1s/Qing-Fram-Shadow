@@ -214,6 +214,8 @@ window.App = {
     bind() {
         const d = this.dom;
         d.btnOpen.addEventListener('click', () => this.openImages());
+        const pick = this.$('btnPickPhoto');
+        if (pick) pick.addEventListener('click', () => this.openImages());
         if (d.btnOpenFolder) d.btnOpenFolder.addEventListener('click', () => this.openImageFolder());
         d.btnSave.addEventListener('click', () => this.doExport());
         if (d.btnCopy) d.btnCopy.addEventListener('click', () => this.copyImage());

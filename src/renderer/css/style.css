@@ -263,17 +263,14 @@ html.dark .tbtn.primary { color: #0c1914; }
 .preset-tree { overflow-y: auto; flex: 1; padding: 10px 8px 16px; }
 .preset-group { margin-bottom: 6px; }
 .preset-group + .preset-group { margin-top: 8px; padding-top: 2px; }
+/* 分类标题:弱化为小灰字,与预设项拉开层级(分类是导航,项才是操作对象) */
 .group-name {
-    font-size: 13px; color: var(--text); padding: 12px 9px 7px;
-    font-weight: 700; letter-spacing: .5px; cursor: pointer;
+    font-size: 11px; color: var(--text-3); padding: 10px 9px 5px;
+    font-weight: 600; letter-spacing: 1.2px; cursor: pointer;
     display: flex; align-items: center; gap: 6px; user-select: none; border-radius: 7px;
 }
-.group-name::before {
-    content: ''; width: 3px; height: 12px; border-radius: 2px;
-    background: var(--primary); flex: 0 0 auto;
-}
-.group-name:hover { color: var(--primary); background: var(--surface-alt); }
-.group-name .g-icon { font-size: 13px; flex: 0 0 auto; line-height: 1; margin-left: 1px; }
+.group-name:hover { color: var(--text-2); background: transparent; }
+.group-name .g-icon { font-size: 12px; flex: 0 0 auto; line-height: 1; margin-left: 1px; }
 .group-name .caret {
     font-size: 9px; color: var(--text-3); transition: transform .12s;
     display: inline-block; line-height: 1;
@@ -281,7 +278,7 @@ html.dark .tbtn.primary { color: #0c1914; }
 .preset-group.open .caret { transform: rotate(90deg); }
 .preset-group:not(.open) .preset-item { display: none; }
 .preset-item {
-    padding: 7px 10px; border-radius: 9px; cursor: pointer;
+    padding: 6px 10px 6px 24px; border-radius: 9px; cursor: pointer;
     transition: background .12s, color .12s;
     display: flex; align-items: center; gap: 8px; font-size: 12px;
 }
@@ -370,9 +367,20 @@ html.dark #previewCanvas {
     border: 1px solid var(--border);
     box-shadow: inset 0 1px 0 rgba(255,255,255,.15);
 }
+.ph-card {
+    pointer-events: auto;
+    display: flex; flex-direction: column; align-items: center; gap: 18px;
+    padding: 44px 60px;
+    border: 1.5px dashed var(--border-strong);
+    border-radius: 20px;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+}
 .ph-text { font-size: 14.5px; font-weight: 500; line-height: 1.8; color: var(--text-2); }
 .ph-sub { font-size: 12px; opacity: .75; }
-.restore-draft-btn { pointer-events: auto; margin-top: 4px; }
+.ph-actions { display: flex; align-items: center; gap: 10px; }
+.pick-btn { pointer-events: auto; display: inline-flex; align-items: center; gap: 8px; padding: 10px 26px; font-size: 13.5px; border-radius: 12px; }
+.restore-draft-btn { pointer-events: auto; }
 
 /* 缩略图条 */
 .thumb-strip {
