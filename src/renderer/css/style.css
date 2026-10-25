@@ -1601,13 +1601,15 @@ body.editing #canvasPane { flex: 1 1 auto; }
     flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
     display: flex; flex-wrap: wrap; align-content: flex-start;
     gap: 16px; padding: 16px 28px 28px;
-    scroll-behavior: smooth;
+    /* 滚动平滑由 JS 鼠标跟随 rAF 控制，不用 CSS smooth（避免程序化赋值被动画吞掉） */
     scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent;
 }
 .pw-grid::-webkit-scrollbar { width: 10px; }
 .pw-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
 .pw-tile {
     flex: 0 0 auto;
+    transform: perspective(760px) rotateX(0deg) rotateY(0deg);
+    will-change: transform;
     border-radius: 16px; overflow: hidden; cursor: pointer;
     background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09);
     transition: transform .34s cubic-bezier(.22,.61,.36,1), border-color .34s ease, box-shadow .34s ease, background .34s ease;
@@ -1619,9 +1621,15 @@ body.editing #canvasPane { flex: 1 1 auto; }
     to { opacity: 1; transform: none; }
 }
 .pw-tile:hover {
-    transform: translateY(-4px) scale(1.03);
+    transform: perspective(760px) translateY(-4px) scale(1.03);
     border-color: rgba(220,186,121,.5);
     box-shadow: 0 16px 34px rgba(0,0,0,.45), 0 3px 10px rgba(0,0,0,.25);
+    background: rgba(255,255,255,.07);
+}
+.pw-tile[data-tilting] {
+    transform: perspective(760px) translateY(-4px) scale(1.03) rotateX(var(--pw-rx, 0deg)) rotateY(var(--pw-ry, 0deg));
+    border-color: rgba(220,186,121,.5);
+    box-shadow: 0 18px 38px rgba(0,0,0,.5), 0 3px 10px rgba(0,0,0,.25);
     background: rgba(255,255,255,.07);
 }
 .pw-tile:active { transform: scale(.98); }
@@ -1638,7 +1646,14 @@ body.editing #canvasPane { flex: 1 1 auto; }
     background:
         radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,.035), transparent 55%),
         #1a2226;
+    position: relative;
 }
+.pw-tile-cover::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    opacity: 0; transition: opacity .22s ease;
+    background: radial-gradient(300px circle at var(--pw-hx, 50%) var(--pw-hy, 50%), rgba(255,255,255,.13), transparent 55%);
+}
+.pw-tile[data-tilting] .pw-tile-cover::after { opacity: 1; }
 .pw-tile-cover img {
     width: 100%; object-fit: contain; display: block;
     transition: transform .5s cubic-bezier(.22,.61,.36,1);

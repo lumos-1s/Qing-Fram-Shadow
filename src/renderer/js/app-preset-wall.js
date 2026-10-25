@@ -36,6 +36,70 @@ window.App = Object.assign(window.App || {}, {
             e.preventDefault();
             this.enterEditorFromWall(tile.dataset.idx);
         });
+        // folia 式鼠标浏览：不用滚轮下滑，鼠标在网格内移动驱动整墙平滑滚动
+        // （鼠标位于顶部→看最上，中部→对应位置，底部→看最下；移出网格即停）
+        this._wallHoverScroll = { raf: 0, target: 0, active: false };
+        el.grid.addEventListener('mouseleave', () => { this._wallHoverScroll.active = false; });
+        el.grid.addEventListener('mousemove', (e) => {
+            const hs = this._wallHoverScroll;
+            hs.active = true;
+            const r = el.grid.getBoundingClientRect();
+            const t = Math.max(0, Math.min(1, (e.clientY - r.top) / Math.max(1, r.height)));
+            hs.target = t * Math.max(0, el.grid.scrollHeight - el.grid.clientHeight);
+            if (hs.raf) return;
+            const step = () => {
+                if (!hs.active || !el.grid) { hs.raf = 0; return; }
+                const diff = hs.target - el.grid.scrollTop;
+                if (Math.abs(diff) > 0.5) {
+                    el.grid.scrollTop += diff * 0.14;
+                    hs.raf = requestAnimationFrame(step);
+                } else {
+                    el.grid.scrollTop = hs.target;
+                    hs.raf = 0;
+                }
+            };
+            hs.raf = requestAnimationFrame(step);
+        });
+        // 禁用滚轮下滑滚动（浏览统一由鼠标位置驱动）
+        el.grid.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
+
+        // folia 式卡片倾斜：指针下的卡片朝指针方向 3D 倾斜，封面高光跟随指针
+        // （机制同 folia exploreTilt：每帧把指针相对卡片的位置写成 CSS 变量，画法在 style.css）
+        this._wallTilt = { raf: 0, card: null, x: 0, y: 0 };
+        const within = (v) => Math.min(1, Math.max(-1, v));
+        const tiltRest = () => {
+            const t = this._wallTilt;
+            if (t.card) { t.card.removeAttribute('data-tilting'); t.card = null; }
+        };
+        const tiltLean = () => {
+            const t = this._wallTilt;
+            t.raf = 0;
+            const card = t.card;
+            if (!card || !card.isConnected) return;
+            const box = card.getBoundingClientRect();
+            const ax = within((t.x - (box.left + box.width / 2)) / (card.offsetWidth / 2 || 1));
+            const ay = within((t.y - (box.top + box.height / 2)) / (card.offsetHeight / 2 || 1));
+            const deg = 8;
+            card.style.setProperty('--pw-rx', (-ay * deg).toFixed(2) + 'deg');
+            card.style.setProperty('--pw-ry', (ax * deg).toFixed(2) + 'deg');
+            card.style.setProperty('--pw-hx', (((ax + 1) / 2) * 100).toFixed(2) + '%');
+            card.style.setProperty('--pw-hy', (((ay + 1) / 2) * 100).toFixed(2) + '%');
+        };
+        el.grid.addEventListener('pointermove', (e) => {
+            const t = this._wallTilt;
+            const card = (e.target instanceof Element) ? e.target.closest('.pw-tile') : null;
+            if (card !== t.card) {
+                tiltRest();
+                t.card = card;
+                if (card) card.setAttribute('data-tilting', '');
+            }
+            if (!card) return;
+            t.x = e.clientX;
+            t.y = e.clientY;
+            if (!t.raf) t.raf = requestAnimationFrame(tiltLean);
+        });
+        el.grid.addEventListener('pointerleave', tiltRest);
+
         // 窗口变化时重排封面墙（列数 / 卡片宽度 / 封面高度自适应）
         this._wallResize = () => this.layoutWallTiles();
         window.addEventListener('resize', this._wallResize);
