@@ -104,7 +104,7 @@ window.App = {
         if (this.initImmersive) this.initImmersive();
         if (this.initPresetWall) this.initPresetWall();
         this.loadPrefs();
-        this.loadPresets();
+        this._presetsReady = this.loadPresets();   // 墙/侧栏点击要等它就绪，否则头一秒点卡片会点空
         this.restoreLastState();
         this.loadLogos();
         this.loadTextures();
@@ -1696,11 +1696,27 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
                 this.scheduleRender(true);
                 this.setStatus(`已导入 ${loaded} 张图片，拼图保持在「${this.image.name || '当前照片'}」上（可点「重拼」把新图填进格子）`);
             } else {
-                this.template = this.defaultTemplate();
-                this.normalizeTemplate();
+                // 墙/侧栏已经选好风格时，新导入的照片必须继承它（每张一份独立副本）。
+                // 以 this.template 为准：墙（applyPresetToCurrent）和侧栏（selectPreset）都会写它，
+                // pendingPreset 只是"还没照片"的标记，不能当唯一来源，否则侧栏换过风格后会继承到旧的。
+                const base = this.template;
+                const carry = (base && base.templateName) ? JSON.parse(JSON.stringify(base)) : null;
+                const start = this.images.length - loaded;
+                if (carry) {
+                    for (let i = start; i < this.images.length; i++) {
+                        const im = this.images[i];
+                        if (typeof this.getTpl === 'function' && typeof this.setTpl === 'function' && !this.getTpl(im)) {
+                            this.setTpl(im, JSON.parse(JSON.stringify(carry)));
+                        }
+                    }
+                    this.pendingPreset = null;   // 已经转正到具体照片上
+                } else {
+                    this.template = this.defaultTemplate();
+                    this.normalizeTemplate();
+                }
                 this.buildThumbnails();
-                this.selectImage(this.images.length - loaded);
-                this.setStatus(`已导入 ${loaded} 张图片${skipped ? '，跳过 ' + skipped + ' 个不支持的文件' : ''}`);
+                this.selectImage(start);
+                this.setStatus(`已导入 ${loaded} 张图片${carry ? '，沿用「' + carry.templateName + '」' : ''}${skipped ? '，跳过 ' + skipped + ' 个不支持的文件' : ''}`);
             }
         } finally {
             this.finishImportProgress();
