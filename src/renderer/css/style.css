@@ -1571,8 +1571,9 @@ body.platform-darwin .titlebar-controls { display: none; }
 
 
 
-/* ═══ 编辑模式布局：无左侧预设树（预设墙替代） ═══ */
-body.editing #sidebar { display: none !important; }
+/* ═══ 编辑模式布局：左侧预设栏常驻（墙只做首屏，不再取代它） ═══ */
+/* 墙是全屏 fixed 覆盖层，打开时自动盖住侧栏，不需要再 display:none，
+   否则每次进出墙都会触发一次布局重排（也是"编辑时换不了风格"的直接原因）。 */
 body.editing #canvasPane { flex: 1 1 auto; }
 
 /* ═══ 预设墙启动主页 ═══ */
@@ -1598,14 +1599,17 @@ body.editing #canvasPane { flex: 1 1 auto; }
 }
 .pw-skip:hover { border-color: rgba(220,186,121,.55); background: rgba(255,255,255,.08); }
 .pw-grid {
-    flex: 1 1 auto; min-height: 0; overflow: hidden;
+    /* overflow:clip 不建立滚动容器 —— 卡片获焦时浏览器无法把它 scrollIntoView，
+       从根上避免"点一下整墙跳位"；hidden 保留给不支持 clip 的旧内核兜底。 */
+    flex: 1 1 auto; min-height: 0; overflow: hidden; overflow: clip;
     position: relative;
     cursor: grab; user-select: none; -webkit-user-select: none;
     touch-action: none;
 }
 .pw-wall {
     position: absolute; left: 0; top: 0;
-    will-change: transform;
+    /* 不写 will-change：整墙是 3128×4272 的大元素，提层后要在 DPR=2 下光栅化约 440MB，
+       软件渲染每帧 blit 一遍直接掉到个位数帧率。不建层则只重绘视口内可见的十几张卡。 */
     transform-origin: 0 0;
 }
 .pw-block {
@@ -1621,14 +1625,17 @@ body.editing #canvasPane { flex: 1 1 auto; }
 .pw-grid::-webkit-scrollbar-thumb { background: transparent; }
 .pw-tile {
     position: relative;
-    will-change: transform, opacity;
+    /* 90 张卡各写一条 will-change 就是 90 个合成层，DPR=2 下光栅纹理轻松上百 MB。
+       层只给中心那 9 张动态卡开（focusWall 里按需写 inline），其余留在整墙的绘制里。 */
     border-radius: 16px; overflow: hidden; cursor: pointer;
     background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09);
-    transition: transform .22s ease-out, opacity .22s ease-out, border-color .3s ease, box-shadow .3s ease, background .3s ease;
+    transition: transform .18s ease-out, opacity .18s ease-out, border-color .3s ease, box-shadow .3s ease, background .3s ease;
     user-select: none; -webkit-user-select: none;
+    contain: layout paint style;
 }
-/* 拖动中禁用过渡，整墙跟手平移 */
-.pw-grid.pw-dragging .pw-tile { transition: none; }
+/* 拖动与惯性期间禁用过渡：JS 每帧写 transform，过渡会把每一帧再拖出 180ms 的尾巴（越拖越糊） */
+.pw-grid.pw-dragging .pw-tile,
+.pw-grid.pw-moving .pw-tile { transition: none; }
 .pw-tile:hover {
     border-color: rgba(220,186,121,.5);
     box-shadow: 0 16px 34px rgba(0,0,0,.45), 0 3px 10px rgba(0,0,0,.25);

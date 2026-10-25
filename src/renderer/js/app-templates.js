@@ -669,6 +669,27 @@ window.App = Object.assign(window.App || {}, {
         this.buildTree(this._searchVal || '');
     },
 
+    // 墙 / 侧栏 / 导入 共用的「把风格套到当前状态」入口。
+    // 有照片：走 selectPreset（撤销栈 + 保留用户 logo/贴纸 + 侧栏高亮 + 重建树）；
+    // 没照片：记成 pendingPreset 并铺到空画布上，导入时由 importPicked 复制给每张新图。
+    // 之前墙和侧栏各写一套分支，才会出现「墙选了、导入没了」这种不一致。
+    applyPresetToCurrent(preset) {
+        if (!preset) return false;
+        if (this.images && this.images.length) {
+            this.selectPreset(preset);
+            return true;
+        }
+        this.pendingPreset = JSON.parse(JSON.stringify(preset));
+        this.template = JSON.parse(JSON.stringify(preset));
+        if (typeof this.normalizeTemplate === 'function') this.normalizeTemplate();
+        if (typeof this.pushRecent === 'function') this.pushRecent(preset.templateName);
+        this.buildTree(this._searchVal || '');
+        if (typeof this.refreshUI === 'function') this.refreshUI();
+        if (typeof this.updateEmptyState === 'function') this.updateEmptyState();
+        if (typeof this.scheduleRender === 'function') this.scheduleRender(true);
+        return true;
+    },
+
     selectPreset(p, itemEl) {
         this.pushUndo();
         this.applyPreset(p);
