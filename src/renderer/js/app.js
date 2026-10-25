@@ -101,6 +101,7 @@ window.App = {
         this.initSplash();
         this.cacheDom();
         this.bind();
+        if (this.initImmersive) this.initImmersive();
         this.loadPrefs();
         this.loadPresets();
         this.restoreLastState();
@@ -216,6 +217,8 @@ window.App = {
         d.btnOpen.addEventListener('click', () => this.openImages());
         const pick = this.$('btnPickPhoto');
         if (pick) pick.addEventListener('click', () => this.openImages());
+        const pickFolder = this.$('btnPickFolder');
+        if (pickFolder) pickFolder.addEventListener('click', () => this.openImageFolder());
         if (d.btnOpenFolder) d.btnOpenFolder.addEventListener('click', () => this.openImageFolder());
         d.btnSave.addEventListener('click', () => this.doExport());
         if (d.btnCopy) d.btnCopy.addEventListener('click', () => this.copyImage());
@@ -260,7 +263,7 @@ window.App = {
             const ro = new ResizeObserver(() => {
                 clearTimeout(this._fitResizeT);
                 this._fitResizeT = setTimeout(() => {
-                    if (!this._followFit || !this.image || this.uiDprOverride === 1) return;
+                    if (this._immersionOpen || !this._followFit || !this.image || this.uiDprOverride === 1) return;
                     this.fitZoom();
                 }, 140);
             });
@@ -278,6 +281,8 @@ window.App = {
             const btn = e.target.closest('.tab');
             if (btn) this.switchTab(btn.dataset.tab);
         });
+        const myTemplates = this.$('btnMyTemplates');
+        if (myTemplates) myTemplates.addEventListener('click', () => this.switchTab('template'));
         // 对比原图:Pointer 统一鼠标/触屏;另支持 空格 按住短按。
         // (不用 Alt:窗口是 autoHideMenuBar,Windows 上 Alt 会唤出菜单栏并抢走按键)
         d.btnCompare.addEventListener('pointerdown', e => { e.preventDefault(); this.setCompare(true); });
@@ -285,6 +290,7 @@ window.App = {
         d.btnCompare.addEventListener('pointercancel', () => this.setCompare(false));
         d.btnCompare.addEventListener('pointerleave', () => this.setCompare(false));
         document.addEventListener('keydown', e => {
+            if (this._immersionOpen) return;
             if (e.code !== 'Space' || e.ctrlKey || e.altKey || e.metaKey) return;
             const el = document.activeElement;
             const tag = (el && el.tagName) || '';
@@ -725,11 +731,13 @@ window.App = {
             this._setPuzzleAxisHover(null);
         });
         // 拼图选中是"图片以外一律取消":点舞台灰底/工具栏/左侧预设/胶片条/其他面板都清掉蓝框。
-        // 例外:画布本身(由上面的格子命中逻辑决定)和拼图面板(选择下拉/单图滑块/字幕编辑器要用当前选中)。
+        // 例外:画布本身(由上面的格子命中逻辑决定)、拼图面板(选择下拉/单图滑块/字幕编辑器要用当前选中)
+        // 和沉浸展示入口(只是观看,不应清掉拼图格选中)。
         document.addEventListener('mousedown', e => {
+            if (this._immersionOpen) return;
             if (this._activePuzzleSlot == null || e.button !== 0) return;
             const t = e.target;
-            if (t && t.closest && t.closest('#previewCanvas, #panel-puzzle')) return;
+            if (t && t.closest && t.closest('#previewCanvas, #panel-puzzle, #btnImmersive')) return;
             this.clearActivePuzzleSlot();
         }, true);
         window.addEventListener('mousemove', e => {
@@ -2100,6 +2108,8 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         });
         this._thumbEls = elMap;
         strip.style.display = this.images.length > 1 ? 'flex' : 'none';
+        if (typeof this.updateExportEntry === 'function') this.updateExportEntry();
+        if (typeof this.updateImmersiveEntry === 'function') this.updateImmersiveEntry();
     },
 
     // 勾选切换(checkbox;与 Ctrl/Shift 多选同一份 batchSel,按勾选顺序排队)

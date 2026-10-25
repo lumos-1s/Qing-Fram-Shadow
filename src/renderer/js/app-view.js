@@ -67,18 +67,29 @@ window.App = Object.assign(window.App || {}, {
         if (!btn) return;
         const active = this.dom.tabs && this.dom.tabs.querySelector('.tab.active');
         const tab = active ? active.dataset.tab : 'param';
-        const label = tab === 'puzzle' ? '导出拼图' : (tab === 'grid' ? '导出切图' : '导出');
-        if (btn.textContent !== label) btn.textContent = label;
+        const selected = Array.isArray(this.selectedIdx) ? this.selectedIdx.length : 0;
+        // 普通页签:勾选多张时主导出按钮就是批量导出,不再另放一个「批量导出」按钮。
+        const label = tab === 'puzzle' ? '导出拼图'
+            : tab === 'grid' ? '导出切图'
+                : selected > 1 ? `导出 ${selected} 张` : '导出';
+        const labelEl = this.$('btnSaveLabel');
+        if (labelEl) {
+            if (labelEl.textContent !== label) labelEl.textContent = label;
+        } else if (btn.textContent !== label) {
+            btn.textContent = label;
+        }
         // 九宫格页签的产物是 n² 张图,画布不是最终成品,复制按钮在这个页签下没有意义
         if (this.dom.btnCopy) this.dom.btnCopy.style.display = tab === 'grid' ? 'none' : '';
         btn.title = tab === 'puzzle' ? '导出拼图（格式/质量/尺寸按导出设置，默认 JPG）'
-            : tab === 'grid' ? '导出切图（格式/质量按导出设置）' : '导出当前图片';
+            : tab === 'grid' ? '导出切图（格式/质量按导出设置）'
+                : selected > 1 ? `导出选中的 ${selected} 张照片（Ctrl+E）` : '导出当前图片（Ctrl+E）';
     },
 
     setupShortcuts() {
         // macOS 用 Command,Windows/Linux 用 Ctrl;其余逻辑完全一致
         const isMac = !!(window.qingframe && window.qingframe.isMac);
         document.addEventListener('keydown', e => {
+            if (this._immersionOpen) return;
             const mod = isMac ? e.metaKey : e.ctrlKey;
             // 输入框/文本域聚焦时不触发快捷键(避免打字冲突)
             const tag = (document.activeElement && document.activeElement.tagName) || '';
@@ -93,6 +104,7 @@ window.App = Object.assign(window.App || {}, {
             if (typing && ['a', 'z', 'y'].includes(e.key.toLowerCase())) return;
 
             if (mod && e.shiftKey && e.key.toLowerCase() === 'o') { e.preventDefault(); this.openImageFolder(); }
+            else if (mod && e.shiftKey && e.key.toLowerCase() === 'p') { e.preventDefault(); if (this.openImmersive) this.openImmersive(); }
             else if (mod && e.key.toLowerCase() === 'o') { e.preventDefault(); this.openImages(); }
             else if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); this.undo(); }
             else if ((mod && e.key.toLowerCase() === 'y') || (mod && e.shiftKey && e.key.toLowerCase() === 'z')) { e.preventDefault(); this.redo(); }

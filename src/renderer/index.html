@@ -66,7 +66,7 @@
                 <div class="export-split" id="exportSettingsWrap">
                     <button id="btnSave" class="tbtn primary export-main" title="导出当前图片">
                         <svg class="btn-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5 V10"/><path d="M4.6 6.6 8 10l3.4-3.4"/><path d="M2.6 12.4 H13.4"/></svg>
-                        <span>导出</span>
+                        <span id="btnSaveLabel">导出</span>
                     </button>
                     <button id="btnExportSettings" class="tbtn primary" title="导出设置：格式 / 质量 / 尺寸 / EXIF" aria-label="导出设置" aria-haspopup="true">
                         <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6.5 8 11l4.5-4.5"/></svg>
@@ -168,7 +168,10 @@
 
             <!-- 左侧：边框预设 -->
             <aside id="sidebar">
-                <div class="side-title">边框预设</div>
+                <div class="side-title">
+                    <span>边框预设</span>
+                    <button id="btnMyTemplates" class="side-title-action" type="button" title="管理我的模板">我的模板</button>
+                </div>
                 <div class="side-search"><input id="presetSearch" type="text" placeholder="搜索预设…" /></div>
                 <div id="presetTree" class="preset-tree"></div>
             </aside>
@@ -178,6 +181,12 @@
                 <div class="stage">
                     <canvas id="previewCanvas" width="800" height="600"></canvas>
                 </div>
+                <button id="btnImmersive" class="stage-immersive-btn" type="button" title="全屏沉浸展示 (Ctrl+Shift+P)" aria-label="全屏沉浸展示" hidden>
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>
+                        <rect x="8" y="8" width="8" height="8" rx="1.2" opacity=".55"/>
+                    </svg>
+                </button>
                 <div id="placeholder" class="placeholder">
                     <div class="ph-card">
                         <div class="ph-icon" aria-hidden="true">
@@ -190,6 +199,7 @@
                         <div class="ph-text">点击按钮或将照片拖到此处<br/><span class="ph-sub">支持 JPG / PNG / WebP / BMP / HEIC，可拖入整个文件夹</span></div>
                         <div class="ph-actions">
                             <button id="btnPickPhoto" class="tbtn primary pick-btn" title="打开图片 (Ctrl+O)">选择照片</button>
+                            <button id="btnPickFolder" class="tbtn ph-folder" title="导入整个文件夹（含子文件夹） (Ctrl+Shift+O)">导入文件夹</button>
                             <button id="btnRestoreDraft" class="tbtn restore-draft-btn" style="display:none" title="恢复上次会话的照片和模板">继续上次会话</button>
                         </div>
                     </div>
@@ -237,7 +247,7 @@
                             </div>
                             <div class="param-row" id="rowGlobalMargin">
                                 <label>统一边距</label>
-                                <input type="range" id="slGlobalMargin" class="ctl-rng" min="10" max="300" step="10" value="100" />
+                                <input type="range" id="slGlobalMargin" class="ctl-rng" min="10" max="300" step="1" value="100" />
                                 <span class="pval" id="lblGlobalMargin"></span>
                             </div>
                             <div class="hint-box">按该预设四边的参考值等比缩放。</div>
@@ -909,6 +919,56 @@
     </div>
 
     <!-- ═══ 更新内容弹窗 ═══ -->
+    <!-- ══ 沉浸式照片展示 ══ -->
+    <div id="immersion" class="immersion" role="dialog" aria-modal="true" aria-label="沉浸式照片展示" hidden>
+        <div class="immersion-wall" id="immersionWall" aria-hidden="true"></div>
+        <div class="immersion-vignette" aria-hidden="true"></div>
+
+        <div class="immersion-bar immersion-chrome">
+            <div class="immersion-brand">
+                <span class="immersion-brand-mark" aria-hidden="true"></span>
+                <span>沉浸展示</span>
+                <span class="immersion-brand-sep">/</span>
+                <span class="immersion-count" id="immersionCount">01 / 01</span>
+            </div>
+            <div class="immersion-bar-actions">
+                <span class="immersion-hint">← → 切换 · Esc 退出</span>
+                <button id="immersionClose" class="immersion-icon-btn" type="button" title="退出沉浸展示" aria-label="退出沉浸展示">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <button id="immersionPrev" class="immersion-nav immersion-prev immersion-chrome" type="button" title="上一张 (←)" aria-label="上一张">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+        </button>
+        <button id="immersionNext" class="immersion-nav immersion-next immersion-chrome" type="button" title="下一张 (→)" aria-label="下一张">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+        </button>
+
+        <figure class="immersion-card" id="immersionCard">
+            <div class="immersion-sequence immersion-chrome" aria-live="polite">
+                <span class="immersion-live-dot" aria-hidden="true"></span>
+                <span>正在展示 · <b id="immersionNo">01</b></span>
+            </div>
+            <div class="immersion-stage" id="immersionStage">
+                <img class="immersion-img" id="immersionImgA" alt="">
+                <img class="immersion-img" id="immersionImgB" alt="">
+                <div class="immersion-loading" id="immersionLoading" aria-hidden="true"></div>
+            </div>
+            <figcaption class="immersion-caption immersion-chrome">
+                <div class="immersion-file-wrap">
+                    <span class="immersion-caption-label">文件</span>
+                    <b class="immersion-file" id="immersionFile">—</b>
+                </div>
+                <div class="immersion-preset-wrap">
+                    <span class="immersion-caption-label">边框</span>
+                    <span class="immersion-preset" id="immersionPreset">—</span>
+                </div>
+            </figcaption>
+        </figure>
+    </div>
+
     <div id="updateNotesModal" class="modal-overlay" style="display:none">
         <div class="modal-card" style="max-width:540px;width:90%;">
             <div class="modal-header">
@@ -1159,5 +1219,6 @@
     <script src="js/app-qfs.js"></script>
     <script src="js/app-camlib.js"></script>
     <script src="js/app-splash.js"></script>
+    <script src="js/app-immersive.js"></script>
 </body>
 </html>
