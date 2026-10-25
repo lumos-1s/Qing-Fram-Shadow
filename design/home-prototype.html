@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>清框影 · 看片台（静态原型）</title>
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="home-prototype.css">
+</head>
+<body>
+<!-- 图标集：全部为内联 SVG，原型可离线打开 -->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="4" width="18" height="16" rx="2.5"/>
+    <circle cx="8.5" cy="9" r="1.6"/>
+    <path d="M3.5 17l4.8-4.8a1.5 1.5 0 0 1 2.1 0l2.4 2.4 2.2-2.2a1.5 1.5 0 0 1 2.1 0l3.4 3.4"/>
+  </symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>
+    <path d="M3.5 10h17"/>
+  </symbol>
+  <symbol id="i-history" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 5v5h5"/>
+    <path d="M4.7 9.2a8 8 0 1 1-.4 4.6"/>
+    <path d="M12 8v4.4l3 1.8"/>
+  </symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="4.5" width="18" height="12.5" rx="2"/>
+    <path d="M9 21h6M12 17v4"/>
+  </symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="4"/>
+    <path d="M12 2.5v2M12 19.5v2M4.3 4.3l1.4 1.4M18.3 18.3l1.4 1.4M2.5 12h2M19.5 12h2M4.3 19.7l1.4-1.4M18.3 5.7l1.4-1.4"/>
+  </symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.3 8.3 0 1 0 10.2 10.2z"/>
+  </symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>
+  </symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="9"/>
+    <path d="M12 11v5M12 7.8v.2"/>
+  </symbol>
+  <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+    <path d="M6 6l12 12M18 6L6 18"/>
+  </symbol>
+  <symbol id="i-arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M19 12H5M11 6l-6 6 6 6"/>
+  </symbol>
+  <symbol id="i-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 12h14M13 6l6 6-6 6"/>
+  </symbol>
+  <symbol id="i-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 5l-7 7 7 7"/>
+  </symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 5l7 7-7 7"/>
+  </symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.5" y="3.5" width="7" height="7" rx="1.4"/>
+    <rect x="13.5" y="3.5" width="7" height="7" rx="1.4"/>
+    <rect x="3.5" y="13.5" width="7" height="7" rx="1.4"/>
+    <rect x="13.5" y="13.5" width="7" height="7" rx="1.4"/>
+  </symbol>
+  <symbol id="i-rail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2.8" y="6" width="6.4" height="12" rx="1.5"/>
+    <rect x="11.2" y="4" width="7.2" height="16" rx="1.7"/>
+    <path d="M21 9v6"/>
+  </symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/>
+  </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 12.5l4.6 4.6L19.5 6.5"/>
+  </symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4.5" y="10" width="15" height="10" rx="2.2"/>
+    <path d="M8 10V7.5a4 4 0 0 1 8 0V10"/>
+  </symbol>
+  <symbol id="i-photo-stack" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="7" y="3.5" width="13" height="13" rx="2"/>
+    <path d="M16.5 20.5H6a2.5 2.5 0 0 1-2.5-2.5V7"/>
+    <path d="M9.5 14l3.2-3.2a1.2 1.2 0 0 1 1.7 0l2.6 2.6"/>
+    <circle cx="11.5" cy="8.5" r="1.1"/>
+  </symbol>
+  <symbol id="i-arrow-up-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 17L17 7M9 7h8v8"/>
+  </symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M12 2.8l1.5 5.1 5.1 1.5-5.1 1.5L12 16l-1.5-5.1L5.4 9.4l5.1-1.5z"/>
+    <path d="M18.7 15.2l.8 2.5 2.5.8-2.5.8-.8 2.5-.8-2.5-2.5-.8 2.5-.8z" opacity=".55"/>
+  </symbol>
+</svg>
+
+<div class="app" id="app">
+  <header class="topbar">
+    <a class="brand" href="#" id="brandHome" aria-label="回到看片台顶部">
+      <img class="brand-icon" src="icon.svg" alt="">
+      <span class="brand-name">清框影</span>
+      <span class="brand-slash">/</span>
+      <span class="brand-page">看片台</span>
+    </a>
+    <span class="proto-pill" title="静态原型：只用于确认视觉与交互"><span></span>静态原型</span>
+    <div class="topbar-spacer"></div>
+    <nav class="top-actions" aria-label="页面操作">
+      <button class="top-btn" id="workbenchBtn" type="button" title="返回专业工作台（原型占位）">
+        <svg class="ico" aria-hidden="true"><use href="#i-monitor"/></svg>
+        <span>工作台</span>
+      </button>
+      <button class="icon-btn theme-btn" id="themeBtn" type="button" aria-label="切换主题" title="切换主题">
+        <svg class="ico ico-sun" aria-hidden="true"><use href="#i-sun"/></svg>
+        <svg class="ico ico-moon" aria-hidden="true"><use href="#i-moon"/></svg>
+      </button>
+      <button class="icon-btn" id="settingsBtn" type="button" aria-label="设置" title="设置（原型占位）">
+        <svg class="ico" aria-hidden="true"><use href="#i-settings"/></svg>
+      </button>
+      <button class="icon-btn" id="aboutBtn" type="button" aria-label="关于" title="关于（原型占位）">
+        <svg class="ico" aria-hidden="true"><use href="#i-info"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <main class="page" id="main">
+    <section class="hero" aria-labelledby="heroTitle">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="eyebrow-dot"></span><span>SHOWCASE</span><span class="eyebrow-line"></span><span id="heroCount">12 种精选风格</span></div>
+        <h1 id="heroTitle">给照片，<br class="hero-br">找一个合适的框</h1>
+        <p class="hero-sub">从一张成片开始，把喜欢的风格套用到你的照片上。<br>示例只是封面，模板才是内核。</p>
+      </div>
+      <div class="hero-actions">
+        <div class="action-row">
+          <button class="btn btn-primary" id="pickPhotoBtn" type="button">
+            <svg class="ico" aria-hidden="true"><use href="#i-image"/></svg>
+            <span>选择照片</span>
+          </button>
+          <button class="btn btn-secondary" id="pickFolderBtn" type="button">
+            <svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg>
+            <span>导入文件夹</span>
+          </button>
+          <button class="btn btn-ghost" id="resumeBtn" type="button" disabled title="原型中没有可恢复的草稿">
+            <svg class="ico" aria-hidden="true"><use href="#i-history"/></svg>
+            <span>继续上次会话</span>
+          </button>
+        </div>
+        <p class="action-note">
+          <svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg>
+          <span>JPG / PNG / WebP / HEIC · 所有处理都在本机完成</span>
+        </p>
+      </div>
+    </section>
+
+    <section class="showcase" aria-labelledby="showcaseTitle">
+      <div class="showcase-head">
+        <div class="showcase-title-wrap">
+          <h2 id="showcaseTitle">精选风格</h2>
+          <span class="count-pill" id="styleCount">12</span>
+        </div>
+        <div class="showcase-tools">
+          <div class="seg" role="group" aria-label="预览照片">
+            <button class="seg-btn is-on" type="button" data-mode="sample" aria-pressed="true">示例</button>
+            <button class="seg-btn" type="button" data-mode="mine" aria-pressed="false">我的照片</button>
+          </div>
+          <button class="view-btn" id="viewToggle" type="button" aria-pressed="false">
+            <svg class="ico" aria-hidden="true"><use href="#i-grid"/></svg>
+            <span>查看全部</span>
+          </button>
+          <span class="tool-divider" id="toolDivider" aria-hidden="true"></span>
+          <div class="rail-nav" id="railNav">
+            <span class="progress" aria-live="polite"><b id="progressNow">02</b><span class="progress-sep">/</span><span id="progressTotal">12</span></span>
+            <button class="round-btn" id="prevBtn" type="button" aria-label="上一个风格">
+              <svg class="ico" aria-hidden="true"><use href="#i-chevron-left"/></svg>
+            </button>
+            <button class="round-btn" id="nextBtn" type="button" aria-label="下一个风格">
+              <svg class="ico" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="filter-row">
+        <div class="chips" id="chips" role="group" aria-label="风格分类"></div>
+        <p class="mode-hint" id="modeHint">内置样片 · 同一套模板</p>
+      </div>
+
+      <div class="rail-wrap" id="railWrap">
+        <div class="rail" id="rail" role="list" tabindex="0" aria-label="精选风格看片台"></div>
+        <div class="rail-empty" id="railEmpty" hidden>
+          <svg class="ico" aria-hidden="true"><use href="#i-photo-stack"/></svg>
+          <b>这个分类还没有风格</b>
+          <span>换一个分类看看</span>
+        </div>
+      </div>
+
+      <div class="grid-wrap" id="gridWrap" hidden>
+        <div class="grid-note">
+          <span id="gridCount">12 个风格</span>
+          <span>按分类筛选 · 点击查看</span>
+        </div>
+        <div class="grid" id="grid"></div>
+      </div>
+    </section>
+
+    <section class="recent" aria-labelledby="recentTitle">
+      <div class="recent-head">
+        <h2 id="recentTitle">最近作品</h2>
+        <span>本机草稿</span>
+      </div>
+      <div class="recent-empty">
+        <div class="recent-icon">
+          <svg class="ico" aria-hidden="true"><use href="#i-photo-stack"/></svg>
+        </div>
+        <div class="recent-copy">
+          <b>还没有最近作品</b>
+          <p>打开一张照片并保存草稿后，这里会出现你的作品，点一下就能继续编辑。</p>
+        </div>
+        <button class="text-btn" id="recentPickBtn" type="button">选择一张照片 <svg class="ico" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <span>清框影 · 看片台静态原型</span>
+      <span class="foot-dot"></span>
+      <span>所有照片仅在本机处理，不会上传</span>
+      <span class="foot-spacer"></span>
+      <span>v0.1.20</span>
+    </footer>
+  </main>
+</div>
+
+<!-- 风格详情 -->
+<div class="detail" id="detail" hidden>
+  <div class="detail-backdrop" data-close-detail></div>
+  <div class="detail-dialog" role="dialog" aria-modal="true" aria-labelledby="detailTitle" aria-describedby="detailDesc">
+    <button class="detail-close" id="detailClose" type="button" aria-label="关闭详情">
+      <svg class="ico" aria-hidden="true"><use href="#i-close"/></svg>
+    </button>
+    <div class="detail-stage" id="detailStage" data-mode="sample">
+      <div class="stage-inner">
+        <img id="detailSample" data-role="sample" alt="">
+        <img id="detailMine" data-role="mine" alt="">
+      </div>
+      <button class="stage-nav stage-prev" id="detailPrev" type="button" aria-label="上一个风格">
+        <svg class="ico" aria-hidden="true"><use href="#i-chevron-left"/></svg>
+      </button>
+      <button class="stage-nav stage-next" id="detailNext" type="button" aria-label="下一个风格">
+        <svg class="ico" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+      </button>
+      <div class="stage-badge" id="detailIndex">01 / 12</div>
+      <div class="stage-hint">← → 切换 · Esc 关闭</div>
+    </div>
+    <aside class="detail-info">
+      <div class="detail-eyebrow" id="detailCategory">胶片 · FILM</div>
+      <h2 class="detail-title" id="detailTitle">撕边胶片</h2>
+      <p class="detail-desc" id="detailDesc"></p>
+      <div class="detail-tags" id="detailTags"></div>
+
+      <div class="detail-divider"></div>
+
+      <div class="detail-mode">
+        <span class="detail-label">预览照片</span>
+        <div class="seg seg-full" role="group" aria-label="详情预览照片">
+          <button class="seg-btn is-on" type="button" data-mode="sample" aria-pressed="true">示例成片</button>
+          <button class="seg-btn" type="button" data-mode="mine" aria-pressed="false">我的照片</button>
+        </div>
+      </div>
+
+      <div class="detail-meta">
+        <div class="meta-row"><span>预设</span><code id="detailPreset"></code></div>
+        <div class="meta-row"><span>画布</span><code id="detailSize"></code></div>
+        <div class="meta-row"><span>分类</span><code id="detailCategoryCode"></code></div>
+      </div>
+
+      <div class="detail-actions">
+        <button class="btn btn-primary" id="detailUse" type="button">
+          <svg class="ico" aria-hidden="true"><use href="#i-image"/></svg>
+          <span>用我的照片试穿</span>
+        </button>
+        <button class="btn btn-secondary" id="detailZoom" type="button">
+          <svg class="ico" aria-hidden="true"><use href="#i-expand"/></svg>
+          <span>查看大图</span>
+        </button>
+      </div>
+      <p class="detail-note">静态原型：按钮只演示交互，不会修改照片。接入后会直接套用这套预设。</p>
+    </aside>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite">
+  <span class="toast-mark"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg></span>
+  <span id="toastText"></span>
+</div>
+
+<input type="file" id="filePicker" accept="image/*" hidden>
+
+<script src="home-prototype-data.js"></script>
+<script src="home-prototype.js"></script>
+</body>
+</html>
