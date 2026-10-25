@@ -24,8 +24,12 @@ window.App = Object.assign(window.App || {}, {
             if (!tile) return;
             this.enterEditorFromWall(tile.dataset.idx);
         });
-        // 键盘：Enter / 空格触发卡片
+        // 键盘：方向键移动选中、Enter / 空格触发卡片
         el.grid.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') { e.preventDefault(); this.moveWallSelection(1, 0); return; }
+            if (e.key === 'ArrowLeft') { e.preventDefault(); this.moveWallSelection(-1, 0); return; }
+            if (e.key === 'ArrowDown') { e.preventDefault(); this.moveWallSelection(0, 1); return; }
+            if (e.key === 'ArrowUp') { e.preventDefault(); this.moveWallSelection(0, -1); return; }
             if (e.key !== 'Enter' && e.key !== ' ') return;
             const tile = e.target.closest('.pw-tile');
             if (!tile) return;
@@ -79,6 +83,29 @@ window.App = Object.assign(window.App || {}, {
         if (el.sub) el.sub.textContent = data.items.length + ' 种预设 · 点击卡片进入编辑 · 滚动浏览';
     },
 
+    // 方向键在封面墙中移动选中卡片（folia 式选中框）
+    moveWallSelection(dirX, dirY) {
+        const el = this._wallDom;
+        const grid = el && el.grid;
+        if (!grid) return;
+        const tiles = Array.from(grid.querySelectorAll('.pw-tile'));
+        if (!tiles.length) return;
+        let idx = tiles.findIndex((t) => t.classList.contains('selected'));
+        if (idx < 0) idx = 0;
+        const gap = 18;
+        const cols = Math.max(1, Math.round((grid.clientWidth + gap) / (tiles[0].offsetWidth + gap)));
+        let n = idx;
+        if (dirX === -1) n = (idx % cols === 0) ? idx : idx - 1;
+        else if (dirX === 1) n = (idx % cols === cols - 1 || idx === tiles.length - 1) ? idx : idx + 1;
+        else if (dirY === -1) n = (idx - cols >= 0) ? idx - cols : idx;
+        else if (dirY === 1) n = (idx + cols < tiles.length) ? idx + cols : idx;
+        for (const t of tiles) t.classList.remove('selected');
+        const target = tiles[n];
+        target.classList.add('selected');
+        try { target.focus({ preventScroll: true }); } catch (_) {}
+        target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    },
+
     // 打开预设墙（启动默认显示；工具栏「预设墙」按钮返回时调用）
     openPresetWall() {
         const el = this._wallDom;
@@ -103,6 +130,8 @@ window.App = Object.assign(window.App || {}, {
         el.overlay.hidden = true;
         document.body.classList.remove('wall-open');
         document.body.classList.add('editing');
+        const selTiles = el.grid ? el.grid.querySelectorAll('.pw-tile.selected') : [];
+        for (const t of selTiles) t.classList.remove('selected');
         if (el.back) el.back.style.display = '';
         if (el.backSep) el.backSep.style.display = '';
         const btnOpen = document.getElementById('btnOpen');

@@ -99,6 +99,35 @@ async function main() {
     check(tiles.noCover === 0, '每张卡片都有封面图', `noCover=${tiles.noCover}`);
     check(tiles.noName === 0, '每张卡片都有名称', `noName=${tiles.noName}`);
 
+    // 2.5 方向键移动选中（folia 式选中框）
+    const kb = await exec(`(async () => {
+      const g = document.getElementById('presetWallGrid');
+      const first = g.querySelector('.pw-tile');
+      first.focus();
+      first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 50));
+      const selCount = g.querySelectorAll('.pw-tile.selected').length;
+      const selIdx = Array.from(g.children).findIndex(t => t.classList.contains('selected'));
+      const firstTop = first.getBoundingClientRect().top;
+      const selTop = selIdx >= 0 ? g.children[selIdx].getBoundingClientRect().top : -1;
+      return { selCount, selIdx, sameRow: selTop >= 0 && Math.abs(selTop - firstTop) < 4 };
+    })()`);
+    check(kb.selCount === 1, '方向键移动出现选中框', `selected=${kb.selCount}`);
+    check(kb.sameRow, '方向键右移选中同行下一张', `idx=${kb.selIdx}`);
+
+    const kb2 = await exec(`(async () => {
+      const g = document.getElementById('presetWallGrid');
+      const first = g.querySelector('.pw-tile');
+      first.focus();
+      first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 50));
+      const selIdx = Array.from(g.children).findIndex(t => t.classList.contains('selected'));
+      const firstTop = first.getBoundingClientRect().top;
+      const selTop = selIdx >= 0 ? g.children[selIdx].getBoundingClientRect().top : -1;
+      return { selIdx, nextRow: selTop > firstTop };
+    })()`);
+    check(kb2.nextRow, '方向键下移选中下一行', `idx=${kb2.selIdx}`);
+
     // 3. 点击第一张卡片 → 进入编辑：墙隐藏、body.editing、sidebar 隐藏、模板已应用
     const enter = await exec(`(async () => {
       const App = window.App;
