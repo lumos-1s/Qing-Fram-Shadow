@@ -60,6 +60,8 @@
         <!-- ═══ 顶部工具栏 ═══ -->
         <header id="toolbar">
             <div class="toolbar-group">
+                <button id="btnBackWall" class="tbtn" title="返回预设墙" style="display:none"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 3.5 5 8l5.5 4.5"/></svg>预设墙</button>
+                <div class="sep" id="backWallSep" style="display:none"></div>
                 <button id="btnOpen" class="tbtn" title="打开图片 (Ctrl+O)">导入照片</button>
                 <button id="btnOpenFolder" class="tbtn" title="导入整个文件夹（含子文件夹） (Ctrl+Shift+O)">导入文件夹</button>
                 <div class="sep"></div>
@@ -1088,8 +1090,8 @@
             </div>
             <div class="modal-body" style="line-height:1.9;font-size:13px;color:var(--text);">
                 <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">三步上手，全程本地处理，照片与设置不上传。</div>
-                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>① 导入照片</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">点击左上角「导入照片 / 导入文件夹」，或直接把图片、文件夹拖进窗口；也支持 Ctrl+V 粘贴截图</div></div>
-                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>② 选择边框</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">左侧浏览 <span id="introStatsText">87 个模板、92 种边框风格</span>，点一下套用；拼图、九宫格切图也在左侧</div></div>
+                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>① 选择边框</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">启动即预设画廊，<span id="introStatsText">87 个预设</span>成片任选，点卡片进入编辑</div></div>
+                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>② 导入照片</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">进入编辑后点「导入照片 / 导入文件夹」，或直接把图片、文件夹拖进窗口；也支持 Ctrl+V 粘贴截图</div></div>
                 <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:6px;"><b>③ 调参导出</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">右侧调整参数 / 签名 / Logo / 品牌水印，满意后点「导出」</div></div>
             </div>
             <div class="modal-actions">
@@ -1196,6 +1198,34 @@
         </div>
     </div>
 
+    <!-- ═══ 预设墙启动主页 (启动即预设画廊,点击卡片进入编辑) ═══ -->
+    <div id="presetWall" class="preset-wall" role="region" aria-label="预设画廊" hidden>
+        <header class="pw-head">
+            <div class="pw-brand">
+                <svg width="20" height="20" viewBox="0 0 18 18" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="pwGold" gradientUnits="userSpaceOnUse" x1="4" y1="4" x2="14" y2="14">
+                            <stop offset="0" stop-color="#F6E3AC"/>
+                            <stop offset="0.45" stop-color="#DCBA79"/>
+                            <stop offset="1" stop-color="#A6814B"/>
+                        </linearGradient>
+                    </defs>
+                    <rect x="3.3" y="4" width="11.4" height="10" rx="1.8" fill="none" stroke="url(#pwGold)" stroke-width="1.5"/>
+                    <path d="M9 5.2 V12.8" stroke="url(#pwGold)" stroke-width="1.1" stroke-linecap="round"/>
+                    <path d="M9 9 H13.6" stroke="url(#pwGold)" stroke-width="1.1" stroke-linecap="round"/>
+                </svg>
+                <span>清框影</span>
+            </div>
+            <div class="pw-head-meta">
+                <h1 class="pw-title">选择边框风格</h1>
+                <p class="pw-sub" id="pwSub">加载中…</p>
+            </div>
+            <button id="pwSkip" class="pw-skip" type="button" title="跳过，直接进入工作台">进入工作台</button>
+        </header>
+        <div id="presetWallGrid" class="pw-grid" tabindex="-1"></div>
+        <div class="pw-hint">滚动浏览 · 点击卡片开始编辑</div>
+    </div>
+
     <!-- ═══ 全局错误提示 (错误兜底) ═══ -->
     <div id="errToast" class="err-toast"></div>
 
@@ -1220,5 +1250,7 @@
     <script src="js/app-camlib.js"></script>
     <script src="js/app-splash.js"></script>
     <script src="js/app-immersive.js"></script>
+    <script src="assets/preset-wall/preset-wall-data.js"></script>
+    <script src="js/app-preset-wall.js"></script>
 </body>
 </html>

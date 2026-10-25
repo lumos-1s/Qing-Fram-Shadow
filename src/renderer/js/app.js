@@ -102,6 +102,7 @@ window.App = {
         this.cacheDom();
         this.bind();
         if (this.initImmersive) this.initImmersive();
+        if (this.initPresetWall) this.initPresetWall();
         this.loadPrefs();
         this.loadPresets();
         this.restoreLastState();
@@ -140,7 +141,7 @@ window.App = {
         // 替换 this.template,此时引用不再等于启动时的引用,选择被安全跳过。
         const bootTpl = this.template;
         const pickFirst = () => {
-            if (this.presets && this.presets.length && this.template === bootTpl) this.selectPreset(this.presets[0]);
+            if (this.presets && this.presets.length && this.template === bootTpl && !this._wallActive) this.selectPreset(this.presets[0]);
             this.updateEmptyState();
         };
         if (typeof requestIdleCallback === 'function') requestIdleCallback(pickFirst, { timeout: 1500 });
@@ -149,6 +150,8 @@ window.App = {
         const showIntro = () => this.showIntroIfNeeded();
         if (typeof requestIdleCallback === 'function') requestIdleCallback(showIntro, { timeout: 4000 });
         else setTimeout(showIntro, 3000);
+        // 启动默认进预设墙主页(画廊选风格);「跳过/进入工作台」或点卡片后进入编辑
+        if (this.openPresetWall) this.openPresetWall();
     },
 
     // 恢复上次的界面偏好(导出质量 / 拍摄信息开关)
