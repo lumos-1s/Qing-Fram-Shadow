@@ -71,8 +71,8 @@ async function main() {
         if (!App) return { error: 'App 未加载' };
         const wait = (ms) => new Promise((r) => setTimeout(r, ms));
         for (let i = 0; i < 80 && (!App.presets || App.presets.length < 4); i++) await wait(100);
-        for (let i = 0; i < 80 && !document.getElementById('presetWallGrid').childElementCount; i++) await wait(100);
-        return { ok: true, presets: App.presets.length, tiles: document.getElementById('presetWallGrid').childElementCount };
+        for (let i = 0; i < 80 && !document.getElementById('presetWallGrid').querySelectorAll('.pw-tile').length; i++) await wait(100);
+        return { ok: true, presets: App.presets.length, tiles: document.getElementById('presetWallGrid').querySelectorAll('.pw-tile').length };
       } catch (e) { return { error: String(e) }; }
     })()`);
     check(setup.ok, 'App 与预设墙就绪', setup.error || `presets=${setup.presets} tiles=${setup.tiles}`);
@@ -84,10 +84,10 @@ async function main() {
     })()`);
     check(wallVisible, '启动默认显示预设墙');
 
-    // 2. 87 张卡片渲染 + 每张有封面图
+    // 2. 90 格周期网格渲染（87 张预设循环填充）+ 每张有封面图
     const tiles = await exec(`(() => {
         const g = document.getElementById('presetWallGrid');
-        const list = Array.from(g.children);
+        const list = Array.from(g.querySelectorAll('.pw-tile'));
         return {
             count: list.length,
             noCover: list.filter(t => !t.querySelector('.pw-tile-cover img')).length,
@@ -95,25 +95,21 @@ async function main() {
             sub: (document.getElementById('pwSub') || {}).textContent || ''
         };
     })()`);
-    check(tiles.count === 87, '预设墙渲染 87 张卡片', `count=${tiles.count}`);
+    check(tiles.count === 90, '周期网格渲染 90 张卡片', `count=${tiles.count}`);
     check(tiles.noCover === 0, '每张卡片都有封面图', `noCover=${tiles.noCover}`);
     check(tiles.noName === 0, '每张卡片都有名称', `noName=${tiles.noName}`);
 
-    // 2.5 方向键移动选中（folia 式选中框）
+    // 2.5 方向键移动选中（上下左右，周期内循环）
     const kb = await exec(`(async () => {
       const g = document.getElementById('presetWallGrid');
       const first = g.querySelector('.pw-tile');
       first.focus();
       first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
       await new Promise((r) => setTimeout(r, 50));
-      const selCount = g.querySelectorAll('.pw-tile.selected').length;
-      const selIdx = Array.from(g.children).findIndex(t => t.classList.contains('selected'));
-      const firstTop = first.getBoundingClientRect().top;
-      const selTop = selIdx >= 0 ? g.children[selIdx].getBoundingClientRect().top : -1;
-      return { selCount, selIdx, sameRow: selTop >= 0 && Math.abs(selTop - firstTop) < 4 };
+      return { selCount: g.querySelectorAll('.pw-tile.selected').length, selC: App._wallSel.c, selR: App._wallSel.r };
     })()`);
     check(kb.selCount === 1, '方向键移动出现选中框', `selected=${kb.selCount}`);
-    check(kb.sameRow, '方向键右移选中同行下一张', `idx=${kb.selIdx}`);
+    check(kb.selC === 1 && kb.selR === 0, '方向键右移选中下一格', `c=${kb.selC} r=${kb.selR}`);
 
     const kb2 = await exec(`(async () => {
       const g = document.getElementById('presetWallGrid');
@@ -121,41 +117,60 @@ async function main() {
       first.focus();
       first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
       await new Promise((r) => setTimeout(r, 50));
-      const selIdx = Array.from(g.children).findIndex(t => t.classList.contains('selected'));
-      const firstTop = first.getBoundingClientRect().top;
-      const selTop = selIdx >= 0 ? g.children[selIdx].getBoundingClientRect().top : -1;
-      return { selIdx, sameRow: selTop >= 0 && Math.abs(selTop - firstTop) < 4 };
+      return { selC: App._wallSel.c, selR: App._wallSel.r };
     })()`);
-    check(kb2.sameRow, '方向键左移选中上一张', `idx=${kb2.selIdx}`);
+    check(kb2.selC === 0 && kb2.selR === 0, '方向键左移选中上一格', `c=${kb2.selC} r=${kb2.selR}`);
 
-    // 2.6 横向焦点墙：卡片横排溢出 + 中间卡片最显眼 + 拖动平移
+    const kb3 = await exec(`(async () => {
+      const g = document.getElementById('presetWallGrid');
+      const first = g.querySelector('.pw-tile');
+      first.focus();
+      first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 50));
+      return { selC: App._wallSel.c, selR: App._wallSel.r };
+    })()`);
+    check(kb3.selR === 1 && kb3.selC === 0, '方向键下移选中下一行', `r=${kb3.selR} c=${kb3.selC}`);
+
+    // 2.6 无限磁贴墙：周期块覆盖视口 + 中间卡片最显眼 + 拖动平移 + 取模回绕
     const wall = await exec(`(async () => {
       const g = document.getElementById('presetWallGrid');
-      const tiles = Array.from(g.children);
-      const t0 = tiles[0], tn = tiles[tiles.length - 1];
-      const first = t0.getBoundingClientRect();
-      const last = tn.getBoundingClientRect();
-      const overflows = last.right > g.getBoundingClientRect().right + 200; // 末卡右缘远在视口外
+      const block = g.querySelector('.pw-block');
+      const tiles = Array.from(block.querySelectorAll('.pw-tile'));
+      const b = App._wallBounds;
+      // 无限墙基础：周期块宽高均大于视口（任意偏移下视口内都有卡）
+      const covers = !!b && b.BW > g.clientWidth && b.BH > g.clientHeight;
       // 中间卡片（视口中心附近）scale 最大（inline transform 由 JS focusWall 写入）
       const sc = (t) => { const ts = t.style.transform; const p = ts.indexOf('scale('); return p >= 0 ? parseFloat(ts.slice(p + 6)) : 1; };
-      let maxIdx = 0, maxS = 0;
-      tiles.forEach((t, i) => { const v = sc(t); if (v > maxS) { maxS = v; maxIdx = i; } });
-      const centerIdx = Math.round((g.clientWidth / 2 - 28) / (t0.offsetWidth + 24));
-      const centerVisible = Math.abs(maxIdx - centerIdx) <= 2;
-      // 模拟按住拖动：pointerdown → pointermove → 末卡应进入视口
+      let maxT = null, maxS = 0;
+      for (const t of tiles) { const v = sc(t); if (v > maxS) { maxS = v; maxT = t; } }
+      const vr = g.getBoundingClientRect();
+      const tr = maxT.getBoundingClientRect();
+      const centerDist = Math.hypot((tr.left + tr.width / 2) - (vr.left + vr.width / 2), (tr.top + tr.height / 2) - (vr.top + vr.height / 2));
+      const centerFocus = centerDist < b.tw * 0.9;
+      // 模拟按住拖动（横向 + 纵向）：整墙应跟随平移
       const r = g.getBoundingClientRect();
-      g.dispatchEvent(new PointerEvent('pointerdown', { button: 0, pointerId: 1, clientX: r.left + 600, bubbles: true }));
-      g.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: r.left + 600 - 6000, bubbles: true }));
+      g.dispatchEvent(new PointerEvent('pointerdown', { button: 0, pointerId: 1, clientX: r.left + 600, clientY: r.top + 400, bubbles: true }));
+      g.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: r.left + 600 - 2000, clientY: r.top + 400 - 1500, bubbles: true }));
       g.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }));
       await new Promise((x) => setTimeout(x, 120));
-      const mt = g.style.transform.match(/-?[\\d.]+/);
-      const movedLeft = mt ? parseFloat(mt[0]) : 0;
-      const lastVisible = tn.getBoundingClientRect().left < g.getBoundingClientRect().right;
-      return { overflows, maxIdx, centerIdx, centerVisible, movedLeft, lastVisible, tiles: tiles.length };
+      const ox1 = App._wallOffsetX, oy1 = App._wallOffsetY;
+      const wallMoved = ox1 < -1000 && oy1 < -1000;
+      // 取模回绕：连续拖 4 个周期宽，偏移仍被约束在 [-BW, 0]（墙无尽头）
+      g.dispatchEvent(new PointerEvent('pointerdown', { button: 0, pointerId: 1, clientX: r.left + 600, clientY: r.top + 400, bubbles: true }));
+      for (let i = 0; i < 4; i++) {
+        g.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: r.left + 600 - (i + 1) * b.BW, clientY: r.top + 400, bubbles: true }));
+      }
+      g.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }));
+      await new Promise((x) => setTimeout(x, 120));
+      const ox2 = App._wallOffsetX;
+      const wrapped = ox2 <= 0 && ox2 > -b.BW;
+      return { tileCount: tiles.length, covers, maxS, centerDist, centerFocus, ox1, oy1, wallMoved, ox2, wrapped, bw: b.BW, bh: b.BH, vw: g.clientWidth, vh: g.clientHeight };
     })()`);
-    check(wall.overflows, '卡片横向排开溢出屏幕', `lastRight>viewport`);
-    check(wall.centerVisible, '最中间的图片最显眼', `maxIdx=${wall.maxIdx} centerIdx=${wall.centerIdx}`);
-    check(wall.movedLeft < -2000, '按住拖动后整墙跟随鼠标平移', `offsetX=${wall.movedLeft}`);
+    check(wall.tileCount === 90, '周期网格渲染 90 张卡片', `count=${wall.tileCount}`);
+    check(wall.covers, '周期块覆盖视口（无限墙基础）', `BW=${wall.bw} BH=${wall.bh} vw=${wall.vw} vh=${wall.vh}`);
+    check(wall.centerFocus, '最中间的图片最显眼', `scale=${wall.maxS} dist=${Math.round(wall.centerDist)}`);
+    check(wall.wallMoved, '按住拖动后整墙跟随鼠标平移', `ox=${wall.ox1} oy=${wall.oy1}`);
+    check(wall.wrapped, '拖动超界自动取模回绕（墙无尽头）', `ox2=${wall.ox2} BW=${wall.bw}`);
 
     // 3. 点击第一张卡片 → 进入编辑：墙隐藏、body.editing、sidebar 隐藏、模板已应用
     const enter = await exec(`(async () => {

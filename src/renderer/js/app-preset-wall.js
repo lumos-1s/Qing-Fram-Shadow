@@ -1,6 +1,14 @@
 // 预设墙启动主页：87 个预设的成片画廊（启动默认显示），点击卡片应用该预设并进入编辑模式。
 // 编辑模式无左侧预设树（body.editing 隐藏 #sidebar）；工具栏「预设墙」按钮 / 工作台跳过入口可返回。
 // 数据由 tools/gen-preset-wall.js 生成（assets/preset-wall/preset-wall-data.js + covers/）。
+// 布局：Bravais 式无限磁贴墙 —— 单块周期网格（9 列 × 10 行 = 90 格，87 张预设循环填充），
+// 拖动偏移在 [-周期宽,0]×[-周期高,0] 内取模回绕，墙"没有尽头"；视口中心附近卡片最大最亮。
+const _pwWrap = (v, span) => {
+    // 把 v 约束/回绕到 [-span, 0]：0 → 0（初始位置不动），超出回绕（墙无尽头）
+    if (!span || span <= 0) return 0;
+    const m = ((v % span) + span) % span; // 0..span-1
+    return m === 0 ? 0 : m - span;
+};
 window.App = Object.assign(window.App || {}, {
     initPresetWall() {
         if (this._wallBound) return;
@@ -10,6 +18,8 @@ window.App = Object.assign(window.App || {}, {
         const el = this._wallDom = {
             overlay: $('presetWall'),
             grid: $('presetWallGrid'),
+            wall: null,   // wrapper：整墙 transform 平移
+            block: null,  // 周期网格块（90 格）
             sub: $('pwSub'),
             skip: $('pwSkip'),
             back: $('btnBackWall'),
@@ -19,30 +29,29 @@ window.App = Object.assign(window.App || {}, {
 
         if (el.skip) el.skip.addEventListener('click', () => this.closePresetWall(true));
         if (el.back) el.back.addEventListener('click', () => this.openPresetWall());
-        // 键盘：方向键移动选中、Enter / 空格触发卡片
+        // 键盘：方向键移动选中（上下左右，周期内循环）、Enter / 空格触发卡片
         el.grid.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowRight') { e.preventDefault(); this.moveWallSelection(1); return; }
-            if (e.key === 'ArrowLeft') { e.preventDefault(); this.moveWallSelection(-1); return; }
+            const dir = { ArrowRight: [0, 1], ArrowLeft: [0, -1], ArrowUp: [-1, 0], ArrowDown: [1, 0] }[e.key];
+            if (dir) { e.preventDefault(); this.moveWallSelection(dir[0], dir[1]); return; }
             if (e.key !== 'Enter' && e.key !== ' ') return;
             const tile = e.target.closest('.pw-tile');
             if (!tile) return;
             e.preventDefault();
             this.enterEditorFromWall(tile.dataset.idx);
         });
-        // folia 式横向焦点墙：图片横向排开溢出屏幕，鼠标按住拖动浏览，最中间的卡片最显眼
+        // Bravais 式无限磁贴墙：周期块平铺 + 拖动取模回绕（无边界），视口中心卡片最显眼
         this._wallOffsetX = 0;
+        this._wallOffsetY = 0;
         this._wallBounds = null;
-        this._wallDrag = { active: false, moved: false, downX: 0, startX: 0 };
-        const clampX = (x) => {
-            const b = this._wallBounds;
-            if (!b) return 0;
-            return Math.max(b.minX, Math.min(b.maxX, x));
-        };
+        this._wallSel = { r: 0, c: 0 };
+        this._wallFocusTiles = new Set(); // 上一帧处于"中心聚焦"动态态的卡片（用于复位）
+        this._wallDrag = { active: false, moved: false, downX: 0, downY: 0, startX: 0, startY: 0 };
         el.grid.addEventListener('pointerdown', (e) => {
             if (e.button !== 0) return;
             const d = this._wallDrag;
             d.active = true; d.moved = false;
-            d.downX = e.clientX; d.startX = this._wallOffsetX;
+            d.downX = e.clientX; d.downY = e.clientY;
+            d.startX = this._wallOffsetX; d.startY = this._wallOffsetY;
             el.grid.classList.add('pw-dragging');
             try { el.grid.setPointerCapture(e.pointerId); } catch (_) {}
         });
@@ -82,15 +91,18 @@ window.App = Object.assign(window.App || {}, {
             card.style.setProperty('--pw-hy', (((ay + 1) / 2) * 100).toFixed(2) + '%');
             this.focusWall();
         };
-        // 合并处理：按住拖动 → 整墙平移；未按住 → 卡片倾斜
+        // 合并处理：按住拖动 → 整墙平移（取模回绕）；未按住 → 卡片倾斜
         el.grid.addEventListener('pointermove', (e) => {
             const d = this._wallDrag;
-            if (d.active) {
+            const b = this._wallBounds;
+            if (d.active && b) {
                 const dx = e.clientX - d.downX;
-                if (!d.moved && Math.abs(dx) > 4) d.moved = true;
+                const dy = e.clientY - d.downY;
+                if (!d.moved && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) d.moved = true;
                 if (d.moved) {
-                    this._wallOffsetX = clampX(d.startX + dx);
-                    el.grid.style.transform = 'translateX(' + this._wallOffsetX.toFixed(1) + 'px)';
+                    this._wallOffsetX = _pwWrap(d.startX + dx, b.BW);
+                    this._wallOffsetY = _pwWrap(d.startY + dy, b.BH);
+                    this.applyWallTransform();
                     this.focusWall();
                     return;
                 }
@@ -108,7 +120,7 @@ window.App = Object.assign(window.App || {}, {
             if (!t.raf) t.raf = requestAnimationFrame(tiltLean);
         });
         el.grid.addEventListener('pointerleave', () => { tiltRest(); });
-        // 拖动后不触发点击
+        // 拖动后不触发点击（拖动产生的 click 由浏览器取消，此处兜底）
         el.grid.addEventListener('click', (e) => {
             if (this._wallDrag.moved) return;
             const tile = e.target.closest('.pw-tile');
@@ -118,77 +130,122 @@ window.App = Object.assign(window.App || {}, {
         // 禁用滚轮（浏览统一由按住拖动驱动）
         el.grid.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
 
-        // 窗口变化时重排封面墙（横向布局 / 卡片尺寸 / 焦点状态自适应）
+        // 窗口变化时重排磁贴墙（周期尺寸 / 卡片尺寸 / 焦点状态自适应）
         this._wallResize = () => this.layoutWallTiles();
         window.addEventListener('resize', this._wallResize);
 
         this.renderPresetWall();
     },
 
-    // folia 式横向布局：卡片单排横铺、溢出屏幕宽度，视口约显示 5~6 张，
-    // 整墙用 transform: translateX 平移（按住拖动浏览），焦点由 focusWall 计算。
+    // 应用整墙平移（wrapper transform）
+    applyWallTransform() {
+        const el = this._wallDom;
+        const wall = el && el.wall;
+        if (!wall) return;
+        wall.style.transform = 'translate(' + (this._wallOffsetX || 0).toFixed(1) + 'px, ' + (this._wallOffsetY || 0).toFixed(1) + 'px)';
+    },
+
+    // Bravais 式周期布局：单块 9 列 × 10 行 = 90 格（87 张预设循环填充），
+    // 块宽高 BW/BH 均大于视口，拖动偏移在 [-BW,0]×[-BH,0] 内取模回绕 → 无缝无限。
     layoutWallTiles() {
         const el = this._wallDom;
         const grid = el && el.grid;
-        if (!grid) return;
-        const tiles = Array.from(grid.querySelectorAll('.pw-tile'));
-        if (!tiles.length) return;
+        const block = el && el.block;
+        if (!grid || !block) return;
         const vw = grid.clientWidth;
         if (vw <= 0) return;
-        const pad = 28;
-        const gap = 24;
-        // 卡片宽度：视口 1/5.2，clamp 170~300（4:5 方块）
-        const tw = Math.max(170, Math.min(300, Math.floor((vw - pad * 2) / 5.2)));
+        const pad = 28, gap = 24, P = 9, Q = 10;
+        // 卡片尺寸：视口约显示 3×3 张（Bravais 磁贴墙观感）
+        const tw = Math.max(240, Math.min(340, Math.floor((vw - pad * 2 - gap * 2) / 4)));
+        const th = Math.round(tw * 1.25);
+        const BW = pad * 2 + P * tw + (P - 1) * gap;
+        const BH = pad * 2 + Q * th + (Q - 1) * gap;
+        this._wallBounds = { pad, gap, tw, th, P, Q, BW, BH };
+        block.style.width = BW + 'px';
+        block.style.height = BH + 'px';
+        block.style.gridTemplateColumns = 'repeat(' + P + ', ' + tw + 'px)';
+        block.style.gridTemplateRows = 'repeat(' + Q + ', ' + th + 'px)';
+        const tiles = Array.from(block.querySelectorAll('.pw-tile'));
         for (const t of tiles) {
             t.style.width = tw + 'px';
             const img = t.querySelector('.pw-tile-cover img');
-            if (img) img.style.height = Math.round(tw * 1.25) + 'px';
+            if (img) img.style.height = th + 'px';
         }
-        const totalW = pad * 2 + tiles.length * tw + (tiles.length - 1) * gap;
-        this._wallBounds = {
-            pad, gap, tw, count: tiles.length,
-            minX: vw - totalW,          // 拖到最右：最后一张右缘贴视口右缘
-            maxX: 0                     // 初始：第一张左缘贴 padding
-        };
-        // 约束当前偏移并应用
-        const b = this._wallBounds;
-        this._wallOffsetX = Math.max(b.minX, Math.min(b.maxX, this._wallOffsetX || 0));
-        grid.style.transform = 'translateX(' + this._wallOffsetX.toFixed(1) + 'px)';
+        // 偏移保持当前值（可为任意等价周期位置），拖动时由 pointermove 取模回绕
+        this.applyWallTransform();
         this.focusWall();
     },
 
     // 中心聚焦：距离视口中心越近的卡片越大越亮（最中间的图片最显眼），
-    // 越往两侧越小越暗；倾斜角度（--pw tilt 状态）并入同一 transform。
+    // 越往四周越小越暗；倾斜角度（--pw tilt 状态）并入同一 transform。
     focusWall() {
         const el = this._wallDom;
         const grid = el && el.grid;
-        if (!grid) return;
+        const block = el && el.block;
+        if (!grid || !block) return;
         const b = this._wallBounds;
         if (!b) return;
-        const tiles = grid.querySelectorAll('.pw-tile');
+        const tiles = Array.from(block.querySelectorAll('.pw-tile'));
         if (!tiles.length) return;
-        const cx = grid.clientWidth / 2;
+        const vw = grid.clientWidth, vh = grid.clientHeight;
+        const cx = vw / 2, cy = vh / 2;
+        const ox = this._wallOffsetX || 0, oy = this._wallOffsetY || 0;
+        const cxw = cx - ox, cyw = cy - oy; // 视口中心在块坐标系中的位置（块坐标 p 的屏幕位置 = p + offset）
+        const maxScale = 1.25, minScale = 0.72;
+        const distNorm = Math.max(180, Math.min(b.tw, b.th) * 1.7);
         const tilt = this._wallTilt;
-        const ox = this._wallOffsetX || 0;
-        const maxScale = 1.22, minScale = 0.72;
-        const distNorm = Math.max(1, cx * 1.1);
-        for (let i = 0; i < tiles.length; i++) {
-            const t = tiles[i];
-            const center = b.pad + i * (b.tw + b.gap) + b.tw / 2 + ox;
-            const dist = Math.abs(center - cx);
-            const u = Math.min(1, dist / distNorm);
-            const s = maxScale - u * (maxScale - minScale);
-            const o = 1 - u * 0.65;
-            const isTilting = (tilt && tilt.card === t);
-            const rx = isTilting ? tilt.rx : 0;
-            const ry = isTilting ? tilt.ry : 0;
-            t.style.transform = 'perspective(760px) scale(' + s.toFixed(3) + ') rotateX(' + rx.toFixed(2) + 'deg) rotateY(' + ry.toFixed(2) + 'deg)';
-            t.style.opacity = o.toFixed(3);
-            t.style.zIndex = String(Math.max(1, Math.round(100 - u * 95)));
+        const cells = block._cells || (block._cells = {});
+        const wrap = (v, n) => ((v % n) + n) % n;
+        // 中心格
+        const rc = Math.round((cxw - b.pad - b.tw / 2) / (b.tw + b.gap));
+        const cc = Math.round((cyw - b.pad - b.th / 2) / (b.th + b.gap));
+        const active = new Set();
+        for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+                const r = wrap(rc + dr, b.Q);
+                const c = wrap(cc + dc, b.P);
+                const tile = cells[r + '_' + c];
+                if (!tile) continue;
+                active.add(tile);
+                // 格中心在块坐标系中的位置 → 到视口中心的"最近周期副本"距离
+                const wx = b.pad + c * (b.tw + b.gap) + b.tw / 2 + ox;
+                const wy = b.pad + r * (b.th + b.gap) + b.th / 2 + oy;
+                const dx = wx - cx;
+                const dy = wy - cy;
+                const ddx = dx - Math.round(dx / b.BW) * b.BW;
+                const ddy = dy - Math.round(dy / b.BH) * b.BH;
+                const dist = Math.hypot(ddx, ddy);
+                const u = Math.min(1, dist / distNorm);
+                const s = maxScale - u * (maxScale - minScale);
+                const o = 1 - u * 0.65;
+                const isTilting = (tilt && tilt.card === tile);
+                const rx = isTilting ? tilt.rx : 0;
+                const ry = isTilting ? tilt.ry : 0;
+                tile.style.transform = 'perspective(760px) scale(' + s.toFixed(3) + ') rotateX(' + rx.toFixed(2) + 'deg) rotateY(' + ry.toFixed(2) + 'deg)';
+                tile.style.opacity = o.toFixed(3);
+                tile.style.zIndex = String(Math.max(1, Math.round(100 - u * 95)));
+            }
         }
+        // 复位离开中心区的卡片 → 静态态；倾斜卡若不在中心区则单独保持倾斜
+        const prev = this._wallFocusTiles;
+        for (const t of prev) {
+            if (active.has(t)) continue;
+            const isTilting = (tilt && tilt.card === t);
+            if (isTilting) {
+                t.style.transform = 'perspective(760px) scale(0.72) rotateX(' + tilt.rx.toFixed(2) + 'deg) rotateY(' + tilt.ry.toFixed(2) + 'deg)';
+                t.style.opacity = '0.5';
+                t.style.zIndex = '1';
+            } else {
+                t.style.transform = 'scale(0.72)';
+                t.style.opacity = '0.5';
+                t.style.zIndex = '1';
+            }
+        }
+        this._wallFocusTiles = active;
     },
 
-    // 渲染 87 张预设卡片（数据来自 assets/preset-wall/preset-wall-data.js）
+    // 渲染 90 格周期网格（87 张预设循环填充）：
+    // 槽位 i = r*P + c，映射到 preset i % 87 —— 周期网格内容循环，配合取模回绕形成无缝无限墙。
     renderPresetWall() {
         const el = this._wallDom;
         if (!el || !el.grid) return;
@@ -199,63 +256,87 @@ window.App = Object.assign(window.App || {}, {
             if (el.sub) el.sub.textContent = '预设数据加载失败';
             return;
         }
+        const wall = document.createElement('div');
+        wall.className = 'pw-wall';
+        const block = document.createElement('div');
+        block.className = 'pw-block';
+        const b = this._wallBounds || { pad: 28, gap: 24, P: 9, Q: 10, tw: 300, th: 375 };
         const frag = document.createDocumentFragment();
-        for (const item of data.items) {
-            const tile = document.createElement('div');
-            tile.className = 'pw-tile';
-            tile.dataset.idx = String(item.i);
-            tile.tabIndex = 0;
-            tile.setAttribute('role', 'button');
-            tile.setAttribute('aria-label', item.name + '，' + item.tag + '，进入编辑');
-            const cover = document.createElement('div');
-            cover.className = 'pw-tile-cover';
-            const img = document.createElement('img');
-            img.src = item.cover;
-            img.alt = '';
-            img.draggable = false;
-            cover.appendChild(img);
-            tile.appendChild(cover);
-            const name = document.createElement('div');
-            name.className = 'pw-tile-name';
-            name.textContent = item.name;
-            tile.appendChild(name);
-            const tag = document.createElement('div');
-            tag.className = 'pw-tile-tag';
-            tag.textContent = item.tag;
-            tile.appendChild(tag);
-            frag.appendChild(tile);
+        const cells = {};
+        const n = data.items.length;
+        for (let r = 0; r < b.Q; r++) {
+            for (let c = 0; c < b.P; c++) {
+                const slot = r * b.P + c;
+                const item = data.items[slot % n];
+                const tile = document.createElement('div');
+                tile.className = 'pw-tile';
+                tile.dataset.cell = r + '_' + c;
+                tile.dataset.idx = String(item.i);
+                tile.tabIndex = 0;
+                tile.setAttribute('role', 'button');
+                tile.setAttribute('aria-label', item.name + '，' + item.tag + '，进入编辑');
+                const cover = document.createElement('div');
+                cover.className = 'pw-tile-cover';
+                const img = document.createElement('img');
+                img.src = item.cover;
+                img.alt = '';
+                img.draggable = false;
+                cover.appendChild(img);
+                tile.appendChild(cover);
+                const name = document.createElement('div');
+                name.className = 'pw-tile-name';
+                name.textContent = item.name;
+                tile.appendChild(name);
+                const tag = document.createElement('div');
+                tag.className = 'pw-tile-tag';
+                tag.textContent = item.tag;
+                tile.appendChild(tag);
+                // 初始静态态（远离中心时的小卡状态）
+                tile.style.transform = 'scale(0.72)';
+                tile.style.opacity = '0.5';
+                tile.style.zIndex = '1';
+                cells[r + '_' + c] = tile;
+                frag.appendChild(tile);
+            }
         }
-        el.grid.replaceChildren(frag);
+        block.replaceChildren(frag);
+        block._cells = cells;
+        wall.appendChild(block);
+        el.grid.replaceChildren(wall);
+        el.wall = wall;
+        el.block = block;
         this.layoutWallTiles();
-        // 前 24 张卡片按序淡入（folia 式错落感），其余同时进入
-        const fresh = Array.from(el.grid.querySelectorAll('.pw-tile'));
-        fresh.forEach((t, i) => {
-            if (i < 30) t.style.animationDelay = (i * 14) + 'ms';
-        });
-        this.layoutWallTiles();
+        // 墙整体淡入（卡片自身不做动画，transform 由 JS 接管）
+        wall.style.animation = 'pwWallIn .55s ease-out both';
         if (el.sub) el.sub.textContent = data.items.length + ' 种预设 · 按住拖动浏览 · 点击卡片进入编辑';
     },
 
-    // 方向键在横向焦点墙中移动选中卡片：左右 ±1，选中卡片自动滚到视口中心
-    moveWallSelection(dirX) {
+    // 方向键在磁贴墙中移动选中卡片：上下左右 ±1（周期内循环），选中卡片自动滚到视口中心
+    moveWallSelection(dr, dc) {
         const el = this._wallDom;
         const grid = el && el.grid;
-        if (!grid) return;
-        const tiles = Array.from(grid.querySelectorAll('.pw-tile'));
+        const block = el && el.block;
+        if (!grid || !block) return;
         const b = this._wallBounds;
-        if (!tiles.length || !b) return;
-        let idx = tiles.findIndex((t) => t.classList.contains('selected'));
-        if (idx < 0) idx = 0;
-        const n = Math.max(0, Math.min(tiles.length - 1, idx + dirX));
-        for (const t of tiles) t.classList.remove('selected');
-        const target = tiles[n];
-        target.classList.add('selected');
-        try { target.focus({ preventScroll: true }); } catch (_) {}
-        // 选中卡片居中
-        const cx = grid.clientWidth / 2;
-        const center = b.pad + n * (b.tw + b.gap) + b.tw / 2;
-        this._wallOffsetX = Math.max(b.minX, Math.min(b.maxX, cx - center));
-        grid.style.transform = 'translateX(' + this._wallOffsetX.toFixed(1) + 'px)';
+        if (!b) return;
+        const sel = this._wallSel;
+        sel.r = ((sel.r + dr) % b.Q + b.Q) % b.Q;
+        sel.c = ((sel.c + dc) % b.P + b.P) % b.P;
+        for (const t of block.querySelectorAll('.pw-tile.selected')) t.classList.remove('selected');
+        // 选中格中心（块坐标系）→ 移到视口中心（偏移取模回绕）
+        const wx = b.pad + sel.c * (b.tw + b.gap) + b.tw / 2;
+        const wy = b.pad + sel.r * (b.th + b.gap) + b.th / 2;
+        const cx = grid.clientWidth / 2, cy = grid.clientHeight / 2;
+        // 直接居中（offset 可为任意等价周期位置，视觉上选中格永远在视口中心）
+        this._wallOffsetX = cx - wx;
+        this._wallOffsetY = cy - wy;
+        const cells = block._cells || {};
+        const target = cells[sel.r + '_' + sel.c];
+        if (target) {
+            target.classList.add('selected');
+            try { target.focus({ preventScroll: true }); } catch (_) {}
+        }
+        this.applyWallTransform();
         this.focusWall();
     },
 
@@ -273,7 +354,8 @@ window.App = Object.assign(window.App || {}, {
         if (el.backSep) el.backSep.style.display = '';
         // 回到墙时从头浏览：偏移归零 + 重新布局焦点
         this._wallOffsetX = 0;
-        if (el.grid) el.grid.style.transform = 'translateX(0px)';
+        this._wallOffsetY = 0;
+        this.applyWallTransform();
         this.layoutWallTiles();
     },
 
