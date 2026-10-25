@@ -119,14 +119,43 @@ async function main() {
       const g = document.getElementById('presetWallGrid');
       const first = g.querySelector('.pw-tile');
       first.focus();
-      first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+      first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
       await new Promise((r) => setTimeout(r, 50));
       const selIdx = Array.from(g.children).findIndex(t => t.classList.contains('selected'));
       const firstTop = first.getBoundingClientRect().top;
       const selTop = selIdx >= 0 ? g.children[selIdx].getBoundingClientRect().top : -1;
-      return { selIdx, nextRow: selTop > firstTop };
+      return { selIdx, sameRow: selTop >= 0 && Math.abs(selTop - firstTop) < 4 };
     })()`);
-    check(kb2.nextRow, '方向键下移选中下一行', `idx=${kb2.selIdx}`);
+    check(kb2.sameRow, '方向键左移选中上一张', `idx=${kb2.selIdx}`);
+
+    // 2.6 横向焦点墙：卡片横排溢出 + 中间卡片最显眼 + 拖动平移
+    const wall = await exec(`(async () => {
+      const g = document.getElementById('presetWallGrid');
+      const tiles = Array.from(g.children);
+      const t0 = tiles[0], tn = tiles[tiles.length - 1];
+      const first = t0.getBoundingClientRect();
+      const last = tn.getBoundingClientRect();
+      const overflows = last.right > g.getBoundingClientRect().right + 200; // 末卡右缘远在视口外
+      // 中间卡片（视口中心附近）scale 最大（inline transform 由 JS focusWall 写入）
+      const sc = (t) => { const ts = t.style.transform; const p = ts.indexOf('scale('); return p >= 0 ? parseFloat(ts.slice(p + 6)) : 1; };
+      let maxIdx = 0, maxS = 0;
+      tiles.forEach((t, i) => { const v = sc(t); if (v > maxS) { maxS = v; maxIdx = i; } });
+      const centerIdx = Math.round((g.clientWidth / 2 - 28) / (t0.offsetWidth + 24));
+      const centerVisible = Math.abs(maxIdx - centerIdx) <= 2;
+      // 模拟按住拖动：pointerdown → pointermove → 末卡应进入视口
+      const r = g.getBoundingClientRect();
+      g.dispatchEvent(new PointerEvent('pointerdown', { button: 0, pointerId: 1, clientX: r.left + 600, bubbles: true }));
+      g.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: r.left + 600 - 6000, bubbles: true }));
+      g.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }));
+      await new Promise((x) => setTimeout(x, 120));
+      const mt = g.style.transform.match(/-?[\\d.]+/);
+      const movedLeft = mt ? parseFloat(mt[0]) : 0;
+      const lastVisible = tn.getBoundingClientRect().left < g.getBoundingClientRect().right;
+      return { overflows, maxIdx, centerIdx, centerVisible, movedLeft, lastVisible, tiles: tiles.length };
+    })()`);
+    check(wall.overflows, '卡片横向排开溢出屏幕', `lastRight>viewport`);
+    check(wall.centerVisible, '最中间的图片最显眼', `maxIdx=${wall.maxIdx} centerIdx=${wall.centerIdx}`);
+    check(wall.movedLeft < -2000, '按住拖动后整墙跟随鼠标平移', `offsetX=${wall.movedLeft}`);
 
     // 3. 点击第一张卡片 → 进入编辑：墙隐藏、body.editing、sidebar 隐藏、模板已应用
     const enter = await exec(`(async () => {

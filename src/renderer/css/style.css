@@ -1598,42 +1598,48 @@ body.editing #canvasPane { flex: 1 1 auto; }
 }
 .pw-skip:hover { border-color: rgba(220,186,121,.55); background: rgba(255,255,255,.08); }
 .pw-grid {
-    flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
-    display: flex; flex-wrap: wrap; align-content: flex-start;
-    gap: 16px; padding: 16px 28px 28px;
-    /* 滚动平滑由 JS 鼠标跟随 rAF 控制，不用 CSS smooth（避免程序化赋值被动画吞掉）。
-       浏览靠鼠标位置驱动，滚动条视觉上隐藏（保留程序化滚动能力） */
-    scrollbar-width: none; scrollbar-color: transparent transparent;
+    flex: 1 1 auto; min-height: 0; overflow: hidden;
+    display: flex; flex-wrap: nowrap; align-items: center;
+    gap: 24px; padding: 16px 28px 28px;
+    cursor: grab; user-select: none; -webkit-user-select: none;
+    will-change: transform;
+    touch-action: pan-y;
 }
+.pw-grid.pw-dragging { cursor: grabbing; }
 .pw-grid::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .pw-grid::-webkit-scrollbar-thumb { background: transparent; }
 .pw-tile {
     flex: 0 0 auto;
-    transform: perspective(760px) rotateX(0deg) rotateY(0deg);
-    will-change: transform;
+    position: relative;
+    will-change: transform, opacity;
     border-radius: 16px; overflow: hidden; cursor: pointer;
     background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09);
-    transition: transform .34s cubic-bezier(.22,.61,.36,1), border-color .34s ease, box-shadow .34s ease, background .34s ease;
+    transition: transform .22s ease-out, opacity .22s ease-out, border-color .3s ease, box-shadow .3s ease, background .3s ease;
     animation: pwTileIn .5s cubic-bezier(.22,.61,.36,1) both;
     user-select: none; -webkit-user-select: none;
 }
+/* 拖动中禁用过渡，整墙跟手平移 */
+.pw-grid.pw-dragging .pw-tile { transition: none; }
 @keyframes pwTileIn {
     from { opacity: 0; transform: translateY(16px) scale(.95); }
     to { opacity: 1; transform: none; }
 }
 .pw-tile:hover {
-    transform: perspective(760px) translateY(-4px) scale(1.03);
     border-color: rgba(220,186,121,.5);
     box-shadow: 0 16px 34px rgba(0,0,0,.45), 0 3px 10px rgba(0,0,0,.25);
     background: rgba(255,255,255,.07);
 }
 .pw-tile[data-tilting] {
-    transform: perspective(760px) translateY(-4px) scale(1.03) rotateX(var(--pw-rx, 0deg)) rotateY(var(--pw-ry, 0deg));
-    border-color: rgba(220,186,121,.5);
+    border-color: rgba(220,186,121,.55);
     box-shadow: 0 18px 38px rgba(0,0,0,.5), 0 3px 10px rgba(0,0,0,.25);
     background: rgba(255,255,255,.07);
 }
 .pw-tile:active { transform: scale(.98); }
+.pw-tile.selected {
+    outline: 2px solid rgba(220,186,121,.85);
+    outline-offset: 2px;
+    border-color: rgba(220,186,121,.7);
+}
 .pw-tile.selected {
     border-color: rgba(220,186,121,.95);
     box-shadow: 0 0 0 1px rgba(220,186,121,.6), 0 0 26px rgba(220,186,121,.14), 0 18px 40px rgba(0,0,0,.5);
