@@ -1600,24 +1600,38 @@ body.editing #canvasPane { flex: 1 1 auto; }
 .pw-grid {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
     display: flex; flex-wrap: wrap; align-content: flex-start;
-    gap: 18px; padding: 16px 28px 28px;
+    gap: 22px; padding: 18px 32px 32px;
+    scroll-behavior: smooth;
     scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent;
 }
 .pw-grid::-webkit-scrollbar { width: 10px; }
 .pw-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
 .pw-tile {
     flex: 0 0 auto;
-    border-radius: 12px; overflow: hidden; cursor: pointer;
-    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
-    transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, background .16s ease;
+    border-radius: 16px; overflow: hidden; cursor: pointer;
+    background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09);
+    transition: transform .34s cubic-bezier(.22,.61,.36,1), border-color .34s ease, box-shadow .34s ease, background .34s ease;
+    animation: pwTileIn .5s cubic-bezier(.22,.61,.36,1) both;
     user-select: none; -webkit-user-select: none;
 }
-.pw-tile:hover { transform: translateY(-3px); border-color: rgba(220,186,121,.55); box-shadow: 0 10px 24px rgba(0,0,0,.38); background: rgba(255,255,255,.06); }
-.pw-tile:active { transform: scale(.97); }
+@keyframes pwTileIn {
+    from { opacity: 0; transform: translateY(16px) scale(.95); }
+    to { opacity: 1; transform: none; }
+}
+.pw-tile:hover {
+    transform: translateY(-6px) scale(1.02);
+    border-color: rgba(220,186,121,.5);
+    box-shadow: 0 22px 48px rgba(0,0,0,.5), 0 4px 14px rgba(0,0,0,.3);
+    background: rgba(255,255,255,.07);
+}
+.pw-tile:active { transform: scale(.98); }
 .pw-tile.selected {
-    border-color: rgba(220,186,121,.92);
-    box-shadow: 0 0 0 1px rgba(220,186,121,.55), 0 12px 28px rgba(0,0,0,.45);
-    transform: translateY(-3px);
+    border-color: rgba(220,186,121,.95);
+    box-shadow: 0 0 0 1px rgba(220,186,121,.6), 0 0 26px rgba(220,186,121,.14), 0 18px 40px rgba(0,0,0,.5);
+    transform: translateY(-4px) scale(1.02);
+}
+.pw-tile:focus-visible {
+    outline: 2px solid rgba(220,186,121,.85); outline-offset: 2px;
 }
 .pw-tile-cover {
     width: 100%; overflow: hidden;
@@ -1627,7 +1641,11 @@ body.editing #canvasPane { flex: 1 1 auto; }
 }
 .pw-tile-cover img {
     width: 100%; object-fit: contain; display: block;
+    transition: transform .6s cubic-bezier(.22,.61,.36,1);
 }
-.pw-tile-name { padding: 10px 12px 3px; font-size: 13.5px; font-weight: 500; color: #e8ecf1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pw-tile-tag { padding: 0 12px 11px; font-size: 11px; color: rgba(232,236,241,.42); }
+.pw-tile:hover .pw-tile-cover img { transform: scale(1.07); }
+.pw-tile.selected .pw-tile-cover img { transform: scale(1.04); }
+.pw-tile-name { padding: 12px 14px 4px; font-size: 13.5px; font-weight: 500; color: #eef1f5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .34s ease; }
+.pw-tile:hover .pw-tile-name { color: #e6d9b8; }
+.pw-tile-tag { padding: 0 14px 13px; font-size: 11px; color: rgba(232,236,241,.4); letter-spacing: .02em; }
 .pw-hint { flex: 0 0 auto; text-align: center; padding: 8px 0 14px; font-size: 11px; color: rgba(232,236,241,.34); letter-spacing: .04em; }

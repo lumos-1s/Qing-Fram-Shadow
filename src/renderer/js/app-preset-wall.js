@@ -52,10 +52,11 @@ window.App = Object.assign(window.App || {}, {
         if (!grid) return;
         const tiles = Array.from(grid.querySelectorAll('.pw-tile'));
         if (!tiles.length) return;
-        const gap = 18;
+        const gap = 22;
         const W = grid.clientWidth;
         if (W <= 0) return;
-        const cols = Math.max(2, Math.min(6, Math.floor((W + gap) / (210 + gap))));
+        // folia 式大卡片：3~5 列，320px 基准宽度
+        const cols = Math.max(3, Math.min(5, Math.floor((W + gap) / (320 + gap))));
         const tw = Math.floor((W - (cols - 1) * gap) / cols);
         for (const t of tiles) {
             t.style.width = tw + 'px';
@@ -103,6 +104,11 @@ window.App = Object.assign(window.App || {}, {
         }
         el.grid.replaceChildren(frag);
         this.layoutWallTiles();
+        // 前 24 张卡片按序淡入（folia 式错落感），其余同时进入
+        const fresh = Array.from(el.grid.querySelectorAll('.pw-tile'));
+        fresh.forEach((t, i) => {
+            if (i < 24) t.style.animationDelay = (i * 22) + 'ms';
+        });
         if (el.sub) el.sub.textContent = data.items.length + ' 种预设 · 点击卡片进入编辑 · 滚动浏览';
     },
 
