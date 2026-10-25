@@ -599,6 +599,34 @@ ipcMain.handle('open-data-dir', async () => {
         return err ? { ok: false, message: err } : { ok: true, path: p };
     } catch (e) { return { ok: false, message: e && e.message }; }
 });
+
+// ── 预设墙封面：允许用户自备图片覆盖内置封面 ──
+// 约定：userData/wall-covers/<预设名>.webp|jpg|jpeg|png，文件名与预设名一致（如「圆角卡片.webp」）。
+// 只读文件名映射，不复制、不改内置资源；删掉文件即恢复原封面。
+const wallCoversDir = () => path.join(app.getPath('userData'), 'wall-covers');
+ipcMain.handle('list-wall-covers', async () => {
+    try {
+        const dir = wallCoversDir();
+        const names = await fs.promises.readdir(dir);
+        const out = {};
+        for (const n of names) {
+            const ext = path.extname(n).toLowerCase();
+            if (!['.webp', '.jpg', '.jpeg', '.png'].includes(ext)) continue;
+            out[path.basename(n, ext)] = path.join(dir, n);
+        }
+        return out;
+    } catch (e) {
+        return {};   // 目录不存在 = 没有自定义封面
+    }
+});
+ipcMain.handle('open-wall-covers-dir', async () => {
+    try {
+        const dir = wallCoversDir();
+        await fs.promises.mkdir(dir, { recursive: true });
+        const err = await shell.openPath(dir);
+        return err ? { ok: false, message: err, path: dir } : { ok: true, path: dir };
+    } catch (e) { return { ok: false, message: e && e.message }; }
+});
 // 导出完成后在资源管理器中显示文件/目录(不再只显示一串路径文本)
 ipcMain.handle('show-item-in-folder', (_e, p) => {
     try {
