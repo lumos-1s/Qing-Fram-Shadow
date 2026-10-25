@@ -1601,11 +1601,12 @@ body.editing #canvasPane { flex: 1 1 auto; }
     flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
     display: flex; flex-wrap: wrap; align-content: flex-start;
     gap: 16px; padding: 16px 28px 28px;
-    /* 滚动平滑由 JS 鼠标跟随 rAF 控制，不用 CSS smooth（避免程序化赋值被动画吞掉） */
-    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent;
+    /* 滚动平滑由 JS 鼠标跟随 rAF 控制，不用 CSS smooth（避免程序化赋值被动画吞掉）。
+       浏览靠鼠标位置驱动，滚动条视觉上隐藏（保留程序化滚动能力） */
+    scrollbar-width: none; scrollbar-color: transparent transparent;
 }
-.pw-grid::-webkit-scrollbar { width: 10px; }
-.pw-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+.pw-grid::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.pw-grid::-webkit-scrollbar-thumb { background: transparent; }
 .pw-tile {
     flex: 0 0 auto;
     transform: perspective(760px) rotateX(0deg) rotateY(0deg);
