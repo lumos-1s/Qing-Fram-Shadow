@@ -1600,7 +1600,7 @@ body.editing #canvasPane { flex: 1 1 auto; }
 .pw-grid {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
     display: flex; flex-wrap: wrap; align-content: flex-start;
-    gap: 22px; padding: 18px 32px 32px;
+    gap: 16px; padding: 16px 28px 28px;
     scroll-behavior: smooth;
     scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent;
 }
@@ -1619,9 +1619,9 @@ body.editing #canvasPane { flex: 1 1 auto; }
     to { opacity: 1; transform: none; }
 }
 .pw-tile:hover {
-    transform: translateY(-6px) scale(1.02);
+    transform: translateY(-4px) scale(1.03);
     border-color: rgba(220,186,121,.5);
-    box-shadow: 0 22px 48px rgba(0,0,0,.5), 0 4px 14px rgba(0,0,0,.3);
+    box-shadow: 0 16px 34px rgba(0,0,0,.45), 0 3px 10px rgba(0,0,0,.25);
     background: rgba(255,255,255,.07);
 }
 .pw-tile:active { transform: scale(.98); }
@@ -1641,11 +1641,11 @@ body.editing #canvasPane { flex: 1 1 auto; }
 }
 .pw-tile-cover img {
     width: 100%; object-fit: contain; display: block;
-    transition: transform .6s cubic-bezier(.22,.61,.36,1);
+    transition: transform .5s cubic-bezier(.22,.61,.36,1);
 }
-.pw-tile:hover .pw-tile-cover img { transform: scale(1.07); }
-.pw-tile.selected .pw-tile-cover img { transform: scale(1.04); }
-.pw-tile-name { padding: 12px 14px 4px; font-size: 13.5px; font-weight: 500; color: #eef1f5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .34s ease; }
+.pw-tile:hover .pw-tile-cover img { transform: scale(1.08); }
+.pw-tile.selected .pw-tile-cover img { transform: scale(1.05); }
+.pw-tile-name { padding: 9px 10px 2px; font-size: 12px; font-weight: 500; color: #eef1f5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .34s ease; }
 .pw-tile:hover .pw-tile-name { color: #e6d9b8; }
-.pw-tile-tag { padding: 0 14px 13px; font-size: 11px; color: rgba(232,236,241,.4); letter-spacing: .02em; }
+.pw-tile-tag { padding: 0 10px 9px; font-size: 10px; color: rgba(232,236,241,.4); letter-spacing: .02em; }
 .pw-hint { flex: 0 0 auto; text-align: center; padding: 8px 0 14px; font-size: 11px; color: rgba(232,236,241,.34); letter-spacing: .04em; }

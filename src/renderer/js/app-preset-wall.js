@@ -52,11 +52,11 @@ window.App = Object.assign(window.App || {}, {
         if (!grid) return;
         const tiles = Array.from(grid.querySelectorAll('.pw-tile'));
         if (!tiles.length) return;
-        const gap = 22;
+        const gap = 16;
         const W = grid.clientWidth;
         if (W <= 0) return;
-        // folia 式大卡片：3~5 列，320px 基准宽度
-        const cols = Math.max(3, Math.min(5, Math.floor((W + gap) / (320 + gap))));
+        // 紧凑铺满：7~10 列，150px 基准宽度（大卡片近半，一屏 3 行多）
+        const cols = Math.max(7, Math.min(10, Math.floor((W + gap) / (150 + gap))));
         const tw = Math.floor((W - (cols - 1) * gap) / cols);
         for (const t of tiles) {
             t.style.width = tw + 'px';
@@ -107,7 +107,7 @@ window.App = Object.assign(window.App || {}, {
         // 前 24 张卡片按序淡入（folia 式错落感），其余同时进入
         const fresh = Array.from(el.grid.querySelectorAll('.pw-tile'));
         fresh.forEach((t, i) => {
-            if (i < 24) t.style.animationDelay = (i * 22) + 'ms';
+            if (i < 30) t.style.animationDelay = (i * 14) + 'ms';
         });
         if (el.sub) el.sub.textContent = data.items.length + ' 种预设 · 点击卡片进入编辑 · 滚动浏览';
     },
@@ -121,7 +121,7 @@ window.App = Object.assign(window.App || {}, {
         if (!tiles.length) return;
         let idx = tiles.findIndex((t) => t.classList.contains('selected'));
         if (idx < 0) idx = 0;
-        const gap = 18;
+        const gap = 16;
         const cols = Math.max(1, Math.round((grid.clientWidth + gap) / (tiles[0].offsetWidth + gap)));
         let n = idx;
         if (dirX === -1) n = (idx % cols === 0) ? idx : idx - 1;
