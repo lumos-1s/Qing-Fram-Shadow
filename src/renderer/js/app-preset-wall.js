@@ -36,9 +36,32 @@ window.App = Object.assign(window.App || {}, {
             e.preventDefault();
             this.enterEditorFromWall(tile.dataset.idx);
         });
-        // 窗口变化时把封面图按当前列宽重排（CSS grid auto-fill 已处理，无需 JS）
+        // 窗口变化时重排封面墙（列数 / 卡片宽度 / 封面高度自适应）
+        this._wallResize = () => this.layoutWallTiles();
+        window.addEventListener('resize', this._wallResize);
 
         this.renderPresetWall();
+    },
+
+    // 封面墙自适应布局：flex-wrap 下按容器宽度计算列数与卡片宽度，
+    // 显式设置 tile 宽与封面高（4:5 方块）。grid auto 行高对 aspect-ratio / 百分比高度
+    // 的 max-content 计算在 Chromium 中会塌陷为单行文字高度，故改用 flex-wrap + 显式尺寸。
+    layoutWallTiles() {
+        const el = this._wallDom;
+        const grid = el && el.grid;
+        if (!grid) return;
+        const tiles = Array.from(grid.querySelectorAll('.pw-tile'));
+        if (!tiles.length) return;
+        const gap = 18;
+        const W = grid.clientWidth;
+        if (W <= 0) return;
+        const cols = Math.max(2, Math.min(6, Math.floor((W + gap) / (210 + gap))));
+        const tw = Math.floor((W - (cols - 1) * gap) / cols);
+        for (const t of tiles) {
+            t.style.width = tw + 'px';
+            const img = t.querySelector('.pw-tile-cover img');
+            if (img) img.style.height = Math.round(tw * 1.25) + 'px';
+        }
     },
 
     // 渲染 87 张预设卡片（数据来自 assets/preset-wall/preset-wall-data.js）
@@ -65,7 +88,6 @@ window.App = Object.assign(window.App || {}, {
             const img = document.createElement('img');
             img.src = item.cover;
             img.alt = '';
-            img.loading = 'lazy';
             img.draggable = false;
             cover.appendChild(img);
             tile.appendChild(cover);
@@ -80,6 +102,7 @@ window.App = Object.assign(window.App || {}, {
             frag.appendChild(tile);
         }
         el.grid.replaceChildren(frag);
+        this.layoutWallTiles();
         if (el.sub) el.sub.textContent = data.items.length + ' 种预设 · 点击卡片进入编辑 · 滚动浏览';
     },
 
@@ -119,6 +142,7 @@ window.App = Object.assign(window.App || {}, {
         if (el.back) el.back.style.display = '';
         if (el.backSep) el.backSep.style.display = '';
         if (el.grid) el.grid.scrollTop = 0;
+        this.layoutWallTiles();
     },
 
     // 关闭预设墙进入编辑工作台
