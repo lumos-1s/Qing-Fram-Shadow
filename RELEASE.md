@@ -32,11 +32,11 @@ GitHub Releases 里没有 `latest.yml` + 新版安装包，旧版就永远查不
 **每次发版**：
 
 1. 在 `main` 上 bump `package.json` 版本号，提交并推送。
-2. 打开 Actions → **Release (SignPath signed)** → Run workflow，选择 `main`，输入 `v<version>`（例如 `v0.1.19`）。
+2. 打开 Actions → **Release (SignPath signed)** → Run workflow，选择 `main`，输入 `v<version>`（例如 `v0.1.20`）。
 3. 工作流先构建未签名目录，提交 `Qingframe.exe` 给 SignPath；在 SignPath 后台人工批准第 1 个签名请求。
 4. 工作流用签名后的 `Qingframe.exe` 打 NSIS/便携版，再提交安装包给 SignPath；人工批准第 2 个签名请求。
 5. 工作流用签名后的安装包重算 `latest.yml` 和 `.blockmap`，验证三处签名与哈希，创建**草稿** Release。
-6. 下载草稿产物，在本机验证安装、卸载、签名和 `latest.yml`。确认后手动发布 Release；发布后立即用旧版 0.1.18 验证自动更新（草稿不会出现在 GitHub 的 `/releases/latest`，所以真实更新链路只能在发布后测试；如失败，立即撤下该 Release 修复）。
+6. 下载草稿产物，在本机验证安装、卸载、签名和 `latest.yml`。确认后手动发布 Release；发布后立即用旧版 0.1.19 验证自动更新（草稿不会出现在 GitHub 的 `/releases/latest`，所以真实更新链路只能在发布后测试；如失败，立即撤下该 Release 修复）。
 7. 首个签名版本发布后，把 `README.md` 与 `CODE_SIGNING.md` 中“准备中/未签名”的状态说明改成已签名；同时更新 README 顶部的版本徽章。
 
 > 工作流只从 `main` 运行，版本号与 tag 必须一致；草稿 Release 不会成为 electron-updater 的 `latest`，必须手动发布。

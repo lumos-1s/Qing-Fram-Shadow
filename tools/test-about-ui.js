@@ -30,7 +30,7 @@ ipcMain.handle('get-prefs', () => ({}));
 ipcMain.handle('get-user', () => null);
 ipcMain.handle('save-prefs', () => ({ ok: true }));
 ipcMain.handle('get-app-info', () => ({
-    version: '0.1.19',
+    version: '0.1.20',
     electron: '31.7.7',
     chrome: '126.0.6478.234',
     node: '20.18.3',
@@ -129,7 +129,7 @@ app.whenReady().then(async () => {
     check(state.updateAction.display === 'none', '更新操作初始隐藏');
 
     // 更新状态机
-    await exec(`(() => { window.App._aboutInfo = { packaged: true, portable: false }; window.App._updater = { state: 'available' }; window.App._updateInfo = { version: '0.1.19' }; window.App._onUpdaterEvent({ type: 'available', version: '0.1.19' }); })()`);
+    await exec(`(() => { window.App._aboutInfo = { packaged: true, portable: false }; window.App._updater = { state: 'available' }; window.App._updateInfo = { version: '0.1.20' }; window.App._onUpdaterEvent({ type: 'available', version: '0.1.20' }); })()`);
     let s = await exec(`({ text: document.getElementById('aboutUpdateStatus').textContent, action: document.getElementById('aboutUpdateAction').textContent, mode: document.getElementById('aboutUpdateAction').dataset.mode, display: document.getElementById('aboutUpdateAction').style.display })`);
     check(s.text.includes('发现新版本') && s.action === '立即更新' && s.mode === 'download' && s.display === '', 'available 内联状态/动作', JSON.stringify(s));
     await exec(`window.App._onUpdaterEvent({ type: 'progress', percent: 42.5 })`);
