@@ -184,7 +184,7 @@ for (const file of files) {
 }
 
 // ── 反向检查:预设分类必须登记在预设面板的「大标题顺序表」里 ──
-// 背景:app-templates.js 的 buildTree() 用一个写死的 order 数组决定预设面板分组大标题的
+// 背景:app-templates.js 的 buildTree() 用一个显式的 DEFAULT_ORDER 数组决定预设面板分组大标题的
 // 显示顺序,不在数组里的分类会被排到最末尾(99 位)。「邮票」分类新增时加了 5 个预设却忘了
 // 登记,整组一直垫在最后 —— 观感上像「分类不见了」,而当时没有任何检查会报这件事。
 // 这里把它固化成硬约束:新加预设分类却忘了进 order,提交前就直接报错。
@@ -198,12 +198,13 @@ function checkGroupOrder() {
     catch (e) { warnings.push(`读不到 app-templates.js,分组顺序未校验(${e.message})`); return; }
 
     const lines = src.split(/\r?\n/);
-    // 文件里有两处 `const order =`:另一处是「我的模板」按字母序排的 `[...groups.keys()]`,
-    // 必须取最后一个 —— 也就是预设面板那个显式清单。
-    const orderLine = lines.filter(l => l.trim().startsWith('const order = [')).pop();
+    // 预设面板的显式清单在 buildTree() 里叫 DEFAULT_ORDER;旧版本叫 order。
+    // 两种都兼容,避免以后改个变量名就让校验静默失效。
+    const orderLine = lines.filter(l => l.trim().startsWith('const DEFAULT_ORDER = [')).pop()
+        || lines.filter(l => l.trim().startsWith('const order = [')).pop();
     const mergeLine = lines.filter(l => l.trim().startsWith('const merge = {')).pop();
     if (!orderLine || !mergeLine) {
-        warnings.push('app-templates.js 里找不到 const order = [...] / const merge = {...},分组顺序未校验');
+        warnings.push('app-templates.js 里找不到 DEFAULT_ORDER / order 顺序表或 const merge = {...},分组顺序未校验');
         return;
     }
     const pick = (line, open, close) => {
@@ -225,7 +226,7 @@ function checkGroupOrder() {
     const missing = [...groups].filter(g => !order.includes(g)).sort();
     for (const g of missing) {
         errors.push(`预设分类「${g}」未登记在 app-templates.js 的 order 顺序表里 → 会被排到面板最末尾`
-            + `\n      请把它加进 const order = [...]。当前顺序: ${order.join(', ')}`);
+            + `\n      请把它加进 DEFAULT_ORDER / const order = [...]。当前顺序: ${order.join(', ')}`);
     }
 }
 
