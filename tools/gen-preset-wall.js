@@ -166,7 +166,7 @@ async function main() {
             i,
             name: p.name,
             tag: p.tag,
-            preset: p.file,
+            preset: String(p.file).replace(/\.json$/i, ''),
             cover: 'assets/preset-wall/covers/' + fname,
             w: cover.width,
             h: cover.height

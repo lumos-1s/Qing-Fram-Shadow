@@ -64,11 +64,16 @@ rem      immediately, because 'goto' is not guaranteed to preserve it.
 rem    - %RETRIED% guards the single retry so :classify cannot loop.
 rem
 rem  MODES
-rem    (default)                 software GL, normal profile
-rem    QINGFRAME_HW=1            hardware GPU (currently crashes)
+rem    (default)                 hardware GPU + no-sandbox (fast path)
+rem    QINGFRAME_SW=1            software GL (swiftshader) - use if the GPU path
+rem                              dies with STATUS_BREAKPOINT on this machine
 rem    QINGFRAME_FRESH_PROFILE=1 software GL + empty profile. Last-resort
-rem                                escape hatch; saved templates and
-rem                                state.json will NOT be visible there.
+rem                              escape hatch; saved templates and
+rem                              state.json will NOT be visible there.
+rem  Measured on this machine (1440x900, DPR 2), preset wall drag:
+rem    hardware GPU: p50 6.1ms/frame, 0 dropped
+rem    swiftshader : p50 54.7ms/frame, every frame dropped
+rem  i.e. the software path is ~9x slower; only fall back to it if needed.
 rem  To see the raw error that start.log swallows, run in a plain cmd window:
 rem    node_modules\.bin\electron.cmd . --enable-logging
 rem ============================================================
@@ -78,24 +83,29 @@ echo  Qingframe - dev launcher
 echo ============================================================
 echo.
 
-set FLAGS=--use-gl=swiftshader --no-sandbox
+set FLAGS=--no-sandbox
 set LOCKDIR=%APPDATA%\qingframe-web
 rem  Codex/OpenCode sandbox placed Deny ACEs on this project dir; node_modules
 rem  electron.exe there gets ERROR_ACCESS_DENIED creating any file (the lock).
 rem  A byte-identical copy lives outside the project; prefer it when present.
 set ELECTRON_CUSTOM=%LOCALAPPDATA%\qfs-electron\dist\electron.exe
 
-if "%QINGFRAME_HW%"=="1" goto mode_hw
+if "%QINGFRAME_SW%"=="1" goto mode_sw
 if "%QINGFRAME_FRESH_PROFILE%"=="1" goto mode_fresh
 
-echo  Mode: software GL ^(swiftshader^) - the path known to work.
+echo  Mode: hardware GPU ^(fast path^)
+echo.
+goto launch
+
+:mode_sw
+set FLAGS=--use-gl=swiftshader --no-sandbox
+echo  Mode: software GL ^(swiftshader^) - slower, but survives a broken GPU stack.
 echo.
 goto launch
 
 :mode_hw
-set FLAGS=
-echo  Mode: HARDWARE GPU ^(QINGFRAME_HW=1^)
-echo  This is the path that has been crashing with STATUS_BREAKPOINT.
+set FLAGS=--no-sandbox
+echo  Mode: HARDWARE GPU ^(QINGFRAME_HW=1^) - same as the default, kept for scripts.
 echo.
 goto launch
 

@@ -14,9 +14,13 @@ const PRESET_DIR = path.join(ROOT, 'shared', 'presets');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ── IPC mock：让渲染进程的 presets.js 能读到 shared/presets ──
-ipcMain.handle('list-presets', () => fs.readdirSync(PRESET_DIR).filter(name => name.endsWith('.json')));
+// 与 src/main/index.js 的真实契约对齐：list-presets 返回**不带 .json** 的名字。
+// 之前这里返回带扩展名的文件名，把"墙数据 preset 带 .json → 查找永不命中"这个 bug 全遮住了。
+ipcMain.handle('list-presets', () => fs.readdirSync(PRESET_DIR)
+    .filter(name => name.endsWith('.json'))
+    .map(name => name.replace(/\.json$/, '')));
 ipcMain.handle('load-preset', (_event, name) => {
-    try { return JSON.parse(fs.readFileSync(path.join(PRESET_DIR, name), 'utf8')); } catch (_) { return null; }
+    try { return JSON.parse(fs.readFileSync(path.join(PRESET_DIR, name.replace(/\.json$/, '') + '.json'), 'utf8')); } catch (_) { return null; }
 });
 const EMPTY_LIST = () => [];
 const OK = () => ({ ok: true });
@@ -32,6 +36,10 @@ ipcMain.handle('get-prefs', () => ({}));
 ipcMain.handle('get-user', () => null);
 ipcMain.handle('get-app-info', () => ({ version: '0.1.20', electron: '31', chrome: '126', node: '20',
     platform: 'win32', arch: 'x64', packaged: false, portable: false, userData: process.env.TEMP, appPath: ROOT }));
+// 预设墙自定义封面：默认空，用例里临时塞一条再清掉
+let wallCovers = {};
+ipcMain.handle('list-wall-covers', () => wallCovers);
+ipcMain.handle('open-wall-covers-dir', () => ({ ok: true, path: 'C:/tmp/wall-covers' }));
 const failures = [];
 
 function check(ok, label, extra) {
@@ -77,6 +85,31 @@ async function main() {
     })()`);
     check(setup.ok, 'App 与预设墙就绪', setup.error || `presets=${setup.presets} tiles=${setup.tiles}`);
 
+    // 0. 无障碍：只有第 0 份拷贝参与 Tab 与读屏（否则 360 个 Tab 停点、同一张卡播报四遍）
+    const a11y = await exec(`(() => ({
+        all: document.querySelectorAll('.pw-tile').length,
+        focusable: document.querySelectorAll('.pw-tile[tabindex="0"]').length,
+        ariaHidden: document.querySelectorAll('.pw-tile[aria-hidden="true"]').length
+    }))()`);
+    check(a11y.all === 360 && a11y.focusable === 90 && a11y.ariaHidden === 270,
+        'Tab 停点只有 90 个（3 份拷贝 aria-hidden）', JSON.stringify(a11y));
+
+    // 0.5 首屏对齐格心：没有任何预设时也要让中心卡是 1.25，而不是落在格间隙的 1.05
+    const bootFocus = await exec(`(() => {
+        const g = document.getElementById('presetWallGrid');
+        const r = g.getBoundingClientRect();
+        const sc = (t) => { const ts = t.style.transform; const p = ts.indexOf('scale('); return p >= 0 ? parseFloat(ts.slice(p + 6)) : 1; };
+        let best = 0, bd = Infinity;
+        for (const t of g.querySelectorAll('.pw-tile')) {
+            const q = t.getBoundingClientRect();
+            const d = Math.hypot(q.left + q.width / 2 - (r.left + r.width / 2), q.top + q.height / 2 - (r.top + r.height / 2));
+            if (d < bd) { bd = d; best = sc(t); }
+        }
+        return { scale: best, dist: Math.round(bd) };
+    })()`);
+    check(bootFocus.scale > 1.2, '首屏中心卡即 1.25（开局对齐到格心）',
+        `scale=${bootFocus.scale} dist=${bootFocus.dist}`);
+
     // 1. 启动默认显示预设墙（hidden=false）
     const wallVisible = await exec(`(() => {
         const w = document.getElementById('presetWall');
@@ -89,13 +122,15 @@ async function main() {
         const g = document.getElementById('presetWallGrid');
         const list = Array.from(g.querySelectorAll('.pw-tile'));
         return {
+            blocks: g.querySelectorAll('.pw-block').length,
             count: list.length,
             noCover: list.filter(t => !t.querySelector('.pw-tile-cover img')).length,
             noName: list.filter(t => !t.querySelector('.pw-tile-name') || !t.querySelector('.pw-tile-name').textContent).length,
             sub: (document.getElementById('pwSub') || {}).textContent || ''
         };
     })()`);
-    check(tiles.count === 90, '周期网格渲染 90 张卡片', `count=${tiles.count}`);
+    check(tiles.count === 360 && tiles.blocks === 4, '4 份拷贝 × 90 格 = 360 张卡片',
+        `blocks=${tiles.blocks} count=${tiles.count}`);
     check(tiles.noCover === 0, '每张卡片都有封面图', `noCover=${tiles.noCover}`);
     check(tiles.noName === 0, '每张卡片都有名称', `noName=${tiles.noName}`);
 
@@ -108,7 +143,7 @@ async function main() {
       await new Promise((r) => setTimeout(r, 50));
       return { selCount: g.querySelectorAll('.pw-tile.selected').length, selC: App._wallSel.c, selR: App._wallSel.r };
     })()`);
-    check(kb.selCount === 1, '方向键移动出现选中框', `selected=${kb.selCount}`);
+    check(kb.selCount === 4, '方向键移动出现选中框（4 份拷贝同步高亮）', `selected=${kb.selCount}`);
     check(kb.selC === 1 && kb.selR === 0, '方向键右移选中下一格', `c=${kb.selC} r=${kb.selR}`);
 
     const kb2 = await exec(`(async () => {
@@ -135,17 +170,23 @@ async function main() {
     const wall = await exec(`(async () => {
       const g = document.getElementById('presetWallGrid');
       const block = g.querySelector('.pw-block');
-      const tiles = Array.from(block.querySelectorAll('.pw-tile'));
+      const tiles = Array.from(g.querySelectorAll('.pw-tile'));
       const b = App._wallBounds;
       // 无限墙基础：周期块宽高均大于视口（任意偏移下视口内都有卡）
       const covers = !!b && b.BW > g.clientWidth && b.BH > g.clientHeight;
       // 中间卡片（视口中心附近）scale 最大（inline transform 由 JS focusWall 写入）
       const sc = (t) => { const ts = t.style.transform; const p = ts.indexOf('scale('); return p >= 0 ? parseFloat(ts.slice(p + 6)) : 1; };
-      let maxT = null, maxS = 0;
-      for (const t of tiles) { const v = sc(t); if (v > maxS) { maxS = v; maxT = t; } }
+      let maxS = 0;
+      for (const t of tiles) { const v = sc(t); if (v > maxS) maxS = v; }
       const vr = g.getBoundingClientRect();
-      const tr = maxT.getBoundingClientRect();
-      const centerDist = Math.hypot((tr.left + tr.width / 2) - (vr.left + vr.width / 2), (tr.top + tr.height / 2) - (vr.top + vr.height / 2));
+      // 4 份拷贝的同一格 scale 相同，取离视口中心最近的那一份量距离
+      let centerDist = Infinity;
+      for (const t of tiles) {
+          if (sc(t) < maxS - 0.01) continue;
+          const tr = t.getBoundingClientRect();
+          centerDist = Math.min(centerDist, Math.hypot((tr.left + tr.width / 2) - (vr.left + vr.width / 2),
+                                                        (tr.top + tr.height / 2) - (vr.top + vr.height / 2)));
+      }
       const centerFocus = centerDist < b.tw * 0.9;
       // 模拟按住拖动（横向 + 纵向）：整墙应跟随平移
       const r = g.getBoundingClientRect();
@@ -153,8 +194,19 @@ async function main() {
       g.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: r.left + 600 - 2000, clientY: r.top + 400 - 1500, bubbles: true }));
       g.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }));
       await new Promise((x) => setTimeout(x, 120));
-      const ox1 = App._wallOffsetX, oy1 = App._wallOffsetY;
+      // 断言用未回绕的累计位移：回绕后的 _wallOffset 被压在 [-span,0]，拿它比 -1000 会误判
+      const ox1 = App._wallPan.x, oy1 = App._wallPan.y;
       const wallMoved = ox1 < -1000 && oy1 < -1000;
+      // 拖到任意位置，周期块都必须仍然盖住视口（否则墙会露白）
+      // 2×2 份拷贝拼成一张连续的面：四条边各自越出视口即视为不露白
+      const coversViewport = () => {
+          const rs = Array.from(g.querySelectorAll('.pw-block')).map((bl) => bl.getBoundingClientRect());
+          if (!rs.length) return false;
+          const left = Math.min(...rs.map((q) => q.left)), right = Math.max(...rs.map((q) => q.right));
+          const top = Math.min(...rs.map((q) => q.top)), bottom = Math.max(...rs.map((q) => q.bottom));
+          return left <= vr.left + 1 && right >= vr.right - 1 && top <= vr.top + 1 && bottom >= vr.bottom - 1;
+      };
+      const coversAfterDrag = coversViewport();
       // 取模回绕：连续拖 4 个周期宽，偏移仍被约束在 [-BW, 0]（墙无尽头）
       g.dispatchEvent(new PointerEvent('pointerdown', { button: 0, pointerId: 1, clientX: r.left + 600, clientY: r.top + 400, bubbles: true }));
       for (let i = 0; i < 4; i++) {
@@ -163,14 +215,188 @@ async function main() {
       g.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }));
       await new Promise((x) => setTimeout(x, 120));
       const ox2 = App._wallOffsetX;
+      const spanW = App.wallWrapSpan().w;
       const wrapped = ox2 <= 0 && ox2 > -b.BW;
-      return { tileCount: tiles.length, covers, maxS, centerDist, centerFocus, ox1, oy1, wallMoved, ox2, wrapped, bw: b.BW, bh: b.BH, vw: g.clientWidth, vh: g.clientHeight };
+      const coveredAtWrap = coversViewport();
+      return { tileCount: tiles.length, covers, maxS, centerDist, centerFocus, ox1, oy1, wallMoved,
+               coversAfterDrag, ox2, wrapped, coveredAtWrap, spanW, bw: b.BW, bh: b.BH, vw: g.clientWidth, vh: g.clientHeight };
     })()`);
-    check(wall.tileCount === 90, '周期网格渲染 90 张卡片', `count=${wall.tileCount}`);
+    check(wall.tileCount === 360, '拖动后仍是 4 份 × 90 格（360 张）', `count=${wall.tileCount}`);
     check(wall.covers, '周期块覆盖视口（无限墙基础）', `BW=${wall.bw} BH=${wall.bh} vw=${wall.vw} vh=${wall.vh}`);
     check(wall.centerFocus, '最中间的图片最显眼', `scale=${wall.maxS} dist=${Math.round(wall.centerDist)}`);
-    check(wall.wallMoved, '按住拖动后整墙跟随鼠标平移', `ox=${wall.ox1} oy=${wall.oy1}`);
+    check(wall.wallMoved, '按住拖动后整墙跟随鼠标平移', `pan=${Math.round(wall.ox1)},${Math.round(wall.oy1)}`);
+    check(wall.coversAfterDrag, '拖到任意位置周期块仍盖满视口（不露白）');
     check(wall.wrapped, '拖动超界自动取模回绕（墙无尽头）', `ox2=${wall.ox2} BW=${wall.bw}`);
+    check(wall.coveredAtWrap, '回绕边界处视口仍被卡片填满', `span=${wall.spanW} ox=${wall.ox2}`);
+
+    // 2.65 回绕一致性：偏移跨过整整一个周期后，视口正中必须还是同一张卡。
+    // 这直接对应"移动时图片会跳、像刷新"——周期块只有一份、回绕跨度又不是整周期时，
+    // 回绕瞬间屏幕内容整体换一遍；2×2 份拷贝 + 整周期回绕之后，两侧内容逐格相同。
+    const seam = await exec(`(async () => {
+        const g = document.getElementById('presetWallGrid');
+        App.stopWallMotion();
+        const b = App._wallBounds;
+        App.panWallTo(-300, -200);
+        await new Promise((x) => setTimeout(x, 60));
+        const r = g.getBoundingClientRect();
+        const cx = r.left + g.clientWidth / 2, cy = r.top + g.clientHeight / 2;
+        // 取中心附近那张卡的中心作为采样点（正中可能正好落在格间隙）
+        let best = null, bd = Infinity;
+        for (const t of g.querySelectorAll('.pw-tile')) {
+            const q = t.getBoundingClientRect();
+            const d = Math.hypot(q.left + q.width / 2 - cx, q.top + q.height / 2 - cy);
+            if (d < bd) { bd = d; best = q; }
+        }
+        const px = best.left + best.width / 2, py = best.top + best.height / 2;
+        const at = () => {
+            const el = document.elementFromPoint(px, py);
+            const tile = el && el.closest ? el.closest('.pw-tile') : null;
+            return tile ? tile.dataset.idx : null;
+        };
+        const before = at();
+        App.panWallTo(-300 - b.BW, -200 - b.BH);
+        await new Promise((x) => setTimeout(x, 60));
+        const after = at();
+        App.panWallTo(-300 - b.BW / 2, -200 - b.BH / 2);
+        await new Promise((x) => setTimeout(x, 60));
+        const midEl = document.elementFromPoint(cx, cy);
+        const midInBlock = !!(midEl && midEl.closest && midEl.closest('.pw-block'));
+        return { before, after, midInBlock, bw: b.BW };
+    })()`);
+    check(seam.before !== null && seam.before === seam.after,
+        '跨一个周期回绕后同一位置仍是同一张卡（不跳不换）', `${seam.before} → ${seam.after}`);
+    check(seam.midInBlock, '半周期处视口仍是墙面而不是空白');
+
+    // 2.68 自定义封面：userData/wall-covers/<预设名>.webp 覆盖内置封面，删掉即回落
+    wallCovers = { '3D卡片': 'C:/Users/lumos/Pictures/我的封面.webp' };
+    const coverOn = await exec(`(async () => {
+        const applied = await App.refreshWallCovers();
+        const tile = Array.from(document.querySelectorAll('.pw-tile'))
+            .find((t) => t.querySelector('.pw-tile-name').textContent === '3D卡片');
+        return { applied, src: tile.querySelector('.pw-tile-cover img').getAttribute('src'), cover: tile.dataset.cover };
+    })()`);
+    check(coverOn.src.indexOf('qflocal:') === 0 && decodeURIComponent(coverOn.src).indexOf('我的封面') >= 0,
+        '自定义封面覆盖内置封面', coverOn.src.slice(0, 40) + '…');
+
+    wallCovers = {};
+    const coverOff = await exec(`(async () => {
+        await App.refreshWallCovers();
+        const tile = Array.from(document.querySelectorAll('.pw-tile'))
+            .find((t) => t.querySelector('.pw-tile-name').textContent === '3D卡片');
+        return { src: tile.querySelector('.pw-tile-cover img').getAttribute('src'), cover: tile.dataset.cover };
+    })()`);
+    check(coverOff.src === coverOff.cover, '删掉自定义封面回落到内置封面', coverOff.src);
+
+    // 2.7 真实输入回归（sendInputEvent 走完整命中测试 + pointer capture）
+    //     合成的 tile.click() 会绕过 pointerdown/mousedown/capture，历史上正是这个盲区让
+    //     「点一下整墙跳位」「拖完松手直接进编辑」两个 bug 全绿通过。这里必须用真实事件流。
+    const centerTile = () => exec(`(() => {
+        const g = document.getElementById('presetWallGrid');
+        const r = g.getBoundingClientRect();
+        const tiles = Array.from(g.querySelectorAll('.pw-tile'));
+        let best = null, bd = Infinity;
+        for (const t of tiles) {
+            const b = t.getBoundingClientRect();
+            const d = Math.hypot(b.left + b.width / 2 - (r.left + r.width / 2), b.top + b.height / 2 - (r.top + r.height / 2));
+            if (d < bd) { bd = d; best = t; }
+        }
+        const bb = best.getBoundingClientRect();
+        return { x: Math.round(bb.left + bb.width / 2), y: Math.round(bb.top + bb.height / 2) };
+    })()`);
+    const wallState = () => exec(`(() => {
+        const g = document.getElementById('presetWallGrid');
+        return { sx: g.scrollLeft, sy: g.scrollTop, ox: App._wallOffsetX, oy: App._wallOffsetY,
+                 hidden: document.getElementById('presetWall').hidden };
+    })()`);
+
+    // 前面的拖动惯性可能还在滑，先停稳再量坐标——否则鼠标按下的那一刻卡片已经挪走，点击落到格间隙
+    await exec('window.App.stopWallMotion(); true');
+    await sleep(150);
+    const p0 = await centerTile();
+    const s0 = await wallState();
+    win.webContents.sendInputEvent({ type: 'mouseDown', x: p0.x, y: p0.y, button: 'left', clickCount: 1 });
+    await sleep(60);
+    win.webContents.sendInputEvent({ type: 'mouseUp', x: p0.x, y: p0.y, button: 'left', clickCount: 1 });
+    await sleep(450);
+    const s1 = await wallState();
+    check(s1.sx === 0 && s1.sy === 0, '真实单击不产生滚动偏移（整墙不跳位）', `sx=${s1.sx} sy=${s1.sy}`);
+    check(Math.abs(s1.ox - s0.ox) < 1 && Math.abs(s1.oy - s0.oy) < 1, '真实单击不改变墙偏移',
+        `${Math.round(s1.ox - s0.ox)},${Math.round(s1.oy - s0.oy)}`);
+    check(s1.hidden, '真实单击进入编辑（点击链路没被 capture 吞掉）');
+
+    // 2.72 点选容差：按下后手抖 9px（已越过 7px 拖动阈值）也必须算点击。
+    // 没有这条容差时，越过阈值会被判成拖动并吞掉 click，用户看到的就是"点模板没反应"。
+    await exec('window.App.openPresetWall(); true');
+    await sleep(500);
+    const pj = await centerTile();
+    win.webContents.sendInputEvent({ type: 'mouseDown', x: pj.x, y: pj.y, button: 'left', clickCount: 1 });
+    await sleep(40);
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: pj.x + 9, y: pj.y + 4, button: 'left', modifiers: ['leftButtonDown'] });
+    await sleep(40);
+    win.webContents.sendInputEvent({ type: 'mouseUp', x: pj.x + 9, y: pj.y + 4, button: 'left', clickCount: 1 });
+    await sleep(500);
+    const sj = await wallState();
+    check(sj.hidden, '按下时手抖 9px 仍算点击（进入编辑）', `hidden=${sj.hidden}`);
+
+    await exec('window.App.openPresetWall(); true');
+    await sleep(500);
+    const p1 = await centerTile();
+    const s2 = await wallState();
+    win.webContents.sendInputEvent({ type: 'mouseDown', x: p1.x, y: p1.y, button: 'left', clickCount: 1 });
+    for (let i = 1; i <= 6; i++) {
+        await sleep(20);
+        win.webContents.sendInputEvent({ type: 'mouseMove', x: p1.x - i * 40, y: p1.y - i * 15, button: 'left', modifiers: ['leftButtonDown'] });
+    }
+    win.webContents.sendInputEvent({ type: 'mouseUp', x: p1.x - 240, y: p1.y - 90, button: 'left', clickCount: 1 });
+    await sleep(450);
+    const s3 = await wallState();
+    check(!s3.hidden, '真实拖动松手不会误进编辑');
+    check(Math.abs(s3.ox - s2.ox) > 100, '真实拖动整墙跟手平移', `Δx=${Math.round(s3.ox - s2.ox)}`);
+    check(s3.sx === 0 && s3.sy === 0, '拖动全程无滚动偏移', `sx=${s3.sx} sy=${s3.sy}`);
+
+    // 2.72 那条手抖用例会进编辑器、把墙藏起来；惯性/滚轮必须在**墙可见**时测
+    await exec('window.App.openPresetWall(); true');
+    await sleep(600);
+
+    // 2.8 手感参数（照抄 folia-major wallPanMotion）：松手惯性 + 滚轮平滑
+    const coast = await exec(`(async () => {
+        const g = document.getElementById('presetWallGrid');
+        App.stopWallMotion(); App.panWallTo(0, 0);
+        const r = g.getBoundingClientRect();
+        g.dispatchEvent(new PointerEvent('pointerdown', { button: 0, pointerId: 3, clientX: r.left + 700, clientY: r.top + 400, bubbles: true }));
+        await new Promise((x) => setTimeout(x, 24));
+        g.dispatchEvent(new PointerEvent('pointermove', { pointerId: 3, clientX: r.left + 440, clientY: r.top + 400, bubbles: true }));
+        await new Promise((x) => setTimeout(x, 12));
+        g.dispatchEvent(new PointerEvent('pointerup', { pointerId: 3, clientX: r.left + 440, clientY: r.top + 400, bubbles: true }));
+        const atRelease = App._wallPan.x;
+        await new Promise((x) => setTimeout(x, 160));
+        const afterCoast = App._wallPan.x;
+        App.stopWallMotion();
+        return { atRelease, afterCoast };
+    })()`);
+    check(coast.afterCoast < coast.atRelease - 5, '松手后有惯性滑行（inertia）',
+        `${Math.round(coast.atRelease)} → ${Math.round(coast.afterCoast)}`);
+
+    const wheel = await exec(`(async () => {
+        const g = document.getElementById('presetWallGrid');
+        App.stopWallMotion(); App.panWallTo(0, 0);
+        g.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, deltaMode: 0, bubbles: true, cancelable: true }));
+        // 轮询等它动起来：固定 60ms 采样会被偶发的长帧挤掉，之前出现过 mid=0 的假红
+        let mid = 0;
+        for (let i = 0; i < 25; i++) {
+            await new Promise((x) => setTimeout(x, 20));
+            mid = App._wallPan.y;
+            if (mid < -40) break;
+        }
+        // 一格 100px 在 τ=80ms 下约 240ms 走完 95%，尾巴到 0.5px 要 500ms 量级
+        await new Promise((x) => setTimeout(x, 700));
+        const end = App._wallPan.y;
+        const settled = !App._wallWheelFrame && !App._wallWheelPending;
+        return { mid, end, settled };
+    })()`);
+    check(wheel.mid < -20, '滚轮能推墙（不再被 preventDefault 吞掉）', `mid=${Math.round(wheel.mid)}`);
+    check(wheel.end < wheel.mid - 10 && wheel.settled, '滚轮位移逐帧收敛并停住',
+        `${Math.round(wheel.mid)} → ${Math.round(wheel.end)} settled=${wheel.settled}`);
 
     // 3. 点击第一张卡片 → 进入编辑：墙隐藏、body.editing、sidebar 隐藏、模板已应用
     const enter = await exec(`(async () => {
@@ -186,13 +412,15 @@ async function main() {
         expectName,
         wallHidden: !!(w && w.hidden),
         editing: document.body.classList.contains('editing'),
-        sidebarHidden: !!(cs && cs.display === 'none'),
+        sidebarVisible: !!(cs && cs.display !== 'none'),
+        pending: (App.pendingPreset && App.pendingPreset.templateName) || '',
         tplName: (App.template && (App.template.templateName || '')) || ''
       };
     })()`);
     check(enter.wallHidden, '点击卡片后预设墙隐藏');
     check(enter.editing, '进入编辑模式 body.editing');
-    check(enter.sidebarHidden, '编辑模式左侧预设树隐藏');
+    check(enter.sidebarVisible, '编辑模式左侧预设栏常驻可见（B1：墙只做首屏）');
+    check(enter.pending === enter.expectName, '无照片时把墙选的风格记为待应用', `pending=${enter.pending}`);
     check(enter.tplName === enter.expectName, '模板已应用为所选预设', `${enter.tplName} vs ${enter.expectName}`);
 
     // 4. 工具栏「预设墙」按钮 → 返回墙
@@ -205,12 +433,16 @@ async function main() {
       return {
         btnVisible: visible,
         wallShown: !!(w && !w.hidden && w.getClientRects().length > 0),
-        editing: document.body.classList.contains('editing')
+        editing: document.body.classList.contains('editing'),
+        selected: ((document.querySelector('#presetWallGrid .pw-tile.selected .pw-tile-name') || {}).textContent) || '',
+        tpl: (window.App.template && window.App.template.templateName) || ''
       };
     })()`);
     check(back.btnVisible, '编辑模式工具栏显示「预设墙」按钮');
     check(back.wallShown, '点击后返回预设墙');
     check(!back.editing, '返回后移除 body.editing');
+    check(back.selected && back.selected === back.tpl, '回墙自动选中当前图的预设并居中',
+        `selected=${back.selected} tpl=${back.tpl}`);
 
     // 5. 跳过入口：pwSkip → 进工作台（不应用新模板、sidebar 隐藏）
     const skip = await exec(`(async () => {
