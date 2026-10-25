@@ -14,15 +14,15 @@ const PRESET_DIR = path.join(ROOT, 'shared', 'presets');
 const OUT_DIR = path.join(ROOT, 'src', 'renderer', 'assets', 'preset-wall');
 const COVER_DIR = path.join(OUT_DIR, 'covers');
 const DATA_PATH = path.join(OUT_DIR, 'preset-wall-data.js');
-const SAMPLES_DIR = path.join(ROOT, 'design', 'home-prototype-assets', 'samples');
+const SAMPLES_DIR = path.join(ROOT, 'design', 'home-prototype-assets', 'samples-user');
 
-// 每个分类用哪张示例图（示例图是程序生成的风格化插画，无版权）
+// 每个分类用哪张示例图（用户实拍照片：design/home-prototype-assets/samples-user/*.webp）
 const TAG_SAMPLE = {
-    '个性': 'portrait', '艺术': 'still', '氛围': 'lake', '高级感': 'portrait',
-    '复古': 'forest', '光影': 'lake', '创意': 'city', '质感': 'still',
-    '邮票': 'portrait', '胶片': 'city', '水印': 'lake', '票根': 'portrait',
-    '极简': 'still', '手作': 'still', '潮流': 'city', '星空': 'city',
-    '现代': 'still', '影院': 'desert', '奢华': 'portrait'
+    '个性': 'cat-white', '艺术': 'magnolia', '氛围': 'campus-dusk', '高级感': 'night-reflection',
+    '复古': 'autumn-street', '光影': 'sunset-skyline', '创意': 'blossom-blue', '质感': 'building-day',
+    '邮票': 'yellow-flower', '胶片': 'leaf-autumn', '水印': 'sky-flow', '票根': 'avenue',
+    '极简': 'cosmo-flower', '手作': 'lotus-boardwalk', '潮流': 'cat-orange', '星空': 'sky-flow',
+    '现代': 'lotus-teaching', '影院': 'river-night', '奢华': 'night-reflection'
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -99,7 +99,7 @@ function renderWallCover(options) {
             }
         };
         img.onerror = () => reject(new Error('sample load failed: ' + options.sampleKey));
-        img.src = options.samplePath;
+        img.src = options.sampleData;
     });
 }
 
@@ -138,6 +138,17 @@ async function main() {
         return true;
     })()`);
 
+    // 预读示例图为 data URL（生成环境里 file:// 子资源可能被沙箱拒绝，走 data 协议最稳）
+    const SAMPLE_DATA = {};
+    if (fs.existsSync(SAMPLES_DIR)) {
+        for (const f of fs.readdirSync(SAMPLES_DIR)) {
+            if (!f.endsWith('.webp')) continue;
+            SAMPLE_DATA[f.replace(/\.webp$/, '')] = 'data:image/webp;base64,' +
+                fs.readFileSync(path.join(SAMPLES_DIR, f)).toString('base64');
+        }
+    }
+    console.log('samples:', Object.keys(SAMPLE_DATA).length);
+
     const presets = await exec('window.App.presets.map(p => ({ name: p.templateName || p._fileName, tag: p.templateTag || \'其他\', file: p._fileName }))');
     console.log('presets:', presets.length);
     await exec(`window.__renderWallCover = ${renderWallCover.toString()}; true`);
@@ -145,9 +156,10 @@ async function main() {
     const items = [];
     for (let i = 0; i < presets.length; i++) {
         const p = presets[i];
-        const sampleKey = TAG_SAMPLE[p.tag] || 'lake';
-        const samplePath = path.posix.join('../../design/home-prototype-assets/samples', sampleKey + '.webp').replace(/\\/g, '/');
-        const cover = await exec(`window.__renderWallCover(${JSON.stringify({ sampleKey, presetFile: p.file, max: 900, samplePath })})`);
+        const sampleKey = TAG_SAMPLE[p.tag] || 'cosmo-flower';
+        const sampleData = SAMPLE_DATA[sampleKey] || '';
+        if (!sampleData) throw new Error('sample missing: ' + sampleKey);
+        const cover = await exec(`window.__renderWallCover(${JSON.stringify({ sampleKey, presetFile: p.file, max: 900, sampleData })})`);
         const fname = 'c' + String(i).padStart(2, '0') + '.webp';
         fs.writeFileSync(path.join(COVER_DIR, fname), Buffer.from(cover.dataUrl.split(',')[1], 'base64'));
         items.push({
