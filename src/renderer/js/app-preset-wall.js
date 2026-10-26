@@ -101,6 +101,19 @@ window.App = Object.assign(window.App || {}, {
         this._wallWheelFrame = 0;
         this._wallWheelGesture = { lastTime: -Infinity, source: null };
         this._wallSwallowClick = false;    // 点击已在 pointerup 处理过，随后补发的 click 要吞掉
+        // 系统「减少动态效果」：惯性、3D 倾斜、入场淡入统统关掉，交互退化为直接定位。
+        // 监听切换：用户中途改系统设置也立刻生效（顺手清掉正在倾斜的那张卡）。
+        this._wallReduceMq = (window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null);
+        this._wallReduceHandler = () => {
+            if (!this.wallReducedMotion()) return;
+            const t = this._wallTilt;
+            if (t && t.card) { t.card.removeAttribute('data-tilting'); t.card = null; }
+            if (t) { t.rx = 0; t.ry = 0; }
+            this.focusWall();
+        };
+        if (this._wallReduceMq && this._wallReduceMq.addEventListener) {
+            this._wallReduceMq.addEventListener('change', this._wallReduceHandler);
+        }
         this._wallDrag = {
             id: null, startX: 0, startY: 0, panX: 0, panY: 0,
             lastX: 0, lastY: 0, lastT: 0, downT: 0, vx: 0, vy: 0, dragging: false
@@ -213,6 +226,11 @@ window.App = Object.assign(window.App || {}, {
                     return;
                 }
             }
+            // 降级动效时不倾斜：3D 旋转是纯装饰，对前庭敏感的人是负担
+            if (this.wallReducedMotion()) {
+                if (this._wallTilt.card) tiltRest();
+                return;
+            }
             const t = this._wallTilt;
             const card = (e.target instanceof Element) ? e.target.closest('.pw-tile') : null;
             if (card !== t.card) {
@@ -246,6 +264,11 @@ window.App = Object.assign(window.App || {}, {
             e.preventDefault();
             if (this._wallDrag.id !== null) return;
             const { dx, dy } = this.wallWheelDelta(e);
+            if (this.wallReducedMotion()) {
+                this.stopWallMotion();
+                this.panWallTo(this._wallPan.x - dx, this._wallPan.y - dy);
+                return;
+            }
             if (this.wallWheelSource(e) === 'trackpad') {
                 this.stopWallMotion();
                 this.panWallTo(this._wallPan.x - dx, this._wallPan.y - dy);
@@ -266,6 +289,15 @@ window.App = Object.assign(window.App || {}, {
         window.addEventListener('focus', this._wallFocusRefresh);
 
         this.renderPresetWall();
+    },
+
+    // 是否降级动效：系统「减少动态效果」开启时返回 true。
+    // _wallReduceOverride 是给自动化用例的开关（可绕过系统设置直接断言降级行为）。
+    wallReducedMotion() {
+        if (this._wallReduceOverride !== null && this._wallReduceOverride !== undefined) {
+            return !!this._wallReduceOverride;
+        }
+        return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     },
 
     // 应用整墙平移（wrapper transform）
@@ -320,6 +352,7 @@ window.App = Object.assign(window.App || {}, {
 
     // 松手惯性：v*power 是这一甩的总行程，指数衰减（τ=timeConstantMs）走完收敛到 restDeltaPx。
     coastWall(vx, vy) {
+        if (this.wallReducedMotion()) return;   // 降级：松手即停，不滑行
         const cfg = _pwPanCfg.inertia;
         const speed = Math.hypot(vx, vy);
         if (!(speed >= cfg.minSpeed)) return;
@@ -628,8 +661,8 @@ window.App = Object.assign(window.App || {}, {
         el.cells = cells;
         el.block = blocks[0]; // 兼容仍按单块取用的地方（选择态、测试）
         this.layoutWallTiles();
-        // 墙整体淡入（卡片自身不做动画，transform 由 JS 接管）
-        wall.style.animation = 'pwWallIn .55s ease-out both';
+        // 墙整体淡入（卡片自身不做动画，transform 由 JS 接管）；降级动效时直接出现
+        if (!this.wallReducedMotion()) wall.style.animation = 'pwWallIn .55s ease-out both';
         if (el.sub) el.sub.textContent = data.items.length + ' 种预设 · 按住拖动浏览 · 点击卡片进入编辑';
     },
 

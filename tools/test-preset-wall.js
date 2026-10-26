@@ -398,6 +398,38 @@ async function main() {
     check(wheel.end < wheel.mid - 10 && wheel.settled, '滚轮位移逐帧收敛并停住',
         `${Math.round(wheel.mid)} → ${Math.round(wheel.end)} settled=${wheel.settled}`);
 
+    // 2.9 降级动效（prefers-reduced-motion）：惯性/滚轮/入场全部退化，但功能仍可用
+    const reduce = await exec(`(async () => {
+        const g = document.getElementById('presetWallGrid');
+        App._wallReduceOverride = true;
+        App.stopWallMotion(); App.panWallTo(0, 0);
+        const before = App._wallPan.y;
+        App.coastWall(3200, 1100);
+        await new Promise((r) => setTimeout(r, 220));
+        const afterCoast = App._wallPan.y;
+        g.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, deltaMode: 0, bubbles: true, cancelable: true }));
+        await new Promise((r) => setTimeout(r, 30));
+        const afterWheel = App._wallPan.y;
+        App._wallReduceOverride = null;
+        return { before, afterCoast, afterWheel };
+    })()`);
+    check(reduce.afterCoast === reduce.before, '降级动效：松手不滑行',
+        `${reduce.before} → ${reduce.afterCoast}`);
+    check(reduce.afterWheel <= reduce.afterCoast - 99, '降级动效：滚轮一帧到位（无逐帧追）',
+        `y=${Math.round(reduce.afterWheel)}`);
+
+    const anim = await exec(`(() => {
+        App._wallReduceOverride = true;
+        App.renderPresetWall();
+        const reduced = (document.querySelector('.pw-wall') || {}).style ? document.querySelector('.pw-wall').style.animation : '';
+        App._wallReduceOverride = null;
+        App.renderPresetWall();
+        const normal = (document.querySelector('.pw-wall') || {}).style ? document.querySelector('.pw-wall').style.animation : '';
+        return { reduced: reduced || '', normal: normal || '' };
+    })()`);
+    check(anim.reduced === '' && anim.normal.indexOf('pwWallIn') >= 0, '降级动效：入场淡入被跳过',
+        `reduced="${anim.reduced}" normal="${anim.normal}"`);
+
     // 3. 点击第一张卡片 → 进入编辑：墙隐藏、body.editing、sidebar 隐藏、模板已应用
     const enter = await exec(`(async () => {
       const App = window.App;

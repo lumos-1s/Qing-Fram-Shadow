@@ -1567,6 +1567,13 @@ body.platform-darwin .titlebar-controls { display: none; }
     .immersion-caption,
     .immersion-nav,
     .immersion-loading { transition: none !important; }
+
+    /* 预设墙：入场淡入、卡片缩放/透明度过渡、hover 封面放大都关掉。
+       惯性/滚轮平滑/3D 倾斜由 JS 判 prefers-reduced-motion 后跳过（见 wallReducedMotion）。 */
+    .pw-wall { animation: none !important; }
+    .pw-tile { transition: none !important; }
+    .pw-tile:hover .pw-tile-cover img,
+    .pw-tile.selected .pw-tile-cover img { transform: none; }
 }
 
 
