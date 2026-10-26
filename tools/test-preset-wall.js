@@ -78,12 +78,15 @@ async function main() {
         const App = window.App;
         if (!App) return { error: 'App 未加载' };
         const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        // tools/preload-measure.js 会注入 window.__qfTest，app.js 因此跳过「启动即开墙」，
+        // 否则墙的覆盖层会挡住其它用例的真实鼠标事件。本用例是墙自己的测试，显式打开。
+        App.openPresetWall();
         for (let i = 0; i < 80 && (!App.presets || App.presets.length < 4); i++) await wait(100);
         for (let i = 0; i < 80 && !document.getElementById('presetWallGrid').querySelectorAll('.pw-tile').length; i++) await wait(100);
         return { ok: true, presets: App.presets.length, tiles: document.getElementById('presetWallGrid').querySelectorAll('.pw-tile').length };
       } catch (e) { return { error: String(e) }; }
     })()`);
-    check(setup.ok, 'App 与预设墙就绪', setup.error || `presets=${setup.presets} tiles=${setup.tiles}`);
+    check(setup.ok, 'App 与预设墙就绪（显式打开）', setup.error || `presets=${setup.presets} tiles=${setup.tiles}`);
 
     // 0. 无障碍：只有第 0 份拷贝参与 Tab 与读屏（否则 360 个 Tab 停点、同一张卡播报四遍）
     const a11y = await exec(`(() => ({
@@ -270,7 +273,7 @@ async function main() {
     // 2.68 自定义封面：userData/wall-covers/<预设名>.webp 覆盖内置封面，删掉即回落
     wallCovers = { '3D卡片': 'C:/Users/lumos/Pictures/我的封面.webp' };
     const coverOn = await exec(`(async () => {
-        const applied = await App.refreshWallCovers();
+        const applied = await App.refreshWallCovers(true);
         const tile = Array.from(document.querySelectorAll('.pw-tile'))
             .find((t) => t.querySelector('.pw-tile-name').textContent === '3D卡片');
         return { applied, src: tile.querySelector('.pw-tile-cover img').getAttribute('src'), cover: tile.dataset.cover };
@@ -280,7 +283,7 @@ async function main() {
 
     wallCovers = {};
     const coverOff = await exec(`(async () => {
-        await App.refreshWallCovers();
+        await App.refreshWallCovers(true);
         const tile = Array.from(document.querySelectorAll('.pw-tile'))
             .find((t) => t.querySelector('.pw-tile-name').textContent === '3D卡片');
         return { src: tile.querySelector('.pw-tile-cover img').getAttribute('src'), cover: tile.dataset.cover };
@@ -362,6 +365,10 @@ async function main() {
     const coast = await exec(`(async () => {
         const g = document.getElementById('presetWallGrid');
         App.stopWallMotion(); App.panWallTo(0, 0);
+        // 诊断：确认 coastWall 到底有没有被调用、速度多少、是否被降动效吃掉
+        let coastCalled = false, coastSpeed = 0;
+        const origCoast = App.coastWall.bind(App);
+        App.coastWall = function (vx, vy) { coastCalled = true; coastSpeed = Math.round(Math.hypot(vx, vy)); return origCoast(vx, vy); };
         const r = g.getBoundingClientRect();
         g.dispatchEvent(new PointerEvent('pointerdown', { button: 0, pointerId: 3, clientX: r.left + 700, clientY: r.top + 400, bubbles: true }));
         await new Promise((x) => setTimeout(x, 24));
@@ -369,13 +376,19 @@ async function main() {
         await new Promise((x) => setTimeout(x, 12));
         g.dispatchEvent(new PointerEvent('pointerup', { pointerId: 3, clientX: r.left + 440, clientY: r.top + 400, bubbles: true }));
         const atRelease = App._wallPan.x;
-        await new Promise((x) => setTimeout(x, 160));
+        // 轮询到"确实开始滑"，而不是死等 160ms：慢帧下固定采样会把正常惯性误判成没滑
+        for (let i = 0; i < 25; i++) {
+            await new Promise((x) => setTimeout(x, 20));
+            if (Math.abs(App._wallPan.x - atRelease) > 5) break;
+        }
         const afterCoast = App._wallPan.x;
         App.stopWallMotion();
-        return { atRelease, afterCoast };
+        App.coastWall = origCoast;
+        return { atRelease, afterCoast, coastCalled, coastSpeed, reduce: App.wallReducedMotion(),
+                 hidden: document.getElementById('presetWall').hidden };
     })()`);
-    check(coast.afterCoast < coast.atRelease - 5, '松手后有惯性滑行（inertia）',
-        `${Math.round(coast.atRelease)} → ${Math.round(coast.afterCoast)}`);
+    check(coast.coastCalled && coast.afterCoast < coast.atRelease - 5, '松手后有惯性滑行（inertia）',
+        `called=${coast.coastCalled} v=${coast.coastSpeed} ${Math.round(coast.atRelease)} → ${Math.round(coast.afterCoast)} reduce=${coast.reduce} hidden=${coast.hidden}`);
 
     const wheel = await exec(`(async () => {
         const g = document.getElementById('presetWallGrid');

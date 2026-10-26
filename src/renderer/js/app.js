@@ -150,8 +150,10 @@ window.App = {
         const showIntro = () => this.showIntroIfNeeded();
         if (typeof requestIdleCallback === 'function') requestIdleCallback(showIntro, { timeout: 4000 });
         else setTimeout(showIntro, 3000);
-        // 启动默认进预设墙主页(画廊选风格);「跳过/进入工作台」或点卡片后进入编辑
-        if (this.openPresetWall) this.openPresetWall();
+        // 启动默认进预设墙主页(画廊选风格);「跳过/进入工作台」或点卡片后进入编辑。
+        // window.__qfTest 由 tools/preload-measure.js 注入：GUI 用例在墙出现之前就写好了，
+        // 墙的 fixed 覆盖层会把 sendInputEvent 的真实鼠标事件全挡住，测试里不自动打开。
+        if (!window.__qfTest && this.openPresetWall) this.openPresetWall();
     },
 
     // 恢复上次的界面偏好(导出质量 / 拍摄信息开关)

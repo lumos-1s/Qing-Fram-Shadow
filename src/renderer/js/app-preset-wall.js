@@ -73,6 +73,7 @@ window.App = Object.assign(window.App || {}, {
                 return;
             }
             if (r && r.ok) {
+                try { localStorage.setItem('qfs_wall_covers_on', '1'); } catch (_) { /* 忽略 */ }
                 say('把图片放进封面文件夹，文件名用预设名（如「圆角卡片.webp」）；关掉文件夹回到窗口即自动刷新', false);
             } else if (r && r.message) {
                 say('打不开封面目录：' + r.message, true);
@@ -289,6 +290,11 @@ window.App = Object.assign(window.App || {}, {
         window.addEventListener('focus', this._wallFocusRefresh);
 
         this.renderPresetWall();
+    },
+
+    // 用户是否用过「换封面」（用过才值得每次开墙扫一遍目录）
+    wallCoversEnabled() {
+        try { return localStorage.getItem('qfs_wall_covers_on') === '1'; } catch (_) { return false; }
     },
 
     // 是否降级动效：系统「减少动态效果」开启时返回 true。
@@ -552,9 +558,13 @@ window.App = Object.assign(window.App || {}, {
 
     // 用户自备封面：userData/wall-covers/<预设名>.webp|jpg|png
     // 每次开墙扫一次（只是 readdir + 360 次 src 比对），删掉文件就自动回落内置封面。
-    async refreshWallCovers() {
+    // force=true 时无视「用户用过换封面」的标记（用例用）。
+    // 默认不扫：没点过「换封面」的人根本没自定义封面，这次 IPC 纯属浪费，
+    // 还会在没注册该 handler 的老测试桩里刷一屏 "No handler registered"。
+    async refreshWallCovers(force) {
         const el = this._wallDom;
         if (!el || !el.grid) return 0;
+        if (!force && !this.wallCoversEnabled()) return 0;
         if (!window.qingframe || typeof window.qingframe.listWallCovers !== 'function') return 0;
         let covers = {};
         try { covers = await window.qingframe.listWallCovers() || {}; } catch (_) { return 0; }

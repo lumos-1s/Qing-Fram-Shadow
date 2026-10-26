@@ -26,7 +26,9 @@ concurrency:
 jobs:
   static:
     name: 静态检查（lint / 预设 / 引擎不变量）
-    runs-on: ubuntu-latest
+    # 必须 windows：test:mainio 里有 Windows 专有的文件名去重断言
+    # （photo2.jpg → photo2_1.jpg），在 ubuntu 上必红。
+    runs-on: windows-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

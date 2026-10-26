@@ -32,6 +32,10 @@ contextBridge.exposeInMainWorld('qingframe', {
     openWallCoversDir: () => ipcRenderer.invoke('open-wall-covers-dir')
 });
 
+// 测试标记：page 主世界可读。app.js 据此跳过「启动即开预设墙」——
+// 老用例是在墙出现之前写的，墙的 fixed 覆盖层会把真实鼠标事件全挡在画布外。
+contextBridge.exposeInMainWorld('__qfTest', true);
+
 contextBridge.exposeInMainWorld('__measure', {
     testImage: () => ipcRenderer.invoke('measure:test-image')
 });
