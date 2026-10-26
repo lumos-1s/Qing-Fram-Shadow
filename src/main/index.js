@@ -48,15 +48,16 @@ if (!app.requestSingleInstanceLock()) {
     // 静默退出会把"我明明重启了却还是旧代码"变成一个查不出来的谜:
     // 单实例锁会让新进程直接自杀、只把旧窗口聚焦到前台 —— 而旧的**主进程**代码换不掉。
     // 踩过:改了 src/main 后 `npm start`,窗口照常出现,于是以为重启成功,实际跑的还是旧进程。
-    // 这一行是纯 ASCII 副本,别删:start.bat 必须靠它判断"到底有没有启动"。
-    // 它无法用中文那句来匹配 —— cmd 按控制台代码页解析 .bat(GBK),中文匹配串不可靠;
-    // 而 Chromium 的 process_singleton 报错只在"锁文件建不出来"时才有,真的"已有实例"
-    // 走的是静默退出分支,日志里一个 ASCII 标记都没有,只有下面这三行中文。
-    console.warn('[qingframe] single-instance lock refused this launch.');
-    console.warn('[清框影] 已有实例在运行,本次启动被忽略(单实例锁)。');
-    console.warn('         要加载 src/main 的改动,必须先完全退出已有实例:');
-    console.warn('         任务管理器里结束所有 Electron / 清框影 进程,再执行 npm start。');
-    app.quit();
+    // 这一行是纯 ASCII 标记,别改:start.bat 靠它判断"到底有没有启动"。
+    // 下面所有提示都用 ASCII:控制台代码页是 GBK 时,UTF-8 中文会变成乱码,而这段正是
+    // "为什么没启动"的唯一线索。走 stdout 而不是 stderr:PowerShell 会把 stderr 包成
+    // NativeCommandError,整段信息被拆成红色报错,反而更难读。
+    console.log('[qingframe] single-instance lock refused this launch.');
+    console.log('[qingframe] another instance is already running; this launch exits with code 1.');
+    console.log('[qingframe] to load src/main changes, quit the running app first:');
+    console.log('[qingframe]   Task Manager -> end every Electron / Qingframe process, then run npm start again.');
+    // 以前用 app.quit():退出码恒为 0,脚本会把"没启动"当成"正常关闭"。这里必须非 0。
+    app.exit(1);
 } else {
     const PRESETS_DIR = path.join(__dirname, '..', '..', 'shared', 'presets');
     const LOGOS_DIR = path.join(__dirname, '..', '..', 'shared', 'brandlogos');
@@ -544,9 +545,6 @@ app.whenReady().then(() => {
         return { ok: true };
     });
 
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) createWindow();
-    });
 });
 
 app.on('window-all-closed', () => {
@@ -1193,11 +1191,25 @@ ipcMain.handle('write-export-files', async (event, { location, files }) => {
     return { ok, fail };
 });
 
-    app.on('second-instance', () => {
+    // 重复启动时把已有窗口拉到前台。只调 focus() 在 Windows 上不够:窗口被别的程序
+    // 盖住时,前台锁会让 focus() 只闪一下任务栏,用户看到的就是"启动了但什么都没出现"。
+    // 置顶再取消是能稳定抢到前台的顺序;flashFrame 兜底提示任务栏。
+    const focusMainWindow = () => {
         const win = BrowserWindow.getAllWindows()[0];
-        if (win) {
-            if (win.isMinimized()) win.restore();
+        if (!win) { createWindow(); return; }
+        if (win.isMinimized()) win.restore();
+        if (!win.isVisible()) win.show();
+        win.moveTop();
+        if (process.platform === 'win32') {
+            win.setAlwaysOnTop(true);
+            win.focus();
+            win.setAlwaysOnTop(false);
+            win.flashFrame(true);
+            setTimeout(() => { if (win && !win.isDestroyed()) win.flashFrame(false); }, 1500);
+        } else {
             win.focus();
         }
-    });
+    };
+    app.on('second-instance', focusMainWindow);
+    app.on('activate', focusMainWindow);
 }

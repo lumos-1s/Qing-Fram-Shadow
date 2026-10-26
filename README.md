@@ -116,6 +116,10 @@ npm run dist:portable
 
 构建产物位于 `dist/`。Built artifacts are placed in `dist/`.
 
+> 开发启动推荐用 `npm run start:soft`：自动挑一个可用的 Electron（项目外同版本副本优先），默认硬件合成。
+> 只有 GPU 进程崩溃时才用 `npm run start:sw`（swiftshader 软件 GL，慢但兼容）。
+> `npm run start` 仍是裸 `electron .`，供 CI / start.bat 使用。
+
 > 提示：Windows 上可双击根目录 `start.bat` 直接启动开发环境。
 > Tip: on Windows you can double-click `start.bat` in the project root to launch the dev environment.
 

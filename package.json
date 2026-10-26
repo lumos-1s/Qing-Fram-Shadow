@@ -5,7 +5,8 @@
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
-    "start:soft": "electron --disable-gpu --no-sandbox .",
+    "start:soft": "node tools/start-app.js",
+    "start:sw": "node tools/start-app.js --sw",
     "lint": "eslint src --ext .js",
     "validate:presets": "node tools/validate-presets.js",
     "check:readme": "node tools/check-readme-counts.js",
