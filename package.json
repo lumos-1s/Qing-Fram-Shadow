@@ -13,6 +13,7 @@
     "gen:caps": "node tools/gen-style-caps.js",
     "gen:marks": "node tools/gen-marks.js",
     "gen:icon": "node tools/run-electron.js tools/render-app-icon.js",
+    "gen:wall": "node tools/run-electron.js tools/gen-preset-wall.js",
     "check:marks": "node tools/gen-marks.js --check",
     "check:caps": "node tools/gen-style-caps.js --check",
     "test:mainio": "node tools/test-main-io.js",

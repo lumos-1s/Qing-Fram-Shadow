@@ -1,0 +1,27 @@
+{
+  "samplesDir": "design/home-prototype-assets/samples-user",
+  "tagSamples": {
+    "个性": "cat-white",
+    "艺术": "magnolia",
+    "氛围": "campus-dusk",
+    "高级感": "night-reflection",
+    "复古": "autumn-street",
+    "光影": "sunset-skyline",
+    "创意": "blossom-blue",
+    "质感": "building-day",
+    "邮票": "yellow-flower",
+    "胶片": "leaf-autumn",
+    "水印": "sky-flow",
+    "票根": "avenue",
+    "极简": "cosmo-flower",
+    "手作": "lotus-boardwalk",
+    "潮流": "cat-orange",
+    "星空": "sky-flow",
+    "现代": "lotus-teaching",
+    "影院": "river-night",
+    "奢华": "night-reflection"
+  },
+  "fallbackSample": "cosmo-flower",
+  "coverMax": 560,
+  "webpQuality": 0.86
+}

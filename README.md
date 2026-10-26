@@ -123,6 +123,23 @@ npm run dist:portable
 > 提示：Windows 上可双击根目录 `start.bat` 直接启动开发环境。
 > Tip: on Windows you can double-click `start.bat` in the project root to launch the dev environment.
 
+### 换预设墙封面照片 · Changing preset-wall cover photos
+
+预设墙（启动页）的封面由 `tools/gen-preset-wall.js` 渲染生成；换照片不用改代码：
+
+1. 把照片按分类名放进 `design/preset-wall-samples/`，例如 `个性.jpg`、`艺术.webp`（支持 jpg / jpeg / png / webp）。
+2. 重新生成（应用开着也能跑，生成器是独立进程）：
+
+```bash
+npm run gen:wall
+```
+
+没放照片的分类继续用 `tools/preset-wall.config.json` 里 `tagSamples` 指定的默认示例图，也可以直接改这个文件调整映射。只想换某一两张预设的封面、不想重新生成时，把图片放进应用数据目录的 `wall-covers/<预设名>.webp`（启动页「换封面」按钮会打开这个目录），重启应用生效。
+
+生成器默认把封面长边压到 560px（配置里的 `coverMax`，或命令行 `--max`），87 张合计约 3MB。
+
+> **English** — Drop photos named after a category into `design/preset-wall-samples/` (e.g. `个性.jpg`), then run `npm run gen:wall`. Categories without an override keep the default sample from `tools/preset-wall.config.json`. For one-off cover changes, put an image in `wall-covers/<preset>.webp` via the in-app “换封面” button and restart.
+
 ## 技术栈 · Tech Stack
 
 [![Tech Stack](https://skillicons.dev/icons?i=js,html,css,electron,nodejs,npm,git,github)](https://skillicons.dev)
