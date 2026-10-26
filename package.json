@@ -57,7 +57,7 @@
     "test:fidelity": "node tools/run-electron.js tools/test-export-fidelity.js",
     "test:grain": "node tools/run-electron.js tools/test-film-grain.js",
     "test:visual": "node tools/run-electron.js tools/visual-regression.js",
-    "test": "npm run check && npm run test:brand && npm run test:leica && npm run test:pol && npm run test:grain && npm run test:srgb && npm run test:fidelity && npm run test:elements && npm run test:drag && npm run test:logohit && npm run test:logodrag && npm run test:presetkeep && npm run test:shortcut && npm run test:imgdel && npm run test:avsign && npm run test:stampred && npm run test:ticketredo && npm run test:hint && npm run test:position && npm run test:overlay && npm run test:label && npm run test:panel && npm run test:about && npm run test:panel:audit && npm run test:grid:smoke && npm run test:grid:enhance && npm run test:grid:five && npm run test:grid:bind && npm run test:exif && npm run test:contrast && npm run test:icon:persist && npm run test:puzzle && npm run test:puzzlekeep && npm run test:immersive && npm run test:wall && npm run test:visual",
+    "test": "npm run check && npm run test:gui && npm run test:visual",
     "check": "npm run lint && npm run validate:presets && npm run check:readme && npm run check:caps && npm run check:marks && npm run test:mainio && npm run test:exifwrite && npm run test:focaleq && npm run test:syncadapt && npm run test:sharecode && npm run test:icons && npm run test:engine",
     "app:dir": "electron-builder --win --dir",
     "verify:dist": "node tools/verify-dist.js",
@@ -72,7 +72,9 @@
     "gen:icon:mac": "node tools/run-electron.js tools/render-app-icon.js --size 1024 --out build/icon.png",
     "app:dir:mac": "electron-builder --mac --dir",
     "dist:mac": "electron-builder --mac --universal",
-    "release:mac": "electron-builder --mac --universal --publish always"
+    "release:mac": "electron-builder --mac --universal --publish always",
+    "test:gui": "npm run test:brand && npm run test:leica && npm run test:pol && npm run test:grain && npm run test:srgb && npm run test:fidelity && npm run test:elements && npm run test:drag && npm run test:logohit && npm run test:logodrag && npm run test:presetkeep && npm run test:shortcut && npm run test:imgdel && npm run test:avsign && npm run test:stampred && npm run test:ticketredo && npm run test:hint && npm run test:position && npm run test:overlay && npm run test:label && npm run test:panel && npm run test:about && npm run test:panel:audit && npm run test:grid:smoke && npm run test:grid:enhance && npm run test:grid:five && npm run test:grid:bind && npm run test:exif && npm run test:contrast && npm run test:icon:persist && npm run test:puzzle && npm run test:puzzlekeep && npm run test:immersive && npm run test:wall",
+    "test:ci": "npm run check && npm run test:gui"
   },
   "author": "Qingframe",
   "license": "MIT",

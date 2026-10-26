@@ -1,0 +1,78 @@
+name: Test
+
+# 之前只有 build-macos / release-signpath 会跑 npm run check，那 34 套 Electron GUI 用例
+# （含预设墙的 47 项）只在本地手动跑过，所以「点击无反应」「导入丢预设」这类问题
+# 都是靠人肉点出来的。这里把它们接进 CI。
+#
+# 分段说明：
+#   check    = lint + 预设校验 + README 计数 + caps/marks + 7 套纯 node 用例（ubuntu，秒级）
+#   test:gui = 34 套 Electron GUI 用例（windows，需要能起窗口）
+#   test:visual = 截图像素比对，依赖 DPI/字体，CI 上必然和本地不一致，**故意不跑**
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: 静态检查（lint / 预设 / 引擎不变量）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Static checks
+        run: npm run check
+
+  gui:
+    name: GUI 用例（Windows / Electron 34 套）
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      # run-electron.js 的整组开关替换口。CI runner 没有真实 GPU，
+      # swiftshader 是唯一稳定的软件后端（本地实测：它比 --disable-gpu 那套更不容易崩）。
+      QF_ELECTRON_FLAGS: "--use-gl=swiftshader --no-sandbox"
+      ELECTRON_DISABLE_SECURITY_WARNINGS: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # test:ci = 本平台的静态检查 + 34 套 GUI 用例（不含 test:visual）
+      - name: GUI suites
+        run: npm run test:ci
+
+      - name: Upload logs & screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-test-artifacts
+          path: |
+            tests/visual/out/**
+            *.log
+          if-no-files-found: ignore
+          retention-days: 7
