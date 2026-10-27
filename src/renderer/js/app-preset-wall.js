@@ -290,47 +290,6 @@ window.App = Object.assign(window.App || {}, {
         window.addEventListener('focus', this._wallFocusRefresh);
 
         this.renderPresetWall();
-        // 启动页要等封面解码完再放行：否则"墙刚露脸就拖动"会和 87 张图的解码抢主线程，
-        // 实测那种情况下会出现 150~200ms 的单帧卡顿。慢盘上尤其明显。
-        this.preloadWallCovers();
-    },
-
-    // 预解码预设墙封面（= 启动页的第 4 个任务）。
-    // 只等"墙里实际用到的那批图"，360 个 <img> 里同 URL 的只解一次。
-    preloadWallCovers() {
-        if (window.__qfTest) return Promise.resolve();   // 用例里不等，保持启动快
-        const el = this._wallDom;
-        const grid = el && el.grid;
-        if (!grid) return Promise.resolve();
-        if (this._wallPreload) return this._wallPreload;
-
-        const seen = new Map();
-        for (const im of grid.querySelectorAll('img')) {
-            const u = im.getAttribute('src');
-            if (u && !seen.has(u)) seen.set(u, im);
-        }
-        const list = [...seen.values()];
-        if (!list.length) return Promise.resolve();
-
-        if (typeof this.splashExpect === 'function') this.splashExpect(1);
-        if (typeof this.splashStatus === 'function') this.splashStatus('正在准备预设墙…');
-
-        let done = 0;
-        const total = list.length;
-        const queue = list.slice();
-        const worker = async () => {
-            while (queue.length) {
-                const im = queue.shift();
-                try { if (typeof im.decode === 'function') await im.decode(); } catch (_) { /* 解码失败就走原图 */ }
-                done++;
-                if (typeof this.splashProgress === 'function') this.splashProgress(done / total);
-            }
-        };
-        // 并发 4：太多会互相抢带宽/内存，太少在慢盘上又会拖长启动页
-        this._wallPreload = Promise.all(Array.from({ length: Math.min(4, total) }, worker)).then(() => {
-            if (typeof this.splashTick === 'function') this.splashTick();
-        });
-        return this._wallPreload;
     },
 
     // 用户是否用过「换封面」（用过才值得每次开墙扫一遍目录）

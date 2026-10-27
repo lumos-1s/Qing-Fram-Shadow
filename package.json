@@ -79,7 +79,8 @@
     "test:gui": "npm run test:brand && npm run test:leica && npm run test:pol && npm run test:grain && npm run test:srgb && npm run test:fidelity && npm run test:elements && npm run test:drag && npm run test:logohit && npm run test:logodrag && npm run test:presetkeep && npm run test:shortcut && npm run test:imgdel && npm run test:avsign && npm run test:stampred && npm run test:ticketredo && npm run test:hint && npm run test:position && npm run test:overlay && npm run test:label && npm run test:range && npm run test:panel && npm run test:about && npm run test:panel:audit && npm run test:grid:smoke && npm run test:grid:enhance && npm run test:grid:five && npm run test:grid:bind && npm run test:exif && npm run test:contrast && npm run test:icon:persist && npm run test:puzzle && npm run test:puzzlekeep && npm run test:immersive && npm run test:wall",
     "test:ci": "npm run check && npm run test:gui",
     "covers:bake": "node tools/run-electron.js tools/bake-wall-covers.js",
-    "wall:jank": "node tools/wall-jank.js"
+    "wall:jank": "node tools/wall-jank.js",
+    "boot:time": "node tools/boot-time.js"
   },
   "author": "Qingframe",
   "license": "MIT",
