@@ -392,6 +392,8 @@ async function main() {
     const coast = await exec(`(async () => {
         const g = document.getElementById('presetWallGrid');
         App.stopWallMotion(); App.panWallTo(0, 0);
+        // 先把上一段手势残留的 rAF 彻底停干净再开始，否则起手会被上一次惯性带偏
+        await new Promise((x) => setTimeout(x, 120));
         // 诊断：确认 coastWall 到底有没有被调用、速度多少、是否被降动效吃掉
         let coastCalled = false, coastSpeed = 0;
         const origCoast = App.coastWall.bind(App);
@@ -403,10 +405,11 @@ async function main() {
         await new Promise((x) => setTimeout(x, 12));
         g.dispatchEvent(new PointerEvent('pointerup', { pointerId: 3, clientX: r.left + 440, clientY: r.top + 400, bubbles: true }));
         const atRelease = App._wallPan.x;
-        // 轮询到"确实开始滑"，而不是死等 160ms：慢帧下固定采样会把正常惯性误判成没滑
-        for (let i = 0; i < 25; i++) {
+        // 轮询到"朝预期方向确实滑起来了"：慢帧下固定采样会误判，而残留的旧 rAF
+        // 也可能先把 pan 推别的方向，所以判据必须是"比松手时更负"，不能只看"变了"。
+        for (let i = 0; i < 30; i++) {
             await new Promise((x) => setTimeout(x, 20));
-            if (Math.abs(App._wallPan.x - atRelease) > 5) break;
+            if (App._wallPan.x < atRelease - 5) break;
         }
         const afterCoast = App._wallPan.x;
         App.stopWallMotion();

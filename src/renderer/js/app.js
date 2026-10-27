@@ -2592,8 +2592,8 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         bindBtn('btnCamLibDel', () => this.deleteCamLibEntry());
         const camSel = $('cbCamLib');
         if (camSel) camSel.addEventListener('change', () => { if (camSel.value) this.applyCamLibEntry(camSel.value); else this.refreshCamLibSelect(); });
-        bindBtn('btnQuickFilm', () => this.applyQuickPreset());
-        bindBtn('btnAutoColorBorder', () => this.autoColorBorder());
+        // 「快速预设」分组已移除（按钮 btnQuickFilm / btnAutoColorBorder），
+        // 对应实现 applyQuickPreset() / autoColorBorder() 仍保留，可挂到别处入口。
         bindBtn('btnEditGapCaption', () => this.addEditGapCaption());
         bindBtn('btnDeleteGapCaption', () => this.deleteCaption());
 bindBtn('btnResetAllSlots', () => this.resetAllSlots());

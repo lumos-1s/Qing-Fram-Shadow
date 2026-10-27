@@ -610,6 +610,7 @@ window.App = Object.assign(window.App || {}, {
         this.setStatus(`已从分享码导入「${(shareName || data.templateName || '未命名配置')}」（照片不变，边框/参数已还原）`);
     },
 
+    // 注：UI 入口（侧栏「快速预设」分组的「复古胶片」按钮）已移除，函数保留备用。
     applyQuickPreset() {
         if (!this.presets.length) { this.setStatus('预设库未加载'); return; }
         const p = this.presets.find(x => /胶片/i.test(x.templateName));
@@ -621,6 +622,7 @@ window.App = Object.assign(window.App || {}, {
         this.setStatus(`已应用预设「${p.templateName}」`);
     },
 
+    // 注：UI 入口（侧栏「快速预设」分组的「自动取色边框」按钮）已移除，函数保留备用。
     async autoColorBorder() {
         if (!this.image) { this.setStatus('请先导入照片'); return; }
         const color = window.EngineStyles && window.EngineStyles.extractDominant;
