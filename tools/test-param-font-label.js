@@ -49,6 +49,8 @@ const CHECK = `
   // 这里的精度断言只关心有图时的真实布局,先把空态撤掉。
   const inspector = document.getElementById('inspector');
   if (inspector) inspector.classList.remove('no-image');
+  // 参数文字已从「画布」拆到「文字」页签:先切到该页,否则量到的是 display:none 的 0px 轨道。
+  if (App.switchTab) App.switchTab('text');
   const val = document.getElementById('lblParamFontSize');
   const note = document.getElementById('lblParamFontNote');
   if (!val) throw new Error('找不到 lblParamFontSize');

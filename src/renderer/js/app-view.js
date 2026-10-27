@@ -50,7 +50,11 @@ window.App = Object.assign(window.App || {}, {
     },
 
     switchTab(name) {
-        this.dom.tabs.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+        this.dom.tabs.querySelectorAll('.tab[data-tab]').forEach(t => {
+            const on = t.dataset.tab === name;
+            t.classList.toggle('active', on);
+            t.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
         this.dom.panels.forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
         if (name === 'logo') this.renderLogoPools();
         if (name === 'template') this.refreshTemplates();
@@ -66,7 +70,7 @@ window.App = Object.assign(window.App || {}, {
         const btn = this.dom.btnSave;
         if (!btn) return;
         const active = this.dom.tabs && this.dom.tabs.querySelector('.tab.active');
-        const tab = active ? active.dataset.tab : 'param';
+        const tab = active ? active.dataset.tab : 'canvas';
         const selected = Array.isArray(this.selectedIdx) ? this.selectedIdx.length : 0;
         // 普通页签:勾选多张时主导出按钮就是批量导出,不再另放一个「批量导出」按钮。
         const label = tab === 'puzzle' ? '导出拼图'

@@ -255,13 +255,14 @@ html.dark .tbtn.primary { color: var(--primary-ink); }
 .status-pill.logged-in { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
 
 /* ═══ 主体 ═══ */
-#main { display: flex; flex: 1 1 auto; min-height: 0; }
+#main { display: flex; flex: 1 1 auto; min-height: 0; position: relative; }
 
 /* ── 左侧:边框预设 ── */
 #sidebar {
     width: 236px; flex: 0 0 auto;
     background: var(--surface); border-right: 1px solid var(--border);
     display: flex; flex-direction: column; min-height: 0;
+    position: relative;
 }
 .side-title {
     padding: var(--sp-4) var(--sp-4) var(--sp-2-5); font-weight: 700; font-size: 13.5px;
@@ -306,6 +307,26 @@ html.dark .tbtn.primary { color: var(--primary-ink); }
 }
 .preset-item:hover .dot { transform: scale(1.25); }
 .preset-item.active .dot { transform: scale(1.08); filter: none; }
+/* 编辑页预设缩略图:与预设墙用同一张封面(懒加载),让"换预设"这件事在两侧是同一套视觉语言。
+   87 张封面全部 loading=lazy,只有滚到视口里的才解码;左右留白收紧,给名字和星标腾出宽度。 */
+.preset-item { padding-left: 6px; gap: 7px; }
+.preset-item .preset-thumb {
+    flex: 0 0 auto; width: 32px; height: 38px; border-radius: 7px;
+    object-fit: cover; background: var(--thumb-bg);
+    border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,.14);
+    transition: transform .15s, border-color .15s;
+}
+.preset-item:hover .preset-thumb { transform: scale(1.06); border-color: var(--border-strong); }
+.preset-item.active .preset-thumb { border-color: var(--primary); box-shadow: 0 0 0 1.5px var(--primary-soft); }
+.preset-item .preset-thumb-fallback {
+    flex: 0 0 auto; width: 32px; height: 38px; border-radius: 7px;
+    display: grid; place-items: center; font-size: 14px;
+    background: var(--surface-alt); border: 1px solid var(--border);
+}
+.preset-item .preset-name {
+    flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 /* ── 中间:画布(暗房墙) ── */
 #canvasPane {
@@ -397,6 +418,8 @@ html.dark #previewCanvas {
 .pick-btn { pointer-events: auto; display: inline-flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2-5) 26px; font-size: 13.5px; border-radius: 12px; }
 .restore-draft-btn { pointer-events: auto; }
 .ph-folder { display: inline-flex; }
+.ph-sample { pointer-events: auto; border-style: dashed; color: var(--text-2); }
+.ph-sample:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
 
 /* 缩略图条 */
 .thumb-strip:empty { display: none; }
@@ -449,6 +472,60 @@ html.dark #previewCanvas {
 }
 .thumb-strip .thumb.main { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary), 0 3px 8px rgba(0,0,0,.45); }
 
+/* 多选后的上下文操作条:只在真正多选时出现,把「同步到选中」从顶栏搬到手指边 */
+.batch-bar {
+    position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%);
+    z-index: 16; display: flex; align-items: center; gap: var(--sp-2);
+    padding: 7px 9px 7px 13px;
+    background: var(--overlay-bg); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow);
+    backdrop-filter: blur(10px); white-space: nowrap;
+}
+.batch-bar[hidden] { display: none; }
+.batch-bar-count { font-size: var(--fs-12); color: var(--text-2); font-weight: 600; }
+.batch-bar-btn {
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text-2); border-radius: 8px; padding: 4px 10px;
+    font-size: var(--fs-12); cursor: pointer; transition: all .12s;
+}
+.batch-bar-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.batch-bar-btn.primary {
+    background: var(--primary); border-color: var(--primary); color: #06251c; font-weight: 700;
+}
+.batch-bar-btn.primary:hover { filter: brightness(1.05); color: #06251c; }
+
+/* ── 侧栏收起 / 展开 / 拖动宽度 ── */
+.panel-collapse-btn {
+    flex: 0 0 auto; width: 22px; height: 22px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border); border-radius: 7px;
+    background: var(--surface-alt); color: var(--text-3); cursor: pointer;
+    transition: all .12s;
+}
+.panel-collapse-btn:hover { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
+body.sidebar-collapsed #sidebar { display: none; }
+body.inspector-collapsed #inspector { display: none; }
+.panel-rail {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    z-index: 18; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text-2);
+    padding: var(--sp-2) 4px; cursor: pointer;
+    font-size: 11px; letter-spacing: 1px;
+    writing-mode: vertical-rl; text-orientation: upright;
+    box-shadow: var(--shadow); backdrop-filter: blur(8px);
+}
+.panel-rail:hover { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
+.panel-rail.rail-left { left: 0; border-radius: 0 9px 9px 0; border-left: none; }
+.panel-rail.rail-right { right: 0; border-radius: 9px 0 0 9px; border-right: none; }
+.side-resizer {
+    position: absolute; top: 0; right: -3px; width: 6px; height: 100%;
+    z-index: 7; cursor: col-resize; background: transparent;
+    transition: background .12s;
+}
+.side-resizer:hover, .side-resizer.dragging { background: var(--primary-soft); }
+.side-resizer.resizer-left { left: -3px; right: auto; }
+#inspector { position: relative; }
+
 /* 桌面右键菜单(拼图格子 / 胶片条缩略图) */
 .ctx-menu {
     position: fixed; z-index: 99999; min-width: 160px; padding: var(--sp-1);
@@ -483,12 +560,15 @@ html.dark #previewCanvas {
 #canvasPane.dragging .drop-overlay { display: flex; }
 
 /* 空状态: 未导入照片时右侧面板整体置灰, 引导用户先导入 */
-#inspector.no-image { opacity: .5; pointer-events: none; transition: opacity .25s ease; }
+#inspector.no-image { opacity: .62; transition: opacity .25s ease; }
+#inspector.no-image .insp-body { pointer-events: none; }
 /* 无照片时参数页整体收起,只留一句说明。面板此时 pointer-events:none,
    画布/照片/文字/相机这些组本来就点不了;露着只会像「面板没加载完」。
    其余「行全空」的组在有模板时仍由 syncEmptyGroups 收敛,这里不抢它的活。 */
-#inspector.no-image #panel-param .param-group { display: none; }
-#inspector.no-image #panel-param .param-empty-note { display: block; }
+#inspector.no-image #panel-canvas .param-group,
+#inspector.no-image #panel-text .param-group { display: none; }
+#inspector.no-image #panel-canvas .param-empty-note,
+#inspector.no-image #panel-text .param-empty-note { display: block; }
 .param-empty-note {
     display: none; margin: 2px 2px var(--sp-2-5); padding: var(--sp-2-5) var(--sp-3);
     font-size: var(--fs-12); line-height: 1.6; color: var(--text-3); text-align: center;
@@ -526,21 +606,37 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
     width: 308px; flex: 0 0 auto;
     background: var(--surface); border-left: 1px solid var(--border);
     display: flex; flex-direction: column; min-height: 0;
+    position: relative;
 }
+/* 页签分两层:上层是"改外观"的属性页,下层是"换工作模式"的工具页。
+   拼图/切图不是样式属性,和边框/光影并排会让人以为只是另一种边框。 */
 .tabs {
-    display: flex; gap: 3px; padding: 9px 9px 0;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 3px;
+    padding: 8px 8px 6px;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
 }
 .tab {
     border: none; background: transparent; cursor: pointer;
-    padding: var(--sp-1-5) var(--sp-1); border-radius: 9px;
+    padding: 6px var(--sp-1); border-radius: 9px;
     font-size: 11.5px; color: var(--text-2);
-    flex: 1 1 0; text-align: center;
+    flex: 1 1 0; min-width: 0; text-align: center;
     transition: all .15s;
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
 }
 .tab:hover { color: var(--text); background: var(--surface-alt); }
 .tab.active { color: var(--primary); font-weight: 600; background: var(--primary-soft); }
+.tab-sep { flex: 0 0 100%; height: 1px; background: var(--border); margin: 5px 2px 3px; }
+.tabs-tool-label {
+    flex: 0 0 auto; padding: 0 3px 0 6px;
+    font-size: 10px; letter-spacing: 1.4px; color: var(--text-3);
+}
+.tab.tab-tool { flex: 0 0 64px; font-size: 11px; }
+.tab.tab-tool .tab-ico { flex: 0 0 auto; opacity: .8; }
+.tab.tab-tool.active .tab-ico { opacity: 1; }
+.tabs-spacer { flex: 1 1 auto; }
+.tab.tab-collapse { flex: 0 0 24px; padding: 5px; color: var(--text-3); }
+.tab.tab-collapse:hover { color: var(--primary); }
 .insp-body { flex: 1; overflow-y: auto; padding: var(--sp-2) var(--sp-3) 18px; }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
@@ -571,6 +667,7 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
     background: var(--surface-alt); border: 1px solid var(--border);
     border-radius: 11px;
     transition: border-color .15s;
+    position: relative;
 }
 .param-row:focus-within { border-color: var(--primary); }
 .param-row:hover { border-color: var(--border-strong); }
@@ -582,6 +679,31 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
     flex: 0 0 46px; text-align: right; color: var(--text);
     font-size: var(--fs-12); font-variant-numeric: tabular-nums;
 }
+/* 数值可点开输入:滑块负责手感和范围,数字负责精确值(37px 不用再靠手感)。
+   .pval 仍保留在 DOM 里更新文本(测试/读屏都读它),只做视觉隐藏,不占布局。 */
+.param-row .pval-sr {
+    position: absolute !important; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.param-row .pval-num {
+    flex: 0 0 38px; width: 38px; min-width: 0;
+    border: 1px solid transparent; border-radius: 7px;
+    background: transparent; color: var(--text);
+    padding: 2px 3px; font-size: 11.5px; text-align: right;
+    font-variant-numeric: tabular-nums; outline: none;
+    transition: border-color .12s, background .12s;
+    appearance: textfield; -moz-appearance: textfield;
+}
+.param-row .pval-num::-webkit-outer-spin-button,
+.param-row .pval-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.param-row .pval-num:hover { border-color: var(--border-strong); background: var(--surface); }
+.param-row .pval-num:focus { border-color: var(--primary); background: var(--surface); }
+.param-row .pval-unit { flex: 0 0 auto; color: var(--text-3); font-size: 10.5px; }
+.param-row label { user-select: none; }
+/* 提示双击标签复位:标签的 title 负责说明,悬停时数字输入框给一点视觉暗示。
+   不要覆盖聚焦态边框(同特异度下后写的规则会赢),否则正在编辑时反而看不出焦点。 */
+.param-row:hover .pval-num:not(:focus) { border-color: var(--border); }
 /* 自适应类参数的值可能是一句中文(如"自适应"),46px 装不下,单独放宽 */
 .param-row .pval-wide { flex: 0 0 58px; }
 /* 档位值旁边的说明小字:解释这个数字不是最终像素。
@@ -628,6 +750,11 @@ input[type=range]::-webkit-slider-thumb {
 }
 input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.2); }
 input[type=range]:active::-webkit-slider-thumb { transform: scale(1.05); }
+/* Shift 微调时给滑块一个更"稳"的反馈,提示当前不是普通拖动 */
+input[type=range].fine-tuning::-webkit-slider-thumb {
+    transform: scale(1.25);
+    box-shadow: 0 0 0 4px var(--primary-soft), 0 1px 5px rgba(0,0,0,.30);
+}
 
 /* ── 复选框 ── */
 .ctl-chk {

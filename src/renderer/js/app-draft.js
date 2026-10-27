@@ -56,18 +56,32 @@ window.App = Object.assign(window.App || {}, {
     saveDraftNow() {
         try {
             if (!this.images || !this.images.length) return;
-            const tpl = this.template ? JSON.parse(JSON.stringify(this.template)) : null;
+            // 内置示例照片没有磁盘路径,不能写进草稿:否则下次启动恢复时会被跳过,
+            // 但它仍占着 currentIdx,真实照片的当前张就会错位。只存可再次加载的照片。
+            const savable = [];
+            let cur = 0;
+            this.images.forEach((im, i) => {
+                if (!im.path) return;
+                if (i === this.currentIdx) cur = savable.length;
+                savable.push(im);
+            });
+            if (!savable.length) return;
+            const curIm = savable[cur] || savable[0];
+            if (curIm !== savable[cur]) cur = 0;
+            // 当前图可保存时,this.template 才是最新编辑状态(可能还没写回每图模板);
+            // 当前图是内置示例时,退回第一张真实照片自己的模板,避免把示例模板当默认值。
+            const srcTpl = (this.image && this.image.path) ? this.template : (this.getTpl(curIm) || this.template);
+            const tpl = srcTpl ? JSON.parse(JSON.stringify(srcTpl)) : null;
             const imageTemplates = [];
-            for (const im of this.images) {
-                if (!im.path) continue;
+            for (const im of savable) {
                 const saved = this.getTpl(im);
                 if (saved) imageTemplates.push({ path: im.path, tpl: JSON.parse(JSON.stringify(saved)) });
             }
             const draft = {
                 v: 1,
                 savedAt: Date.now(),
-                images: this.images.map(im => ({ name: im.name, path: im.path || '', w: im.w, h: im.h })),
-                currentIdx: this.currentIdx,
+                images: savable.map(im => ({ name: im.name, path: im.path, w: im.w, h: im.h })),
+                currentIdx: cur,
                 template: tpl,
                 imageTemplates
             };

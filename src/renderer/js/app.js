@@ -111,6 +111,7 @@ window.App = {
         this.populateFonts();
         this.setupShortcuts();
         this.setupPanelInteractions();
+        this.initPanelCollapse();
         // 工具栏按钮tooltip
         const mod = this.modKeyLabel();
         const tips = {
@@ -182,6 +183,86 @@ window.App = {
         }).catch(() => {});
     },
 
+    /* ── 侧栏收起 / 展开 / 拖动宽度 ──
+       小屏(1000px 最小窗)下左右栏固定吃掉 544px,画布只剩四百多。
+       这里把两栏做成可收起并记住状态/宽度:按钮在栏头,收起后画布边缘留一条窄轨可展开,
+       拖栏边可调宽度,双击栏边恢复默认。 */
+    initPanelCollapse() {
+        const body = document.body;
+        const side = this.dom.sidebar;
+        const insp = this.dom.inspector;
+        if (!side || !insp) return;
+        const K_SIDE = 'qfs_sidebar_collapsed';
+        const K_INSP = 'qfs_inspector_collapsed';
+        const K_SIDE_W = 'qfs_sidebar_width';
+        const K_INSP_W = 'qfs_inspector_width';
+        const num = (k, d) => { const v = parseInt(localStorage.getItem(k) || '', 10); return isFinite(v) ? v : d; };
+        side.style.width = Math.max(180, Math.min(360, num(K_SIDE_W, 236))) + 'px';
+        insp.style.width = Math.max(260, Math.min(440, num(K_INSP_W, 308))) + 'px';
+        const fit = () => { if (this._followFit && this.image) setTimeout(() => this.fitZoom(), 40); };
+        const sync = () => {
+            const sc = localStorage.getItem(K_SIDE) === '1';
+            const ic = localStorage.getItem(K_INSP) === '1';
+            body.classList.toggle('sidebar-collapsed', sc);
+            body.classList.toggle('inspector-collapsed', ic);
+            if (this.dom.sidebarRail) this.dom.sidebarRail.hidden = !sc;
+            if (this.dom.inspectorRail) this.dom.inspectorRail.hidden = !ic;
+            fit();
+        };
+        const toggle = (key) => { localStorage.setItem(key, localStorage.getItem(key) === '1' ? '0' : '1'); sync(); };
+        ['btnSidebarCollapse', 'btnSidebarRail'].forEach(id => {
+            const el = this.$(id);
+            if (el) el.addEventListener('click', () => toggle(K_SIDE));
+        });
+        ['btnInspectorCollapse', 'btnInspectorRail'].forEach(id => {
+            const el = this.$(id);
+            if (el) el.addEventListener('click', () => toggle(K_INSP));
+        });
+        // 拖动调宽:方向由栏在画布哪一侧决定。双击恢复默认宽度。
+        const bindResize = (el, target, key, min, max, defW, dir) => {
+            if (!el) return;
+            el.addEventListener('dblclick', () => {
+                target.style.width = defW + 'px';
+                localStorage.removeItem(key);
+                fit();
+            });
+            el.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                const startX = e.clientX;
+                const startW = target.getBoundingClientRect().width;
+                el.setPointerCapture(e.pointerId);
+                el.classList.add('dragging');
+                const move = (ev) => {
+                    const w = Math.max(min, Math.min(max, startW + dir * (ev.clientX - startX)));
+                    target.style.width = Math.round(w) + 'px';
+                };
+                const up = () => {
+                    try { el.releasePointerCapture(e.pointerId); } catch (_) { /* 已释放 */ }
+                    el.classList.remove('dragging');
+                    el.removeEventListener('pointermove', move);
+                    el.removeEventListener('pointerup', up);
+                    el.removeEventListener('pointercancel', up);
+                    localStorage.setItem(key, String(Math.round(target.getBoundingClientRect().width)));
+                    fit();
+                };
+                el.addEventListener('pointermove', move);
+                el.addEventListener('pointerup', up);
+                el.addEventListener('pointercancel', up);
+            });
+        };
+        bindResize(this.$('sidebarResizer'), side, K_SIDE_W, 180, 360, 236, 1);
+        bindResize(this.$('inspectorResizer'), insp, K_INSP_W, 260, 440, 308, -1);
+        // Ctrl+[ / Ctrl+] 收起展开(Mac 为 ⌘)。Tab 键留给焦点导航,不抢。
+        document.addEventListener('keydown', (e) => {
+            if (this._immersionOpen) return;
+            const mod = (window.qingframe && window.qingframe.isMac) ? e.metaKey : e.ctrlKey;
+            if (!mod || e.altKey || e.shiftKey) return;
+            if (e.key === '[') { e.preventDefault(); toggle(K_SIDE); }
+            else if (e.key === ']') { e.preventDefault(); toggle(K_INSP); }
+        });
+        sync();
+    },
+
     cacheDom() {
         const $ = id => document.getElementById(id);
         this.dom = {
@@ -196,6 +277,8 @@ window.App = {
             canvas: $('previewCanvas'), canvasPane: $('canvasPane'), placeholder: $('placeholder'), inspector: $('inspector'),
             stage: document.querySelector('.stage'),
             thumbStrip: $('thumbStrip'), dropOverlay: $('dropOverlay'),
+            batchBar: $('batchBar'), batchBarText: $('batchBarText'),
+            sidebar: $('sidebar'), inspectorRail: $('btnInspectorRail'), sidebarRail: $('btnSidebarRail'),
             importProgress: $('importProgress'), importProgressFill: $('importProgressFill'), importProgressText: $('importProgressText'),
             tabs: $('inspTabs'), panels: Array.from(document.querySelectorAll('.tab-panel')),
             stRes: $('stRes'), stInfo: $('stInfo'), stCanvas: $('stCanvas'),
@@ -224,7 +307,18 @@ window.App = {
         if (pick) pick.addEventListener('click', () => this.openImages());
         const pickFolder = this.$('btnPickFolder');
         if (pickFolder) pickFolder.addEventListener('click', () => this.openImageFolder());
+        const pickSample = this.$('btnSamplePhoto');
+        if (pickSample) pickSample.addEventListener('click', () => this.loadSamplePhoto());
         if (d.btnOpenFolder) d.btnOpenFolder.addEventListener('click', () => this.openImageFolder());
+        const batchApply = this.$('btnBatchApply');
+        if (batchApply) batchApply.addEventListener('click', () => this.syncToSelected());
+        const batchClear = this.$('btnBatchClear');
+        if (batchClear) batchClear.addEventListener('click', () => {
+            this.batchSel = [];
+            this.selectedIdx = [];
+            this.buildThumbnails();
+            this.setStatus('已取消多选');
+        });
         d.btnSave.addEventListener('click', () => this.doExport());
         if (d.btnCopy) d.btnCopy.addEventListener('click', () => this.copyImage());
         if (d.btnExportSettings && d.exportPop) {
@@ -283,7 +377,9 @@ window.App = {
         });
         d.presetSearch.addEventListener('input', () => this.filterTree(d.presetSearch.value.trim()));
         d.tabs.addEventListener('click', e => {
-            const btn = e.target.closest('.tab');
+            // 只认带 data-tab 的页签:工具栏分隔符后的收起按钮也带 .tab 样式,
+            // 若把它当成页签会 switchTab(undefined),六个面板会一起被隐藏。
+            const btn = e.target.closest('.tab[data-tab]');
             if (btn) this.switchTab(btn.dataset.tab);
         });
         const myTemplates = this.$('btnMyTemplates');
@@ -338,15 +434,13 @@ window.App = {
         const rgAS = document.getElementById('rgAvatarScale');
         if (rgAS) rgAS.addEventListener('input', () => {
             this.template.avatarScale = Number(rgAS.value) / 100;
-            const v = document.getElementById('valAvatarScale');
-            if (v) v.textContent = rgAS.value + '%';
+            this.updateLabel('valAvatarScale', rgAS.value + '%');
             this.onSettingChanged();
         });
         const rgSS = document.getElementById('rgSignSize');
         if (rgSS) rgSS.addEventListener('input', () => {
             this.template.signSize = Number(rgSS.value) / 100;
-            const v = document.getElementById('valSignSize');
-            if (v) v.textContent = rgSS.value + '%';
+            this.updateLabel('valSignSize', rgSS.value + '%');
             this.onSettingChanged();
         });
         const chkBB = document.getElementById('chkBgBlur');
@@ -1344,8 +1438,8 @@ window.App = {
             if ($('cbCreditMode')) $('cbCreditMode').value = String(this.template.creditMode || 0);
             if ($('chkBrandLogo')) $('chkBrandLogo').value = String(this.template.brandLogo || 0);
             if ($('chkAvatarShow')) $('chkAvatarShow').checked = this.template.avatarShow !== 0;
-            if ($('rgAvatarScale')) { const v = Math.round((this.template.avatarScale || 0.85) * 100); $('rgAvatarScale').value = v; if ($('valAvatarScale')) $('valAvatarScale').textContent = v + '%'; }
-            if ($('rgSignSize')) { const v2 = Math.round((this.template.signSize || 1) * 100); $('rgSignSize').value = v2; if ($('valSignSize')) $('valSignSize').textContent = v2 + '%'; }
+            if ($('rgAvatarScale')) { const v = Math.round((this.template.avatarScale || 0.85) * 100); $('rgAvatarScale').value = v; this.updateLabel('valAvatarScale', v + '%'); }
+            if ($('rgSignSize')) { const v2 = Math.round((this.template.signSize || 1) * 100); $('rgSignSize').value = v2; this.updateLabel('valSignSize', v2 + '%'); }
             if ($('chkBgBlur')) $('chkBgBlur').checked = !!this.template.signBgBlur;
             const biV = this.template.blurIntensity != null ? this.template.blurIntensity : 50;
             if ($('slBgBlurInt')) $('slBgBlurInt').value = biV;
@@ -1479,7 +1573,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         if (!showLight) {
             const active = document.querySelector('.tab.active');
             if (active && active.getAttribute('data-tab') === 'light') {
-                const firstVis = document.querySelector('#inspTabs .tab:not([style*="display: none"])');
+                const firstVis = document.querySelector('#inspTabs .tab[data-tab]:not([style*="display: none"])');
                 if (firstVis) firstVis.click();
             }
         }
@@ -1544,6 +1638,14 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             // 同值写 textContent 虽不触发重排,但每次都要走字符串化与样式失效检查,累起来不划算。
             const s = String(text);
             if (el.textContent !== s) el.textContent = s;
+        }
+        // 数值输入框跟随标签:标签仍是唯一数据源(测试/读屏读它),数字框只是它的可编辑投影。
+        // 标签 id 与滑块 id 不总同名(lblParamFontSize ↔ slParamFontSize、
+        // valSignSize ↔ rgSignSize),所以先按前缀反推一次,找不到再按同名处理。
+        if (this._rangeUi) {
+            if (this._rangeUi[id]) this._syncRangeNumber(id);
+            else if (id.indexOf('lbl') === 0 && this._rangeUi['sl' + id.slice(3)]) this._syncRangeNumber('sl' + id.slice(3));
+            else if (id.indexOf('val') === 0 && this._rangeUi['rg' + id.slice(3)]) this._syncRangeNumber('rg' + id.slice(3));
         }
     },
 
@@ -1949,6 +2051,36 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         await this.importPicked(res.items, res.skipped);
     },
 
+    // 示例照片:不打包进用户数据,从应用内置资源读取。
+    // 目的不是代替导入,而是让从预设墙进来的人先看到"成品长什么样",再决定要不要用自己的照片。
+    async loadSamplePhoto() {
+        const existing = (this.images || []).findIndex(im => im && im.sample);
+        if (existing >= 0) {
+            this.selectImage(existing);
+            this.setStatus('已切到示例照片；导入自己的照片后可以随时删掉它');
+            return;
+        }
+        const img = new Image();
+        img.decoding = 'async';
+        await new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; img.src = 'assets/samples/sample-photo.webp'; });
+        if (!img.naturalWidth) { this.setStatus('示例照片加载失败，请直接导入自己的照片'); return; }
+        const im = {
+            el: img,
+            name: '示例照片',
+            path: null,
+            sample: true,
+            w: img.naturalWidth,
+            h: img.naturalHeight,
+            exif: {},
+            customSettings: null,
+        };
+        this.images.push(im);
+        this.queueThumb(im);
+        this.buildThumbnails();
+        this.selectImage(this.images.length - 1);
+        this.setStatus('已载入示例照片；点右上角「导入照片」换成自己的');
+    },
+
     // 系统剪贴板图片(截图/网页复制)导入
     async pasteImageFromClipboard() {
         const res = await window.qingframe.readClipboardImage();
@@ -2129,6 +2261,16 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         });
         this._thumbEls = elMap;
         strip.style.display = this.images.length > 1 ? 'flex' : 'none';
+        // 多选操作条:只在「真的选了多张」时出现,把「同步到选中」从顶栏挪到缩略图上方。
+        // 选 1 张时它就是当前编辑图,同步没有目标,不显示。
+        const bar = this.dom.batchBar;
+        if (bar) {
+            const n = this.batchSel.length;
+            bar.hidden = !(n > 1);
+            if (n > 1 && this.dom.batchBarText) {
+                this.dom.batchBarText.textContent = `已选 ${n} 张`;
+            }
+        }
         if (typeof this.updateExportEntry === 'function') this.updateExportEntry();
         if (typeof this.updateImmersiveEntry === 'function') this.updateImmersiveEntry();
     },
@@ -2189,6 +2331,8 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             const el = $(id);
             if (el) el.addEventListener('input', () => this.onSliderCustom(id, parseInt(el.value, 10)));
         });
+        // 滑块行增强:数值可精确输入、标签/数值双击单行复位(不改变滑块原有手感与提交路径)
+        this.enhanceRangeRows();
 
         // 参数字号:双击滑块回到默认档位(= 刚加完边框那一刻软件给的字号)。
         // 默认档在滑块中段(33/160),想回去得一路拖,太精细;双击给一条直达路径。
@@ -2466,6 +2610,149 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
                 if (p.scrollHeight > p.clientHeight) { p.scrollTop += d * 3; e.preventDefault(); }
             }, { passive: false });
         });
+    },
+
+    /* ── 滑块行的精确输入 / 单行复位 ──
+       滑块仍然负责"手感"(拖动、实时预览),这里的数字框只负责"精确值"。
+       不复制提交逻辑:数字框把值写回 range 并派发 input,后续完全走原来的
+       bindRanges → onSliderLive/onSliderCustom → onSettingChanged 通路,
+       所以撤销栈、标签刷新、画布重绘不会出现第二套实现。 */
+    enhanceRangeRows() {
+        if (!this._rangeUi) this._rangeUi = {};
+        document.querySelectorAll('.tab-panel .param-row').forEach(row => {
+            const rng = row.querySelector('input[type=range]');
+            const val = row.querySelector('.pval');
+            if (!rng || !val || !rng.id) return;
+            if (row.querySelector('.pval-num') || row.querySelector('input[type=number]')) return;
+            const num = document.createElement('input');
+            num.type = 'number';
+            num.className = 'pval-num';
+            num.min = rng.min;
+            num.max = rng.max;
+            num.step = rng.step || '1';
+            num.title = '可直接输入精确值；双击复位';
+            num.setAttribute('aria-label', (row.querySelector('label') ? row.querySelector('label').textContent : rng.id));
+            const unit = document.createElement('span');
+            unit.className = 'pval-unit';
+            val.classList.add('pval-sr');
+            row.insertBefore(num, val);
+            row.insertBefore(unit, val);
+            const id = rng.id;
+            this._rangeUi[id] = { rng, num, unit, val };
+            // Shift + 拖动 = 微调:原生 range 的灵敏度由控件宽度决定,一像素跨好几个档位,
+            // 这里按住 Shift 时改为「相对起点、十分之一灵敏度」的拖动,仍写回同一个 range,
+            // 因此 input 事件、撤销栈、标签刷新全部沿用原路径。
+            rng.title = (rng.title ? rng.title + '；' : '') + '按住 Shift 拖动可微调';
+            rng.addEventListener('pointerdown', (e) => {
+                if (!e.shiftKey || e.button !== 0) return;
+                e.preventDefault();
+                const min = Number(rng.min) || 0;
+                const max = Number(rng.max) || 100;
+                const step = Number(rng.step) || 1;
+                const rect = rng.getBoundingClientRect();
+                const startX = e.clientX;
+                const startVal = Number(rng.value) || 0;
+                const perPx = ((max - min) / Math.max(60, rect.width)) * 0.1;
+                const move = (ev) => {
+                    let v = startVal + (ev.clientX - startX) * perPx;
+                    v = Math.round(v / step) * step;
+                    v = Math.max(min, Math.min(max, v));
+                    if (String(rng.value) !== String(v)) {
+                        rng.value = String(v);
+                        rng.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                };
+                const up = () => {
+                    rng.classList.remove('fine-tuning');
+                    rng.removeEventListener('pointermove', move);
+                    rng.removeEventListener('pointerup', up);
+                    rng.removeEventListener('pointercancel', up);
+                };
+                rng.classList.add('fine-tuning');
+                try { rng.setPointerCapture(e.pointerId); } catch (_) { /* 浏览器不支持时退回普通拖动 */ }
+                rng.focus({ preventScroll: true });
+                rng.addEventListener('pointermove', move);
+                rng.addEventListener('pointerup', up);
+                rng.addEventListener('pointercancel', up);
+            });
+            let dirty = false;
+            const apply = (commit) => {
+                const raw = String(num.value || '').trim();
+                if (raw === '' || !isFinite(Number(raw))) {
+                    if (commit) this._syncRangeNumber(id);
+                    return;
+                }
+                let v = Number(raw);
+                const step = Number(rng.step) || 1;
+                if (step >= 1) v = Math.round(v);
+                v = Math.min(Number(rng.max), Math.max(Number(rng.min), v));
+                if (String(rng.value) !== String(v)) {
+                    rng.value = String(v);
+                    rng.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                if (commit) {
+                    num.value = String(v);
+                    if (dirty) {
+                        dirty = false;
+                        if (this._gesture) { this.endGesture(); this.commitNoPush(); }
+                    }
+                }
+            };
+            num.addEventListener('focus', () => { dirty = false; this.beginGesture(); });
+            num.addEventListener('input', () => {
+                if (String(num.value || '').trim() === '') return;
+                dirty = true;
+                apply(false);
+            });
+            num.addEventListener('change', () => apply(true));
+            num.addEventListener('blur', () => { apply(true); if (this._gesture) { this.endGesture(); this.commitNoPush(); } });
+            num.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); apply(true); num.blur(); }
+                else if (e.key === 'Escape') { this._syncRangeNumber(id); num.blur(); }
+            });
+            num.addEventListener('dblclick', (e) => { e.preventDefault(); this._resetRangeRow(rng); });
+            const label = row.querySelector('label');
+            if (label) {
+                label.title = '双击复位到默认值';
+                label.addEventListener('dblclick', () => this._resetRangeRow(rng));
+            }
+            this._syncRangeNumber(id);
+        });
+        // refreshUI 通常在 setupPanelInteractions 之后才跑:再对一次,避免初始标签为空时数字框藏起来。
+        requestAnimationFrame(() => Object.keys(this._rangeUi).forEach(id => this._syncRangeNumber(id)));
+    },
+
+    // 标签是唯一数据源;数字框只在标签是纯数值(允许带单位)时出现。
+    // 「自适应」这类文字没有数值可输,退回原来的标签展示。
+    _syncRangeNumber(id) {
+        const ui = this._rangeUi && this._rangeUi[id];
+        if (!ui) return;
+        const text = String(ui.val.textContent || '');
+        const m = text.match(/-?\d+(?:\.\d+)?/);
+        const hidden = !m || /自适应|自动/.test(text);
+        ui.num.hidden = hidden;
+        ui.unit.hidden = hidden;
+        ui.val.classList.toggle('pval-sr', !hidden);
+        if (hidden) return;
+        const unitText = text.replace(m[0], '').trim();
+        if (ui.unit.textContent !== unitText) ui.unit.textContent = unitText;
+        if (document.activeElement !== ui.num && ui.num.value !== m[0]) ui.num.value = m[0];
+    },
+
+    _resetRangeRow(rng) {
+        if (!rng || !this.template || !this.image) return;
+        const id = rng.id;
+        // 默认档优先取 defaultTemplate():参数字号的中性值是 33,不是 HTML 上的 100。
+        let def = rng.dataset.reset != null ? Number(rng.dataset.reset) : Number(rng.defaultValue);
+        if (id === 'slParamFontSize') def = Number(this.defaultTemplate().paramFontSize) || 33;
+        if (!isFinite(def)) return;
+        this.beginGesture();
+        rng.value = String(def);
+        rng.dispatchEvent(new Event('input', { bubbles: true }));
+        this.endGesture();
+        this.commitNoPush();
+        const label = rng.closest('.param-row') && rng.closest('.param-row').querySelector('label');
+        this.setStatus('已复位「' + (label ? label.textContent.trim() : id) + '」');
     },
 
     onSliderCustom(id, v) {

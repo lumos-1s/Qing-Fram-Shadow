@@ -173,10 +173,18 @@
                 <div class="side-title">
                     <span>边框预设</span>
                     <button id="btnMyTemplates" class="side-title-action" type="button" title="管理我的模板">我的模板</button>
+                    <button id="btnSidebarCollapse" class="panel-collapse-btn" type="button" title="收起预设栏 (Ctrl+[)" aria-label="收起预设栏">
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5 5.5 8 10 12.5"/></svg>
+                    </button>
                 </div>
                 <div class="side-search"><input id="presetSearch" type="text" placeholder="搜索预设…" /></div>
                 <div id="presetTree" class="preset-tree"></div>
+                <div id="sidebarResizer" class="side-resizer" title="拖动调整预设栏宽度，双击恢复默认"></div>
             </aside>
+
+            <button id="btnSidebarRail" class="panel-rail rail-left" type="button" title="展开预设栏 (Ctrl+[)" aria-label="展开预设栏" hidden>
+                <span>预设</span>
+            </button>
 
             <!-- 中间：画布 -->
             <section id="canvasPane">
@@ -202,11 +210,17 @@
                         <div class="ph-actions">
                             <button id="btnPickPhoto" class="tbtn primary pick-btn" title="打开图片 (Ctrl+O)">选择照片</button>
                             <button id="btnPickFolder" class="tbtn ph-folder" title="导入整个文件夹（含子文件夹） (Ctrl+Shift+O)">导入文件夹</button>
+                            <button id="btnSamplePhoto" class="tbtn ph-sample" title="不用先找照片，载入一张示例图直接试用">先用示例图看看</button>
                             <button id="btnRestoreDraft" class="tbtn restore-draft-btn" style="display:none" title="恢复上次会话的照片和模板">继续上次会话</button>
                         </div>
                     </div>
                 </div>
                 <div id="thumbStrip" class="thumb-strip"></div>
+                <div id="batchBar" class="batch-bar" hidden>
+                    <span class="batch-bar-count" id="batchBarText">已选 0 张</span>
+                    <button id="btnBatchApply" class="batch-bar-btn primary" type="button" title="把当前照片的边框与参数同步到其余选中的照片">应用当前样式</button>
+                    <button id="btnBatchClear" class="batch-bar-btn" type="button" title="取消多选">取消</button>
+                </div>
                 <div id="dropOverlay" class="drop-overlay"><div>松手导入照片</div></div>
                 <div id="importProgress" class="import-progress" style="display:none">
                     <div class="ip-bar"><div id="importProgressFill" class="ip-fill"></div></div>
@@ -215,24 +229,40 @@
             </section>
 
             <!-- 右侧：参数面板(多页签,静态控件骨架,对齐 Java FXML 命名) -->
+            <button id="btnInspectorRail" class="panel-rail rail-right" type="button" title="展开参数栏 (Ctrl+])" aria-label="展开参数栏" hidden>
+                <span>参数</span>
+            </button>
             <aside id="inspector">
-                <div class="tabs" id="inspTabs">
-                    <button class="tab active" data-tab="param">参数</button>
-                    <button class="tab" data-tab="border">边框</button>
+                <div class="tabs" id="inspTabs" role="tablist" aria-label="参数页签">
+                    <button class="tab active" data-tab="canvas" role="tab" aria-selected="true">画布</button>
+                    <button class="tab" data-tab="text" role="tab" aria-selected="false">文字</button>
+                    <button class="tab" data-tab="border" role="tab" aria-selected="false">边框</button>
 
-                    <button class="tab" data-tab="light">光影</button>
+                    <button class="tab" data-tab="light" role="tab" aria-selected="false">光影</button>
 
-                    <button class="tab" data-tab="logo">Logo</button>
-                    <button class="tab" data-tab="template">模板</button>
-                    <button class="tab" data-tab="puzzle">拼图</button>
-                    <button class="tab" data-tab="grid">切图</button>
+                    <button class="tab" data-tab="logo" role="tab" aria-selected="false">Logo</button>
+                    <button class="tab" data-tab="template" role="tab" aria-selected="false">模板</button>
+                    <div class="tab-sep" role="separator" aria-label="工具"></div>
+                    <span class="tabs-tool-label">工具</span>
+                    <button class="tab tab-tool" data-tab="puzzle" role="tab" aria-selected="false" title="拼图：把多张照片拼成一张成品">
+                        <svg class="tab-ico" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
+                        拼图
+                    </button>
+                    <button class="tab tab-tool" data-tab="grid" role="tab" aria-selected="false" title="切图：把一张照片切成九宫格">
+                        <svg class="tab-ico" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M6 2v12M10 2v12M2 6h12M2 10h12"/></svg>
+                        切图
+                    </button>
+                    <span class="tabs-spacer"></span>
+                    <button id="btnInspectorCollapse" class="tab tab-collapse" type="button" title="收起参数栏 (Ctrl+])" aria-label="收起参数栏">
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>
+                    </button>
                 </div>
                 <div class="insp-body">
                     <div id="modeStatus" class="mode-status" style="display:none"></div>
 
-                    <!-- ══ Tab1 参数 ══ -->
-                    <div class="tab-panel active" id="panel-param">
-                        <div class="param-empty-note">导入照片后即可调节各项参数</div>
+                    <!-- ══ Tab1 画布 / 照片 ══ -->
+                    <div class="tab-panel active" id="panel-canvas">
+                        <div class="param-empty-note">导入照片后即可调节画布与照片</div>
                         <div class="param-group">
                             <div class="pg-title collapsible">画布</div>
                             <div class="param-row">
@@ -268,6 +298,24 @@
                                 <span class="pval" id="lblCornerRadius"></span>
                             </div>
                         </div>
+
+                        <div class="param-group">
+                            <div class="pg-title collapsible">背景模糊</div>
+                            <div class="param-row chk-row" id="rowBgBlur" style="display:none;">
+                                <label>背景模糊</label>
+                                <input type="checkbox" id="chkBgBlur" class="ctl-chk" />
+                            </div>
+                            <div class="param-row" id="rowBgBlurInt" style="display:none;">
+                                <label>模糊程度</label>
+                                <input type="range" id="slBgBlurInt" class="ctl-rng" min="10" max="100" step="5" value="50" />
+                                <span class="pval" id="lblBgBlurInt"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ══ Tab2 文字 / 信息 ══ -->
+                    <div class="tab-panel" id="panel-text">
+                        <div class="param-empty-note">导入照片后即可调节文字与相机信息</div>
 
                         <div class="param-group">
                             <div class="pg-title collapsible">参数文字</div>
@@ -403,19 +451,6 @@
                         </div>
 
                         <div class="param-group">
-                            <div class="pg-title collapsible">背景模糊</div>
-                            <div class="param-row chk-row" id="rowBgBlur" style="display:none;">
-                                <label>背景模糊</label>
-                                <input type="checkbox" id="chkBgBlur" class="ctl-chk" />
-                            </div>
-                            <div class="param-row" id="rowBgBlurInt" style="display:none;">
-                                <label>模糊程度</label>
-                                <input type="range" id="slBgBlurInt" class="ctl-rng" min="10" max="100" step="5" value="50" />
-                                <span class="pval" id="lblBgBlurInt"></span>
-                            </div>
-                        </div>
-
-                        <div class="param-group">
                             <div class="pg-title collapsible">相机参数(自动识别)</div>
                             <div class="hint-box">已自动识别照片 EXIF 并显示在下方，可直接修改，画布实时更新；全部清空则走原版随机相机参数。</div>
                             <div class="param-row"><label>参数库</label><select id="cbCamLib" class="ctl-sel"><option value="">-- 选择已存参数(自动填入) --</option></select></div>
@@ -444,7 +479,7 @@
                         </div>
                     </div>
 
-                    <!-- ══ Tab2 边框 ══ -->
+                    <!-- ══ Tab3 边框 ══ -->
                     <div class="tab-panel" id="panel-border">
                         <div class="param-group ctl-grp-layers">
                             <div class="pg-title collapsible">填充</div>
@@ -592,7 +627,7 @@
                         </div>
                     </div>
 
-                    <!-- ══ Tab3 光影 ══ -->
+                    <!-- ══ Tab4 光影 ══ -->
                     <div class="tab-panel" id="panel-light">
                         <div class="param-group ctl-grp-light">
                             <div class="pg-title collapsible">暗角</div>
@@ -905,6 +940,7 @@
                     </div>
 
                 </div>
+                <div id="inspectorResizer" class="side-resizer resizer-left" title="拖动调整参数栏宽度，双击恢复默认"></div>
             </aside>
         </main>
 
@@ -1028,6 +1064,9 @@
                         <span>同步边框到勾选照片</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>D</kbd></span>
                         <span>适应窗口</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>0</kbd></span>
                         <span>保存模板</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd></span>
+                        <span>收起 / 展开预设栏</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>[</kbd></span>
+                        <span>收起 / 展开参数栏</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>]</kbd></span>
+                        <span>全屏沉浸展示</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>P</kbd></span>
                         <span>删除选中照片 / 元素</span><span class="about-keys"><kbd>Delete</kbd><span class="about-sep">/</span><kbd>Backspace</kbd></span>
                         <span>微移选中元素（Shift = 10px）</span><span class="about-keys"><kbd>方向键</kbd></span>
                         <span>切换照片</span><span class="about-keys"><kbd>←</kbd><kbd>→</kbd></span>

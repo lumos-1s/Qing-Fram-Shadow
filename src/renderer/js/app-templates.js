@@ -488,6 +488,48 @@ window.App = Object.assign(window.App || {}, {
         this.buildTree(this._searchVal || "");
     },
 
+    // 预设名 → 内置封面路径。数据来自预设墙的同一份 window.PRESET_WALL,
+    // 所以新增预设只要重新 npm run gen:wall,编辑页缩略图会一起出现,不用维护第二张映射表。
+    wallCoverMap() {
+        if (this._wallCoverMap) return this._wallCoverMap;
+        const map = {};
+        const data = (typeof window.PRESET_WALL === 'object' && window.PRESET_WALL && Array.isArray(window.PRESET_WALL.items))
+            ? window.PRESET_WALL : null;
+        if (data) {
+            for (const it of data.items) {
+                if (!it || !it.cover) continue;
+                if (it.name) map[it.name] = it.cover;
+                if (it.preset) map[it.preset] = it.cover;
+            }
+        }
+        this._wallCoverMap = map;
+        return map;
+    },
+
+    // 用户在预设墙点过「换封面」时,编辑页缩略图跟随同一份自定义封面。
+    // 墙没开过自定义封面就直接跳过,避免没注册 IPC 的环境刷 "No handler registered"。
+    async refreshPresetThumbCovers() {
+        if (this._thumbCoverBusy) return;
+        if (!window.qingframe || typeof window.qingframe.listWallCovers !== 'function') return;
+        if (typeof this.wallCoversEnabled === 'function' && !this.wallCoversEnabled()) return;
+        this._thumbCoverBusy = true;
+        try {
+            const covers = (await window.qingframe.listWallCovers()) || {};
+            const builtin = this.wallCoverMap();
+            document.querySelectorAll('#presetTree .preset-item').forEach(item => {
+                const name = item.dataset.name;
+                const img = item.querySelector('img.preset-thumb');
+                if (!name || !img) return;
+                const custom = covers[name];
+                const want = (custom && typeof this.photoUrl === 'function')
+                    ? this.photoUrl(custom)
+                    : (builtin[name] || '');
+                if (want && img.getAttribute('src') !== want) img.src = want;
+            });
+        } catch (_) { /* 自定义封面扫描失败:保留内置封面 */ }
+        finally { this._thumbCoverBusy = false; }
+    },
+
     buildTree(filter) {
         const tree = this.dom.presetTree;
         tree.innerHTML = '';
@@ -544,11 +586,32 @@ window.App = Object.assign(window.App || {}, {
         const renderItem = (p, grp) => {
             const item = document.createElement('div');
             item.className = 'preset-item' + (p.templateName === curName ? ' active' : '');
+            item.dataset.name = p.templateName;
             const dot = document.createElement('span');
             dot.className = 'dot';
             dot.textContent = iconFor(p.templateName);
-            item.appendChild(dot);
+            // 编辑页与预设墙共用封面:墙上看到的是图,进来后不应该只剩「名字 + 小图标」。
+            // loading=lazy 让 87 张封面只解码滚到视口的那几张;封面缺失/加载失败时回落到图标。
+            const cover = this.wallCoverMap()[p.templateName];
+            if (cover) {
+                const thumb = document.createElement('img');
+                thumb.className = 'preset-thumb';
+                thumb.alt = '';
+                thumb.draggable = false;
+                thumb.loading = 'lazy';
+                thumb.decoding = 'async';
+                thumb.src = cover;
+                thumb.addEventListener('error', () => {
+                    if (!thumb.parentNode) return;
+                    dot.className = 'preset-thumb-fallback';
+                    thumb.replaceWith(dot);
+                });
+                item.appendChild(thumb);
+            } else {
+                item.appendChild(dot);
+            }
             const label = document.createElement('span');
+            label.className = 'preset-name';
             label.textContent = p.templateName;
             item.appendChild(label);
             const star = document.createElement('span');
@@ -643,6 +706,12 @@ window.App = Object.assign(window.App || {}, {
             groupEl.appendChild(name);
             tree.appendChild(groupEl);
             for (const p of groups.get(grp)) groupEl.appendChild(renderItem(p, grp));
+        }
+        // 自定义封面异步覆盖:节流 5s,避免每次选预设重建树都多一次 IPC。
+        const now = Date.now();
+        if (!this._thumbCoverAt || now - this._thumbCoverAt > 5000) {
+            this._thumbCoverAt = now;
+            this.refreshPresetThumbCovers();
         }
     },
     filterTree(v) { this.buildTree(v); },

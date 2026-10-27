@@ -54,7 +54,7 @@ const RUN = `(async () => {
       const g = c.getContext('2d'); g.fillStyle = '#c06030'; g.fillRect(0, 0, 400, 300);
       await new Promise(r => { img.onload = r; img.onerror = r; img.src = c.toDataURL('image/png'); });
     }
-    const im0 = { el: img, name: '主图.png', w: 400, h: 300, exif: {}, customSettings: null };
+    const im0 = { el: img, name: '主图.png', path: 'test://主图.png', w: 400, h: 300, exif: {}, customSettings: null };
     const enablePuzzle = () => {
       const pk = A.template.puzzle;
       pk.enabled = 1; pk.layout = 'grid4'; pk.layoutType = 6; pk.gap = 60;
@@ -76,17 +76,24 @@ const RUN = `(async () => {
     const files = [];
     for (let i = 1; i <= 8; i++) files.push(await mkFile('导入' + i + '.png'));
     let inflight = 0, maxInflight = 0, calls = 0;
-    const origLoad = A.loadFile.bind(A);
-    A.loadFile = async (f) => {
+    // 导入管线已改走 importPicked → imageFromPick;测试没有 preload 的 qflocal:,
+    // 因此用一个从 File/Blob 直接解码的替身,仍然量 importPicked 里的 3 并发池。
+    const origImageFromPick = A.imageFromPick;
+    A.imageFromPick = async (item) => {
       calls++; inflight++; if (inflight > maxInflight) maxInflight = inflight;
       await sleep(25);
-      const g = await origLoad(f);
+      const f = item && item.file;
+      const url = URL.createObjectURL(f);
+      const el = new Image();
+      await new Promise(r => { el.onload = r; el.onerror = r; el.src = url; });
+      URL.revokeObjectURL(url);
       inflight--;
-      return g;
+      if (!el.naturalWidth) return null;
+      return { el, name: item.name, path: 'test://' + item.name, w: el.naturalWidth, h: el.naturalHeight, exif: {}, customSettings: null };
     };
     A._draftDirty = false;
-    await A.addImageFiles(files);
-    delete A.loadFile;
+    await A.importPicked(files.map(f => ({ name: f.name, file: f })), 0);
+    A.imageFromPick = origImageFromPick;
     add(calls === 8, '导入 8 张文件都进加载管线', 'calls=' + calls);
     add(maxInflight === 3, '④ 加载并发数有界 = 3(旧实现 8 张同时开跑)', 'maxInflight=' + maxInflight);
     add(A.images.length === 9, '导入后胶片条 1+8 张', A.images.length + ' 张');
