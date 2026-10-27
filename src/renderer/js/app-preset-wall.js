@@ -517,8 +517,14 @@ window.App = Object.assign(window.App || {}, {
                 const ddy = dy - Math.round(dy / b.BH) * b.BH;
                 const dist = Math.hypot(ddx, ddy);
                 const u = Math.min(1, dist / distNorm);
-                const s = maxScale - u * (maxScale - minScale);
-                const o = 1 - u * 0.65;
+                // 档位量化：scale/opacity 只落到固定格子上（端点保持精确值 1.25 / 0.72）。
+                // 连续平移时大部分帧算出来的档位和上一帧相同 → 命中下面的 __tf/__op 缓存跳过写入，
+                // 于是"每帧 36 次重栅格"变成"跨档那几帧才重栅格"。视觉上 2.5% 的缩放差看不出来。
+                const scaleStep = 0.025, opStep = 0.02;
+                const mid = (u > 0 && u < 1);
+                const s = mid ? Math.round((maxScale - u * (maxScale - minScale)) / scaleStep) * scaleStep
+                              : (u <= 0 ? maxScale : minScale);
+                const o = mid ? Math.round((1 - u * 0.65) / opStep) * opStep : (u <= 0 ? 1 : 0.35);
                 const z = String(Math.max(1, Math.round(100 - u * 95)));
                 // 同一格在 4 份拷贝里各有一个节点，必须给同样的 scale/opacity，
                 // 否则回绕那一刻接缝两侧一大一小，看起来就是"闪了一下"。
