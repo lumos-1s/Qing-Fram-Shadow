@@ -25,7 +25,7 @@ const ITEMS = [
     { id: 'vhs', title: 'VHS 录像带', category: 'film', categoryName: '胶片', categories: ['film', 'travel'], desc: '录像带界面，适合夜景与派对', preset: 'VHS录像带.json', sample: 'city' },
     { id: 'magazine', title: '杂志封面', category: 'magazine', categoryName: '杂志', categories: ['magazine', 'portrait'], desc: '大刊头版式，适合人像与时尚', preset: '杂志封面.json', sample: 'portrait' },
     { id: 'minimal-line', title: '极简细线', category: 'minimal', categoryName: '极简', categories: ['minimal', 'art'], desc: '一条细线，适合极简与静物', preset: '极简细线.json', sample: 'still' },
-    { id: 'cinema', title: '电影宽银幕', category: 'art', categoryName: '艺术', categories: ['art', 'travel'], desc: '宽银幕比例，适合风景与叙事', preset: '电影宽银幕.json', sample: 'desert' },
+    { id: 'cinema', title: '电影宽荧幕', category: 'art', categoryName: '艺术', categories: ['art', 'travel'], desc: '宽银幕比例，适合风景与叙事', preset: '电影宽荧幕.json', sample: 'desert' },
     { id: 'cyanotype', title: '蓝晒法', category: 'art', categoryName: '艺术', categories: ['art', 'travel'], desc: '蓝晒工艺，适合植物与建筑', preset: '蓝晒法.json', sample: 'forest' },
     { id: 'gold', title: '金箔奢华', category: 'art', categoryName: '艺术', categories: ['art', 'portrait'], desc: '金箔质感，适合纪念与礼物', preset: '金箔奢华.json', sample: 'still' }
 ];

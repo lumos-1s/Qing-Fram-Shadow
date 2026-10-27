@@ -210,7 +210,7 @@ window.HOME_PROTOTYPE = {
     },
     {
       "id": "cinema",
-      "title": "电影宽银幕",
+      "title": "电影宽荧幕",
       "category": "art",
       "categoryName": "艺术",
       "categories": [
@@ -218,7 +218,7 @@ window.HOME_PROTOTYPE = {
         "travel"
       ],
       "desc": "宽银幕比例，适合风景与叙事",
-      "preset": "电影宽银幕.json",
+      "preset": "电影宽荧幕.json",
       "sample": "desert",
       "coverSample": "home-prototype-assets/covers/cinema-sample.webp",
       "coverMine": "home-prototype-assets/covers/cinema-mine.webp",
