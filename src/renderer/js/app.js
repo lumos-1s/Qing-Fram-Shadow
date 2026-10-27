@@ -1798,6 +1798,11 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
                 loaded++;
             }
             if (!loaded) { this.setStatus('图片加载失败'); return; }
+            // 用户自己的照片已成功载入：示例图完成引导使命，自动退出胶片条
+            const firstNew = this.images[this.images.length - loaded];
+            if (firstNew && typeof this.removeSampleImages === 'function') {
+                this.removeSampleImages(firstNew);
+            }
             if (typeof this.scheduleDraft === 'function') this.scheduleDraft();
             const pk = this.tplPuzzle && this.tplPuzzle();
             if (pk && this.image) {
@@ -1915,12 +1920,73 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         return im;
     },
 
+    // 用户导入自己的照片后，示例图必须退出胶片条：它只是空态引导，不是用户素材。
+    // 不走 removeImages：那边会立刻选中相邻图并写“已移除”状态，而导入流程随后
+    // 还要选中新图；这里只清理数据，选中交给调用方。
+    // replacement：示例图若正在拼图里，把槽位引用交给这张新图，避免拼图突然变空。
+    removeSampleImages(replacement) {
+        if (!this.images || !this.images.length) return 0;
+        const sampleIdxs = [];
+        this.images.forEach((im, i) => { if (im && im.sample) sampleIdxs.push(i); });
+        if (!sampleIdxs.length) return 0;
+        const kill = new Set(sampleIdxs);
+        const removed = sampleIdxs.map(i => this.images[i]);
+        const cur = this.image;
+        const curWasSample = !!(cur && cur.sample);
+        const replacementIdx0 = replacement ? this.images.indexOf(replacement) : -1;
+        const replacementIdx = replacementIdx0 >= 0
+            ? replacementIdx0 - sampleIdxs.filter(i => i < replacementIdx0).length
+            : -1;
+        // 示例图当前模板先留一份：如果它正显示墙里选的风格，新图要继续用
+        const sampleTpl = curWasSample && this.template
+            ? JSON.parse(JSON.stringify(this.template))
+            : null;
+        const pk = this.template && this.template.puzzle;
+        if (pk && pk.slots) {
+            for (const k in pk.slots) {
+                const sc = pk.slots[k];
+                if (!sc || sc.imageIndex == null) continue;
+                if (kill.has(sc.imageIndex)) {
+                    if (replacementIdx >= 0) {
+                        sc.imageIndex = replacementIdx;
+                        sc.imagePath = undefined;
+                    } else {
+                        sc.imageIndex = undefined;
+                        sc.imagePath = undefined;
+                    }
+                } else {
+                    sc.imageIndex -= sampleIdxs.filter(j => j < sc.imageIndex).length;
+                }
+            }
+        }
+        // 降序 splice，避免前面的删除让后面的索引漂移
+        for (let k = sampleIdxs.length - 1; k >= 0; k--) this.images.splice(sampleIdxs[k], 1);
+        removed.forEach(im => { if (typeof this.clearTpl === 'function') this.clearTpl(im); });
+        if (replacement && sampleTpl && typeof this.setTpl === 'function') {
+            this.setTpl(replacement, sampleTpl);
+            this.pendingPreset = null;
+        }
+        this.batchSel = [];
+        this.selectedIdx = [];
+        if (curWasSample) {
+            this.image = null;
+            this.currentIdx = 0;
+            this.selectedEls = [];
+        } else if (cur) {
+            this.currentIdx = this.images.indexOf(cur);
+        }
+        if (typeof this.scheduleDraft === 'function') this.scheduleDraft();
+        return removed.length;
+    },
+
     // 把系统选择框返回的单个文件载入胶片条,返回其索引
     async appendImageFromPick(res) {
         const im = await this.imageFromPick(res);
         if (!im) return -1;
         this.images.push(im);
-        return this.images.length - 1;
+        // 自己的照片进来了，示例图不再保留；示例图的拼图槽位转给这张新图
+        if (typeof this.removeSampleImages === 'function') this.removeSampleImages(im);
+        return this.images.indexOf(im);
     },
 
     // 在胶片条指定位置插入新照片(打开系统选择框)。修改列表后只重新计算布局几何,
@@ -1942,6 +2008,13 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         }
         this.batchSel = this.batchSel.map(x => (x >= pos ? x + 1 : x));
         this.selectedIdx = this.selectedIdx.map(x => (x >= pos ? x + 1 : x));
+        // 插入自己的照片后示例图也必须退出；示例图占用的拼图格子转给新图
+        if (typeof this.removeSampleImages === 'function') this.removeSampleImages(im);
+        const newPos = this.images.indexOf(im);
+        if (!this.image && newPos >= 0) {
+            this.image = im;
+            this.currentIdx = newPos;
+        }
         this.buildThumbnails();
         const pk = this.tplPuzzle();
         if (pk) {
@@ -1951,7 +2024,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             this.scheduleRender(true);
             this.setStatus('已插入「' + res.name + '」，保留现有拼图编辑结果');
         } else {
-            this.selectImage(pos);
+            this.selectImage(newPos);
         }
     },
 
@@ -2069,6 +2142,19 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
     // 示例照片:不打包进用户数据,从应用内置资源读取。
     // 目的不是代替导入,而是让从预设墙进来的人先看到"成品长什么样",再决定要不要用自己的照片。
     async loadSamplePhoto() {
+        // 示例图只是空态引导：用户已经有自己的照片后，不再补回示例图。
+        // 兼容旧状态里示例图仍和自己的照片并存的情况，顺手清掉。
+        const own = (this.images || []).find(im => im && !im.sample);
+        if (own) {
+            this.image = own;
+            this.currentIdx = this.images.indexOf(own);
+            if (typeof this.removeSampleImages === 'function') this.removeSampleImages(own);
+            this.buildThumbnails();
+            const idx = this.images.indexOf(own);
+            if (idx >= 0) this.selectImage(idx);
+            this.setStatus('已有自己的照片，示例图已隐藏');
+            return;
+        }
         const existing = (this.images || []).findIndex(im => im && im.sample);
         if (existing >= 0) {
             this.selectImage(existing);
@@ -2122,6 +2208,11 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         if (idx < 0) { this.setStatus('图片加载失败，未替换'); return; }
         const pk = this.tplPuzzle();
         if (!pk) { this.buildThumbnails(); this.selectImage(idx); return; }
+        // 示例图若刚被移除，当前图会为空；拼图编辑要落到这张新图上
+        if (!this.image && this.images[idx]) {
+            this.image = this.images[idx];
+            this.currentIdx = idx;
+        }
         this.onSettingCommit();
         this.ensurePuzzleSlotsCount(pk);
         const sc = pk.slots[slotIdx] || (pk.slots[slotIdx] = {});

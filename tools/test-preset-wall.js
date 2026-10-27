@@ -25,11 +25,14 @@ ipcMain.handle('load-preset', (_event, name) => {
 const EMPTY_LIST = () => [];
 const OK = () => ({ ok: true });
 const CANCEL = () => ({ canceled: true });
+// open-image 在自动移除示例图的用例里需要返回一张真实选择结果，其余时候保持取消
+let openImageResult = CANCEL();
+ipcMain.handle('open-image', () => openImageResult);
 for (const channel of ['list-logos', 'list-textures', 'list-templates']) ipcMain.handle(channel, EMPTY_LIST);
 for (const channel of ['save-prefs', 'save-user', 'logout-user', 'save-template', 'delete-template',
     'rename-template', 'export-template', 'export-qfs', 'open-external', 'open-data-dir', 'copy-text',
     'save-diagnostics', 'check-for-updates', 'start-update-download', 'quit-and-install']) ipcMain.handle(channel, OK);
-for (const channel of ['open-image', 'open-images', 'open-sticker-image', 'import-template', 'open-qfs',
+for (const channel of ['open-images', 'open-sticker-image', 'import-template', 'open-qfs',
     'load-template', 'save-image-base64', 'save-images-batch', 'pick-export-location', 'write-export-files',
     'read-exif']) ipcMain.handle(channel, CANCEL);
 ipcMain.handle('get-prefs', () => ({}));
@@ -557,6 +560,167 @@ async function main() {
         '示例图沿用墙里选好的预设（不是原图默认模板）',
         `expected=${sample.expected} tpl=${sample.tplName} live=${sample.live}`);
     check(!sample.pending, '示例图落盘后清掉 pendingPreset');
+
+    // 7. 导入自己的照片后，示例图必须自动移除
+    const auto = await exec(`(async () => {
+        const A = window.App;
+        const mkEl = async (color) => {
+            const c = document.createElement('canvas');
+            c.width = 120; c.height = 80;
+            const g = c.getContext('2d');
+            g.fillStyle = color; g.fillRect(0, 0, 120, 80);
+            const el = new Image();
+            await new Promise((r) => { el.onload = r; el.onerror = r; el.src = c.toDataURL('image/png'); });
+            return el;
+        };
+        const mkOwn = async (name, color) => {
+            const el = await mkEl(color);
+            const im = { el, name, path: 'test://' + name, w: 120, h: 80, exif: {}, customSettings: null };
+            A.queueThumb(im);
+            return im;
+        };
+        const orig = A.imageFromPick;
+        try {
+            A.imageFromPick = async (item) => await mkOwn((item && item.name) || '自己的照片.png', '#2f8');
+            A._draftDirty = false;
+            await A.importPicked([{ name: '自己的照片.png' }], 0);
+            const afterImport = {
+                names: A.images.map((im) => im.name),
+                samples: A.images.filter((im) => im && im.sample).length,
+                current: (A.image && A.image.name) || '',
+                tpl: (A.template && A.template.templateName) || ''
+            };
+
+            // 单张追加：模拟“导入照片”按钮的 append 路径
+            const sampleEl = await mkEl('#777');
+            const fakeSample = {
+                el: sampleEl, name: '示例照片', path: null, sample: true,
+                w: 120, h: 80, exif: {}, customSettings: null
+            };
+            A.images = [fakeSample];
+            A.image = fakeSample;
+            A.currentIdx = 0;
+            A.template = A.defaultTemplate();
+            A.buildThumbnails();
+            const appendIdx = await A.appendImageFromPick({ name: '追加照片.png' });
+            A.selectImage(appendIdx);
+            const afterAppend = {
+                names: A.images.map((im) => im.name),
+                samples: A.images.filter((im) => im && im.sample).length,
+                idx: appendIdx,
+                current: (A.image && A.image.name) || ''
+            };
+            return { afterImport, afterAppend };
+        } finally {
+            A.imageFromPick = orig;
+        }
+    })()`);
+    check(auto.afterImport.names.length === 1 && auto.afterImport.names[0] === '自己的照片.png'
+        && auto.afterImport.samples === 0 && auto.afterImport.current === '自己的照片.png',
+        '多选/拖拽导入后示例图自动移除', JSON.stringify(auto.afterImport));
+    check(auto.afterImport.tpl === sample.expected,
+        '移除示例图后仍沿用示例图上的预设', `expected=${sample.expected} tpl=${auto.afterImport.tpl}`);
+    check(auto.afterAppend.names.length === 1 && auto.afterAppend.names[0] === '追加照片.png'
+        && auto.afterAppend.samples === 0 && auto.afterAppend.idx === 0 && auto.afterAppend.current === '追加照片.png',
+        '单张追加导入后示例图自动移除', JSON.stringify(auto.afterAppend));
+
+    // 8. 拼图中导入：示例图退出，槽位转给新图，不留下空格
+    openImageResult = { name: '插入照片.png', path: 'test://insert.png' };
+    const puzzleInsert = await exec(`(async () => {
+        const A = window.App;
+        const c = document.createElement('canvas');
+        c.width = 120; c.height = 80;
+        const g = c.getContext('2d');
+        g.fillStyle = '#36c'; g.fillRect(0, 0, 120, 80);
+        const ownEl = new Image();
+        await new Promise((r) => { ownEl.onload = r; ownEl.onerror = r; ownEl.src = c.toDataURL('image/png'); });
+        const own = { el: ownEl, name: '插入照片.png', path: 'test://insert.png', w: 120, h: 80, exif: {}, customSettings: null };
+        const sampleEl = new Image();
+        sampleEl.src = c.toDataURL('image/png');
+        await new Promise((r) => { sampleEl.onload = r; sampleEl.onerror = r; });
+        const fakeSample = { el: sampleEl, name: '示例照片', path: null, sample: true, w: 120, h: 80, exif: {}, customSettings: null };
+        const tpl = A.defaultTemplate();
+        tpl.puzzle.enabled = 1;
+        tpl.puzzle.layout = 'single';
+        tpl.puzzle.layoutType = 0;
+        tpl.puzzle.slots = { 0: { imageIndex: 0 } };
+        A.images = [fakeSample];
+        A.image = fakeSample;
+        A.currentIdx = 0;
+        A.template = JSON.parse(JSON.stringify(tpl));
+        A.setTpl(fakeSample, A.template);
+        A.buildThumbnails();
+        const orig = A.imageFromPick;
+        A.imageFromPick = async () => { A.queueThumb(own); return own; };
+        try {
+            await A.insertImageFromPick(0);
+        } finally {
+            A.imageFromPick = orig;
+        }
+        return {
+            names: A.images.map((im) => im.name),
+            samples: A.images.filter((im) => im && im.sample).length,
+            current: (A.image && A.image.name) || '',
+            puzzle: !!(A.tplPuzzle && A.tplPuzzle()),
+            slot0: (A.template && A.template.puzzle && A.template.puzzle.slots[0])
+                ? A.template.puzzle.slots[0].imageIndex : null
+        };
+    })()`);
+    openImageResult = CANCEL();
+    check(puzzleInsert.names.length === 1 && puzzleInsert.names[0] === '插入照片.png'
+        && puzzleInsert.samples === 0 && puzzleInsert.current === '插入照片.png',
+        '拼图中插入照片后示例图自动移除', JSON.stringify(puzzleInsert));
+    check(puzzleInsert.puzzle && puzzleInsert.slot0 === 0,
+        '示例图的拼图槽位转给新图（不再是空槽）', JSON.stringify(puzzleInsert));
+
+    // 9. 双击拼图槽位换图：示例图退出，槽位落到新图
+    openImageResult = { name: '换槽照片.png', path: 'test://slot.png' };
+    const slotReplace = await exec(`(async () => {
+        const A = window.App;
+        const c = document.createElement('canvas');
+        c.width = 120; c.height = 80;
+        const g = c.getContext('2d');
+        g.fillStyle = '#c63'; g.fillRect(0, 0, 120, 80);
+        const ownEl = new Image();
+        await new Promise((r) => { ownEl.onload = r; ownEl.onerror = r; ownEl.src = c.toDataURL('image/png'); });
+        const own = { el: ownEl, name: '换槽照片.png', path: 'test://slot.png', w: 120, h: 80, exif: {}, customSettings: null };
+        const sampleEl = new Image();
+        sampleEl.src = c.toDataURL('image/png');
+        await new Promise((r) => { sampleEl.onload = r; sampleEl.onerror = r; });
+        const fakeSample = { el: sampleEl, name: '示例照片', path: null, sample: true, w: 120, h: 80, exif: {}, customSettings: null };
+        const tpl = A.defaultTemplate();
+        tpl.puzzle.enabled = 1;
+        tpl.puzzle.layout = 'single';
+        tpl.puzzle.layoutType = 0;
+        tpl.puzzle.slots = { 0: { imageIndex: 0 } };
+        A.images = [fakeSample];
+        A.image = fakeSample;
+        A.currentIdx = 0;
+        A.template = JSON.parse(JSON.stringify(tpl));
+        A.setTpl(fakeSample, A.template);
+        A.buildThumbnails();
+        const orig = A.imageFromPick;
+        A.imageFromPick = async () => { A.queueThumb(own); return own; };
+        try {
+            await A.openSlotImage(0);
+        } finally {
+            A.imageFromPick = orig;
+        }
+        return {
+            names: A.images.map((im) => im.name),
+            samples: A.images.filter((im) => im && im.sample).length,
+            current: (A.image && A.image.name) || '',
+            puzzle: !!(A.tplPuzzle && A.tplPuzzle()),
+            slot0: (A.template && A.template.puzzle && A.template.puzzle.slots[0])
+                ? A.template.puzzle.slots[0].imageIndex : null
+        };
+    })()`);
+    openImageResult = CANCEL();
+    check(slotReplace.names.length === 1 && slotReplace.names[0] === '换槽照片.png'
+        && slotReplace.samples === 0 && slotReplace.current === '换槽照片.png',
+        '拼图槽位换图后示例图自动移除', JSON.stringify(slotReplace));
+    check(slotReplace.puzzle && slotReplace.slot0 === 0,
+        '双击槽位换图后拼图槽位指向新图', JSON.stringify(slotReplace));
 
     console.log(failures.length ? `\n${failures.length} FAILURE(S)` : '\nALL PASS');
     app.exit(failures.length ? 1 : 0);
