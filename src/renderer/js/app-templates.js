@@ -392,6 +392,9 @@ window.App = Object.assign(window.App || {}, {
         catch (e) { this.presets = []; }
         if (typeof this.updateStatsText === 'function') this.updateStatsText();
         this.buildTree();
+        // 启动时先渲染内置封面,再异步补上墙里换过的自定义封面;focus 监听负责后续增量同步。
+        this.bindPresetCoverRefresh();
+        this.refreshPresetThumbCovers();
         this.refreshCamLibSelect();
         // 首帧预设选择不在启动路径上执行:先把窗口/预设树渲染出来,选择推迟到
         // init() 末尾的空闲回调(见 app.js),恢复草稿/用户手动选择都不会被覆盖。
@@ -506,28 +509,78 @@ window.App = Object.assign(window.App || {}, {
         return map;
     },
 
-    // 用户在预设墙点过「换封面」时,编辑页缩略图跟随同一份自定义封面。
-    // 墙没开过自定义封面就直接跳过,避免没注册 IPC 的环境刷 "No handler registered"。
-    async refreshPresetThumbCovers() {
-        if (this._thumbCoverBusy) return;
-        if (!window.qingframe || typeof window.qingframe.listWallCovers !== 'function') return;
-        if (typeof this.wallCoversEnabled === 'function' && !this.wallCoversEnabled()) return;
-        this._thumbCoverBusy = true;
+    // 用户在预设墙换过的封面存在 userData/wall-covers/<预设名>.*。
+    // 编辑页与墙共用同一份封面:用户在墙上看到什么,进工作台左侧就该看到什么。
+    // 结果缓存在 _thumbCovers,重建列表时直接复用,不用为 87 行逐个发 IPC。
+    // force=true 用于测试/明确知道刚换过封面的场景,跳过「用过换封面」的本地标记。
+    // 默认不扫:没点过「换封面」的人没有自定义封面,这次 IPC 纯属浪费,
+    // 也会在没注册该 handler 的测试桩里刷一屏 "No handler registered"。
+    async refreshPresetThumbCovers(force) {
+        if (!force && typeof this.wallCoversEnabled === 'function' && !this.wallCoversEnabled()) return 0;
+        const q = window.qingframe || {};
+        if (typeof q.listWallCovers !== 'function') return 0;
+        // 多次扫描可能并发(启动 + focus + 关墙),只让最后一次结果落地。
+        // 否则先发出的旧扫描晚回来,会把刚换上的封面又盖回旧图。
+        const seq = (this._thumbCoverSeq = (this._thumbCoverSeq || 0) + 1);
         try {
-            const covers = (await window.qingframe.listWallCovers()) || {};
-            const builtin = this.wallCoverMap();
-            document.querySelectorAll('#presetTree .preset-item').forEach(item => {
-                const name = item.dataset.name;
-                const img = item.querySelector('img.preset-thumb');
-                if (!name || !img) return;
-                const custom = covers[name];
-                const want = (custom && typeof this.photoUrl === 'function')
-                    ? this.photoUrl(custom)
-                    : (builtin[name] || '');
-                if (want && img.getAttribute('src') !== want) img.src = want;
-            });
-        } catch (_) { /* 自定义封面扫描失败:保留内置封面 */ }
-        finally { this._thumbCoverBusy = false; }
+            const covers = (await q.listWallCovers()) || {};
+            if (seq !== this._thumbCoverSeq) return 0;
+            this._thumbCovers = covers;
+            this.applyPresetThumbCovers();
+            return Object.keys(covers).length;
+        } catch (_) {
+            return 0;   // 目录不存在/主进程旧版本:保持内置封面
+        }
+    },
+
+    // 把缓存里的自定义封面套到现有列表;自定义封面被删掉时回落到内置封面。
+    applyPresetThumbCovers() {
+        const builtin = this.wallCoverMap();
+        const covers = this._thumbCovers || {};
+        document.querySelectorAll('#presetTree .preset-item').forEach(item => {
+            const name = item.dataset.name;
+            if (!name) return;
+            const custom = covers[name];
+            const want = (custom && typeof this.photoUrl === 'function')
+                ? this.photoUrl(custom)
+                : (builtin[name] || '');
+            if (!want) return;
+            const img = item.querySelector('img.preset-thumb');
+            if (img) {
+                if (img.getAttribute('src') !== want) img.src = want;
+                return;
+            }
+            // 之前回落成图标(内置/自定义封面加载失败)时,换成当前该显示的封面。
+            // 自定义封面被删掉也走这里,保证从图标恢复到内置封面图,而不是卡在图标。
+            const fallback = item.querySelector('.preset-thumb-fallback, .dot');
+            if (fallback) fallback.replaceWith(this.presetThumbEl(want, fallback));
+        });
+    },
+
+    // 统一创建侧栏缩略图:封面加载失败时回落到原来的小图标。
+    presetThumbEl(src, fallback) {
+        const thumb = document.createElement('img');
+        thumb.className = 'preset-thumb';
+        thumb.alt = '';
+        thumb.draggable = false;
+        thumb.loading = 'lazy';
+        thumb.decoding = 'async';
+        thumb.src = src;
+        thumb.addEventListener('error', () => {
+            if (!thumb.parentNode) return;
+            if (fallback) {
+                fallback.className = 'preset-thumb-fallback';
+                thumb.replaceWith(fallback);
+            }
+        });
+        return thumb;
+    },
+
+    // 列表重建时挂一次 focus 监听:用户去资源管理器换完封面回来,侧栏自动跟上。
+    bindPresetCoverRefresh() {
+        if (this._thumbCoverFocusBound) return;
+        this._thumbCoverFocusBound = true;
+        window.addEventListener('focus', () => this.refreshPresetThumbCovers());
     },
 
     buildTree(filter) {
@@ -591,25 +644,14 @@ window.App = Object.assign(window.App || {}, {
             dot.className = 'dot';
             dot.textContent = iconFor(p.templateName);
             // 编辑页与预设墙共用封面:墙上看到的是图,进来后不应该只剩「名字 + 小图标」。
-            // loading=lazy 让 87 张封面只解码滚到视口的那几张;封面缺失/加载失败时回落到图标。
-            const cover = this.wallCoverMap()[p.templateName];
-            if (cover) {
-                const thumb = document.createElement('img');
-                thumb.className = 'preset-thumb';
-                thumb.alt = '';
-                thumb.draggable = false;
-                thumb.loading = 'lazy';
-                thumb.decoding = 'async';
-                thumb.src = cover;
-                thumb.addEventListener('error', () => {
-                    if (!thumb.parentNode) return;
-                    dot.className = 'preset-thumb-fallback';
-                    thumb.replaceWith(dot);
-                });
-                item.appendChild(thumb);
-            } else {
-                item.appendChild(dot);
-            }
+            // 自定义封面优先(缓存在 _thumbCovers),没有才用内置封面;两者都缺时回落到图标。
+            // loading=lazy 让 87 张封面只解码滚到视口的那几张。
+            const custom = (this._thumbCovers || {})[p.templateName];
+            const cover = (custom && typeof this.photoUrl === 'function')
+                ? this.photoUrl(custom)
+                : this.wallCoverMap()[p.templateName];
+            if (cover) item.appendChild(this.presetThumbEl(cover, dot));
+            else item.appendChild(dot);
             const label = document.createElement('span');
             label.className = 'preset-name';
             label.textContent = p.templateName;
@@ -706,12 +748,6 @@ window.App = Object.assign(window.App || {}, {
             groupEl.appendChild(name);
             tree.appendChild(groupEl);
             for (const p of groups.get(grp)) groupEl.appendChild(renderItem(p, grp));
-        }
-        // 自定义封面异步覆盖:节流 5s,避免每次选预设重建树都多一次 IPC。
-        const now = Date.now();
-        if (!this._thumbCoverAt || now - this._thumbCoverAt > 5000) {
-            this._thumbCoverAt = now;
-            this.refreshPresetThumbCovers();
         }
     },
     filterTree(v) { this.buildTree(v); },

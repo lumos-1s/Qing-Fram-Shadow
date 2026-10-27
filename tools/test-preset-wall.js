@@ -281,14 +281,34 @@ async function main() {
     check(coverOn.src.indexOf('qflocal:') === 0 && decodeURIComponent(coverOn.src).indexOf('我的封面') >= 0,
         '自定义封面覆盖内置封面', coverOn.src.slice(0, 40) + '…');
 
+    // 编辑页侧栏与墙共用同一份封面：墙换过之后，工作台左侧也要跟着换。
+    const sideCoverOn = await exec(`(async () => {
+        await App.refreshPresetThumbCovers(true);
+        App.buildTree('');
+        const item = Array.from(document.querySelectorAll('#presetTree .preset-item'))
+            .find((x) => x.dataset.name === '3D卡片');
+        const img = item && item.querySelector('img.preset-thumb');
+        return { src: img ? img.getAttribute('src') : null };
+    })()`);
+    check(sideCoverOn.src && sideCoverOn.src.indexOf('qflocal:') === 0
+        && decodeURIComponent(sideCoverOn.src).indexOf('我的封面') >= 0,
+        '编辑页侧栏跟随墙自定义封面同步', sideCoverOn.src && sideCoverOn.src.slice(0, 40) + '…');
+
     wallCovers = {};
     const coverOff = await exec(`(async () => {
         await App.refreshWallCovers(true);
+        await App.refreshPresetThumbCovers(true);
         const tile = Array.from(document.querySelectorAll('.pw-tile'))
             .find((t) => t.querySelector('.pw-tile-name').textContent === '3D卡片');
-        return { src: tile.querySelector('.pw-tile-cover img').getAttribute('src'), cover: tile.dataset.cover };
+        const item = Array.from(document.querySelectorAll('#presetTree .preset-item'))
+            .find((x) => x.dataset.name === '3D卡片');
+        const img = item && item.querySelector('img.preset-thumb');
+        return { src: tile.querySelector('.pw-tile-cover img').getAttribute('src'), cover: tile.dataset.cover,
+                 sideSrc: img ? img.getAttribute('src') : null };
     })()`);
     check(coverOff.src === coverOff.cover, '删掉自定义封面回落到内置封面', coverOff.src);
+    check(coverOff.sideSrc === coverOff.cover, '删除自定义封面后编辑页侧栏也回落到内置封面',
+        `${coverOff.sideSrc} vs ${coverOff.cover}`);
 
     // 2.7 真实输入回归（sendInputEvent 走完整命中测试 + pointer capture）
     //     合成的 tile.click() 会绕过 pointerdown/mousedown/capture，历史上正是这个盲区让

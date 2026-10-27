@@ -796,6 +796,8 @@ window.App = Object.assign(window.App || {}, {
         if (focusTarget && typeof focusTarget.focus === 'function') {
             try { focusTarget.focus({ preventScroll: true }); } catch (_) {}
         }
+        // 墙里可能刚换过封面:进工作台前同步一次侧栏,别让左侧还停在内置封面。
+        if (typeof this.refreshPresetThumbCovers === 'function') this.refreshPresetThumbCovers();
         if (workbench) this.setStatus('已进入工作台，从左侧工具栏导入照片开始');
     },
 
