@@ -123,7 +123,6 @@ window.App = Object.assign(window.App || {}, {
             if (e.button !== 0) return;
             if (e.isPrimary === false && e.pointerType) return; // 多指/次级指针交给主指针
             this.stopWallMotion();
-            this.beginWallMotion();
             this._wallSwallowClick = false;
             const d = this._wallDrag;
             d.id = e.pointerId;
@@ -164,10 +163,9 @@ window.App = Object.assign(window.App || {}, {
                 return;
             }
             this._wallSwallowClick = false;
-            // 这两条都是"不滑行"的早退：必须撤掉"运动中"标记，否则整墙会永远停在压平状态
-            if (!d.dragging) { this.endWallMotion(); return; }
+            if (!d.dragging) return;
             // 松手前已经停住（超过 staleReleaseMs 没再采样）就不滑行，免得"静止松手蹭出去一段"
-            if (e.timeStamp - d.lastT > _pwPanCfg.inertia.staleReleaseMs) { this.endWallMotion(); return; }
+            if (e.timeStamp - d.lastT > _pwPanCfg.inertia.staleReleaseMs) return;
             this.coastWall(d.vx, d.vy);
         };
         el.grid.addEventListener('pointerup', endDrag);
@@ -354,49 +352,16 @@ window.App = Object.assign(window.App || {}, {
         if (this._wallMotion) { cancelAnimationFrame(this._wallMotion); this._wallMotion = 0; }
         if (this._wallWheelFrame) { cancelAnimationFrame(this._wallWheelFrame); this._wallWheelFrame = 0; }
         this._wallWheelPending = null;
-        this.endWallMotion();
-    },
-
-    // 进入手势：整墙先摊平成基础缩放（一次写入），之后动画期间不再逐卡改 scale
-    beginWallMotion() {
-        const grid = this._wallDom && this._wallDom.grid;
-        if (!grid) return;
-        grid.classList.add('pw-moving');
-        const focused = this._wallFocusTiles;
-        if (!focused || !focused.size) return;
-        for (const t of focused) {
-            t.style.transform = 'scale(0.72)';
-            t.style.opacity = '0.5';
-            t.style.zIndex = '1';
-            t.__tf = 'scale(0.72)'; t.__op = '0.5'; t.__z = '1';
-        }
-        focused.clear();
-    },
-
-    // 手势/惯性/滚轮结束：撤掉"运动中"标记，并安排一次聚光
-    endWallMotion() {
         const grid = this._wallDom && this._wallDom.grid;
         if (grid) grid.classList.remove('pw-moving');
-        this.scheduleWallFocus();
-    },
-
-    // 停稳后聚光：等 140ms 没有新手势再算一次（值写一次，靠 CSS 过渡补上动画）
-    scheduleWallFocus(delay) {
-        clearTimeout(this._wallFocusTimer);
-        this._wallFocusTimer = setTimeout(() => {
-            const grid = this._wallDom && this._wallDom.grid;
-            if (grid && grid.classList.contains('pw-moving')) return;
-            this.focusWall();
-        }, delay == null ? 140 : delay);
     },
 
     // 松手惯性：v*power 是这一甩的总行程，指数衰减（τ=timeConstantMs）走完收敛到 restDeltaPx。
     coastWall(vx, vy) {
-        // 降级：松手即停，不滑行——但"运动中"标记必须撤掉，否则整墙永远停在压平状态
-        if (this.wallReducedMotion()) { this.endWallMotion(); return; }
+        if (this.wallReducedMotion()) return;   // 降级：松手即停，不滑行
         const cfg = _pwPanCfg.inertia;
         const speed = Math.hypot(vx, vy);
-        if (!(speed >= cfg.minSpeed)) { this.endWallMotion(); return; }
+        if (!(speed >= cfg.minSpeed)) return;
         const clamped = Math.min(speed, cfg.maxSpeed);
         const ux = vx / speed, uy = vy / speed;
         const distance = clamped * cfg.power;
@@ -404,7 +369,7 @@ window.App = Object.assign(window.App || {}, {
         const t0 = performance.now();
         const grid = this._wallDom && this._wallDom.grid;
         // 滑行期间关掉卡片过渡：每帧写 transform 时过渡会再拖出 180ms 尾巴
-        this.beginWallMotion();
+        if (grid) grid.classList.add('pw-moving');
         let moved = 0;
         const step = (now) => {
             const remain = distance * Math.exp(-(now - t0) / cfg.timeConstantMs);
@@ -414,7 +379,7 @@ window.App = Object.assign(window.App || {}, {
                 this._wallMotion = requestAnimationFrame(step);
             } else {
                 this._wallMotion = 0;
-                this.endWallMotion();
+                if (grid) grid.classList.remove('pw-moving');
             }
         };
         this._wallMotion = requestAnimationFrame(step);
@@ -449,12 +414,12 @@ window.App = Object.assign(window.App || {}, {
         const cfg = _pwPanCfg.wheel;
         if (this._wallWheelFrame) return;
         const grid = this._wallDom && this._wallDom.grid;
-        this.beginWallMotion();
+        if (grid) grid.classList.add('pw-moving');
         let last = performance.now();
         const step = (now) => {
             this._wallWheelFrame = 0;
             const pending = this._wallWheelPending;
-            if (!pending) { this.endWallMotion(); return; }
+            if (!pending) { if (grid) grid.classList.remove('pw-moving'); return; }
             const dt = Math.min(cfg.maxFrameMs, Math.max(0, now - last));
             last = now;
             const k = 1 - Math.exp(-dt / cfg.timeConstantMs);
@@ -466,7 +431,7 @@ window.App = Object.assign(window.App || {}, {
             } else {
                 this.panWallTo(this._wallPan.x + pending.x, this._wallPan.y + pending.y);
                 this._wallWheelPending = null;
-                this.endWallMotion();
+                if (grid) grid.classList.remove('pw-moving');
             }
         };
         this._wallWheelFrame = requestAnimationFrame(step);
@@ -514,9 +479,6 @@ window.App = Object.assign(window.App || {}, {
     focusWall() {
         const el = this._wallDom;
         const grid = el && el.grid;
-        // 手势/惯性/滚轮进行中：整墙由外层容器平移，单卡的 scale 一律不写。
-        // 这是"和 folia-major 一样不卡"的关键——每帧只动容器，卡片不重栅格。
-        if (grid && grid.classList.contains('pw-moving')) { return; }
         const block = el && el.block;
         if (!grid || !block) return;
         const b = this._wallBounds;
