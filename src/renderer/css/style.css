@@ -1263,6 +1263,8 @@ button:disabled, input:disabled, select:disabled, textarea:disabled {
 .splash-sub { font-size: var(--fs-11); letter-spacing: .38em; color: var(--text-3); margin-top: var(--sp-1-5); animation: splash-fade .5s .2s ease both; }
 .splash-progress { width: 160px; height: 3px; margin: 26px auto var(--sp-3); border-radius: 3px; background: var(--surface-2); overflow: hidden; }
 .splash-bar { height: 100%; width: 40%; border-radius: 3px; background: var(--primary-grad); animation: splash-slide 1.2s ease-in-out infinite; }
+/* 有真实进度时切确定态：去掉来回滑动，宽度按实际百分比走 */
+.splash-bar.det { width: 0; animation: none; transform: none; transition: width .16s ease-out; }
 @keyframes splash-slide {
     0% { transform: translateX(-110%); }
     55%, 100% { transform: translateX(280%); }

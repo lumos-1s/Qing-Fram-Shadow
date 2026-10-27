@@ -16,10 +16,25 @@ window.App = Object.assign(window.App || {}, {
         if (this._splashStatusEl && msg != null) this._splashStatusEl.textContent = msg;
     },
 
-    // 每个异步加载任务完成时调用一次(预设/标志/纹理共 3 次),全部就绪后收起启动页
+    // 追加一个"启动页要等它"的任务(例如预设墙封面解码)。
+    // 默认仍是 3 路(预设/标志/纹理),加了任务就多等一个,避免"资源没齐就放行"。
+    splashExpect(n) {
+        this._splashNeed = (this._splashNeed || 3) + (n == null ? 1 : n);
+    },
+
+    // 真实进度(0..1):切到确定态进度条,不再用来回滑动的装饰动画
+    splashProgress(p) {
+        const bar = this._splashEl && this._splashEl.querySelector('.splash-bar');
+        if (!bar) return;
+        const v = Math.max(0, Math.min(1, Number(p) || 0));
+        bar.classList.add('det');
+        bar.style.width = (v * 100).toFixed(1) + '%';
+    },
+
+    // 每个异步加载任务完成时调用一次;全部就绪后收起启动页
     splashTick() {
         this._splashTasks = (this._splashTasks || 0) + 1;
-        if (this._splashTasks >= 3) this.teardownSplash();
+        if (this._splashTasks >= (this._splashNeed || 3)) this.teardownSplash();
     },
 
     // 全部资源就绪后调用:淡出并移除启动页
