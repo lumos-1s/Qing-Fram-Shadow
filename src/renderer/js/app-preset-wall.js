@@ -568,6 +568,9 @@ window.App = Object.assign(window.App || {}, {
         if (!window.qingframe || typeof window.qingframe.listWallCovers !== 'function') return 0;
         let covers = {};
         try { covers = await window.qingframe.listWallCovers() || {}; } catch (_) { return 0; }
+        // 同名文件可能被用户直接替换:版本号变化会让 <img src> 换 URL，绕开旧缓存。
+        // 用时间戳而不是会话内自增，避免重启后再次生成相同 URL 又命中磁盘缓存。
+        this._coverVersion = Math.max(Date.now(), (this._coverVersion || 0) + 1);
         let applied = 0;
         for (const tile of el.grid.querySelectorAll('.pw-tile')) {
             const img = tile.querySelector('.pw-tile-cover img');
@@ -575,7 +578,7 @@ window.App = Object.assign(window.App || {}, {
             const nameEl = tile.querySelector('.pw-tile-name');
             const name = nameEl ? nameEl.textContent : '';
             const custom = covers[name];
-            const want = custom && typeof this.photoUrl === 'function' ? this.photoUrl(custom) : (tile.dataset.cover || '');
+            const want = custom && typeof this.coverUrl === 'function' ? this.coverUrl(custom) : (tile.dataset.cover || '');
             if (!want || img.getAttribute('src') === want) continue;
             img.src = want;
             if (custom) applied++;

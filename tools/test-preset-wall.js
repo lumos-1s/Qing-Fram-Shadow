@@ -280,6 +280,8 @@ async function main() {
     })()`);
     check(coverOn.src.indexOf('qflocal:') === 0 && decodeURIComponent(coverOn.src).indexOf('我的封面') >= 0,
         '自定义封面覆盖内置封面', coverOn.src.slice(0, 40) + '…');
+    check(coverOn.src.indexOf('&v=') > 0,
+        '自定义封面 URL 带版本号(同名文件替换不会命中旧缓存)', coverOn.src.slice(-16));
 
     // 编辑页侧栏与墙共用同一份封面：墙换过之后，工作台左侧也要跟着换。
     const sideCoverOn = await exec(`(async () => {
@@ -293,6 +295,8 @@ async function main() {
     check(sideCoverOn.src && sideCoverOn.src.indexOf('qflocal:') === 0
         && decodeURIComponent(sideCoverOn.src).indexOf('我的封面') >= 0,
         '编辑页侧栏跟随墙自定义封面同步', sideCoverOn.src && sideCoverOn.src.slice(0, 40) + '…');
+    check(sideCoverOn.src && sideCoverOn.src.indexOf('&v=') > 0,
+        '编辑页侧栏封面 URL 也带版本号', sideCoverOn.src && sideCoverOn.src.slice(-16));
 
     wallCovers = {};
     const coverOff = await exec(`(async () => {

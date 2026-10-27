@@ -525,6 +525,9 @@ window.App = Object.assign(window.App || {}, {
         try {
             const covers = (await q.listWallCovers()) || {};
             if (seq !== this._thumbCoverSeq) return 0;
+            // 同名文件可能被用户直接替换:版本号变化会让 <img src> 换 URL，绕开旧缓存。
+            // 用时间戳而不是会话内自增，避免重启后再次生成相同 URL 又命中磁盘缓存。
+            this._coverVersion = Math.max(Date.now(), (this._coverVersion || 0) + 1);
             this._thumbCovers = covers;
             this.applyPresetThumbCovers();
             return Object.keys(covers).length;
@@ -541,8 +544,8 @@ window.App = Object.assign(window.App || {}, {
             const name = item.dataset.name;
             if (!name) return;
             const custom = covers[name];
-            const want = (custom && typeof this.photoUrl === 'function')
-                ? this.photoUrl(custom)
+            const want = (custom && typeof this.coverUrl === 'function')
+                ? this.coverUrl(custom)
                 : (builtin[name] || '');
             if (!want) return;
             const img = item.querySelector('img.preset-thumb');
@@ -647,8 +650,8 @@ window.App = Object.assign(window.App || {}, {
             // 自定义封面优先(缓存在 _thumbCovers),没有才用内置封面;两者都缺时回落到图标。
             // loading=lazy 让 87 张封面只解码滚到视口的那几张。
             const custom = (this._thumbCovers || {})[p.templateName];
-            const cover = (custom && typeof this.photoUrl === 'function')
-                ? this.photoUrl(custom)
+            const cover = (custom && typeof this.coverUrl === 'function')
+                ? this.coverUrl(custom)
                 : this.wallCoverMap()[p.templateName];
             if (cover) item.appendChild(this.presetThumbEl(cover, dot));
             else item.appendChild(dot);

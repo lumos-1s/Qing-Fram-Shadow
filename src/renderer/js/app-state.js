@@ -42,16 +42,19 @@ window.App = Object.assign(window.App || {}, {
     },
 
     // 一次性提交(切换/勾选/按钮/change):压撤销栈 -> 清重做 -> 同步 -> 立即渲染
-    // 若处于手势中(滑块下按/文本框聚焦时已压过快照),则不重复压栈
+    // 若处于手势中(滑块/文本框已压过快照),则不重复压栈
     onSettingCommit() {
         if (!this._gesture) this.pushUndo();
         this._commit();
     },
 
-    // 手势开始:滑块 pointerdown / 文本框 focus 时压入手势前快照
+    // 手势开始:滑块 pointerdown / 文本框 focus / 数值框首次输入时压入手势前快照
     beginGesture() {
         if (this._gesture || !this.template || !this.image) return;
         this._gesture = true;
+        this._gesturePushed = true;
+        // pushUndo 会清空重做栈；先留一份，Esc 取消时原样还回去。
+        this._gestureRedo = this.redoStack.slice();
         this.pushUndo();
         // 拖拽/拖动滑块期间用 900px 低分辨率即时渲染,松手后恢复全分辨率,桌面交互更流畅
         if (this._gesturePrevMax == null) {
@@ -62,11 +65,35 @@ window.App = Object.assign(window.App || {}, {
     // 手势结束:pointerup / blur
     endGesture() {
         if (this._gesture) this._gesture = false;
+        this._gesturePushed = false;
+        this._gestureRedo = null;
         if (this._gesturePrevMax != null) {
             this.displayMax = this._gesturePrevMax;
             this._gesturePrevMax = null;
             this.scheduleRender(true);
         }
+    },
+    // 放弃手势(Esc 取消输入):丢弃 beginGesture 刚压入的快照,并恢复正常分辨率。
+    // 只应在调用方确认这项手势是自己刚开启的时候使用。
+    cancelGesture() {
+        if (!this._gesture) return false;
+        if (this._gesturePushed && this.undoStack.length) {
+            this.undoStack.pop();
+            this.updateHistoryButtons();
+        }
+        this._gesture = false;
+        this._gesturePushed = false;
+        if (this._gestureRedo) {
+            this.redoStack = this._gestureRedo;
+            this._gestureRedo = null;
+            this.updateHistoryButtons();
+        }
+        if (this._gesturePrevMax != null) {
+            this.displayMax = this._gesturePrevMax;
+            this._gesturePrevMax = null;
+            this.scheduleRender(true);
+        }
+        return true;
     },
     // 提交但不压栈(手势快照已在上一步压入)
     commitNoPush() { this._commit(); },

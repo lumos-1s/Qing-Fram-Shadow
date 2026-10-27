@@ -254,9 +254,16 @@ window.App = {
         bindResize(this.$('inspectorResizer'), insp, K_INSP_W, 260, 440, 308, -1);
         // Ctrl+[ / Ctrl+] 收起展开(Mac 为 ⌘)。Tab 键留给焦点导航,不抢。
         document.addEventListener('keydown', (e) => {
-            if (this._immersionOpen) return;
+            if (this._immersionOpen || e.repeat) return;
             const mod = (window.qingframe && window.qingframe.isMac) ? e.metaKey : e.ctrlKey;
             if (!mod || e.altKey || e.shiftKey) return;
+            // 输入框里 Ctrl+[ / Ctrl+] 交给控件自己处理,不能被当成面板开关；
+            // range 滑块不算打字(与 setupShortcuts 的口径一致)。
+            const el = document.activeElement;
+            const tag = (el && el.tagName) || '';
+            const typing = !!el && (el.isContentEditable ||
+                ((tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') && !(tag === 'INPUT' && el.type === 'range')));
+            if (typing) return;
             if (e.key === '[') { e.preventDefault(); toggle(K_SIDE); }
             else if (e.key === ']') { e.preventDefault(); toggle(K_INSP); }
         });
@@ -1882,6 +1889,14 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
     // 本地照片引用 URL(经 qflocal: 协议由主进程直接流式读取,不产生 base64 副本)
     photoUrl(filePath) { return 'qflocal://img?p=' + encodeURIComponent(filePath); },
 
+    // 自定义封面专用 URL:浏览器按 URL 缓存图片,同名封面文件被替换后只改文件
+    // 不改 URL 会继续显示旧图。每次扫描封面后递增 _coverVersion,强制重新解码。
+    coverUrl(filePath) {
+        const u = this.photoUrl(filePath);
+        const v = this._coverVersion || 0;
+        return v ? u + '&v=' + v : u;
+    },
+
     // 把系统选择框返回的单个文件构造成胶片条照片对象(不插入)
     async imageFromPick(res) {
         if (!res) return null;
@@ -2675,11 +2690,16 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
                 rng.addEventListener('pointerup', up);
                 rng.addEventListener('pointercancel', up);
             });
-            let dirty = false;
+            // 一次输入的编辑状态。焦点只记录起点，不压撤销栈：只点进输入框又离开
+            // 不应产生一条“什么都没改”的撤销记录。第一条真实输入才 beginGesture()。
+            const edit = { dirty: false, gesturing: false, startVal: Number(rng.value) || 0 };
+            this._rangeUi[id].edit = edit;
             const apply = (commit) => {
                 const raw = String(num.value || '').trim();
                 if (raw === '' || !isFinite(Number(raw))) {
-                    if (commit) this._syncRangeNumber(id);
+                    // 清空/非法值在失焦或回车时恢复成滑块当前值；此时输入框可能仍是
+                    // activeElement，必须 force，否则会留下一段空白或非法文本。
+                    if (commit) this._syncRangeNumber(id, true);
                     return;
                 }
                 let v = Number(raw);
@@ -2690,25 +2710,64 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
                     rng.value = String(v);
                     rng.dispatchEvent(new Event('input', { bubbles: true }));
                 }
-                if (commit) {
-                    num.value = String(v);
-                    if (dirty) {
-                        dirty = false;
-                        if (this._gesture) { this.endGesture(); this.commitNoPush(); }
-                    }
-                }
+                // range 会按 min/step 吸附(如 step=5 时输入 57 → 实际 55)。提交后必须
+                // 回读控件真实值，否则数字框会显示 57 而标签/画布已经是 55。
+                const actual = Number(rng.value);
+                if (isFinite(actual)) v = actual;
+                if (commit) num.value = String(v);
             };
-            num.addEventListener('focus', () => { dirty = false; this.beginGesture(); });
+            const finish = () => {
+                apply(true);
+                if (edit.gesturing) {
+                    edit.gesturing = false;
+                    this.endGesture();
+                    this.commitNoPush();
+                }
+                edit.dirty = false;
+                edit.startVal = Number(rng.value) || 0;
+            };
+            num.addEventListener('focus', () => {
+                edit.dirty = false;
+                edit.startVal = Number(rng.value) || 0;
+            });
             num.addEventListener('input', () => {
                 if (String(num.value || '').trim() === '') return;
-                dirty = true;
+                if (!edit.dirty) {
+                    edit.dirty = true;
+                    edit.startVal = Number(rng.value) || 0;
+                    if (!this._gesture && this.template && this.image) {
+                        this.beginGesture();
+                        edit.gesturing = !!this._gesture;
+                    }
+                }
                 apply(false);
             });
-            num.addEventListener('change', () => apply(true));
-            num.addEventListener('blur', () => { apply(true); if (this._gesture) { this.endGesture(); this.commitNoPush(); } });
+            num.addEventListener('change', finish);
+            num.addEventListener('blur', finish);
             num.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') { e.preventDefault(); apply(true); num.blur(); }
-                else if (e.key === 'Escape') { this._syncRangeNumber(id); num.blur(); }
+                if (e.key === 'Enter') { e.preventDefault(); finish(); num.blur(); }
+                else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    if (edit.dirty) {
+                        // 取消本次输入：先回写起点并走原 input 通路撤销实时预览，再丢弃
+                        // 第一条输入压入的手势快照，避免留下一条点击后毫无变化的撤销记录。
+                        const start = edit.startVal;
+                        if (isFinite(start) && String(rng.value) !== String(start)) {
+                            rng.value = String(start);
+                            rng.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        this._syncRangeNumber(id, true);
+                        if (edit.gesturing) {
+                            edit.gesturing = false;
+                            this.cancelGesture();
+                        }
+                        edit.dirty = false;
+                        this.setStatus('已取消输入');
+                    } else {
+                        this._syncRangeNumber(id, true);
+                    }
+                    num.blur();
+                }
             });
             num.addEventListener('dblclick', (e) => { e.preventDefault(); this._resetRangeRow(rng); });
             const label = row.querySelector('label');
@@ -2724,7 +2783,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
 
     // 标签是唯一数据源;数字框只在标签是纯数值(允许带单位)时出现。
     // 「自适应」这类文字没有数值可输,退回原来的标签展示。
-    _syncRangeNumber(id) {
+    _syncRangeNumber(id, force) {
         const ui = this._rangeUi && this._rangeUi[id];
         if (!ui) return;
         const text = String(ui.val.textContent || '');
@@ -2736,7 +2795,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         if (hidden) return;
         const unitText = text.replace(m[0], '').trim();
         if (ui.unit.textContent !== unitText) ui.unit.textContent = unitText;
-        if (document.activeElement !== ui.num && ui.num.value !== m[0]) ui.num.value = m[0];
+        if ((force || document.activeElement !== ui.num) && ui.num.value !== m[0]) ui.num.value = m[0];
     },
 
     _resetRangeRow(rng) {
@@ -2746,12 +2805,43 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         let def = rng.dataset.reset != null ? Number(rng.dataset.reset) : Number(rng.defaultValue);
         if (id === 'slParamFontSize') def = Number(this.defaultTemplate().paramFontSize) || 33;
         if (!isFinite(def)) return;
+        const ui = this._rangeUi && this._rangeUi[id];
+        const edit = ui && ui.edit;
+        const label = rng.closest('.param-row') && rng.closest('.param-row').querySelector('label');
+        if (Number(rng.value) === def) {
+            // 已经在默认档：只把聚焦中的数字框同步回来，不再压一条无变化的撤销记录。
+            this._syncRangeNumber(id, true);
+            if (edit) {
+                if (edit.gesturing) {
+                    edit.gesturing = false;
+                    this.cancelGesture();
+                }
+                edit.dirty = false;
+                edit.startVal = def;
+            }
+            this.setStatus('「' + (label ? label.textContent.trim() : id) + '」已是默认值');
+            return;
+        }
+        // 双击数字框时如果刚输入过，先把这次输入作为独立一步提交；复位再单独压栈，
+        // 这样撤销复位能回到刚才输入的值，而不是一路退回输入前。
+        if (edit && edit.gesturing) {
+            edit.gesturing = false;
+            edit.dirty = false;
+            this.endGesture();
+            this.commitNoPush();
+        }
         this.beginGesture();
         rng.value = String(def);
         rng.dispatchEvent(new Event('input', { bubbles: true }));
+        // 双击数字框时它仍是 activeElement，普通同步会跳过；复位必须强制回写。
+        this._syncRangeNumber(id, true);
+        if (edit) {
+            edit.dirty = false;
+            edit.gesturing = false;
+            edit.startVal = def;
+        }
         this.endGesture();
         this.commitNoPush();
-        const label = rng.closest('.param-row') && rng.closest('.param-row').querySelector('label');
         this.setStatus('已复位「' + (label ? label.textContent.trim() : id) + '」');
     },
 
