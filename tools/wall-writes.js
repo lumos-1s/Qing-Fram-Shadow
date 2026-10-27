@@ -20,6 +20,36 @@ const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
   const ev=async(x)=>{const r=await send('Runtime.evaluate',{expression:x,returnByValue:true,awaitPromise:true});return r.exceptionDetails?'EXC':r.result.value;};
   for(let i=0;i<80;i++){ if(await ev(`!!(window.App && document.getElementById('presetWallGrid') && !document.getElementById('splash') && document.getElementById('presetWallGrid').querySelectorAll('.pw-tile').length)`)) break; await sleep(100); }
   await sleep(500);
+  const useInput = process.argv.includes('--input');
+  const measure = useInput ? `(async () => {
+     const g = document.getElementById('presetWallGrid');
+     const tiles = [...g.querySelectorAll('.pw-tile')];
+     const last = new Map();
+     for (const t of tiles) last.set(t, t.style.transform);
+     let changes = 0, frames = 0;
+     const r = g.getBoundingClientRect();
+     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+     const ev = (type, x, y) => g.dispatchEvent(new PointerEvent(type, { button: 0, pointerId: 7, clientX: x, clientY: y, bubbles: true }));
+     ev('pointerdown', cx, cy);
+     await new Promise((done) => {
+        let k = 0;
+        const step = () => {
+           if (k >= 60) { done(); return; }
+           k++; frames++;
+           ev('pointermove', cx - k * 6, cy - k * 2);
+           for (const t of tiles) { const v = t.style.transform; if (last.get(t) !== v) { changes++; last.set(t, v); } }
+           setTimeout(step, 12);
+        };
+        step();
+     });
+     ev('pointerup', cx - 360, cy - 120);
+     return { frames, changes, perFrame: +(changes / Math.max(1, frames)).toFixed(1) };
+  })()` : null;
+  if (measure) {
+     console.log('WRITES ' + JSON.stringify(await ev(measure)));
+     ws.close(); child.kill(); try{fs.rmSync(PROFILE,{recursive:true,force:true});}catch(_){}
+     process.exit(0);
+  }
   const r = await ev(`(async () => {
      const g = document.getElementById('presetWallGrid');
      const tiles = [...g.querySelectorAll('.pw-tile')];
