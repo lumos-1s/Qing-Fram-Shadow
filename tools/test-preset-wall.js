@@ -530,6 +530,34 @@ async function main() {
     check(skip.editing, '进入工作台后 body.editing');
     check(skip.tplAfter === skip.tplBefore, '跳过不改变当前模板', `${skip.tplBefore} → ${skip.tplAfter}`);
 
+    // 6. 空态从墙里选好预设后点「示例图」：示例图必须直接带上该预设，
+    //    不能因为示例图没有历史模板就回退到 defaultTemplate()。
+    const sample = await exec(`(async () => {
+        const App = window.App;
+        const expected = (App.template && App.template.templateName) || '';
+        const before = App.images.length;
+        await App.loadSamplePhoto();
+        await new Promise((r) => setTimeout(r, 100));
+        const im = App.image;
+        const tpl = im && App.getTpl(im);
+        return {
+            expected,
+            before,
+            after: App.images.length,
+            name: (im && im.name) || '',
+            isSample: !!(im && im.sample),
+            tplName: (tpl && tpl.templateName) || '',
+            live: (App.template && App.template.templateName) || '',
+            pending: (App.pendingPreset && App.pendingPreset.templateName) || ''
+        };
+    })()`);
+    check(sample.after === sample.before + 1 && sample.isSample && sample.name === '示例照片',
+        '示例图进入胶片条并成为当前图', JSON.stringify(sample));
+    check(!!sample.expected && sample.tplName === sample.expected && sample.live === sample.expected,
+        '示例图沿用墙里选好的预设（不是原图默认模板）',
+        `expected=${sample.expected} tpl=${sample.tplName} live=${sample.live}`);
+    check(!sample.pending, '示例图落盘后清掉 pendingPreset');
+
     console.log(failures.length ? `\n${failures.length} FAILURE(S)` : '\nALL PASS');
     app.exit(failures.length ? 1 : 0);
 }

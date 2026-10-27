@@ -2091,9 +2091,20 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         };
         this.images.push(im);
         this.queueThumb(im);
+        // 示例图不经过 importPicked，但同样要继承墙/侧栏已经选好的风格。
+        // 否则 selectImage 发现示例图没有历史模板，会回退到 defaultTemplate()，
+        // 表现就是“墙里选了预设，点示例图后却变回原图”。
+        const base = this.template;
+        const carry = (base && base.templateName) ? JSON.parse(JSON.stringify(base)) : null;
+        if (carry && typeof this.setTpl === 'function') {
+            this.setTpl(im, carry);
+            this.pendingPreset = null;
+        }
         this.buildThumbnails();
         this.selectImage(this.images.length - 1);
-        this.setStatus('已载入示例照片；点右上角「导入照片」换成自己的');
+        this.setStatus(carry
+            ? `已载入示例照片，沿用「${carry.templateName}」；点右上角「导入照片」换成自己的`
+            : '已载入示例照片；点右上角「导入照片」换成自己的');
     },
 
     // 系统剪贴板图片(截图/网页复制)导入
