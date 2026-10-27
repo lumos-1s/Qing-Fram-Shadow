@@ -68,7 +68,8 @@ const OPTIONAL_KEYS = ['logoElements', 'paramFontSize', 'paramType', 'paramPosit
 
 const ENUMS = {
     paramPosition: ['CENTER', 'LEFT', 'RIGHT', 'TOP', 'BOTTOM'],
-    canvasRatio: ['original', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '5:4', '4:5'],
+    // 与 index.html 的 cbCanvasRatio 选项保持一致（2.35:1 是宽银幕，早先漏在这张表外）
+    canvasRatio: ['original', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '5:4', '4:5', '2.35:1'],
 };
 
 const errors = [];
