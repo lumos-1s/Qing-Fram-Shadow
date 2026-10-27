@@ -11,42 +11,101 @@ window.App = Object.assign(window.App || {}, {
     async refreshTemplates() {
         const box = this.$('lvPresets');
         if (!box) return;
+        const input = this.$('tfTemplateSearch');
+        // 搜索词属于用户当前操作，保存/重命名/删除后重读列表时不能把它清空。
+        if (input) this._tplQuery = input.value;
         const names = (await window.qingframe.listTemplates()) || [];
         this._savedTemplates = names;
-        const cache = [];
-        for (const n of names) {
+        if (!this._tplCache) this._renderTplLoading(box);
+        const cache = await Promise.all(names.map(async (n) => {
             try {
                 const data = await window.qingframe.loadTemplate(n);
-                if (!data) continue;
-                cache.push({
+                if (!data) return null;
+                return {
                     name: n,
                     disp: String(data.templateName || n),
                     tag: String(data.templateTag || ''),
                     tpl: data,
-                });
-            } catch (e) { /* 跳过损坏模板 */ }
-        }
-        this._tplCache = cache;
-        if (this.$('tfTemplateSearch')) this.$('tfTemplateSearch').value = '';
-        this._renderTplList(box, cache);
+                };
+            } catch (e) { return null; /* 跳过损坏模板 */ }
+        }));
+        this._tplCache = cache.filter(Boolean);
+        // 读盘期间用户可能继续输入；以输入框最新值为准，避免刷新把刚敲的字覆盖掉。
+        if (input) this._tplQuery = input.value;
+        const keepScroll = box.scrollTop;
+        this._renderTplList(box, this._filteredTplRows());
+        this._syncTplSearchClear();
+        box.scrollTop = keepScroll;
         this._renderTplThumbs();
+    },
+
+    _filteredTplRows() {
+        const q = String(this._tplQuery || '').trim().toLowerCase();
+        const src = this._tplCache || [];
+        if (!q) return src.slice();
+        return src.filter(r => [r.disp, r.tag, r.name].some(v => String(v || '').toLowerCase().includes(q)));
     },
 
     _applyTplFilter() {
         const box = this.$('lvPresets');
         if (!box) return;
-        const q = (this.$('tfTemplateSearch') ? this.$('tfTemplateSearch').value : '').trim().toLowerCase();
-        const src = this._tplCache || [];
-        const rows = !q ? src : src.filter(r => r.disp.toLowerCase().includes(q) || r.tag.toLowerCase().includes(q));
-        this._renderTplList(box, rows);
+        const input = this.$('tfTemplateSearch');
+        this._tplQuery = input ? input.value : '';
+        this._renderTplList(box, this._filteredTplRows());
+        this._syncTplSearchClear();
+        box.scrollTop = 0;
         this._renderTplThumbs();
+    },
+
+    _syncTplSearchClear() {
+        const input = this.$('tfTemplateSearch');
+        const clear = this.$('btnClearTplSearch');
+        if (input && clear) clear.hidden = !input.value;
+    },
+
+    _updateTplCount(shown, total) {
+        const el = this.$('tplCount');
+        if (!el) return;
+        const q = String(this._tplQuery || '').trim();
+        if (!total) {
+            el.hidden = true;
+            el.textContent = '';
+            return;
+        }
+        el.hidden = false;
+        el.textContent = q ? (shown + '/' + total) : String(total);
+        el.title = q ? `找到 ${shown} 个，共 ${total} 个模板` : `共 ${total} 个模板`;
+    },
+
+    _renderTplLoading(box) {
+        if (!box) return;
+        box.innerHTML = '<div class="tpl-empty tpl-loading"><div class="tpl-empty-title">正在读取模板…</div></div>';
+    },
+
+    _renderTplEmpty(box, has, q) {
+        const wrap = document.createElement('div');
+        wrap.className = 'tpl-empty';
+        const icon = document.createElement('div');
+        icon.className = 'tpl-empty-icon';
+        icon.textContent = q ? '⌕' : '▤';
+        const title = document.createElement('div');
+        title.className = 'tpl-empty-title';
+        title.textContent = q ? '没有匹配的模板' : (has ? '暂无已存模板' : '还没有已存模板');
+        const hint = document.createElement('div');
+        hint.className = 'tpl-empty-hint';
+        hint.textContent = q ? '换个名称或标签试试' : '调好边框后，点下方「保存」留一份';
+        wrap.append(icon, title, hint);
+        box.appendChild(wrap);
     },
 
     _renderTplList(box, rows) {
         box.innerHTML = '';
+        const q = String(this._tplQuery || '').trim();
+        const total = (this._tplCache || []).length;
+        this._updateTplCount(rows.length, total);
         if (!rows.length) {
-            const has = !!(this._tplCache && this._tplCache.length);
-            box.innerHTML = '<div class="empty">' + (has ? '没有匹配的已存模板' : '暂无已存模板') + '</div>';
+            this._renderTplEmpty(box, total > 0, q);
+            this._thumbsPending = [];
             return;
         }
         const groups = new Map();
@@ -56,72 +115,244 @@ window.App = Object.assign(window.App || {}, {
             groups.get(g).push(r);
         });
         const order = [...groups.keys()].sort((a, b) => (b === '未分类') - (a === '未分类') || a.localeCompare(b, 'zh'));
-        order.forEach((g, gi) => {
+        // 首次打开时优先展开当前正在使用的模板组；之后尊重用户手动折叠状态。
+        if (!this._tplGroupsReady) {
+            const active = this._currentTplName();
+            const first = order.find(g => groups.get(g).some(r => this._isActiveTpl(r, active))) || order[0];
+            if (first) this._tplOpen.add(first);
+            this._tplGroupsReady = true;
+        } else if (!q && !order.some(g => this._tplOpen.has(g))) {
+            // 分组被删光/改名后旧展开状态会全部失效，至少展开第一组，别让列表看起来是空的。
+            this._tplOpen.add(order[0]);
+        }
+        const pending = [];
+        order.forEach((g) => {
+            const groupRows = groups.get(g).slice()
+                .sort((a, b) => a.disp.localeCompare(b.disp, 'zh'));
+            const open = !!q || this._tplOpen.has(g);
             const gEl = document.createElement('div');
-            gEl.className = 'tpl-group' + (gi === 0 ? ' open' : '');
+            gEl.className = 'tpl-group' + (open ? ' open' : '');
+            gEl.dataset.tplGroup = g;
+            gEl._tplRows = groupRows;
             const gn = document.createElement('div');
             gn.className = 'tpl-group-name';
+            gn.tabIndex = 0;
+            gn.setAttribute('role', 'button');
+            gn.setAttribute('aria-expanded', open ? 'true' : 'false');
             const caret = document.createElement('span');
             caret.className = 'caret'; caret.textContent = '▸';
-            gn.appendChild(caret);
-            gn.appendChild(document.createTextNode(g + ' · ' + groups.get(g).length));
-            gn.addEventListener('click', () => gEl.classList.toggle('open'));
+            const label = document.createElement('span');
+            label.className = 'tpl-group-label'; label.textContent = g;
+            const count = document.createElement('span');
+            count.className = 'tpl-group-count'; count.textContent = String(groupRows.length);
+            gn.append(caret, label, count);
+            gn.addEventListener('click', () => this._toggleTplGroup(gEl));
+            gn.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this._toggleTplGroup(gEl);
+                }
+            });
             gEl.appendChild(gn);
-            groups.get(g).forEach(r => gEl.appendChild(this._buildTplRow(r)));
+            groupRows.forEach(r => {
+                gEl.appendChild(this._buildTplRow(r));
+                if (open) pending.push(r);
+            });
             box.appendChild(gEl);
         });
-        this._thumbsPending = rows.filter(r => r.tpl);
+        this._thumbsPending = pending.filter(r => r.tpl && r._thumb);
+    },
+
+    _toggleTplGroup(gEl) {
+        if (!gEl) return;
+        const open = !gEl.classList.contains('open');
+        this._setTplGroupOpen(gEl, open);
+    },
+
+    _setTplGroupOpen(gEl, open) {
+        if (!gEl) return;
+        gEl.classList.toggle('open', open);
+        const gn = gEl.querySelector('.tpl-group-name');
+        if (gn) gn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        const key = gEl.dataset.tplGroup;
+        if (key) {
+            if (open) this._tplOpen.add(key);
+            else this._tplOpen.delete(key);
+        }
+        if (open) this._queueTplThumbs(gEl._tplRows || []);
+        else {
+            const rows = gEl._tplRows || [];
+            this._thumbsPending = this._thumbsPending.filter(r => !rows.includes(r));
+        }
+        this._renderTplThumbs();
+    },
+
+    _queueTplThumbs(rows) {
+        (rows || []).forEach(r => {
+            if (r && r.tpl && r._thumb && !this._thumbsPending.includes(r)) this._thumbsPending.push(r);
+        });
+    },
+
+    _currentTplName() {
+        return (this.template && this.template.templateName) || '';
+    },
+
+    _isActiveTpl(r, active) {
+        const name = active != null ? active : this._currentTplName();
+        return !!(name && r && (r.disp === name || r.name === name));
+    },
+
+    _markTplRowActive(row, r) {
+        if (!row) return;
+        const active = this._isActiveTpl(r);
+        row.classList.toggle('active', active);
+        row.setAttribute('aria-current', active ? 'true' : 'false');
+        if (r && r._activeTag) r._activeTag.hidden = !active;
+        const hint = row.querySelector('.tpl-hint');
+        if (hint) hint.hidden = active;
+    },
+
+    _markActiveTplRows() {
+        const rows = this.$('lvPresets') ? this.$('lvPresets').querySelectorAll('.tpl-row') : [];
+        rows.forEach(row => {
+            const r = (this._tplCache || []).find(x => x.name === row.dataset.tplKey);
+            if (r) this._markTplRowActive(row, r);
+        });
+    },
+
+    async applySavedTemplate(r) {
+        await this.loadTemplateByName(r.name);
+    },
+
+    _openTplMenu(r, btn) {
+        const rect = btn.getBoundingClientRect();
+        const x = Math.max(8, rect.right - 170);
+        this.openCtx(x, rect.bottom + 4, [
+            ['应用模板', () => { this.applySavedTemplate(r); }],
+            ['重命名', () => { this.renameTemplateItem(r); }],
+            ['删除', () => { this._deleteTpl(r); }],
+        ]);
+    },
+
+    async _deleteTpl(r) {
+        if (!confirm('确定删除模板「' + r.disp + '」？')) return;
+        const res = await window.qingframe.deleteTemplate(r.name);
+        if (res && res.ok === false) {
+            this.setStatus('删除失败：' + (res.error || ''));
+            return;
+        }
+        this.setStatus('已删除「' + r.disp + '」');
+        await this.refreshTemplates();
+    },
+
+    _revealTpl(key) {
+        const box = this.$('lvPresets');
+        if (!box || !key) return false;
+        const rows = [...box.querySelectorAll('.tpl-row')];
+        const row = rows.find(el => el.dataset.tplKey === key) || rows.find(el => el.dataset.tplDisp === key);
+        if (!row) return false;
+        const gEl = row.closest('.tpl-group');
+        if (gEl && !gEl.classList.contains('open')) this._setTplGroupOpen(gEl, true);
+        try { row.scrollIntoView({ block: 'nearest' }); } catch (e) { /* 老环境无此 API */ }
+        row.classList.add('tpl-flash');
+        setTimeout(() => row.classList.remove('tpl-flash'), 900);
+        return true;
+    },
+
+    _revealTplAfterChange(key) {
+        if (this._revealTpl(key)) return;
+        // 新名称/标签可能不满足当前搜索词，清空过滤后再定位，免得保存完看不到新模板。
+        this._tplQuery = '';
+        const input = this.$('tfTemplateSearch');
+        if (input) input.value = '';
+        this._applyTplFilter();
+        this._revealTpl(key);
     },
 
     _buildTplRow(r) {
         const row = document.createElement('div');
         row.className = 'tpl-row';
+        row.dataset.tplKey = r.name;
+        row.dataset.tplDisp = r.disp;
+        r._row = row;
+        const main = document.createElement('button');
+        main.type = 'button';
+        main.className = 'tpl-main';
+        main.title = '应用模板「' + r.disp + '」';
+        main.setAttribute('aria-label', '应用模板「' + r.disp + '」');
         const thumb = document.createElement('img');
         thumb.className = 'tpl-thumb';
+        thumb.alt = '';
+        thumb.draggable = false;
+        // 未渲染前给一个透明占位，避免出现破图图标。
+        thumb.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
         r._thumb = thumb;
-        row.appendChild(thumb);
+        const info = document.createElement('span');
+        info.className = 'tpl-info';
         const nameSpan = document.createElement('span');
+        nameSpan.className = 'tpl-name';
         nameSpan.textContent = r.disp;
-        nameSpan.title = r.name;
-        row.appendChild(nameSpan);
-        const btnBox = document.createElement('div');
-        const btnLoad = document.createElement('button');
-        btnLoad.className = 'mini-btn'; btnLoad.textContent = '应用';
-        const btnRename = document.createElement('button');
-        btnRename.className = 'mini-btn'; btnRename.textContent = '重命名';
-        const btnDel = document.createElement('button');
-        btnDel.className = 'mini-btn danger'; btnDel.textContent = '删除';
-        btnBox.appendChild(btnLoad); btnBox.appendChild(btnRename); btnBox.appendChild(btnDel);
-        row.appendChild(btnBox);
-        btnLoad.addEventListener('click', async ev => { ev.stopPropagation(); await this.loadTemplateByName(r.name); this.refreshTemplates(); });
-        btnRename.addEventListener('click', async ev => {
-            ev.stopPropagation();
-            await this.renameTemplateItem(r);
+        nameSpan.title = r.disp;
+        const meta = document.createElement('span');
+        meta.className = 'tpl-meta';
+        const activeTag = document.createElement('span');
+        activeTag.className = 'tpl-active-tag';
+        activeTag.textContent = '使用中';
+        r._activeTag = activeTag;
+        const hint = document.createElement('span');
+        hint.className = 'tpl-hint';
+        hint.textContent = '单击应用';
+        meta.append(activeTag, hint);
+        info.append(nameSpan, meta);
+        main.append(thumb, info);
+        main.addEventListener('click', () => { this.applySavedTemplate(r); });
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'tpl-more';
+        more.textContent = '⋯';
+        more.title = '管理「' + r.disp + '」';
+        more.setAttribute('aria-label', '管理模板「' + r.disp + '」');
+        more.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this._openTplMenu(r, more);
         });
-        btnDel.addEventListener('click', async ev => {
-            ev.stopPropagation();
-            if (!confirm('确定删除模板「' + r.disp + '」？')) return;
-            await window.qingframe.deleteTemplate(r.name);
-            this.setStatus('已删除「' + r.disp + '」');
-            this.refreshTemplates();
-        });
-        row.addEventListener('click', async () => {
-            await this.loadTemplateByName(r.name);
-            this.refreshTemplates();
-        });
+        row.append(main, more);
+        this._markTplRowActive(row, r);
         return row;
     },
 
     async renameTemplateItem(r) {
         const name = await this.promptText('重命名模板(另存为新名称并删除旧的)', r.disp);
         if (!name) return;
-        const safe = String(name).trim();
+        // 与主进程 save/rename 的非法文件名字符处理保持一致，避免按未清洗的名字回读。
+        const safe = String(name).trim().replace(/[\\:*?"<>|/]/g, '_');
         if (!safe || safe === r.name) return;
         const res = await window.qingframe.renameTemplate(r.name, safe);
         this.setStatus(res && res.ok ? '已重命名为「' + safe + '」' : '重命名失败：' + ((res && res.error) || ''));
-        this.refreshTemplates();
+        if (res && res.ok) {
+            // 文件重命名后同步更新模板内的显示名,否则列表仍会显示旧名称。
+            try {
+                const data = await window.qingframe.loadTemplate(safe);
+                if (data) {
+                    data.templateName = safe;
+                    await window.qingframe.saveTemplate(safe, data);
+                    if (this.template && (this.template.templateName === r.disp || this.template.templateName === r.name)) {
+                        this.template.templateName = safe;
+                        this.refreshTemplateFields();
+                        this.saveCurrentTemplate();
+                    }
+                }
+            } catch (e) { /* 文件已改名,显示名更新失败不影响模板可用 */ }
+            await this.refreshTemplates();
+            this._revealTplAfterChange(safe);
+        }
     },
 
+    _tplQuery: '',
+    _tplOpen: new Set(),
+    _tplGroupsReady: false,
+    _tplThumbsRendering: false,
     _thumbsPending: [],
     // 模板缩略图缓存:键 = 名称 + 内容指纹(见 _tplThumbKey),值 = dataURL。
     // 每个缩略图是一次完整引擎渲染 + 一次 toDataURL,而模板内容多数时候没变。
@@ -135,41 +366,24 @@ window.App = Object.assign(window.App || {}, {
         return (r.name || '') + '#' + s.length + '#' + s;
     },
 
-    async _renderTplThumbs() {
-        if (!window.__render || !this._thumbsPending.length) return;
-        // 面板不在前台就不渲染:每个缩略图是一次完整引擎渲染 + toDataURL(约 5~25ms),
-        // 而 refreshTemplates 还会被保存/重命名/删除等路径调用。切到「模板」页签时
-        // switchTab 会重新 refreshTemplates,那时再渲染;此处保留 _thumbsPending 不动。
-        const panel = this.$('panel-template');
-        if (panel && !panel.classList.contains('active')) return;
+    // 单张缩略图渲染:临时借用主编辑器状态,渲染完立刻还原。不要跨 await 持有这份状态，
+    // 否则等待期间用户应用模板/编辑参数会被还原操作覆盖。
+    _renderTplThumbData(r, sample) {
         const prevCanvas = this.dom.canvas;
         const prevMax = this.displayMax;
         const prevImg = this.image;
         const prevTpl = this.template;
         try {
-            const sample = this._samplePhoto || (this._samplePhoto = this._makeSamplePhoto());
-            for (const r of this._thumbsPending.slice()) {
-                const thumb = r._thumb;
-                if (!thumb || !r.tpl) continue;
-                const tkey = this._tplThumbKey(r);
-                const cached = this._tplThumbCache.get(tkey);
-                if (cached) { thumb.src = cached; continue; }   // 内容没变,直接复用上次的图
-                if (!sample.complete) await new Promise(res => { sample.onload = res; sample.onerror = res; });
-                const cv = document.createElement('canvas');
-                cv.width = 1; cv.height = 1;
-                cv.style.position = 'absolute'; cv.style.visibility = 'hidden';
-                try {
-                    this.dom.canvas = cv;
-                    this.displayMax = 96;
-                    this.image = { el: sample, exif: {}, w: sample.naturalWidth || 1000, h: sample.naturalHeight || 1250 };
-                    this.template = JSON.parse(JSON.stringify(r.tpl));
-                    if (r.tpl.puzzle && window.__renderPuzzle) window.__renderPuzzle(this, false, true);
-                    else window.__render(this, false);
-                    thumb.src = cv.toDataURL('image/jpeg', 0.75);
-                    if (this._tplThumbCache.size > 200) this._tplThumbCache.clear();
-                    this._tplThumbCache.set(tkey, thumb.src);
-                } catch (_) { thumb.style.display = 'none'; }
-            }
+            const cv = document.createElement('canvas');
+            cv.width = 1; cv.height = 1;
+            cv.style.position = 'absolute'; cv.style.visibility = 'hidden';
+            this.dom.canvas = cv;
+            this.displayMax = 96;
+            this.image = { el: sample, exif: {}, w: sample.naturalWidth || 1000, h: sample.naturalHeight || 1250 };
+            this.template = JSON.parse(JSON.stringify(r.tpl));
+            if (r.tpl.puzzle && window.__renderPuzzle) window.__renderPuzzle(this, false, true);
+            else window.__render(this, false);
+            return cv.toDataURL('image/jpeg', 0.75);
         } finally {
             this.image = prevImg;
             this.template = prevTpl;
@@ -177,7 +391,43 @@ window.App = Object.assign(window.App || {}, {
             if (prevMax === undefined) delete this.displayMax;
             else this.displayMax = prevMax;
         }
+    },
+
+    async _renderTplThumbs() {
+        if (!window.__render || !this._thumbsPending.length) return;
+        // 面板不在前台就不渲染:每个缩略图是一次完整引擎渲染 + toDataURL(约 5~25ms),
+        // 而 refreshTemplates 还会被保存/重命名/删除等路径调用。切到「模板」页签时
+        // switchTab 会重新 refreshTemplates,那时再渲染;此处保留 _thumbsPending 不动。
+        const panel = this.$('panel-template');
+        if (panel && !panel.classList.contains('active')) return;
+        if (this._tplThumbsRendering) return;
+        this._tplThumbsRendering = true;
+        const batch = this._thumbsPending.slice();
         this._thumbsPending = [];
+        let rendered = 0;
+        try {
+            const sample = this._samplePhoto || (this._samplePhoto = this._makeSamplePhoto());
+            for (const r of batch) {
+                const thumb = r._thumb;
+                if (!thumb || !r.tpl || !thumb.isConnected) continue;
+                const tkey = this._tplThumbKey(r);
+                const cached = this._tplThumbCache.get(tkey);
+                if (cached) { thumb.src = cached; continue; }   // 内容没变,直接复用上次的图
+                if (!sample.complete) await new Promise(res => { sample.onload = res; sample.onerror = res; });
+                try {
+                    const src = this._renderTplThumbData(r, sample);
+                    thumb.src = src;
+                    if (this._tplThumbCache.size > 200) this._tplThumbCache.clear();
+                    this._tplThumbCache.set(tkey, src);
+                } catch (_) { thumb.style.display = 'none'; }
+                // 模板多时别让缩略图把主线程堵死,每 3 张让一帧给界面。
+                if (++rendered % 3 === 0) await new Promise(res => setTimeout(res, 0));
+            }
+        } finally {
+            this._tplThumbsRendering = false;
+        }
+        // 渲染期间可能又展开了新的分组;把新排队的缩略图接着处理。
+        if (this._thumbsPending.length) setTimeout(() => this._renderTplThumbs(), 0);
     },
 
     _makeSamplePhoto() {
@@ -214,22 +464,25 @@ window.App = Object.assign(window.App || {}, {
         this.syncModelFromUI();
         const r = await window.qingframe.saveTemplate(name, this.cloneTemplate());
         this.setStatus(r.ok ? `已保存模板「${name}」` : '保存失败：' + (r.error || ''));
-        this.refreshTemplates();
+        if (r.ok) {
+            await this.refreshTemplates();
+            this._revealTplAfterChange(name);
+        }
     },
 
     async loadTemplateByName(name) {
-        if (window.qingframe.loadTemplate) {
-            const data = await window.qingframe.loadTemplate(name);
-            if (!data) { this.setStatus('加载模板失败'); return; }
-            this.onSettingCommit();
-            this.template = JSON.parse(JSON.stringify(data));
-            this.normalizeTemplate();
-            this.saveCurrentTemplate();
-            this.refreshUI();
-            this.scheduleRender(true);
-            this.setStatus(`已应用模板「${name}」`);
-            return;
-        }
+        if (!window.qingframe.loadTemplate) return false;
+        const data = await window.qingframe.loadTemplate(name);
+        if (!data) { this.setStatus('加载模板失败'); return false; }
+        this.onSettingCommit();
+        this.template = JSON.parse(JSON.stringify(data));
+        this.normalizeTemplate();
+        this.saveCurrentTemplate();
+        this.refreshUI();
+        this.scheduleRender(true);
+        this.setStatus(`已应用模板「${data.templateName || name}」`);
+        this._markActiveTplRows();
+        return true;
     },
 
     async exportTemplate() {

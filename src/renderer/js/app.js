@@ -133,7 +133,34 @@ window.App = {
             });
         });
         const tplSearch = document.getElementById('tfTemplateSearch');
-        if (tplSearch) tplSearch.addEventListener('input', () => this._applyTplFilter());
+        if (tplSearch) {
+            tplSearch.addEventListener('input', () => this._applyTplFilter());
+            tplSearch.addEventListener('keydown', (e) => {
+                if (e.key !== 'Escape' || !tplSearch.value) return;
+                e.preventDefault();
+                e.stopPropagation();
+                tplSearch.value = '';
+                this._applyTplFilter();
+            });
+        }
+        const tplClear = document.getElementById('btnClearTplSearch');
+        if (tplClear) {
+            tplClear.addEventListener('click', () => {
+                if (tplSearch) {
+                    tplSearch.value = '';
+                    tplSearch.focus();
+                }
+                this._applyTplFilter();
+            });
+        }
+        const tplRefresh = document.getElementById('btnRefreshTemplates');
+        if (tplRefresh) {
+            tplRefresh.addEventListener('click', (e) => {
+                // 标题本身负责折叠,刷新按钮不能顺带把整组收起。
+                e.stopPropagation();
+                this.refreshTemplates();
+            });
+        }
         this.updateHistoryButtons();
         this.initLogin();
         this.initDraft();

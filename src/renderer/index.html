@@ -779,6 +779,19 @@
                             <div class="param-row"><label>名称</label><input type="text" id="tfTemplateName" class="ctl-tx" placeholder="模板名称" /></div>
                             <div class="param-row"><label>标签</label><input type="text" id="tfTemplateTag" class="ctl-tx" placeholder="分类标签" /></div>
                         </div>
+                        <div class="param-group" id="tplSavedGroup">
+                            <div class="pg-title collapsible">
+                                <span class="pg-title-text">已存模板</span>
+                                <span id="tplCount" class="tpl-count" hidden></span>
+                                <button id="btnRefreshTemplates" class="tpl-refresh" type="button" title="刷新模板列表" aria-label="刷新模板列表">↻</button>
+                            </div>
+                            <div class="tpl-search-wrap">
+                                <input type="text" id="tfTemplateSearch" class="ctl-tx tpl-search" placeholder="搜索模板名称 / 标签…" aria-label="搜索已存模板" autocomplete="off" />
+                                <button id="btnClearTplSearch" class="tpl-search-clear" type="button" title="清空搜索" aria-label="清空搜索" hidden>×</button>
+                            </div>
+                            <div id="lvPresets" class="tpl-list" role="region" aria-label="已存模板列表"></div>
+                            <div class="tpl-footnote">单击卡片应用 · <b>⋯</b> 重命名 / 删除</div>
+                        </div>
                         <div class="param-group">
                             <div class="pg-title collapsible">保存 / 导入导出</div>
                             <div class="param-row chk-row">
@@ -801,11 +814,6 @@
                                 <button class="mini-btn" id="btnImportShareCode" title="粘贴别人发来的分享码导入配置（照片不变）">粘贴分享码</button>
                             </div>
                             <div class="hint-box">「导出 .qfs」含照片工程；「导出配置」为轻量 JSON 不含照片，适合备份与分享。</div>
-                        </div>
-                        <div class="param-group">
-                            <div class="pg-title collapsible">已存模板</div>
-                            <input type="text" id="tfTemplateSearch" class="ctl-tx tpl-search" placeholder="搜索模板名称 / 标签…" />
-                            <div id="lvPresets" class="tpl-list"></div>
                         </div>
                         <div class="param-group">
                             <div class="pg-title collapsible">快速预设</div>
