@@ -4,13 +4,13 @@
   "exportDpi": 300,
   "baseMargin": {
     "marginLock": 0,
-    "marginTop": 90,
-    "marginBottom": 150,
-    "marginLeft": 80,
-    "marginRight": 80,
-    "imgScale": 0.9,
+    "marginTop": 0,
+    "marginBottom": 0,
+    "marginLeft": 74,
+    "marginRight": 74,
+    "imgScale": 0.82,
     "imgOffsetX": 0,
-    "imgOffsetY": 0,
+    "imgOffsetY": -22,
     "bgBlurEnable": 0,
     "bgBlurRadius": 30,
     "bgBlurWhiteOverlay": 0
@@ -24,30 +24,30 @@
       "marginRight": 0,
       "fillConfig": {
         "fillType": "solid",
-        "fillHex": "#ece6da",
+        "fillHex": "#171310",
         "fillOpacity": 100,
         "gradientType": "linear",
         "gradientAngle": 0,
         "gradientStops": [
           {
-            "position": 0.0,
+            "position": 0,
             "color": "#ffffff"
           },
           {
-            "position": 1.0,
+            "position": 1,
             "color": "#cccccc"
           }
         ],
         "gradientOpacity": 100,
         "textureSrc": "",
-        "textureScale": 1.0,
+        "textureScale": 1,
         "textureOffsetX": 0,
         "textureOffsetY": 0,
         "textureOpacity": 100,
         "textureBlend": "normal"
       },
       "strokeConfig": {
-        "strokeWidth": 3,
+        "strokeWidth": 0,
         "strokePos": "inside",
         "strokeColorHex": "#8b7355",
         "strokeOpacity": 100,
@@ -91,33 +91,46 @@
     "tearDensity": 50,
     "filmPerforationEnable": 1,
     "filmPerforationType": "round",
-    "filmPerforationSize": 12,
-    "filmPerforationSpacing": 24,
+    "filmPerforationSize": 11,
+    "filmPerforationSpacing": 21,
     "dustScratchEnable": 1,
     "dustScratchIntensity": 12,
     "yellowingEnable": 1,
-    "yellowingStrength": 14
+    "yellowingStrength": 22
   },
   "lightEffect": {
     "vignetteEnable": 1,
-    "vignetteStrength": 40,
+    "vignetteStrength": 38,
     "vignetteFeather": 50,
     "lightLeakEnable": 0,
     "lightLeakType": "warm",
     "lightLeakOpacity": 20,
     "lightLeakAngle": 45,
     "filmGrainEnable": 1,
-    "filmGrainIntensity": 10
+    "filmGrainIntensity": 12
   },
   "decorConfig": {
     "textLines": [
       {
-        "text": "35mm FILM · ARCHIVE",
+        "text": "KODAK  400 · 36 EXP",
         "fontFamily": "Microsoft YaHei",
-        "fontSize": 13,
+        "fontSize": 11,
         "fontWeight": 400,
-        "letterSpacing": 2,
-        "colorHex": "#4a3b2a",
+        "letterSpacing": 6,
+        "colorHex": "#9a8560",
+        "opacity": 100,
+        "x": 0,
+        "y": 0,
+        "align": "top",
+        "enableShadow": 0
+      },
+      {
+        "text": "35mm · FILM ARCHIVE",
+        "fontFamily": "Microsoft YaHei",
+        "fontSize": 16,
+        "fontWeight": 400,
+        "letterSpacing": 6,
+        "colorHex": "#e8d3a3",
         "opacity": 100,
         "x": 0,
         "y": 0,
