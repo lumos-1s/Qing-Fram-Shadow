@@ -80,7 +80,8 @@
     "test:ci": "npm run check && npm run test:gui",
     "covers:bake": "node tools/run-electron.js tools/bake-wall-covers.js",
     "wall:jank": "node tools/wall-jank.js",
-    "boot:time": "node tools/boot-time.js"
+    "boot:time": "node tools/boot-time.js",
+    "wall:writes": "node tools/wall-writes.js"
   },
   "author": "Qingframe",
   "license": "MIT",
