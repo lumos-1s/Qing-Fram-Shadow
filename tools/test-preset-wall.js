@@ -391,6 +391,9 @@ async function main() {
     // 2.8 手感参数（照抄 folia-major wallPanMotion）：松手惯性 + 滚轮平滑
     const coast = await exec(`(async () => {
         const g = document.getElementById('presetWallGrid');
+        // CI 的 Windows runner 默认关掉了系统动画（prefers-reduced-motion: reduce），
+        // 那会按设计禁掉惯性/平滑——这里必须显式要求"正常动效"再测手感。
+        App._wallReduceOverride = false;
         App.stopWallMotion(); App.panWallTo(0, 0);
         // 先把上一段手势残留的 rAF 彻底停干净再开始，否则起手会被上一次惯性带偏
         await new Promise((x) => setTimeout(x, 120));
@@ -414,6 +417,7 @@ async function main() {
         const afterCoast = App._wallPan.x;
         App.stopWallMotion();
         App.coastWall = origCoast;
+        App._wallReduceOverride = null;
         return { atRelease, afterCoast, coastCalled, coastSpeed, reduce: App.wallReducedMotion(),
                  hidden: document.getElementById('presetWall').hidden };
     })()`);
@@ -422,6 +426,7 @@ async function main() {
 
     const wheel = await exec(`(async () => {
         const g = document.getElementById('presetWallGrid');
+        App._wallReduceOverride = false;   // 同上：滚轮的逐帧收敛只在正常动效下发生
         App.stopWallMotion(); App.panWallTo(0, 0);
         g.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, deltaMode: 0, bubbles: true, cancelable: true }));
         // 轮询等它动起来：固定 60ms 采样会被偶发的长帧挤掉，之前出现过 mid=0 的假红
@@ -435,6 +440,7 @@ async function main() {
         await new Promise((x) => setTimeout(x, 700));
         const end = App._wallPan.y;
         const settled = !App._wallWheelFrame && !App._wallWheelPending;
+        App._wallReduceOverride = null;
         return { mid, end, settled };
     })()`);
     check(wheel.mid < -20, '滚轮能推墙（不再被 preventDefault 吞掉）', `mid=${Math.round(wheel.mid)}`);
@@ -465,9 +471,10 @@ async function main() {
         App._wallReduceOverride = true;
         App.renderPresetWall();
         const reduced = (document.querySelector('.pw-wall') || {}).style ? document.querySelector('.pw-wall').style.animation : '';
-        App._wallReduceOverride = null;
+        App._wallReduceOverride = false;   // 显式要求"正常动效"，别跟随 CI 的系统设置
         App.renderPresetWall();
         const normal = (document.querySelector('.pw-wall') || {}).style ? document.querySelector('.pw-wall').style.animation : '';
+        App._wallReduceOverride = null;
         return { reduced: reduced || '', normal: normal || '' };
     })()`);
     check(anim.reduced === '' && anim.normal.indexOf('pwWallIn') >= 0, '降级动效：入场淡入被跳过',
