@@ -15,7 +15,8 @@
 // 判定手段:喂一张「纯品红 rgb(240,30,160)」的 PNG 照片。纯色照片模糊后还是同一个颜色,
 // 所以「齿孔里是不是品红」=「有没有挖穿并透出下层模糊」,与参考值无关、可直接计数。
 // 画面指纹在 --hash 模式采集(写入 tools/ticket-redo-fingerprints.json,随代码一起提交),
-// 冻结 window.Date,保证不随运行日期漂移。
+// 冻结 window.Date,保证不随运行日期漂移。Electron 31 → 45 后 Chromium 的文字抗锯齿/
+// 模糊合成有细微变化,指纹已整体重采一次;结构断言仍是跨版本护栏。
 //
 // 用法: node tools/run-electron.js tools/test-ticket-redo.js --hash   (重采指纹)
 //       node tools/run-electron.js tools/test-ticket-redo.js           (回归检查)

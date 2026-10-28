@@ -7,7 +7,7 @@
 
 ## 0. 项目定位与血统
 
-- **Electron 31 + 原生 HTML/CSS/JS + Canvas 2D**，本地优先的照片加框工具，v0.1.7，414 次提交，代码 MIT（`shared/brandlogos`、`shared/textures` 除外）。
+- **Electron 45 + 原生 HTML/CSS/JS + Canvas 2D**，本地优先的照片加框工具，代码 MIT（`shared/brandlogos`、`shared/textures` 除外）。
 - **它是 JavaFX 桌面版的 Web 重写**：`engine.js:1` 自述「JavaFX BorderEngine 逐行移植」，`index.html:153` 注释「对齐 Java FXML 命名」，函数名 `computeCanvasSize` / `getShadowSpace` / `parseColor` 都保留原版语义，`styleNoise/javaRandom` 是 Java LCG 的复刻（`engine-styles.js:853`）。桌面上还存在同名 Java 版与压测目录。
 
 ## 1. 进程与文件布局
@@ -25,9 +25,9 @@
 | | `shared/textures/`(10 PNG) | 纹理，仅图层管线消费 |
 | | `shared/brandlogos/`(106 文件) | 本机素材，**不入库、不进包** |
 
-**安全姿态**：`contextIsolation:true`、`nodeIntegration:false`、`sandbox:false`、CSP 写死在 `index.html:5`（`script-src 'self'`，图片允许 `qflocal:`）。
+**安全姿态**：`contextIsolation:true`、`nodeIntegration:false`、`sandbox:true`、CSP 写死在 `index.html:5`（`script-src 'self'`，图片允许 `qflocal:`）。自动更新只走 GitHub 直连，不经过第三方镜像（清单与二进制必须同源）。
 
-**照片不走 IPC**：主进程注册 `qflocal://`（`index.js:8,58`），渲染侧用 `qflocal://img?p=<绝对路径>` 直读磁盘，避免 base64 过桥；只有**模板/工程文件**与**导出写盘**才走 IPC。
+**照片不走 IPC**：主进程注册 `qflocal://`，渲染侧用 `qflocal://img?p=<绝对路径>` 直读磁盘，避免 base64 过桥；协议只服务**图片扩展名且被主进程登记过**的路径（文件选择/拖放/剪贴板/封面目录/`read-exif`），并开启 `corsEnabled`。只有**模板/工程文件**与**导出写盘**才走 IPC；导出写盘只认 `pick-export-location` 发出的令牌，渲染层不能直接指定路径。
 
 ## 2. 渲染架构（核心）
 
@@ -130,11 +130,11 @@
 
 1. **【已解决】9 个 Electron 用例恒绿**：`app.quit()`/`process.exit()` 之后再设 `process.exitCode` 会被忽略，断言失败也返回 0。已全部改为 `finish()` → `app.exit()`（OPTIMIZATIONS #17），24 个 GUI 用例退出码可信；`npm test` 整链 33 阶段实跑 EXIT=0。
 2. **【已解决】release 链是破的**：旧 `dist/` 陈旧且含 106 个 brandlogos、`verify-dist` 实跑 exit 1，预设数还硬编码成 70（会把数量异常推到 exit 2「无法判定」）。现已清空重建（0.1.7 安装包 75.0 MB）、预设/纹理数改为从 `shared/` 实测（OPTIMIZATIONS #18），并新增 `verify:pkg`（`--installers`）对安装包做体积 + sha512 ↔ `latest.yml` 核验，正/负向均验证通过。
-3. **【中】相框样式路径不读 `exportScale`**：`engine-styles.js:3875` 用 `finalScale=min(1, displayMax/长边)` 封顶，只有 NONE 原图路径（2838）能上采样 → 「相框样式 + 4096/8192」拿不到目标尺寸（`app-export.js:210` 已主动提示，`test-export-fidelity` 只 `reportKnown` 不改退出码）。代码注释称受 `AGENTS.md`「边框相关功能保持原样」约束，但**该文件现已不在仓库中**。
+3. **【已解决】相框样式路径不读 `exportScale`**：原先 `finalScale=min(1, displayMax/长边)` 封顶，只有 NONE 原图路径能上采样 → 「相框样式 + 4096/8192」拿不到目标尺寸。现在 `engine-styles.js` 在 `app.exportScale` 存在时按目标长边缩放（预览仍只缩不放），`test:fidelity` 已实测 2048 目标下相框输出 2048×1769。
 4. **【中】离屏渲染共享单例、不可重入**：缩略图队列、模板库缩略图、导出三条路径都靠「临时改写 `dom.canvas/image/template`」再 `finally` 还原；`queueThumb` 与 `_renderTplThumbs` 并发会互相踩踏（导出因此必须深拷贝模板 + 逐张 flush）。
 5. **【中】依赖与可移植性**：`@electron/asar` 未列入 `package.json`（靠 electron-builder 传递依赖）；`measure-drag.js`/`stress.js` 默认目录写死作者机器绝对路径，CI 不可用。
-6. **【中】8192 导出内存**：`out` + 可见 canvas + `toDataURL` 三份大缓冲并存（8192² RGBA ≈ 268 MB/张），`getImageData` 调用点还会打断 GPU 加速。
-7. **【低】一致性债务**：`syncModelFromUI`/`refreshUI` 两份手工镜像无漏字段保护；`applyGlobalMargin:860` 每次同步从 `refTop` 重算四边、会冲掉单边 margin；undo 栈与 `imageTemplates` 两套历史不联动；localStorage 承载头像/图标/草稿 base64，超配额静默丢弃；`tools/`、`tests/` 不受 lint 保护。
+6. **【中】8192 导出内存**：`out` + 可见 canvas + `toDataURL` 三份大缓冲并存（8192² RGBA ≈ 268 MB/张），`getImageData` 调用点还会打断 GPU 加速。九宫格批量已改为「逐张渲染 → 立即写盘」，不再把整批 base64 攒在内存；单张 8192 仍是峰值。
+7. **【低】一致性债务**：`syncModelFromUI`/`refreshUI` 两份手工镜像无漏字段保护；`applyGlobalMargin:860` 每次同步从 `refTop` 重算四边、会冲掉单边 margin；undo 栈与 `imageTemplates` 两套历史不联动。草稿里的大 `data:` 图片已外置到 `userData/draft-assets`（草稿只存 `qfasset:` 引用）；头像/自定义图标仍在 localStorage，超配额仍可能静默丢弃。`tools/`、`tests/` 不受 lint 保护。
 8. **【低】仓库不干净**：`dist/`（.gitignore 已忽略但仍在盘上）与根目录若干本地日志（`s_err.log`/`debug.log`/`dist-build.log`/`start.log`，均已忽略）混放；原先混入的 `custom-icons.json` 与 `.docx` 已不存在。
 
 ## 6. 关键文件速查

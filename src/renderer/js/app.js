@@ -243,8 +243,8 @@ window.App = {
         } catch (_) {}
     },
 
-    // 导出偏好三项一起存:save-prefs 在主进程是**整对象替换**(saveState({prefs})),
-    // 分开发的每一次都会把另外两项抹掉 —— 存的时候必须全量提交
+    // 导出偏好三项一起存。主进程现在会合并 prefs,但全量提交仍能兼容旧版主进程
+    // (旧版是整对象替换,分开发会互相抹掉)。
     _saveExportPrefs() {
         const d = this.dom || {};
         if (!window.qingframe || !window.qingframe.savePrefs) return;
@@ -2000,6 +2000,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
     // 把系统选择框返回的单个文件构造成胶片条照片对象(不插入)
     async imageFromPick(res) {
         if (!res) return null;
+        if (res.error) { this.setStatus(res.error); return null; }
         if (!res.path) { this.setStatus('图片加载失败：缺少文件路径'); return null; }
         const img = new Image();
         const src = this.photoUrl(res.path);

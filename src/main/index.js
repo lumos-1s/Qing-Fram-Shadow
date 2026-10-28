@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, protocol, net, shell, nativeImage, 
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 const { createStateStore } = require('./state');
 
@@ -15,11 +16,6 @@ if (app.isPackaged) {
     app.setPath('userData', path.join(app.getPath('appData'), 'qingframe-web-release'));
 }
 
-// 渲染进程通过 qflocal:// 协议在磁盘上直接读取照片(不经过 base64 过 IPC,节省内存)
-protocol.registerSchemesAsPrivileged([
-    { scheme: 'qflocal', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
-]);
-
 // EXIF 解析:独立模块(src/main/exif-read.js)。只读文件头部而不整读照片,
 // 拆出来是为了能用纯 node 直接验证"头部解析 == 整文件解析"。
 const { readExif } = require('./exif-read');
@@ -29,10 +25,108 @@ const exifWrite = require('./exif-write');
 const { isHeic, heicFileToJpeg, HEIC_EXTS } = require('./heic');
 // HEIC 的 EXIF 走 exifr(自定义 exif-read 只认 JPEG);输出与 exifSummary 同字段。
 const { readHeicExif } = require('./heic-exif');
+const { imageSize } = require('./image-size');
+const { ensureBuffer: ensurePngSrgb } = require('../shared/png-srgb');
 
 // 照片导入支持的扩展名(HEIC 由主进程解码,对渲染进程透明)
 const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp'].concat(HEIC_EXTS.map(e => e.slice(1)));
 const IMAGE_FILTERS = [{ name: '图片', extensions: IMAGE_EXTS }];
+// 单张图上限:文件 512MB / 像素 200MP。超过后在导入阶段就拒绝,
+// 避免浏览器解码时直接 OOM(8192 导出本身已经要 3 份大缓冲)。
+const MAX_IMAGE_BYTES = 512 * 1024 * 1024;
+const MAX_IMAGE_PIXELS = 200 * 1000 * 1000;
+const imageRejectReason = (filePath, size) => {
+    if (size > MAX_IMAGE_BYTES) return '文件超过 512MB';
+    const dim = imageSize(filePath);
+    if (dim && dim.width * dim.height > MAX_IMAGE_PIXELS) return '像素超过 2 亿';
+    return '';
+};
+const SERVABLE_IMAGE_EXT = new Set(IMAGE_EXTS.map(e => '.' + e.toLowerCase()));
+
+// 渲染进程通过 qflocal:// 协议在磁盘上直接读取照片(不经过 base64 过 IPC,节省内存)。
+// 协议只服务"主进程见过的图片文件":路径来自文件选择框/拖放/剪贴板/封面目录,
+// 或 read-exif 校验过的图片;任何非图片扩展名一律拒绝。corsEnabled 防止旧版
+// Chromium 把自定义协议当成可跨域读取的 file:// 代理。
+protocol.registerSchemesAsPrivileged([
+    { scheme: 'qflocal', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
+]);
+
+// 允许被 qflocal 读取的图片(realpath 小写)。XSS 即使能构造 qflocal URL,
+// 也只能读到用户本次确实导入过/校验过的图片,不能顺手读 .ssh、.env 等文件。
+const servedImagePaths = new Set();
+const imageKey = (p) => process.platform === 'win32' ? String(p).toLowerCase() : String(p);
+const allowImagePath = (p) => {
+    if (!p) return null;
+    const ext = path.extname(String(p)).toLowerCase();
+    if (!SERVABLE_IMAGE_EXT.has(ext)) return null;
+    try {
+        const real = fs.realpathSync.native(p);
+        const st = fs.statSync(real);
+        if (!st.isFile()) return null;
+        servedImagePaths.add(imageKey(real));
+        return real;
+    } catch (e) { return null; }
+};
+
+// 文件名只允许作为"单个名字"使用:去掉目录、控制字符、Windows 保留名与末尾点/空格。
+// 导出链路的 filename/subdir 来自 .qfs 等不可信输入,必须在主进程再收一次口。
+function safeLeafName(name, fallback) {
+    let s = path.basename(String(name == null ? '' : name));
+    // eslint-disable-next-line no-control-regex
+    s = s.replace(/[\x00-\x1f<>:"/\\|?*]/g, '_').replace(/[. ]+$/g, '').trim();
+    if (!s || s === '.' || s === '..') s = (fallback === undefined) ? 'file' : fallback;
+    const stem = s.replace(/\.[^.]*$/, '');
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(stem)) s = '_' + s;
+    return s;
+}
+// 导出位置令牌:只有经过系统保存框确认过的路径才能被 write-export-files 使用。
+// 渲染层即使被注入,也不能直接传一个任意路径让主进程写文件。
+const approvedExportLocations = new Map();
+function approveExportLocation(loc) {
+    const token = crypto.randomUUID();
+    approvedExportLocations.set(token, loc);
+    if (approvedExportLocations.size > 100) {
+        const oldest = approvedExportLocations.keys().next().value;
+        approvedExportLocations.delete(oldest);
+    }
+    return Object.assign({ token }, loc);
+}
+// 只接受应用主框架发来的 IPC。preload 默认只注入主框架,这里再挡一层:
+// 即使将来打开 nodeIntegrationInSubFrames 或嵌入 iframe,子框架也调不到写盘接口。
+const isTrustedFrame = (event) => {
+    try {
+        const frame = event && event.senderFrame;
+        if (!frame || frame.parent) return false;
+        return String(frame.url || '').startsWith('file://');
+    } catch (e) { return false; }
+};
+const BLOCKED = { ok: false, error: '不允许的调用来源' };
+
+const EXPORT_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+function safeExportName(name, fallback) {
+    let s = safeLeafName(name, fallback);
+    if (!EXPORT_EXTS.has(path.extname(s).toLowerCase())) s += '.png';
+    return s;
+}
+function resolveInside(root, candidate) {
+    const base = path.resolve(root);
+    const dest = path.resolve(base, String(candidate || ''));
+    const rel = path.relative(base, dest);
+    if (!rel || rel.startsWith('..' + path.sep) || rel === '..' || path.isAbsolute(rel)) return null;
+    return dest;
+}
+// 子目录按段清洗,不允许 ..、绝对路径、盘符;空段直接丢弃。
+function safeSubdir(root, subdir) {
+    const parts = String(subdir || '').split(/[\\/]+/).filter(Boolean);
+    const clean = [];
+    for (const part of parts) {
+        const seg = safeLeafName(part, '');
+        if (!seg || seg === '.' || seg === '..') continue;
+        clean.push(seg);
+    }
+    if (!clean.length) return path.resolve(root);
+    return resolveInside(root, clean.join(path.sep)) || path.resolve(root);
+}
 
 // 照片 EXIF 统一入口:JPEG 走轻量头部解析,HEIC 走 exifr;HEIC 读不到时返回空结果。
 async function readPhotoExif(filePath) {
@@ -94,7 +188,9 @@ const createWindow = () => {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
-            sandbox: false
+            // preload 只用 contextBridge/ipcRenderer/webUtils,不需要 Node 全权限。
+            // 开沙箱后即使渲染层被注入,也拿不到 fs/child_process 这类底层能力。
+            sandbox: true
         }
     });
     win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
@@ -187,241 +283,57 @@ app.whenReady().then(() => {
         try {
             const u = new URL(request.url);
             const filePath = u.searchParams.get('p');
-            if (!filePath || !fs.existsSync(filePath)) return new Response('Not Found', { status: 404 });
+            if (!filePath) return new Response('Not Found', { status: 404 });
+            let real;
+            try { real = fs.realpathSync.native(filePath); } catch (e) { return new Response('Not Found', { status: 404 }); }
+            const ext = path.extname(real).toLowerCase();
+            if (!SERVABLE_IMAGE_EXT.has(ext)) return new Response('Forbidden', { status: 403 });
+            // 只服务主进程登记过的图片:文件选择、拖放、剪贴板、封面目录、read-exif。
+            if (!servedImagePaths.has(imageKey(real))) return new Response('Forbidden', { status: 403 });
             // HEIC/HEIF:Chromium 无法解码,先转成 JPEG 再返回;其他格式保持零拷贝流式读取。
-            if (isHeic(filePath)) {
+            if (isHeic(real)) {
                 try {
-                    const jpg = await heicFileToJpeg(filePath);
-                    return new Response(jpg, { headers: { 'content-type': 'image/jpeg' } });
+                    const jpg = await heicFileToJpeg(real);
+                    return new Response(jpg, {
+                        headers: { 'content-type': 'image/jpeg', 'x-content-type-options': 'nosniff' }
+                    });
                 } catch (e) {
                     console.warn('[heic] 解码失败:', e && e.message);
                     return new Response('HEIC decode failed', { status: 415 });
                 }
             }
-            return net.fetch(pathToFileURL(filePath).href);
+            return net.fetch(pathToFileURL(real).href);
         } catch (e) {
             return new Response('Not Found', { status: 404 });
         }
     });
     cleanupPasteDir();
+    cleanupQfsTmpRoot();
     createWindow();
 
     // ── 自动更新:仅打包后(app.isPackaged)生效;启动静默检查,事件经 webContents 推给渲染进程做 UI ──
-    //    updater 为 null 时(check-for-updates 等 IPC)一律返回"开发模式",避免 dev 下调用报错
-    //    [v0.1.9] 国内网络优化:①检查更新加 20s 超时并推送明确提示;②安装包下载走 GitHub 加速镜像(可经 QINGFRAME_PROXY 环境变量覆盖)
+    //    updater 为 null 时(check-for-updates 等 IPC)一律返回"开发模式",避免 dev 下调用报错。
+    //
+    //    安全约束:更新清单(latest.yml)与安装包必须来自同一个受 TLS 保护的源。
+    //    旧版把所有 github.com 请求(含 latest.yml)改写到 ghproxy 等第三方镜像,
+    //    镜像同时提供清单与二进制 → 清单里的 sha512 校验形同虚设;在产物未签名的情况下,
+    //    等于把"任意代码执行"的权限交给镜像运营者。因此这里不再走任何镜像;
+    //    国内网络请使用系统代理,或到 GitHub Releases 手动下载。
     const CHECK_TIMEOUT_MS = 20000;
-    const GH_PROXIES = process.env.QINGFRAME_PROXY
-        ? [process.env.QINGFRAME_PROXY]
-        : ['https://ghproxy.net', 'https://ghfast.top', 'https://gh-proxy.com'];
-    // 镜像会随时间劣化(实测 ghproxy.net 2026-10 起常被限速到 40KB/s 级):下载前实测各镜像速度,
-    // 把最快者写进 activeProxy;探测失败时回退用列表第一个。QINGFRAME_PROXY 指定时尊重用户选择。
-    let activeProxy = null;
-    const proxyFor = () => activeProxy || GH_PROXIES[0];
     const withTimeout = (promise, ms, label) => Promise.race([
         promise,
         new Promise((_, reject) => setTimeout(
-            () => reject(new Error(`${label}超时（${Math.round(ms / 1000)}s），GitHub 连接缓慢或不可达，请稍后重试或开启代理`)),
+            () => reject(new Error(`${label}超时（${Math.round(ms / 1000)}s），GitHub 连接缓慢或不可达，请稍后重试或使用系统代理`)),
             ms
         ))
     ]);
-    // 检查环节的镜像优选:检查请求固定按 GH_PROXIES 顺序走,首选镜像一旦劣化(实测 2026-10:
-    // ghproxy.net 对 releases/latest 只回几字节垃圾),electron-updater 会把解析失败报成
-    // "Cannot parse releases feed: Unable to find latest version on GitHub"。
-    // 检查前并行探测各镜像,按列表顺序取第一个返回合法 JSON(tag_name)的写进 activeProxy;
-    // 全部不可用则维持原顺序(检查照旧失败,推给 UI 的文案会被翻译成可读版本)。
-    const CHECK_LATEST_URL = REPO_URL + '/releases/latest';
-    const CHECK_PROBE_TIMEOUT_MS = 5000;
-    const probeProxyForCheck = async () => {
-        if (GH_PROXIES.length < 2) return; // 用户用 QINGFRAME_PROXY 指定了镜像时尊重其选择
-        const probe = async (proxy) => {
-            const ac = new AbortController();
-            const timer = setTimeout(() => ac.abort(), CHECK_PROBE_TIMEOUT_MS);
-            try {
-                const res = await net.fetch(proxy + '/' + CHECK_LATEST_URL, {
-                    headers: { Accept: 'application/json' },
-                    signal: ac.signal
-                });
-                if (!res.ok) return null;
-                const info = JSON.parse(await res.text());
-                return (info && info.tag_name) ? proxy : null;
-            } catch (_) {
-                return null;
-            } finally {
-                clearTimeout(timer);
-            }
-        };
-        const results = await Promise.all(GH_PROXIES.map((proxy) => probe(proxy)));
-        const healthy = results.find((p) => p);
-        if (healthy) {
-            activeProxy = healthy;
-            console.log('[updater] 检查镜像可用:', healthy);
-        } else {
-            console.warn('[updater] 所有检查镜像均不可用,按默认顺序尝试:', GH_PROXIES.join(', '));
-        }
-    };
     // 原始 feed 报错(JSON 解析栈)对用户不可读,推给 UI 时换成一句网络提示;日志仍保留原文
     const friendlyUpdaterError = (msg) => {
         const m = String(msg || '');
         if (m.includes('Cannot parse releases feed') || m.includes('Unable to find latest version') || m.includes('ERR_UPDATER_INVALID_RELEASE_FEED')) {
-            return '无法连接 GitHub 更新源（镜像暂不可用）。请稍后重试，或到 GitHub Releases 手动下载新版';
+            return '无法连接 GitHub 更新源。请检查系统代理后重试，或到 GitHub Releases 手动下载新版';
         }
         return m || '网络异常';
-    };
-    // 下载环节把 GitHub 文件 URL 换成镜像前缀(镜像仅转发原文件,sha512 不变);patch 一次即可
-    const patchGitHubDownloadProxy = () => {
-        try {
-            const ghMod = require('electron-updater/out/providers/GitHubProvider');
-            const GHProvider = ghMod && ghMod.GitHubProvider;
-            if (!GHProvider || GHProvider.prototype.__qfProxyPatched) return true;
-            const orig = GHProvider.prototype.resolveFiles;
-            GHProvider.prototype.resolveFiles = function (updateInfo) {
-                const files = orig.call(this, updateInfo);
-                const proxy = proxyFor();
-                if (proxy && files && files.length) {
-                    for (const f of files) {
-                        // electron-updater 26 里 f.url 是 URL 实例(非字符串),要按 href 判断并重建 URL
-                        const u = f && f.url;
-                        const href = (typeof u === 'string') ? u : (u && u.href);
-                        if (href && href.startsWith('https://github.com/')) {
-                            const proxied = proxy + '/' + href;
-                            f.url = (typeof u === 'string') ? proxied : new URL(proxied);
-                        }
-                    }
-                }
-                return files;
-            };
-            GHProvider.prototype.__qfProxyPatched = true;
-            return true;
-        } catch (e) {
-            console.warn('[updater] 下载镜像 patch 失败:', e && e.message);
-            return false;
-        }
-    };
-    // 检查环节统一走 Provider.httpRequest(atom 源 / releases/latest / latest.yml)。
-    // 直连 GitHub 在国内常被 HTTP/2 重置(net::ERR_HTTP2_PROTOCOL_ERROR),把 github.com 请求也换到镜像;
-    // 镜像服务器在国外访问 GitHub,本地只连镜像,绕开被干扰的链路。
-    // 实测(2026-10-10):ghproxy.net / ghfast.top / gh-proxy.com 对 /releases.atom 一律 403/404
-    // (镜像只放行下载类路径),但 releases/latest(带 Accept:application/json)与 latest.yml 均 200。
-    // 因此 atom 源不真的取:改用 releases/latest 的 tag_name/body 现拼一个最小 feed(见下),
-    // 真实 tag、版本、更新说明全部来自服务端,检查链路即可全镜像跑通。
-    // 这份静态 feed 只作动态取数失败时的兜底(更新检查不会因此断掉, 只是说明退回这条)。
-    const FAKE_ATOM_XML = `<?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <title>清框影 Releases</title>
-  <entry>
-    <title>新版本可用</title>
-    <link href="${REPO_URL}/releases/tag/v0.1.16"/>
-    <content type="html">新增「摄影署名水印」「相机参数水印」预设; 相机参数水印支持背景模糊、圆角、图片缩放与参数字号; 修复「头像纪念」底部透明黑条</content>
-  </entry>
-</feed>`;
-    const patchUpdateHttpRequests = () => {
-        try {
-            const provMod = require('electron-updater/out/providers/Provider');
-            const ProviderCls = provMod && provMod.Provider;
-            if (!ProviderCls || ProviderCls.prototype.__qfHttpPatched) return true;
-            const origHttp = ProviderCls.prototype.httpRequest;
-            const origCreateOpts = ProviderCls.prototype.createRequestOptions;
-            // 镜像替换统一放在 createRequestOptions:httpRequest 与 GitHubProvider 的
-            // fetchData(this.executor.request(channelFileUrl)) 两条链路都会经过它, 一处覆盖全部。
-            ProviderCls.prototype.createRequestOptions = function (url, headers) {
-                const proxy = proxyFor();
-                if (proxy && url) {
-                    const href = (typeof url === 'string') ? url : url.href;
-                    if (href && href.startsWith('https://github.com/') && !/\/releases\.atom$/.test(href)) {
-                        const proxied = proxy + '/' + href;
-                        url = (typeof url === 'string') ? proxied : new URL(proxied);
-                    }
-                }
-                return origCreateOpts.call(this, url, headers);
-            };
-            // atom 源:镜像不支持该路径(实测 403/404)。不返回写死的静态 feed, 而是用同一条
-            // 镜像链路现取 releases/latest, 用 tag_name/body 拼一个最小 feed:
-            // electron-updater 会把「链接匹配真实 tag 的条目」的 <content> 当更新说明(getNoteValue),
-            // 动态生成后说明永远等于该 Release 的正文, 不会再显示检查方自带的旧文案。
-            // 取数/解析失败时兜底返回静态 FAKE_ATOM_XML, 更新检查本身不受影响。
-            ProviderCls.prototype.httpRequest = function (url, headers, cancellationToken) {
-                if (url) {
-                    const href = (typeof url === 'string') ? url : url.href;
-                    if (href && /\/releases\.atom$/.test(href)) {
-                        const esc = (s) => String(s == null ? '' : s)
-                            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                        const base = href.replace(/\.atom$/, '');
-                        return origHttp.call(this, base + '/latest', { Accept: 'application/json' }, cancellationToken)
-                            .then((raw) => {
-                                const info = JSON.parse(raw);
-                                if (!info || !info.tag_name) throw new Error('releases/latest 无 tag_name');
-                                return `<?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <title>清框影 Releases</title>
-  <entry>
-    <title>${esc(info.name || info.tag_name)}</title>
-    <link href="${base}/tag/${esc(info.tag_name)}"/>
-    <content type="html">${esc(info.body || '')}</content>
-  </entry>
-</feed>`;
-                            })
-                            .catch(() => FAKE_ATOM_XML);
-                    }
-                }
-                return origHttp.call(this, url, headers, cancellationToken);
-            };
-            ProviderCls.prototype.__qfHttpPatched = true;
-            return true;
-        } catch (e) {
-            console.warn('[updater] 检查镜像 patch 失败:', e && e.message);
-            return false;
-        }
-    };
-
-    // ── 更新下载提速:镜像测速优选 + 差量留种 ──
-    // ① 下载前对各个镜像实测速度(与真实下载同路径:普通 GET,读满 512KB 即断),选最快者下载,
-    //    失败时按速度顺序自动换源重试 —— 镜像速度随时间和线路剧烈波动(实测同一镜像一小时
-    //    内从 1.8MB/s 跌到连不上),写死一个必踩坑;
-    // ② 下载完成后把安装包复制成更新缓存里的 installer.exe:electron-updater 的差量下载
-    //    (只下与旧版不同的数据块)需要它当"旧文件"基准,而工具链没有任何环节维护它,
-    //    不主动留种的话差量只在第一次可用,之后就永远退化回整个 75MB 全量下载。
-    const PROBE_BYTES = 512 * 1024;
-    const PROBE_TIMEOUT_MS = 4000;
-    const probeProxySpeed = async (proxy, githubUrl) => {
-        const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), PROBE_TIMEOUT_MS);
-        const t0 = Date.now();
-        let got = 0;
-        try {
-            const res = await net.fetch(proxy + '/' + githubUrl, { signal: ac.signal });
-            if (res.ok) {
-                const reader = res.body.getReader();
-                while (got < PROBE_BYTES) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    got += value.length;
-                }
-                try { await reader.cancel(); } catch (_) { /* ignore */ }
-            }
-        } catch (_) { /* 超时/网络错:按已收字节折算速度 */ }
-        finally { clearTimeout(timer); }
-        return got >= 64 * 1024 ? Math.round(got / Math.max(Date.now() - t0, 1) * 1000) : 0; // B/s;收得太少视为失败
-    };
-    // 返回按实测速度降序的可用镜像列表;探测不出可用镜像时返回 null(调用方保持默认顺序)
-    const rankProxies = async (githubUrl) => {
-        if (!githubUrl || GH_PROXIES.length < 2) return null; // 用户用 QINGFRAME_PROXY 指定了镜像时尊重用户选择
-        const byProxy = new Map();
-        const all = Promise.all(GH_PROXIES.map(async (proxy) => {
-            byProxy.set(proxy, await probeProxySpeed(proxy, githubUrl));
-        }));
-        // 早退:已有镜像达到"够快"标准就不必再等慢的(每 200ms 看一眼)
-        await Promise.race([all, (async () => {
-            for (let i = 0; i < Math.ceil(PROBE_TIMEOUT_MS / 200); i++) {
-                await new Promise((r) => setTimeout(r, 200));
-                let best = 0;
-                for (const s of byProxy.values()) best = Math.max(best, s);
-                if (best >= 768 * 1024) return;
-            }
-        })()]);
-        const results = GH_PROXIES.map((proxy) => ({ proxy, speed: byProxy.get(proxy) || 0 }));
-        console.log('[updater] 镜像测速(B/s):', results.map((r) => `${r.proxy}=${r.speed}`).join(', '));
-        const usable = results.filter((r) => r.speed > 0).sort((a, b) => b.speed - a.speed);
-        return usable.length ? usable.map((r) => r.proxy) : null;
     };
     // 差量留种:把刚下载的安装包复制为缓存 installer.exe(体积相同则跳过,避免每次下载都复制 75MB)
     const seedCachedInstaller = () => {
@@ -450,8 +362,6 @@ app.whenReady().then(() => {
             const { autoUpdater } = require('electron-updater');
             updater = autoUpdater;
             autoUpdater.autoDownload = false; // 发现新版后由用户点按钮再下载
-            patchGitHubDownloadProxy();
-            patchUpdateHttpRequests();
             const pushUpdater = (type, payload) => {
                 const w = BrowserWindow.getAllWindows()[0];
                 if (w && !w.isDestroyed()) w.webContents.send('updater:event', Object.assign({ type }, payload || {}));
@@ -463,10 +373,7 @@ app.whenReady().then(() => {
             autoUpdater.on('error', (err) => { console.warn('[updater]', err && err.message); pushUpdater('error', { message: friendlyUpdaterError(err && err.message) }); });
             // 启动后延迟静默检查,避免拖慢首屏;国内网络慢,加超时兜底(失败静默,不打扰首屏)
             setTimeout(() => {
-                probeProxyForCheck()
-                    .catch(() => {})
-                    .then(() => withTimeout(autoUpdater.checkForUpdates(), CHECK_TIMEOUT_MS, '检查更新'))
-                    .catch(() => {});
+                withTimeout(autoUpdater.checkForUpdates(), CHECK_TIMEOUT_MS, '检查更新').catch(() => {});
             }, 3000);
         } catch (e) {
             console.warn('[updater] 初始化失败:', e && e.message);
@@ -476,7 +383,6 @@ app.whenReady().then(() => {
     ipcMain.handle('check-for-updates', async () => {
         if (!updater) return { ok: false, message: '当前版本不支持在线自动更新,请到 GitHub Releases 下载新版' };
         try {
-            await probeProxyForCheck().catch(() => {});
             await withTimeout(updater.checkForUpdates(), CHECK_TIMEOUT_MS, '检查更新');
             return { ok: true };
         } catch (e) {
@@ -495,45 +401,12 @@ app.whenReady().then(() => {
         if (updateDownloadInFlight) return { ok: false, message: '更新下载已在进行中' };
         updateDownloadInFlight = true;
         try {
-            // 先让横幅进入"下载中"状态:镜像测速最多要几秒,不能看起来像点了没反应
+            // 先让横幅进入"下载中"状态
             try {
                 const w = BrowserWindow.getAllWindows()[0];
                 if (w && !w.isDestroyed()) w.webContents.send('updater:event', { type: 'progress', percent: 0, speed: 0 });
             } catch (_) { /* ignore */ }
-            // ① 下载前镜像测速,选最快者下载;② 下载失败时按速度顺序自动换源重试
-            let candidates = null;
-            try {
-                const info = updater.updateInfoAndProvider && updater.updateInfoAndProvider.info;
-                const file = info && Array.isArray(info.files) ? info.files[0] : null;
-                if (info && file) {
-                    const raw = (typeof file.url === 'string') ? file.url : (file.url && file.url.href);
-                    const githubUrl = /^https?:\/\//.test(raw || '')
-                        ? raw
-                        : `${REPO_URL}/releases/download/${info.tag}/${raw}`;
-                    candidates = await rankProxies(githubUrl);
-                    if (candidates) activeProxy = candidates[0];
-                }
-            } catch (e) {
-                console.warn('[updater] 镜像测速失败(继续用默认顺序):', e && e.message);
-            }
-            let lastErr = null;
-            try {
-                await updater.downloadUpdate();
-            } catch (e) {
-                lastErr = e;
-            }
-            while (lastErr && candidates && candidates.length > 1) {
-                candidates = candidates.slice(1);
-                activeProxy = candidates[0];
-                console.warn('[updater] 下载失败,自动换镜像重试:', activeProxy, '-', lastErr.message);
-                try {
-                    await updater.downloadUpdate();
-                    lastErr = null;
-                } catch (e2) {
-                    lastErr = e2;
-                }
-            }
-            if (lastErr) return { ok: false, message: lastErr && lastErr.message };
+            await updater.downloadUpdate();
             seedCachedInstaller();
             return { ok: true };
         } finally {
@@ -610,7 +483,9 @@ ipcMain.handle('list-wall-covers', async () => {
         for (const n of names) {
             const ext = path.extname(n).toLowerCase();
             if (!['.webp', '.jpg', '.jpeg', '.png'].includes(ext)) continue;
-            out[path.basename(n, ext)] = path.join(dir, n);
+            const cover = path.join(dir, n);
+            allowImagePath(cover);
+            out[path.basename(n, ext)] = cover;
         }
         return out;
     } catch (e) {
@@ -627,6 +502,7 @@ ipcMain.handle('open-wall-covers-dir', async () => {
 });
 // 导出完成后在资源管理器中显示文件/目录(不再只显示一串路径文本)
 ipcMain.handle('show-item-in-folder', (_e, p) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
     try {
         if (!p) return { ok: false };
         const stat = fs.statSync(p);
@@ -760,11 +636,17 @@ const ensureTemplatesDir = () => {
 };
 
 ipcMain.handle('save-template', (_e, { name, data }) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
     try {
         if (!name) return { ok: false, error: '模板名称为空' };
+        if (!data || typeof data !== 'object' || Array.isArray(data)) return { ok: false, error: '模板内容无效' };
         ensureTemplatesDir();
-        const safe = String(name).replace(/[\\:*?"<>|/]/g, '_');
-        fs.writeFileSync(path.join(TEMPLATES_DIR, safe + '.json'), JSON.stringify(data, null, 2), 'utf-8');
+        const safe = safeLeafName(name, '');
+        if (!safe) return { ok: false, error: '模板名称不合法' };
+        const json = JSON.stringify(data, null, 2);
+        if (!json) return { ok: false, error: '模板内容无法序列化' };
+        if (json.length > 32 * 1024 * 1024) return { ok: false, error: '模板超过 32MB，已拒绝保存' };
+        fs.writeFileSync(path.join(TEMPLATES_DIR, safe + '.json'), json, 'utf-8');
         return { ok: true };
     } catch (e) { return { ok: false, error: String(e) }; }
 });
@@ -780,25 +662,36 @@ ipcMain.handle('list-templates', () => {
 
 ipcMain.handle('load-template', (_e, name) => {
     try {
-        const p = path.join(TEMPLATES_DIR, name + '.json');
-        if (!fs.existsSync(p)) return null;
+        const safe = safeLeafName(name, '');
+        if (!safe) return null;
+        const p = resolveInside(TEMPLATES_DIR, safe + '.json');
+        if (!p || !fs.existsSync(p)) return null;
+        if (fs.statSync(p).size > 32 * 1024 * 1024) return null;
         return JSON.parse(fs.readFileSync(p, 'utf-8'));
     } catch (e) { return null; }
 });
 
 ipcMain.handle('delete-template', (_e, name) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
     try {
-        const p = path.join(TEMPLATES_DIR, name + '.json');
+        const safe = safeLeafName(name, '');
+        if (!safe) return { ok: false, error: '模板名称不合法' };
+        const p = resolveInside(TEMPLATES_DIR, safe + '.json');
+        if (!p) return { ok: false, error: '模板名称不合法' };
         if (fs.existsSync(p)) fs.unlinkSync(p);
         return { ok: true };
     } catch (e) { return { ok: false, error: String(e) }; }
 });
 
 ipcMain.handle('rename-template', (_e, { oldName, newName }) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
     try {
         if (!oldName || !newName) return { ok: false, error: '模板名称为空' };
-        const from = path.join(TEMPLATES_DIR, String(oldName).replace(/[\\:*?"<>|/]/g, '_') + '.json');
-        const to = path.join(TEMPLATES_DIR, String(newName).replace(/[\\:*?"<>|/]/g, '_') + '.json');
+        const fromName = safeLeafName(oldName, '');
+        const toName = safeLeafName(newName, '');
+        if (!fromName || !toName) return { ok: false, error: '模板名称不合法' };
+        const from = path.join(TEMPLATES_DIR, fromName + '.json');
+        const to = path.join(TEMPLATES_DIR, toName + '.json');
         if (!fs.existsSync(from)) return { ok: false, error: '源模板不存在' };
         if (fs.existsSync(to)) return { ok: false, error: '已存在同名模板' };
         fs.renameSync(from, to);
@@ -806,9 +699,140 @@ ipcMain.handle('rename-template', (_e, { oldName, newName }) => {
     } catch (e) { return { ok: false, error: String(e) }; }
 });
 
+// ── 草稿附件:把模板里的大 data: 图片搬到 userData/draft-assets,草稿只存引用 ──
+// localStorage 只有几 MB,旧实现超过 64KB 的 data: 串直接清空、整份超 8MB 就跳过保存,
+// 导致头像/自定义图标/带图模板在崩溃恢复后静默消失。搬到磁盘后草稿保持小体积,
+// 图片也不再被截断。
+const DRAFT_ASSET_RE = /^qfasset:([a-f0-9]{64})\.([a-z0-9]+)$/i;
+const DRAFT_DATA_URL_RE = /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i;
+const DRAFT_ASSET_MAX_BYTES = 64 * 1024 * 1024;
+const DRAFT_ASSET_TOTAL_BYTES = 512 * 1024 * 1024;
+const DRAFT_ASSET_MAX_COUNT = 500;
+const draftAssetsDir = () => path.join(app.getPath('userData'), 'draft-assets');
+const assetExt = (mime) => {
+    const m = String(mime || '').toLowerCase();
+    if (m.includes('jpeg') || m.includes('jpg')) return 'jpg';
+    if (m.includes('png')) return 'png';
+    if (m.includes('webp')) return 'webp';
+    if (m.includes('gif')) return 'gif';
+    if (m.includes('bmp')) return 'bmp';
+    if (m.includes('svg')) return 'svg';
+    return 'bin';
+};
+const assetMime = (ext) => ({
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+    gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml'
+})[String(ext || '').toLowerCase()] || 'application/octet-stream';
+const walkDraftStrings = (node, fn, depth) => {
+    if (depth > 32 || node == null) return node;
+    if (typeof node === 'string') return fn(node);
+    if (Array.isArray(node)) {
+        for (let i = 0; i < node.length; i++) node[i] = walkDraftStrings(node[i], fn, depth + 1);
+        return node;
+    }
+    if (typeof node === 'object') {
+        for (const k of Object.keys(node)) {
+            if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+            node[k] = walkDraftStrings(node[k], fn, depth + 1);
+        }
+    }
+    return node;
+};
+const externalizeDraftAssets = (draft) => {
+    const dir = draftAssetsDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const keep = new Set();
+    let count = 0, bytes = 0, dropped = 0;
+    walkDraftStrings(draft, (s) => {
+        if (s.length < 4096) return s;
+        const m = s.match(DRAFT_DATA_URL_RE);
+        if (!m) return s;
+        // 先按 base64 字符串长度挡一次,避免为超大串先分配几十 MB 再判断。
+        if (m[2].length > Math.ceil(DRAFT_ASSET_MAX_BYTES * 4 / 3) + 4) {
+            dropped++;
+            return '';
+        }
+        const raw = Buffer.from(m[2], 'base64');
+        if (raw.length > DRAFT_ASSET_MAX_BYTES || count >= DRAFT_ASSET_MAX_COUNT || bytes + raw.length > DRAFT_ASSET_TOTAL_BYTES) {
+            dropped++;
+            return '';
+        }
+        const hash = crypto.createHash('sha256').update(raw).digest('hex');
+        const ext = assetExt(m[1]);
+        const name = `${hash}.${ext}`;
+        const file = path.join(dir, name);
+        try {
+            if (!fs.existsSync(file)) fs.writeFileSync(file, raw);
+            keep.add(name);
+            count++;
+            bytes += raw.length;
+            return `qfasset:${name}`;
+        } catch (e) {
+            dropped++;
+            return '';
+        }
+    }, 0);
+    // 只清理 7 天前的孤儿附件,避免和"正在写的上一版草稿"抢文件。
+    try {
+        const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
+        for (const n of fs.readdirSync(dir)) {
+            if (keep.has(n)) continue;
+            const fp = path.join(dir, n);
+            try { if (fs.statSync(fp).mtimeMs < cutoff) fs.unlinkSync(fp); } catch (e) { /* ignore */ }
+        }
+    } catch (e) { /* ignore */ }
+    return { count, bytes, dropped };
+};
+const hydrateDraftAssets = (draft) => {
+    const dir = draftAssetsDir();
+    let missing = 0, restored = 0;
+    walkDraftStrings(draft, (s) => {
+        const m = s.match(DRAFT_ASSET_RE);
+        if (!m) return s;
+        const file = resolveInside(dir, m[1] + '.' + m[2]);
+        if (!file) { missing++; return ''; }
+        try {
+            if (fs.statSync(file).size > DRAFT_ASSET_MAX_BYTES) { missing++; return ''; }
+            const buf = fs.readFileSync(file);
+            restored++;
+            return `data:${assetMime(m[2])};base64,${buf.toString('base64')}`;
+        } catch (e) { missing++; return ''; }
+    }, 0);
+    return { missing, restored };
+};
+ipcMain.handle('draft-externalize', (_e, draft) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
+    try {
+        if (!draft || typeof draft !== 'object') return { ok: false, error: '草稿格式无效' };
+        const stats = externalizeDraftAssets(draft);
+        const json = JSON.stringify(draft);
+        if (json.length > 16 * 1024 * 1024) return { ok: false, error: '草稿仍然过大，已跳过本次保存' };
+        return { ok: true, draft, json, stats };
+    } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+});
+ipcMain.handle('draft-hydrate', (_e, draft) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
+    try {
+        if (!draft || typeof draft !== 'object') return { ok: false, error: '草稿格式无效' };
+        const stats = hydrateDraftAssets(draft);
+        return { ok: true, draft, stats };
+    } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+});
+ipcMain.handle('draft-clear-assets', (_e) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
+    try {
+        const dir = draftAssetsDir();
+        if (fs.existsSync(dir)) for (const n of fs.readdirSync(dir)) {
+            try { fs.unlinkSync(path.join(dir, n)); } catch (e) { /* ignore */ }
+        }
+        return { ok: true };
+    } catch (e) { return { ok: false, error: String(e) }; }
+});
+
 ipcMain.handle('export-template', async (_e, { name, data }) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
     const st = loadState();
-    const baseName = (name || 'template') + '.json';
+    const baseName = safeLeafName(name || 'template', 'template') + '.json';
     const def = validDir(st.lastExportDir) ? path.join(st.lastExportDir, baseName) : baseName;
     const { canceled, filePath } = await dialog.showSaveDialog({
         title: '导出模板',
@@ -817,7 +841,10 @@ ipcMain.handle('export-template', async (_e, { name, data }) => {
     });
     if (canceled || !filePath) return { ok: false, canceled: true };
     try {
-        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+        const json = JSON.stringify(data, null, 2);
+        if (!json) return { ok: false, error: '模板内容无法序列化' };
+        if (json.length > 32 * 1024 * 1024) return { ok: false, error: '模板超过 32MB，已拒绝导出' };
+        fs.writeFileSync(filePath, json, 'utf-8');
         saveState({ lastExportDir: path.dirname(filePath) });
         return { ok: true };
     } catch (e) { return { ok: false, error: String(e) }; }
@@ -833,6 +860,7 @@ ipcMain.handle('import-template', async () => {
     });
     if (canceled || !filePaths.length) return { ok: false, canceled: true };
     try {
+        if (fs.statSync(filePaths[0]).size > 32 * 1024 * 1024) return { ok: false, error: '模板超过 32MB' };
         const data = JSON.parse(fs.readFileSync(filePaths[0], 'utf-8'));
         saveState({ lastOpenDir: path.dirname(filePaths[0]) });
         return { ok: true, name: path.basename(filePaths[0], '.json'), data };
@@ -840,9 +868,130 @@ ipcMain.handle('import-template', async () => {
 });
 
 // ── .qfs 工程文件:自包含单文件(模板 + 源照片 + 每图模板,照片以 base64 内嵌) ──
+// ── .qfs 流式导出:逐张写临时文件,最后拼成一个 JSON,避免所有照片 base64 同时驻留 ──
+// 旧实现把所有照片 toDataURL 进一个数组,再 JSON.stringify 整体过 IPC:20 张 24MP
+// 就是几百 MB 的字符串峰值,主线程冻结甚至 OOM。现在渲染层一次只编码一张,
+// 主进程把 base64 落到临时文件,finish 时按块拼装。
+const qfsExports = new Map();
+const qfsTmpRoot = () => path.join(app.getPath('userData'), 'qfs-tmp');
+const cleanupQfsSession = (id) => {
+    const s = qfsExports.get(id);
+    qfsExports.delete(id);
+    if (!s) return;
+    try { fs.rmSync(s.tmpDir, { recursive: true, force: true }); } catch (e) { /* ignore */ }
+};
+const cleanupQfsTmpRoot = () => {
+    try { fs.rmSync(qfsTmpRoot(), { recursive: true, force: true }); } catch (e) { /* ignore */ }
+};
+ipcMain.handle('qfs-begin-export', async (_e, meta) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
+    try {
+        if (!meta || typeof meta !== 'object') return { ok: false, error: '工程数据无效' };
+        const st = loadState();
+        const rawName = String(meta.name || '未命名工程');
+        const baseName = safeLeafName(rawName, '未命名工程') + '.qfs';
+        const def = validDir(st.lastExportDir) ? path.join(st.lastExportDir, baseName) : baseName;
+        const { canceled, filePath } = await dialog.showSaveDialog({
+            title: '导出工程 (.qfs)',
+            defaultPath: def,
+            filters: [
+                { name: '清框影工程 (*.qfs)', extensions: ['qfs'] },
+                { name: 'JSON', extensions: ['json'] }
+            ]
+        });
+        if (canceled || !filePath) return { canceled: true };
+        const header = {
+            v: 2,
+            kind: 'qfs',
+            app: 'qingframe-web',
+            name: rawName,
+            createdAt: new Date().toISOString(),
+            session: (meta.session && typeof meta.session === 'object') ? meta.session : {},
+            template: (meta.template && typeof meta.template === 'object') ? meta.template : null
+        };
+        if (JSON.stringify(header).length > 16 * 1024 * 1024) return { ok: false, error: '工程模板超过 16MB' };
+        const id = crypto.randomUUID();
+        const tmpDir = path.join(qfsTmpRoot(), id);
+        fs.mkdirSync(tmpDir, { recursive: true });
+        qfsExports.set(id, { filePath, tmpDir, header, entries: [] });
+        saveState({ lastExportDir: path.dirname(filePath) });
+        return { ok: true, id };
+    } catch (e) { return { ok: false, error: String(e) }; }
+});
+ipcMain.handle('qfs-add-image', async (_e, payload) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
+    const id = payload && payload.id;
+    const s = id && qfsExports.get(id);
+    if (!s) return { ok: false, error: '导出会话已失效' };
+    try {
+        const entry = payload.entry && typeof payload.entry === 'object' ? Object.assign({}, payload.entry) : {};
+        delete entry.data;
+        let data = String(payload.data || '');
+        const comma = data.indexOf(',');
+        if (data.startsWith('data:') && comma > 0) data = data.slice(comma + 1);
+        if (!data || !/^[A-Za-z0-9+/=]+$/.test(data)) return { ok: false, error: '照片数据不是有效的 base64' };
+        if (data.length > 96 * 1024 * 1024) return { ok: false, error: '单张照片数据超过 96MB' };
+        if (JSON.stringify(entry).length > 16 * 1024 * 1024) return { ok: false, error: '单张照片模板超过 16MB' };
+        if (s.entries.length >= 200) return { ok: false, error: '工程里的照片超过 200 张' };
+        s.totalBytes = (s.totalBytes || 0) + data.length;
+        if (s.totalBytes > 240 * 1024 * 1024) {
+            s.totalBytes -= data.length;
+            return { ok: false, error: '工程总大小超过 256MB，请分批导出' };
+        }
+        const file = path.join(s.tmpDir, `${s.entries.length}.b64`);
+        await fs.promises.writeFile(file, data, 'utf-8');
+        s.entries.push({ entry, file });
+        return { ok: true, count: s.entries.length };
+    } catch (e) { return { ok: false, error: String(e) }; }
+});
+ipcMain.handle('qfs-finish-export', async (_e, id) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
+    const s = id && qfsExports.get(id);
+    if (!s) return { ok: false, error: '导出会话已失效' };
+    const out = fs.createWriteStream(s.filePath, { encoding: 'utf-8' });
+    const write = (chunk) => new Promise((resolve, reject) => {
+        const onError = (e) => { out.off('drain', onDrain); reject(e); };
+        const onDrain = () => { out.off('error', onError); resolve(); };
+        out.once('error', onError);
+        if (!out.write(chunk)) out.once('drain', onDrain);
+        else { out.off('error', onError); resolve(); }
+    });
+    try {
+        const head = JSON.stringify(s.header);
+        await write(head.slice(0, -1) + ',"images":[');
+        for (let i = 0; i < s.entries.length; i++) {
+            const e = s.entries[i];
+            const meta = JSON.stringify(e.entry);
+            await write((i ? ',' : '') + meta.slice(0, -1) + ',"data":"');
+            const b64 = await fs.promises.readFile(e.file, 'utf-8');
+            await write(b64);
+            await write('"}');
+        }
+        await write(']}');
+        await new Promise((resolve, reject) => {
+            out.end(() => resolve());
+            out.once('error', reject);
+        });
+        cleanupQfsSession(id);
+        return { ok: true, name: s.header.name };
+    } catch (e) {
+        try { out.destroy(); } catch (_) { /* ignore */ }
+        try { fs.unlinkSync(s.filePath); } catch (_) { /* ignore */ }
+        cleanupQfsSession(id);
+        return { ok: false, error: String(e) };
+    }
+});
+ipcMain.handle('qfs-cancel-export', (_e, id) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
+    if (id) cleanupQfsSession(id);
+    return { ok: true };
+});
+app.on('will-quit', cleanupQfsTmpRoot);
+
 ipcMain.handle('export-qfs', async (_e, data) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
     const st = loadState();
-    const baseName = (data && data.name ? String(data.name) : '未命名工程') + '.qfs';
+    const baseName = safeLeafName(data && data.name ? String(data.name) : '未命名工程', '未命名工程') + '.qfs';
     const def = validDir(st.lastExportDir) ? path.join(st.lastExportDir, baseName) : baseName;
     const { canceled, filePath } = await dialog.showSaveDialog({
         title: '导出工程 (.qfs)',
@@ -854,7 +1003,10 @@ ipcMain.handle('export-qfs', async (_e, data) => {
     });
     if (canceled || !filePath) return { ok: false, canceled: true };
     try {
-        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+        const json = JSON.stringify(data, null, 2);
+        if (!json) return { ok: false, error: '工程内容无法序列化' };
+        if (json.length > 256 * 1024 * 1024) return { ok: false, error: '工程超过 256MB，请改用流式导出' };
+        fs.writeFileSync(filePath, json, 'utf-8');
         saveState({ lastExportDir: path.dirname(filePath) });
         return { ok: true };
     } catch (e) { return { ok: false, error: String(e) }; }
@@ -873,6 +1025,8 @@ ipcMain.handle('open-qfs', async () => {
     });
     if (canceled || !filePaths.length) return { ok: false, canceled: true };
     try {
+        const st = fs.statSync(filePaths[0]);
+        if (st.size > 256 * 1024 * 1024) return { ok: false, error: '工程文件超过 256MB，暂不支持导入' };
         const data = JSON.parse(fs.readFileSync(filePaths[0], 'utf-8'));
         saveState({ lastOpenDir: path.dirname(filePaths[0]) });
         return { ok: true, name: path.basename(filePaths[0], path.extname(filePaths[0])), data };
@@ -901,7 +1055,7 @@ ipcMain.handle('get-prefs', () => {
 });
 
 ipcMain.handle('save-prefs', (_e, prefs) => {
-    if (prefs && typeof prefs === 'object') saveState({ prefs });
+    if (prefs && typeof prefs === 'object' && !Array.isArray(prefs)) saveState({ prefs });
     return { ok: true };
 });
 
@@ -931,6 +1085,10 @@ const collectImageFiles = async (inputPaths, limit) => {
         if (!st.isFile()) { skipped++; return; }
         const ext = path.extname(p).slice(1).toLowerCase();
         if (!IMAGE_EXT_SET.has(ext)) { skipped++; return; }
+        if (imageRejectReason(p, st.size)) { skipped++; return; }
+        // 拖放 / 导入文件夹都走这里:收集成功即登记 qflocal 白名单。
+        // 之前只在 collect-images 外层登记,导入文件夹路径会全部 403。
+        allowImagePath(p);
         const real = path.resolve(p);
         if (seen.has(real)) return;
         seen.add(real);
@@ -981,7 +1139,11 @@ ipcMain.handle('open-image', async () => {
     if (canceled || filePaths.length === 0) return null;
     saveState({ lastOpenDir: path.dirname(filePaths[0]) });
     const fp = filePaths[0];
-    return { name: path.basename(fp), path: fp, size: fs.statSync(fp).size, exif: await readPhotoExif(fp) };
+    const size = fs.statSync(fp).size;
+    const reason = imageRejectReason(fp, size);
+    if (reason) return { error: `图片过大（${reason}），已跳过` };
+    allowImagePath(fp);
+    return { name: path.basename(fp), path: fp, size, exif: await readPhotoExif(fp) };
 });
 
 ipcMain.handle('open-images', async () => {
@@ -995,10 +1157,13 @@ ipcMain.handle('open-images', async () => {
     if (canceled || !filePaths.length) return null;
     saveState({ lastOpenDir: path.dirname(filePaths[0]) });
     // 并发解析 EXIF:头部读取后单张约 1ms,但串行 await 会线性累加(Promise.all 保序)
-    const items = await Promise.all(filePaths.map(async (fp) => ({
-        name: path.basename(fp), path: fp, size: fs.statSync(fp).size, exif: await readPhotoExif(fp)
-    })));
-    return items;
+    const items = (await Promise.all(filePaths.map(async (fp) => {
+        const size = fs.statSync(fp).size;
+        if (imageRejectReason(fp, size)) return null;
+        allowImagePath(fp);
+        return { name: path.basename(fp), path: fp, size, exif: await readPhotoExif(fp) };
+    }))).filter(Boolean);
+    return items.length ? items : null;
 });
 
 // 拖放:渲染进程只拿得到 File 对象,这里把路径交给主进程统一递归收集(含文件夹)
@@ -1030,6 +1195,7 @@ ipcMain.handle('read-clipboard-image', async () => {
         await fs.promises.mkdir(dir, { recursive: true });
         const fp = path.join(dir, `paste-${Date.now()}.png`);
         await fs.promises.writeFile(fp, img.toPNG());
+        allowImagePath(fp);
         const size = img.getSize();
         return {
             name: path.basename(fp), path: fp, size: fs.statSync(fp).size,
@@ -1041,7 +1207,18 @@ ipcMain.handle('read-clipboard-image', async () => {
     }
 });
 
-ipcMain.handle('read-exif', (_e, filePath) => readPhotoExif(String(filePath || '')));
+ipcMain.handle('read-exif', (_e, filePath) => {
+    const p = String(filePath || '');
+    // 草稿恢复时先读 EXIF 再交给 <img>:这里顺带把路径登记进 qflocal 白名单。
+    // 非图片扩展名/超大图直接拒绝,避免 read-exif 变成任意文件探测或解码炸弹入口。
+    if (!SERVABLE_IMAGE_EXT.has(path.extname(p).toLowerCase())) return {};
+    try {
+        const size = fs.statSync(p).size;
+        if (imageRejectReason(p, size)) return {};
+    } catch (e) { return {}; }
+    if (!allowImagePath(p)) return {};
+    return readPhotoExif(p);
+});
 
 // 贴纸 / 自定义图标:体积小且须内嵌进模板(导出/导入不丢),仍走 base64 dataUrl
 ipcMain.handle('open-sticker-image', async () => {
@@ -1055,17 +1232,23 @@ ipcMain.handle('open-sticker-image', async () => {
     if (canceled || filePaths.length === 0) return null;
     saveState({ lastOpenDir: path.dirname(filePaths[0]) });
     const fp = filePaths[0];
+    const size = fs.statSync(fp).size;
+    if (size > 64 * 1024 * 1024) return { error: '贴纸图片超过 64MB，已跳过' };
+    const dim = imageSize(fp);
+    if (dim && dim.width * dim.height > MAX_IMAGE_PIXELS) return { error: '贴纸图片像素超过 2 亿，已跳过' };
     return { name: path.basename(fp), data: fs.readFileSync(fp).toString('base64') };
 });
 
 ipcMain.handle('save-image-base64', async (_e, { data, filename }) => {
+    if (!isTrustedFrame(_e)) return false;
     const st = loadState();
     const dir = validDir(st.lastExportDir) ? st.lastExportDir : null;
     // 目标目录已有同名文件时自动加号,再次导出数字继续递增
-    const def = dir ? freeFilePath(dir, filename) : filename;
+    const safeName = safeExportName(filename, 'photo.png');
+    const def = dir ? freeFilePath(dir, safeName) : safeName;
     // 默认过滤器跟随目标文件名扩展名:此前 PNG 恒排第一,导 JPG/WebP 时保存框先显示「PNG 图片」,
     // 一路回车就会拿到扩展名与内容不一致的文件。
-    const ext = String(path.extname(filename || '') || '.png').slice(1).toLowerCase();
+    const ext = String(path.extname(safeName) || '.png').slice(1).toLowerCase();
     const allFilters = [
         { name: 'PNG 图片', extensions: ['png'] },
         { name: 'JPEG 图片', extensions: ['jpg', 'jpeg'] },
@@ -1079,13 +1262,16 @@ ipcMain.handle('save-image-base64', async (_e, { data, filename }) => {
         filters: filters
     });
     if (canceled || !filePath) return false;
-    fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
+    if (!EXPORT_EXTS.has(path.extname(filePath).toLowerCase())) return false;
+    fs.writeFileSync(filePath, ensurePngSrgb(Buffer.from(data, 'base64')));
     saveState({ lastExportDir: path.dirname(filePath) });
     return true;
 });
 
 ipcMain.handle('save-images-batch', async (_e, files) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
     // files: [{ data, filename }]
+    if (!Array.isArray(files) || !files.length || files.length > 1000) return { canceled: true, error: '文件数量不合法' };
     let dir = null;
     const st = loadState();
     try {
@@ -1104,9 +1290,12 @@ ipcMain.handle('save-images-batch', async (_e, files) => {
         for (const f of files) {
             if (!f || !f.data) { fail++; continue; }
             try {
-                // 目录里已有同名文件(含本次已写入)时自动加号
-                const dest = freeFilePath(dir, f.filename, written);
-                fs.writeFileSync(dest, Buffer.from(f.data, 'base64'));
+                // 目录里已有同名文件(含本次已写入)时自动加号。
+                // filename 来自渲染层,先收成单段安全文件名,避免 ..\ 写出所选目录。
+                const safeName = safeExportName(f.filename, 'photo.png');
+                const dest = resolveInside(dir, freeFilePath(dir, safeName, written));
+                if (!dest) { fail++; continue; }
+                fs.writeFileSync(dest, ensurePngSrgb(Buffer.from(f.data, 'base64')));
                 written.add(path.basename(dest));
                 ok++;
             } catch (e) { fail++; }
@@ -1131,9 +1320,10 @@ ipcMain.handle('pick-export-location', async (_e, { count, hintName }) => {
         if (res.canceled || !res.filePaths.length) return { canceled: true };
         const dir = res.filePaths[0];
         saveState({ lastExportDir: dir });
-        return { mode: 'dir', dir };
+        return approveExportLocation({ mode: 'dir', dir });
     }
-    const def = dir0 ? freeFilePath(dir0, hintName || 'photo.jpg') : (hintName || 'photo.jpg');
+    const hint = safeExportName(hintName || 'photo.jpg', 'photo.jpg');
+    const def = dir0 ? freeFilePath(dir0, hint) : hint;
     const { canceled, filePath } = await dialog.showSaveDialog({
         title: '导出图片',
         defaultPath: def,
@@ -1151,22 +1341,37 @@ ipcMain.handle('pick-export-location', async (_e, { count, hintName }) => {
         fp += ext0;
     }
     saveState({ lastExportDir: path.dirname(fp) });
-    return { mode: 'file', filePath: fp };
+    return approveExportLocation({ mode: 'file', filePath: fp });
 });
 
 // 把已渲染好的导出数据写入选好的位置。
 // 条目带 originalPath 时,经 exif-write 把原图 EXIF 移植进 JPEG 字节(失败静默回退为原字节)。
-ipcMain.handle('write-export-files', async (event, { location, files }) => {
-    if (!location || !files || !files.length) return { ok: 0, fail: files ? files.length : 0 };
+ipcMain.handle('write-export-files', async (event, payload) => {
+    if (!isTrustedFrame(event)) return BLOCKED;
+    const files = payload && payload.files;
+    if (!Array.isArray(files) || !files.length) return { ok: 0, fail: files ? files.length : 0 };
+    if (files.length > 1000) return { ok: 0, fail: files.length, error: '文件数量超过上限' };
+    // location 只认 pick-export-location 发出去的令牌,渲染层传来的 dir/filePath 不可信。
+    const token = payload && payload.location && payload.location.token;
+    const location = token && approvedExportLocations.get(token);
+    if (!location) return { ok: 0, fail: files.length, error: '导出位置未授权,请重新选择导出目录' };
     if (location.mode === 'file') {
+        if (!EXPORT_EXTS.has(path.extname(location.filePath).toLowerCase())) {
+            return { ok: 0, fail: 1, error: '不支持的导出格式' };
+        }
         try {
-            fs.writeFileSync(location.filePath, await exifWrite.applyExifToExportItem(files[0]));
+            fs.writeFileSync(location.filePath, ensurePngSrgb(await exifWrite.applyExifToExportItem(files[0])));
             event.sender.send('export-progress', { done: 1, total: 1 });
             return { ok: 1, fail: 0 };
         } catch (e) {
             return { ok: 0, fail: 1, error: String(e) };
         }
     }
+    if (location.mode !== 'dir') return { ok: 0, fail: files.length, error: '导出位置无效' };
+    try {
+        const st = fs.statSync(location.dir);
+        if (!st.isDirectory()) return { ok: 0, fail: files.length, error: '导出目录无效' };
+    } catch (e) { return { ok: 0, fail: files.length, error: '导出目录不存在' }; }
     let ok = 0, fail = 0;
     const written = new Set();
     try {
@@ -1175,12 +1380,17 @@ ipcMain.handle('write-export-files', async (event, { location, files }) => {
             if (!f || (!f.data && !f.bytes)) { fail++; }
             else {
                 try {
-                    const destDir = (f.subdir && String(f.subdir).trim()) ? path.join(location.dir, String(f.subdir).trim()) : location.dir;
-                    if (destDir !== location.dir) fs.mkdirSync(destDir, { recursive: true });
-                    const dest = freeFilePath(destDir, f.filename || (f.stem + '.' + f.ext), written);
-                    fs.writeFileSync(dest, await exifWrite.applyExifToExportItem(f));
-                    written.add(path.basename(dest));
-                    ok++;
+                    const destDir = safeSubdir(location.dir, f.subdir);
+                    if (destDir !== path.resolve(location.dir)) fs.mkdirSync(destDir, { recursive: true });
+                    const fallback = (f.stem ? String(f.stem) : 'photo') + '.' + (f.ext || 'png');
+                    const safeName = safeExportName(f.filename || fallback, 'photo.png');
+                    const dest = resolveInside(destDir, freeFilePath(destDir, safeName, written));
+                    if (!dest) { fail++; }
+                    else {
+                        fs.writeFileSync(dest, ensurePngSrgb(await exifWrite.applyExifToExportItem(f)));
+                        written.add(path.basename(dest));
+                        ok++;
+                    }
                 } catch (e) { fail++; }
             }
             // 目录分支原来不发这个事件,渲染层 onExportProgress 永远收不到 →

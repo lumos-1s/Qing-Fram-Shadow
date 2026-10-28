@@ -19,6 +19,10 @@ Until then:
   Foundation vouches for the current binaries.
 - Verify downloads against the `sha512` in `latest.yml` — see
   [Verifying an unsigned release](#verifying-an-unsigned-release).
+- Auto-update may only use GitHub directly while artifacts are unsigned. Do not
+  route `latest.yml` or installers through third-party mirrors: the mirror would
+  control both the manifest and the binary, making the `sha512` check useless.
+  See the update-mirror note in [`RELEASE.md`](./RELEASE.md).
 
 The workflow in `.github/workflows/release-signpath.yml` and the configuration
 in [`signpath/`](./signpath/) are kept in the repository, dormant: they only run

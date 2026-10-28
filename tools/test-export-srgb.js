@@ -6,7 +6,8 @@
 // 应用目前"恰好"是正确的,但正确性是**偶然**的,没有任何东西守着它:
 //   · 全部 30+ 处 getContext('2d') 用默认参数 → 画布按规范就是 sRGB,
 //     故 Display P3 / AdobeRGB 源图在 drawImage 时已被浏览器转成 sRGB。
-//   · 实测 toDataURL('image/png')  → IHDR + sRGB + IDAT,**没有 iCCP**
+//   · Electron 45 的 toDataURL('image/png') → IHDR + IDAT,**不再自带 sRGB**,由
+//     src/shared/png-srgb.js 在写盘前补齐;**没有 iCCP**
 //     实测 toDataURL('image/jpeg') → 只有 JFIF APP0,**没有 ICC_PROFILE**
 //   · 8 处 toDataURL、5 处 writeFileSync 全是「canvas 编码 → base64 → 写盘」,
 //     没有任何路径把源文件原始字节当图片写出,故源图 ICC 不会透传到成品。
@@ -107,11 +108,15 @@ const CHECK = `
   // 这条测试自己就把画布锁成 sRGB 了,注入 display-p3 也测不出来(假阴性)。
   const g = cEl.getContext('2d');
   const attrs = g.getContextAttributes ? g.getContextAttributes() : {};
+  const rawPng = cEl.toDataURL('image/png');
+  // Electron 45 的 canvas 编码器不再自动写 sRGB chunk;成品写盘统一走
+  // src/shared/png-srgb.js(主进程 ensurePngSrgb)。这里验证"经过写盘前处理后"的字节。
+  const outPng = window.QFpng.ensureDataUrl(rawPng);
   return {
     colorSpace: attrs.colorSpace === undefined ? '(未声明→sRGB)' : attrs.colorSpace,
-    hasSrgbChunk: pngChunks(cEl.toDataURL('image/png').split(',')[1]).indexOf('sRGB') >= 0,
-    pngChunks: pngChunks(cEl.toDataURL('image/png').split(',')[1]).join(' '),
-    hasIccp: pngChunks(cEl.toDataURL('image/png').split(',')[1]).indexOf('iCCP') >= 0,
+    hasSrgbChunk: pngChunks(outPng.split(',')[1]).indexOf('sRGB') >= 0,
+    pngChunks: pngChunks(outPng.split(',')[1]).join(' '),
+    hasIccp: pngChunks(outPng.split(',')[1]).indexOf('iCCP') >= 0,
     jpegIcc: jpegIccLen(cEl.toDataURL('image/jpeg', 0.92).split(',')[1])
   };
 })()
@@ -155,7 +160,7 @@ app.whenReady().then(async () => {
   if (r.colorSpace !== '(未声明→sRGB)' && r.colorSpace !== 'srgb') {
     fails.push(`导出画布 colorSpace = ${r.colorSpace},应为 sRGB`);
   }
-  // ② PNG 必须显式标注 sRGB
+  // ② PNG 必须显式标注 sRGB(写盘前由 shared/png-srgb.js 补齐)
   if (!r.hasSrgbChunk) fails.push('PNG 出口没有 sRGB chunk —— 第三方软件只能靠猜');
   // ③ PNG 不得携带 iCCP(那正是 libpng "known incorrect sRGB profile" 警告的来源)
   if (r.hasIccp) fails.push('PNG 出口带 iCCP chunk —— 会触发 libpng iCCP 警告,且 profile 可能不可信');

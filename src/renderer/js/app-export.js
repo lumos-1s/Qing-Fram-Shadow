@@ -358,6 +358,7 @@ window.App = Object.assign(window.App || {}, {
     // 按当前导出格式/质量把缓存切块转成可写盘文件
     // im:这些切块源自哪张照片(九宫格是同源裁切,EXIF 仍跟随它的主照片)
     _gridFiles(baseName, subdir, im) {
+        baseName = this.safeExportBase(baseName);
         const fmt = this.dom.selFormat.value;
         const mime = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }[fmt] || 'image/jpeg';
         const quality = (fmt === 'jpeg' || fmt === 'webp') ? Math.min(1, Math.max(0.6, (parseInt(this.dom.slExportQuality.value, 10) || 92) / 100)) : 1;
@@ -428,53 +429,59 @@ window.App = Object.assign(window.App || {}, {
         let offWrite = null;
         try {
             if (targets.length > 1) {
-                this.setStatus('正在批量切图 0/' + targets.length + '…');
-                const allFiles = [];
-                const originalIdx = this.currentIdx;
-                const baseTemplate = this.template;
-                for (let k = 0; k < targets.length; k++) {
-                    const idx = targets[k];
-                    const im = this.images[idx];
-                    if (!im) continue;
-                    this.currentIdx = idx; this.image = im;
-                    this.invalidateStyleCaches && this.invalidateStyleCaches();
-                    const srcTpl = this.exportTemplateFor(im, idx, originalIdx, baseTemplate);
-                    this.template = srcTpl ? JSON.parse(JSON.stringify(srcTpl)) : baseTemplate;
-                    this.normalizeTemplate && this.normalizeTemplate();
-                    this.showExportProgress(k, targets.length, im.name);
-                    const src = await this._renderGridFrame();
-                    const blocks = this._sliceGrid(src, n, this.gridPad());
-                    this._gridBlocks = blocks;
-                    const baseName = (im.name || ('photo' + (idx + 1))).replace(/\.[^.]+$/, '');
-                    allFiles.push.apply(allFiles, this._gridFiles(baseName, this.gridSubdir() ? baseName : '', im));
-                    this.setStatus('正在批量切图 ' + (k + 1) + '/' + targets.length + '…');
-                }
-                this.currentIdx = originalIdx; this.image = this.images[originalIdx];
-                this.invalidateStyleCaches && this.invalidateStyleCaches();
-                this.template = baseTemplate;
-                this._gridBlocks = null;
-                if (!allFiles.length) { this.setStatus('请先导入照片'); return; }
-                const loc = await window.qingframe.pickExportLocation({ count: allFiles.length, hintName: '九宫格批量' });
+                const targetIdxs = targets.filter(i => this.images[i]);
+                const totalCount = targetIdxs.length * n * n;
+                if (!totalCount) { this.setStatus('请先导入照片'); return; }
+                // 先选目录再逐张渲染/写盘:不再把所有切块的 base64 同时攒在内存里。
+                const loc = await window.qingframe.pickExportLocation({ count: totalCount, hintName: '九宫格批量' });
                 if (!loc || loc.canceled) { this.setStatus('已取消切图'); return; }
                 {
                     const bar0 = document.getElementById('progressBar');
                     if (bar0) bar0.style.width = '2%';
                     this.progressWrap(true);
                     const label0 = document.getElementById('exportProgressText');
-                    if (label0) { label0.style.display = ''; label0.textContent = '写盘 0/' + allFiles.length + ' · 九宫格'; }
+                    if (label0) { label0.style.display = ''; label0.textContent = '写盘 0/' + totalCount + ' · 九宫格'; }
                 }
+                let writeBase = 0, okCount = 0, failCount = 0;
                 offWrite = window.qingframe.onExportProgress((d) => {
+                    const done = Math.min(totalCount, writeBase + d.done);
                     const bar = document.getElementById('progressBar');
-                    if (bar) bar.style.width = Math.round((d.done / d.total) * 100) + '%';
+                    if (bar) bar.style.width = Math.round((done / totalCount) * 100) + '%';
                     const label = document.getElementById('exportProgressText');
-                    if (label) { label.style.display = ''; label.textContent = '写盘 ' + d.done + '/' + d.total + ' · 九宫格'; }
-                    // 收到最后一张就摘监听。原先是在 invoke 的 .then 里摘,
-                    // 而 send 与 invoke 的回复没有严格的先后保证 —— 实测进度条有时停在 8/9、89%。
-                    if (d.done >= d.total && offWrite) { offWrite(); offWrite = null; }
+                    if (label) { label.style.display = ''; label.textContent = '写盘 ' + done + '/' + totalCount + ' · 九宫格'; }
+                    if (done >= totalCount && offWrite) { offWrite(); offWrite = null; }
                 });
-                const wr = await window.qingframe.writeExportFiles({ location: loc, files: allFiles }) || {};
-                const total = allFiles.length;
-                this.setStatus(wr.ok ? '批量九宫格完成:' + targets.filter(i => this.images[i]).length + '张×' + n * n + '=' + total + '张,成功 ' + wr.ok + (wr.fail ? ',失败 ' + wr.fail : '') + ' · 每块约 ' + Math.round(this.gridRenderMax() / n) + 'px' : '切图导出失败');
+                const originalIdx = this.currentIdx;
+                const baseTemplate = this.template;
+                try {
+                    for (let k = 0; k < targetIdxs.length; k++) {
+                        const idx = targetIdxs[k];
+                        const im = this.images[idx];
+                        this.currentIdx = idx; this.image = im;
+                        this.invalidateStyleCaches && this.invalidateStyleCaches();
+                        const srcTpl = this.exportTemplateFor(im, idx, originalIdx, baseTemplate);
+                        this.template = srcTpl ? JSON.parse(JSON.stringify(srcTpl)) : baseTemplate;
+                        this.normalizeTemplate && this.normalizeTemplate();
+                        this.showExportProgress(k, targetIdxs.length, im.name);
+                        const src = await this._renderGridFrame();
+                        const blocks = this._sliceGrid(src, n, this.gridPad());
+                        this._gridBlocks = blocks;
+                        const baseName = this.safeExportBase(im.name || ('photo' + (idx + 1)));
+                        const files = this._gridFiles(baseName, this.gridSubdir() ? baseName : '', im);
+                        this._gridBlocks = null;
+                        this.setStatus('正在批量切图 ' + (k + 1) + '/' + targetIdxs.length + '…');
+                        writeBase = okCount + failCount;
+                        const wr = await window.qingframe.writeExportFiles({ location: loc, files }) || {};
+                        okCount += wr.ok || 0;
+                        failCount += wr.fail || 0;
+                    }
+                } finally {
+                    this.currentIdx = originalIdx; this.image = this.images[originalIdx];
+                    this.invalidateStyleCaches && this.invalidateStyleCaches();
+                    this.template = baseTemplate;
+                    this._gridBlocks = null;
+                }
+                this.setStatus('批量九宫格完成:' + targetIdxs.length + '张×' + n * n + '=' + totalCount + '张,成功 ' + okCount + (failCount ? ',失败 ' + failCount : '') + ' · 每块约 ' + Math.round(this.gridRenderMax() / n) + 'px');
                 return;
             }
             // 单张:预览已生成则用缓存,否则现渲染
@@ -487,7 +494,7 @@ window.App = Object.assign(window.App || {}, {
                 this._gridBlocks = blocks;
             }
 
-            const baseName = (this.image.name || 'photo').replace(/\.[^.]+$/, '');
+            const baseName = this.safeExportBase(this.image.name || 'photo');
             const files = this._gridFiles(baseName, this.gridSubdir() ? baseName : '', this.image);
             const loc = await window.qingframe.pickExportLocation({ count: files.length, hintName: baseName + '_九宫格' });
             if (!loc || loc.canceled) { this.setStatus('已取消切图'); this.scheduleRender(true); return; }
@@ -960,7 +967,9 @@ window.App = Object.assign(window.App || {}, {
     // 见 OPTIMIZATIONS.md 第六节),省掉 base64 的 +33% 体积与一趟编解码,也不长时间占住渲染线程。
     // PNG 的 toBlob 在 Chromium 里反而更慢,保持原来的同步路径。
     async _encodeExportCanvas(cv, mime, quality) {
-        if (mime === 'image/jpeg' && typeof cv.toBlob === 'function') {
+        // 所有格式都优先走 toBlob:PNG 的 base64 比原始字节多 33%,8192² 时就是
+        // 额外几十 MB 的字符串峰值。拿不到 Blob 时才回退到 toDataURL。
+        if (typeof cv.toBlob === 'function') {
             try {
                 const blob = await new Promise(res => cv.toBlob(res, mime, quality));
                 if (blob && blob.size > 0) return { bytes: new Uint8Array(await blob.arrayBuffer()) };
@@ -969,8 +978,18 @@ window.App = Object.assign(window.App || {}, {
         return { data: cv.toDataURL(mime, quality).split(',')[1] };
     },
 
+    // 文件名只保留单段:真实文件来自 basename 本来就安全,但 .qfs 里的 name 是可控的,
+    // 这里先收一次口,主进程还会再校验。
+    safeExportBase(name) {
+        let s = String(name == null ? '' : name).replace(/\.[^.]+$/, '');
+        // eslint-disable-next-line no-control-regex
+        s = s.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').replace(/^\.+/, '').replace(/[. ]+$/, '').trim();
+        return s.slice(0, 120) || 'photo';
+    },
+
     // 导出文件名:按图片原有名称命名;同一名称重复时,首张保留原名,后续追加 _1、_2…
     dedupeExportNames(files) {
+        for (const f of files) f.stem = this.safeExportBase(f.stem);
         const counts = new Map();
         for (const f of files) counts.set(f.stem, (counts.get(f.stem) || 0) + 1);
         const emitted = new Map();
@@ -1012,7 +1031,7 @@ window.App = Object.assign(window.App || {}, {
         const api = window.qingframe;
         if (!api || !api.showItemInFolder) return;
         if (aborted || !okCount) return;
-        const p = loc && (loc.mode === 'dir' ? loc.dir : loc.path);
+        const p = loc && (loc.mode === 'dir' ? loc.dir : (loc.filePath || loc.path));
         if (!p) return;
         api.showItemInFolder(p).then(r => {
             if (!(r && r.ok)) this.diagLog && this.diagLog('[提示] 打开导出位置失败: ' + ((r && r.message) || '路径不可用'));

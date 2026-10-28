@@ -17,13 +17,10 @@ The application checks GitHub Releases for updates:
 - On startup (after a short delay), and when you choose "check for updates".
 - It requests release metadata from
   `https://github.com/lumos-1s/Qing-Fram-Shadow/releases`.
-- To find a working source, it may also contact the public mirrors
-  `https://ghproxy.net`, `https://ghfast.top`, and `https://gh-proxy.com`, as
-  configured in `src/main/index.js`. You can override the mirror with the
-  `QINGFRAME_PROXY` environment variable.
 - Update downloads are requested only after you choose to download an update.
-- These requests are subject to GitHub's and the mirror operators' privacy
-  policies.
+- These requests go directly to GitHub; the application does not route them
+  through third-party update mirrors. They are subject to GitHub's privacy
+  policy.
 
 External links are opened only when you choose them.
 

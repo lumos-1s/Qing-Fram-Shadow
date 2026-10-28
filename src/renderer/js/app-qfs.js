@@ -44,51 +44,107 @@ window.App = Object.assign(window.App || {}, {
         };
     },
 
+    // .qfs 是不可信输入:名字会参与导出路径,模板会直接进渲染器。
+    // 这里做最小但硬性的类型/长度校验,坏文件给可读错误而不是白屏。
+    sanitizeImageName(name) {
+        let s = String(name == null ? '' : name);
+        // eslint-disable-next-line no-control-regex
+        s = s.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').replace(/^\.+/, '').replace(/[. ]+$/, '').trim();
+        if (!s) s = 'photo';
+        return s.slice(0, 180);
+    },
+
+    validateQfsBundle(data) {
+        if (!data || typeof data !== 'object' || Array.isArray(data)) return '工程内容不是对象';
+        const images = Array.isArray(data.images) ? data.images : [];
+        if (images.length > 200) return '工程里的照片超过 200 张';
+        let total = 0;
+        for (const m of images) {
+            if (!m || typeof m !== 'object') return '照片条目格式错误';
+            if (typeof m.data !== 'string' || !m.data) return '照片缺少图像数据';
+            if (m.data.length > 96 * 1024 * 1024) return '单张照片数据超过 96MB';
+            if (!/^data:image\//i.test(m.data) && !/^[A-Za-z0-9+/=]+$/.test(m.data)) return '照片数据不是有效的 base64';
+            total += m.data.length;
+            if (total > 512 * 1024 * 1024) return '工程照片总大小超过 512MB';
+            m.name = this.sanitizeImageName(m.name);
+            m.w = Number.isFinite(+m.w) ? Math.min(Math.max(1, +m.w), 100000) : 1;
+            m.h = Number.isFinite(+m.h) ? Math.min(Math.max(1, +m.h), 100000) : 1;
+            if (m.customSettings != null && (typeof m.customSettings !== 'object' || Array.isArray(m.customSettings))) {
+                m.customSettings = null;
+            }
+        }
+        if (data.template != null && (typeof data.template !== 'object' || Array.isArray(data.template))) {
+            data.template = null;
+        }
+        return '';
+    },
+
     // 导出当前会话为 .qfs 工程(含所有照片 + 每图模板);无照片时退回纯模板 JSON
     async exportQFS() {
         if (!this.images || !this.images.length) { this.setStatus('请先导入照片再导出工程'); return; }
         this.syncModelFromUI();
         const name = (this.$('tfTemplateName') && this.$('tfTemplateName').value.trim()) || '未命名工程';
-        const images = [];
-        for (const im of this.images) {
-            let data = null;
-            try { data = this.imageToQfsBase64(im, 'image/jpeg', 0.92); } catch (e) { data = null; }
-            images.push(this.qfsImageEntry(im, data));
+        let started;
+        try {
+            started = await window.qingframe.qfsBeginExport({
+                name,
+                session: { currentIdx: this.currentIdx },
+                template: this.cloneTemplate()
+            });
+        } catch (e) {
+            this.setStatus('导出失败：' + (e && e.message || e));
+            return;
         }
-        const bundle = {
-            v: 2,
-            kind: 'qfs',
-            app: 'qingframe-web',
-            name,
-            createdAt: new Date().toISOString(),
-            session: { currentIdx: this.currentIdx },
-            template: this.cloneTemplate(),
-            images
-        };
-        this.setStatus('正在写入 .qfs 工程文件…');
-        const r = await window.qingframe.exportQfs(bundle);
-        this.setStatus(r.ok ? `工程已导出为「${name}.qfs」` : (r.canceled ? '已取消导出' : '导出失败：' + (r.error || '')));
+        if (!started || started.canceled) { this.setStatus('已取消导出'); return; }
+        if (!started.ok) { this.setStatus('导出失败：' + (started.error || '无法创建工程文件')); return; }
+        // 逐张编码/写临时文件:任意时刻只驻留一张 base64,不再把整个工程堆进内存。
+        let done = 0;
+        try {
+            for (const im of this.images) {
+                let data = null;
+                try { data = this.imageToQfsBase64(im, 'image/jpeg', 0.92); } catch (e) { data = null; }
+                if (!data) throw new Error('照片编码失败：' + (im.name || '未知照片'));
+                const entry = this.qfsImageEntry(im, null);
+                delete entry.data;
+                const r = await window.qingframe.qfsAddImage({ id: started.id, entry, data });
+                if (!r || !r.ok) throw new Error(r && r.error || '写入工程失败');
+                done++;
+                this.setStatus(`正在写入工程 ${done}/${this.images.length}…`);
+            }
+            const r = await window.qingframe.qfsFinishExport(started.id);
+            if (!r || !r.ok) throw new Error(r && r.error || '写入工程失败');
+            this.setStatus(`工程已导出为「${name}.qfs」`);
+        } catch (e) {
+            try { await window.qingframe.qfsCancelExport(started.id); } catch (_) { /* ignore */ }
+            this.setStatus('导出失败：' + (e && e.message || e));
+        }
     },
 
     // 导入 .qfs 工程(自包含)或旧版裸模板 JSON(自动识别)
     async importQFS() {
-        const r = await window.qingframe.openQfs();
-        if (!r.ok) { this.setStatus(r.canceled ? '已取消' : '导入失败：' + (r.error || '')); return; }
-        const data = r.data;
-        if (!data || typeof data !== 'object') { this.setStatus('导入失败：文件内容无法识别'); return; }
-        if (Array.isArray(data.images) && data.images.length) {
-            await this.restoreQfsProject(data, r.name);
-        } else {
-            // 兼容旧版 .json 裸模板
-            this.onSettingCommit();
-            this.template = JSON.parse(JSON.stringify(data));
-            this.normalizeTemplate();
-            this.saveCurrentTemplate();
-            this.refreshUI();
-            this.scheduleRender(true);
-            this.setStatus(`已导入模板「${r.name}」`);
+        try {
+            const r = await window.qingframe.openQfs();
+            if (!r.ok) { this.setStatus(r.canceled ? '已取消' : '导入失败：' + (r.error || '')); return; }
+            const data = r.data;
+            if (!data || typeof data !== 'object') { this.setStatus('导入失败：文件内容无法识别'); return; }
+            const bad = this.validateQfsBundle(data);
+            if (bad) { this.setStatus('导入失败：' + bad); return; }
+            if (Array.isArray(data.images) && data.images.length) {
+                await this.restoreQfsProject(data, this.sanitizeImageName(r.name));
+            } else {
+                // 兼容旧版 .json 裸模板
+                this.onSettingCommit();
+                this.template = this.coerceTemplate(JSON.parse(JSON.stringify(data)));
+                this.saveCurrentTemplate();
+                this.refreshUI();
+                this.scheduleRender(true);
+                this.setStatus(`已导入模板「${r.name}」`);
+            }
+            this.refreshTemplates();
+        } catch (e) {
+            console.warn('[qfs] 导入失败:', e && e.message);
+            this.setStatus('导入失败：工程文件损坏或格式不兼容');
         }
-        this.refreshTemplates();
     },
 
     // 用 .qfs 内容重建会话(替换当前工作区)
@@ -101,7 +157,12 @@ window.App = Object.assign(window.App || {}, {
             const src = String(m.data).indexOf('data:') === 0 ? m.data : 'data:image/jpeg;base64,' + m.data;
             await new Promise(res => { img.onload = res; img.onerror = res; img.src = src; });
             if (!img.naturalWidth) continue;
-            const exif = m.exif || {};
+            // 工程文件里的宽高元数据不可信;真实解码后再兜一次,防止解压炸弹直接 OOM。
+            if (img.naturalWidth * img.naturalHeight > 200 * 1000 * 1000) {
+                img.src = '';
+                continue;
+            }
+            const exif = (m.exif && typeof m.exif === 'object') ? m.exif : {};
             const oriented = await this.applyOrientation(img, exif.orientation);
             const useEl = oriented ? oriented.el : img;
             const im = {
@@ -112,7 +173,9 @@ window.App = Object.assign(window.App || {}, {
                 exif,
                 customSettings: null
             };
-            if (m.customSettings) this.setTpl(im, m.customSettings);
+            if (m.customSettings) {
+                this.setTpl(im, this.coerceTemplate(JSON.parse(JSON.stringify(m.customSettings))));
+            }
             this.queueThumb(im);
             ims.push(im);
         }
@@ -125,10 +188,9 @@ window.App = Object.assign(window.App || {}, {
         this.currentIdx = ci;
         this.image = ims[ci];
         const savedTpl = this.getTpl(this.image);
-        this.template = savedTpl
+        this.template = this.coerceTemplate(savedTpl
             ? JSON.parse(JSON.stringify(savedTpl))
-            : (bundle.template ? JSON.parse(JSON.stringify(bundle.template)) : this.defaultTemplate());
-        this.normalizeTemplate();
+            : (bundle.template ? JSON.parse(JSON.stringify(bundle.template)) : this.defaultTemplate()));
         this.invalidateStyleCaches();
         this.buildThumbnails();
         this.afterImageSelect();

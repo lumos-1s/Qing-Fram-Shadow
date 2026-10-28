@@ -224,18 +224,42 @@ window.App = Object.assign(window.App || {}, {
         }
     },
 
-    normalizeTemplate() {
-        if (!this.template) this.template = this.defaultTemplate();
-        const t = this.template;
-        if (!t.baseMargin) t.baseMargin = {};
-        if (!t.cornerConfig) t.cornerConfig = {};
-        if (!t.filmTearConfig) t.filmTearConfig = {};
-        if (!t.lightEffect) t.lightEffect = {};
-        if (!t.decorConfig) t.decorConfig = {};
+    // 把任意来源(.qfs / 模板 JSON / 旧草稿)的对象收成引擎能安全消费的形状。
+    // 旧实现只判断 truthy:layerList 是字符串时也能过 `!t.layerList.length`,
+    // 下一行 .forEach 直接抛异常 → 导入坏工程即白屏。
+    coerceTemplate(t) {
+        const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+        if (!isObj(t)) t = this.defaultTemplate();
+        for (const k of ['baseMargin', 'cornerConfig', 'filmTearConfig', 'lightEffect', 'decorConfig']) {
+            if (!isObj(t[k])) t[k] = {};
+        }
         if (t._draftText) delete t._draftText;
-        if (!t.layerList || !t.layerList.length) t.layerList = [this.defaultTemplate().layerList[0]];
-        if (!t.logoElements) t.logoElements = [];
-        if (!t.puzzle) t.puzzle = this.defaultTemplate().puzzle;
+        if (!Array.isArray(t.layerList)) t.layerList = [];
+        t.layerList = t.layerList.filter(isObj).slice(0, 200);
+        if (!t.layerList.length) {
+            const dl = this.defaultTemplate().layerList;
+            t.layerList = [(dl && dl[0]) || {}];
+        }
+        for (const lay of t.layerList) {
+            if (!isObj(lay.fillConfig)) lay.fillConfig = {};
+            if (!Array.isArray(lay.fillConfig.gradientStops)) {
+                lay.fillConfig.gradientStops = [{ position: 0, color: 'eeeeee' }, { position: 1, color: 'bbbbbb' }];
+            }
+            if (!isObj(lay.strokeConfig)) lay.strokeConfig = {};
+            if (!isObj(lay.shadowGlowConfig)) lay.shadowGlowConfig = {};
+        }
+        if (!Array.isArray(t.logoElements)) t.logoElements = [];
+        t.logoElements = t.logoElements.filter(isObj).slice(0, 500);
+        if (!isObj(t.puzzle)) t.puzzle = this.defaultTemplate().puzzle;
+        for (const k of ['slots', 'axisVals', 'captions', 'gapCaptions']) {
+            if (!isObj(t.puzzle[k])) t.puzzle[k] = {};
+        }
+        return t;
+    },
+
+    normalizeTemplate() {
+        const t = this.coerceTemplate(this.template);
+        this.template = t;
         // 旧格式(rx 以基准画布为分母)在此一次性换算为显示画布分数,须在引擎绘制前完成
         this.migrateRelCanvasFrac();
         if (t.baseMargin.refTop == null) {

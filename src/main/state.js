@@ -11,9 +11,33 @@ function createStateStore(stateFile) {
     }
     function saveState(patch) {
         try {
+            if (!patch || typeof patch !== 'object') return;
             const s = loadState();
-            Object.assign(s, patch);
-            fs.writeFileSync(stateFile, JSON.stringify(s), 'utf-8');
+            // prefs 由多个模块各写各的字段:整体替换会让后写的一方把别的字段抹掉。
+            // 其余顶层键(user/lastOpenDir 等)仍按整体替换处理,允许显式写 null。
+            if (patch.prefs && typeof patch.prefs === 'object' && !Array.isArray(patch.prefs)) {
+                const prev = (s.prefs && typeof s.prefs === 'object' && !Array.isArray(s.prefs)) ? s.prefs : {};
+                s.prefs = Object.assign({}, prev);
+                // undefined 表示"这次没带这个字段",不能覆盖已存值(JSON.stringify 还会把它丢掉)。
+                for (const [k, v] of Object.entries(patch.prefs)) {
+                    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+                    if (v !== undefined) s.prefs[k] = v;
+                }
+                const rest = Object.assign({}, patch);
+                delete rest.prefs;
+                Object.assign(s, rest);
+            } else {
+                Object.assign(s, patch);
+            }
+            // 原子写:写到同目录临时文件再 rename。否则进程在 writeFileSync 中途退出
+            // 会把 state.json 截断,下次启动 prefs/user/最近目录一起丢。
+            const tmp = `${stateFile}.tmp-${process.pid}`;
+            fs.writeFileSync(tmp, JSON.stringify(s), 'utf-8');
+            try { fs.renameSync(tmp, stateFile); }
+            catch (e) {
+                fs.writeFileSync(stateFile, JSON.stringify(s), 'utf-8');
+                try { fs.unlinkSync(tmp); } catch (_) { /* ignore */ }
+            }
         } catch (e) { /* 忽略写入失败 */ }
     }
     function validDir(p) { return typeof p === 'string' && p && fs.existsSync(p); }

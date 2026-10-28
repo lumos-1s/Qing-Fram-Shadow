@@ -88,7 +88,7 @@ GitHub Releases 里没有 `latest.yml` + 新版安装包，旧版就永远查不
 - **发布无需本地跑**：`release:publish` 也可以在 GitHub Actions 上跑（配 GH_TOKEN secret），本地发布即可。
 - **token 权限**：Personal Access Token 需要 `repo` 权限（创建 Release、上传 asset）。不要提交到 git。
 - **差量更新（blockmap）**：electron-updater 会对比新旧安装包的数据块，只下载变化部分。三个前提：① 新版发布时上传 `.blockmap`（见上一步产物清单）；② 旧版发布时也上传过 `.blockmap`（否则查不到差量基准，退化为全量）；③ 本机更新缓存里有旧版安装包 `%LOCALAPPDATA%\qingframe-web-updater\installer.exe` —— 0.1.12 起应用会在每次下载完成后自动"留种"它，更早的版本需手工放入。任一前提缺失只会退化为全量下载，不会把更新装坏。
-- **更新下载镜像（0.1.12 起）**：点"立即更新"时先对 GH_PROXIES 三个镜像实测速度、选最快者下载，失败自动换源重试；主进程日志 `[updater] 镜像测速(B/s)` 记录当时的实测值。镜像速度随时间剧烈波动（实测同一镜像一小时内可从 1.8MB/s 掉到连不上），排障"更新慢"时先看这一行。
+- **不再使用第三方更新镜像（自下一版起）**：更新清单 `latest.yml` 与安装包必须来自同一个受 TLS 保护的源。旧版把 github.com 请求（含 `latest.yml`）改写到 ghproxy 等镜像，镜像同时提供清单和二进制，清单里的 sha512 校验形同虚设；在产物未签名时等于把任意代码执行权交给镜像运营者。现在只走 GitHub 直连：国内网络慢请配置系统代理，或到 Releases 手动下载。排障日志不再有 `[updater] 镜像测速` 行。
 
 ## 五、macOS 构建（准备中）
 

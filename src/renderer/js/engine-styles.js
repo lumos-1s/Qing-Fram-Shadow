@@ -7848,7 +7848,16 @@ const w = natW;
             const useBlurFill = (t.baseMargin && (t.baseMargin.bgBlurEnable || 0) === 1);
             out = expandToRatio(out, effectiveCanvasRatio(t), useBlurFill ? img : null, (t.baseMargin && t.baseMargin.bgBlurRadius) || 30);
 
-            const finalScale = Math.min(1, displayMax / Math.max(out.width, out.height));
+            // 导出时 app.exportScale 是用户选的 4096/8192 目标长边:相框样式也要真正
+            // 上采样到该尺寸(旧实现 min(1, ...) 让小图永远停在原尺寸)。
+            // 预览没有 exportScale,仍按 displayMax 只缩不放,避免每帧无谓放大。
+            const longEdge = Math.max(out.width, out.height);
+            const upscaleTarget = (app.exportScale && app.exportScale > 0)
+                ? Math.min(8192, Math.max(1, app.exportScale))
+                : 0;
+            const finalScale = upscaleTarget
+                ? (upscaleTarget / longEdge)
+                : Math.min(1, displayMax / longEdge);
             canvas.width = Math.max(1, Math.round(out.width * finalScale));
             canvas.height = Math.max(1, Math.round(out.height * finalScale));
             canvas._logW = canvas.width;

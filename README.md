@@ -16,7 +16,7 @@
   <a href="https://github.com/lumos-1s/Qing-Fram-Shadow/stargazers"><img src="https://img.shields.io/github/stars/lumos-1s/Qing-Fram-Shadow?style=flat-square&color=blue" alt="GitHub stars"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/github/license/lumos-1s/Qing-Fram-Shadow?style=flat-square&color=green" alt="MIT License"></a>
   <a href="https://github.com/lumos-1s/Qing-Fram-Shadow/releases"><img src="https://img.shields.io/badge/version-0.1.21-orange?style=flat-square" alt="Version 0.1.21"></a>
-  <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-31-47848F?style=flat-square" alt="Electron 31"></a>
+  <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-45-47848F?style=flat-square" alt="Electron 45"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4?style=flat-square" alt="Windows 10/11">
 </p>
 
@@ -185,7 +185,7 @@ npm run gen:wall
 
 | 层 Layer | 技术 Tech |
 |---|---|
-| 桌面壳 Desktop shell | Electron 31（主/渲染进程分离，`contextIsolation` 开启） |
+| 桌面壳 Desktop shell | Electron 45（主/渲染进程分离，`contextIsolation` + `sandbox` 开启） |
 | 渲染 Rendering | 原生 HTML / CSS / JavaScript + Canvas 2D 离屏合成 |
 | 打包分发 Packaging | electron-builder（NSIS 安装版 + 便携版） |
 | 自动更新 Auto-update | electron-updater + GitHub Releases |

@@ -3,6 +3,8 @@ window.App = Object.assign(window.App || {}, {
     _draftKey: 'qfs_draft_v1',
     _draftTimer: null,
     _draftDirty: false,
+    _draftRev: 0,
+    _draftSaving: false,
 
     initDraft() {
         if (typeof localStorage === 'undefined') return;
@@ -34,6 +36,7 @@ window.App = Object.assign(window.App || {}, {
 
     scheduleDraft() {
         this._draftDirty = true;
+        this._draftRev = (this._draftRev || 0) + 1;
         if (this._draftTimer) return;
         this._draftTimer = setTimeout(() => { this._draftTimer = null; this.saveDraftNow(); }, 1500);
     },
@@ -85,24 +88,56 @@ window.App = Object.assign(window.App || {}, {
                 template: tpl,
                 imageTemplates
             };
-            let raw = JSON.stringify(draft);
-            // 体积护栏:超 2MB 先剥掉大 data: 串再写;剥完仍超 8MB 就放弃本次写入(留诊断日志),
-            // 不让一步超大 localStorage.setItem 卡住主线程
-            const TRIM_AT = 2 * 1024 * 1024, SKIP_AT = 8 * 1024 * 1024;
-            if (raw.length > TRIM_AT) {
-                if (this._stripDraftData(draft)) raw = JSON.stringify(draft);
-                if (raw.length > SKIP_AT) {
-                    if (this.diagLog) this.diagLog(`草稿体积 ${(raw.length / 1048576).toFixed(1)}MB 超过上限，跳过本次保存`);
-                    return;
-                }
-            }
-            try { localStorage.setItem(this._draftKey, raw); this._draftDirty = false; }
-            catch (e) { /* 超配额时静默 */ }
+            this._persistDraft(draft, this._draftRev || 0);
         } catch (e) { /* 忽略草稿写入错误 */ }
+    },
+
+    // 大 data: 图片交给主进程落盘,草稿只存 qfasset: 引用;主进程不可用时退回旧策略
+    // (剥掉大串),至少保住路径/模板结构,不再因为 64KB/8MB 阈值整份放弃。
+    async _persistDraft(draft, rev) {
+        if (this._draftSaving) { this._draftDirty = true; return; }
+        this._draftSaving = true;
+        let raw = null;
+        try {
+            if (window.qingframe && typeof window.qingframe.externalizeDraft === 'function') {
+                try {
+                    const r = await window.qingframe.externalizeDraft(draft);
+                    if (r && r.ok && r.json) raw = r.json;
+                    if (r && r.stats && r.stats.dropped && this.diagLog) {
+                        this.diagLog(`草稿附件有 ${r.stats.dropped} 个超过上限，已跳过`);
+                    }
+                } catch (e) { /* 主进程失败时走下面的回退 */ }
+            }
+            if (!raw) {
+                const stripped = JSON.parse(JSON.stringify(draft));
+                this._stripDraftData(stripped);
+                raw = JSON.stringify(stripped);
+            }
+            if (raw.length > 8 * 1024 * 1024) {
+                if (this.diagLog) this.diagLog(`草稿体积 ${(raw.length / 1048576).toFixed(1)}MB 超过上限，跳过本次保存`);
+                this._draftDirty = false;
+                return;
+            }
+            localStorage.setItem(this._draftKey, raw);
+            // 保存期间又有编辑(rev 变了)时不能清 dirty,让下一轮继续写。
+            if ((this._draftRev || 0) === rev) this._draftDirty = false;
+        } catch (e) {
+            // 配额不足时不要每 1.5 秒重试同一份超限草稿;放弃本轮,等用户下次编辑再试。
+            this._draftDirty = false;
+            if (this.diagLog) this.diagLog('草稿写入失败: ' + (e && e.message || e));
+        } finally {
+            this._draftSaving = false;
+            if (this._draftDirty) this.scheduleDraft();
+        }
     },
 
     clearDraft() {
         try { localStorage.removeItem(this._draftKey); } catch (e) { /* 忽略 */ }
+        try {
+            if (window.qingframe && typeof window.qingframe.clearDraftAssets === 'function') {
+                window.qingframe.clearDraftAssets().catch(() => {});
+            }
+        } catch (e) { /* 忽略 */ }
     },
 
     async restoreDraft() {
@@ -113,6 +148,13 @@ window.App = Object.assign(window.App || {}, {
         } catch (e) { return; }
         if (!draft || !Array.isArray(draft.images) || !draft.images.length) return;
         if (this.images && this.images.length) return; // 已有手动会话则不覆盖
+        // 草稿里的 qfasset: 引用还原成 data:,老版本草稿没有引用时原样返回
+        if (window.qingframe && typeof window.qingframe.hydrateDraft === 'function') {
+            try {
+                const hr = await window.qingframe.hydrateDraft(draft);
+                if (hr && hr.ok && hr.draft) draft = hr.draft;
+            } catch (e) { /* 附件缺失时继续用剩余数据恢复 */ }
+        }
         try {
             const tplByPath = new Map();
             (draft.imageTemplates || []).forEach(entry => { if (entry && entry.path) tplByPath.set(entry.path, entry.tpl); });
@@ -126,7 +168,7 @@ window.App = Object.assign(window.App || {}, {
             this.images = restored;
             this.selectedIdx = [];
             this.batchSel = [];
-            const ci = Math.min(Math.max(0, this.currentIdx || 0), restored.length - 1);
+            const ci = Math.min(Math.max(0, draft.currentIdx || 0), restored.length - 1);
             this.currentIdx = ci;
             this.image = restored[ci];
             const draftTpl = this.getTpl(this.image);
@@ -147,13 +189,20 @@ window.App = Object.assign(window.App || {}, {
     // 按草稿元数据重新构建一张照片对象(含每图模板还原)
     async imageFromMeta(meta, savedTpl) {
         try {
+            // 先 readExif:主进程会在这里把路径登记进 qflocal 白名单。
+            // 顺序反了的话 <img> 会先撞 403,草稿恢复静默少图。
+            let exif = {};
+            if (window.qingframe && window.qingframe.readExif) {
+                try { exif = (await window.qingframe.readExif(meta.path)) || {}; } catch (e) { exif = {}; }
+            }
             const img = new Image();
             const src = this.photoUrl(meta.path);
             await new Promise(r => { img.onload = r; img.onerror = r; img.src = src; });
             if (!img.naturalWidth) return null;
-            let exif = {};
-            if (window.qingframe && window.qingframe.readExif) {
-                try { exif = (await window.qingframe.readExif(meta.path)) || {}; } catch (e) { exif = {}; }
+            if (img.naturalWidth * img.naturalHeight > 200 * 1000 * 1000) {
+                img.src = '';
+                if (this.diagLog) this.diagLog('草稿照片像素超过 2 亿，已跳过: ' + (meta.name || meta.path));
+                return null;
             }
             const oriented = await this.applyOrientation(img, exif.orientation);
             const useEl = oriented ? oriented.el : img;

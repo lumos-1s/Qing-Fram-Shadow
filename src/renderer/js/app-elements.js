@@ -676,6 +676,7 @@ window.App = Object.assign(window.App || {}, {
 
     async addCustomIcon() {
         const res = await window.qingframe.openStickerImage();
+        if (res && res.error) { this.setStatus(res.error); return; }
         if (!res || !res.data) return;
         // 按扩展名判断 MIME:主进程只回传文件名与 base64。此前一律标成 image/jpeg,
         // 会把带透明通道的 PNG 图标当作 JPEG 解码,导致透明底变黑、边缘出现杂色块。
