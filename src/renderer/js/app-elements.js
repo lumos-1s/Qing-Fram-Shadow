@@ -733,18 +733,24 @@ window.App = Object.assign(window.App || {}, {
                     // 旋转把手：框顶外侧一个圆点。位置在这里算一次并存下来，
                     // 命中检测(mousedown)直接用 —— 两处各算一遍角度迟早对不上。
                     if (this.selectedEls.length === 1) {
-                        const dist = bh / 2 + 26;
+                        // 注意：这段已经在 translate/rotate 之后的**局部**坐标系里，
+                        // 所以线要画在 (0,-bh/2)→(0,-dist)，不能再按绝对坐标画一次
+                        // 把手尺寸按 DPI 缩放：画布是物理像素，写死 6 在高分屏上只有 3 CSS px，
+                        // 小到点不中，也看不见。
+                        const kr = 7 * k;
+                        const dist = bh / 2 + 14 * k;
                         const th = m.rot * Math.PI / 180;
-                        const bx = m.cx * k, by = m.cy * k;
-                        const topX = bx + (bh / 2) * Math.sin(th), topY = by - (bh / 2) * Math.cos(th);
-                        const hx = bx + dist * Math.sin(th), hy = by - dist * Math.cos(th);
                         ctx.strokeStyle = 'rgba(0,229,160,0.9)';
-                        ctx.lineWidth = 1.5;
-                        ctx.beginPath(); ctx.moveTo(topX, topY); ctx.lineTo(hx, hy); ctx.stroke();
-                        ctx.beginPath(); ctx.arc(hx, hy, 6, 0, Math.PI * 2);
+                        ctx.lineWidth = 1.5 * k;
+                        ctx.beginPath(); ctx.moveTo(0, -bh / 2); ctx.lineTo(0, -dist); ctx.stroke();
+                        ctx.beginPath(); ctx.arc(0, -dist, kr, 0, Math.PI * 2);
                         ctx.fillStyle = '#00e5a0'; ctx.fill();
-                        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
-                        this._rotHandle = { x: hx, y: hy, r: 6 };
+                        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2 * k; ctx.stroke();
+                        this._rotHandle = {
+                            x: m.cx * k + dist * Math.sin(th),
+                            y: m.cy * k - dist * Math.cos(th),
+                            r: kr,
+                        };
                     }
                     ctx.restore();
                     continue;
