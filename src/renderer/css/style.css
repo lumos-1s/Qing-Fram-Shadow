@@ -1794,7 +1794,7 @@ body.platform-darwin .titlebar-controls { display: none; }
     /* 预设墙：入场淡入、卡片缩放/透明度过渡、hover 封面放大都关掉。
        惯性/滚轮平滑/3D 倾斜由 JS 判 prefers-reduced-motion 后跳过（见 wallReducedMotion）。 */
     .pw-wall { animation: none !important; }
-    .pw-tile { transition: none !important; }
+    .pw-tile, .pw-tile-inner { transition: none !important; }
     .pw-tile:hover .pw-tile-cover img,
     .pw-tile.selected .pw-tile-cover img { transform: none; }
 }
@@ -1858,33 +1858,44 @@ body.editing #canvasPane { flex: 1 1 auto; }
     /* 90 张卡各写一条 will-change 就是 90 个合成层，DPR=2 下光栅纹理轻松上百 MB。
        层只给中心那 9 张动态卡开（focusWall 里按需写 inline），其余留在整墙的绘制里。 */
     border-radius: 16px; overflow: hidden; cursor: pointer;
-    background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09);
-    transition: transform .18s ease-out, opacity .18s ease-out, border-color .3s ease, box-shadow .3s ease, background .3s ease;
+    transition: transform .18s ease-out, box-shadow .3s ease;
     user-select: none; -webkit-user-select: none;
     contain: layout paint style;
 }
+/* 背景/描边和 opacity 都放在内容层：tile 同时逐帧改 transform+opacity 会让 Chromium
+   每帧重绘封面；拆开后 transform 留在 tile，透明度单独动 inner。 */
+.pw-tile-inner {
+    border-radius: inherit; overflow: hidden;
+    background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09);
+    transition: border-color .3s ease, background .3s ease;
+}
 /* 拖动与惯性期间禁用过渡：JS 每帧写 transform，过渡会把每一帧再拖出 180ms 的尾巴（越拖越糊） */
 .pw-grid.pw-dragging .pw-tile,
-.pw-grid.pw-moving .pw-tile { transition: none; }
+.pw-grid.pw-moving .pw-tile,
+.pw-grid.pw-dragging .pw-tile-inner,
+.pw-grid.pw-moving .pw-tile-inner { transition: none; }
 .pw-tile:hover {
-    border-color: rgba(220,186,121,.5);
     box-shadow: 0 16px 34px rgba(0,0,0,.45), 0 3px 10px rgba(0,0,0,.25);
+}
+.pw-tile:hover .pw-tile-inner {
+    border-color: rgba(220,186,121,.5);
     background: rgba(255,255,255,.07);
 }
 .pw-tile[data-tilting] {
-    border-color: rgba(220,186,121,.55);
     box-shadow: 0 18px 38px rgba(0,0,0,.5), 0 3px 10px rgba(0,0,0,.25);
+}
+.pw-tile[data-tilting] .pw-tile-inner {
+    border-color: rgba(220,186,121,.55);
     background: rgba(255,255,255,.07);
 }
 .pw-tile:active { filter: brightness(.92); }
 .pw-tile.selected {
     outline: 2px solid rgba(220,186,121,.85);
     outline-offset: 2px;
-    border-color: rgba(220,186,121,.7);
-}
-.pw-tile.selected {
-    border-color: rgba(220,186,121,.95);
     box-shadow: 0 0 0 1px rgba(220,186,121,.6), 0 0 26px rgba(220,186,121,.14), 0 18px 40px rgba(0,0,0,.5);
+}
+.pw-tile.selected .pw-tile-inner {
+    border-color: rgba(220,186,121,.95);
 }
 .pw-tile:focus-visible {
     outline: 2px solid rgba(220,186,121,.85); outline-offset: 2px;

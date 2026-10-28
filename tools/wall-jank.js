@@ -4,10 +4,11 @@
 //   node tools/wall-jank.js                      # 等启动页消失后测（正常观感）
 //   node tools/wall-jank.js --early              # 连"刚进墙"那一下一起测
 //   node tools/wall-jank.js --dpr2               # 按 2 倍像素密度测（高分屏近似）
-//   node tools/wall-jank.js --dpr2 --input       # 用真实鼠标拖（含悬停倾斜）
+//   node tools/wall-jank.js --dpr2 --input       # 用真实鼠标拖（含悬停倾斜；额外输出 INPUT）
 //
 // 判读：p95 ≤ 16.7 算 60fps 达标；over24 是掉到 40fps 以下的帧数（能感觉到的卡顿）。
 // 注意：这台机器同时跑别的 Electron / CI 时数字会明显变差，比较前后务必在同样负载下跑两遍。
+// --input 的 INPUT 行统计的是"鼠标事件派发期间"的 rAF 帧间隔；JANK 行仍是松手后的程序化平移。
 'use strict';
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -29,7 +30,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     let page = null;
     for (let i = 0; i < 40 && !page; i++) {
         await sleep(400);
-        try { page = (await (await fetch(`http://127.0.0.1:${PORT}/json`)).json()).find((x) => x.type === 'page'); } catch (_) {}
+        try { page = (await (await fetch(`http://127.0.0.1:${PORT}/json`)).json()).find((x) => x.type === 'page'); } catch (_) { /* 端口还没起来，下一轮再试 */ }
     }
     if (!page) { console.log('NO_PAGE'); process.exit(1); }
 
@@ -57,30 +58,79 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         if (ready === true) break;
         await sleep(200);
     }
+    // 新 profile 会弹首次使用引导（#introModal），它盖在墙上面；不关掉的话
+    // --input 的鼠标事件全打在引导层上，墙根本收不到（以前 --input 就是这样假测的）。
+    await ev(`(() => {
+        try { localStorage.setItem('qfs_intro_done', '1'); } catch (_) {}
+        if (window.App && typeof App.closeIntro === 'function') App.closeIntro();
+        return true;
+    })()`);
+    await sleep(250);
+
     const EARLY = process.argv.includes('--early');
     if (!EARLY) await sleep(800);   // 默认测"稳定后"；--early 测刚进墙那一两秒
 
-    const useInput = process.argv.includes('--input');
-    if (useInput) {
+    let inputResult = null;
+    if (process.argv.includes('--input')) {
         const rect = await ev(`(() => { const r = document.getElementById('presetWallGrid').getBoundingClientRect(); return { l: r.left, t: r.top, w: r.width, h: r.height }; })()`);
         const cx = rect.l + rect.w / 2, cy = rect.t + rect.h / 2;
-        const mouse = (type, x, y, extra) => send('Input.dispatchMouseEvent', Object.assign({ type, x, y, button: type === 'mouseMoved' ? 'none' : 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 0 }, extra || {}));
+        const ampX = Math.min(260, rect.w * 0.25);
+        const ampY = Math.min(140, rect.h * 0.2);
+        const start = await ev(`({ x: App._wallPan.x, y: App._wallPan.y })`);
+        const mouse = (type, x, y) => send('Input.dispatchMouseEvent', {
+            type, x, y, button: type === 'mouseMoved' ? 'none' : 'left',
+            buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 0
+        });
+        // 先启动帧采样，再按键拖动：统计的是真实 pointermove 期间的 rAF，
+        // 不是之前那种"先拖一下、再测程序化平移"的假输入。
+        await ev(`(() => {
+            window.__wallInputProbe = { deltas: [], active: true };
+            let last = performance.now();
+            const tick = (t) => {
+                window.__wallInputProbe.deltas.push(t - last); last = t;
+                if (window.__wallInputProbe.active) requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+        })()`);
         await mouse('mouseMoved', cx, cy);
         await mouse('mousePressed', cx, cy);
         const t0 = Date.now();
-        let k = 0;
+        let k = 0, lx = cx, ly = cy;
+        // 画一条留在视口内的 Lissajous 轨迹；避免以前一拖就出窗口、后半段根本没事件。
         while (Date.now() - t0 < 2400) {
             k++;
-            await mouse('mouseMoved', cx - k * 6, cy - k * 2);
-            await sleep(12);
+            const a = k * 0.045;
+            lx = cx + Math.sin(a) * ampX;
+            ly = cy + Math.cos(a * 0.8) * ampY;
+            await mouse('mouseMoved', lx, ly);
+            await sleep(8);
         }
-        await mouse('mouseReleased', cx - k * 6, cy - k * 2);
+        await mouse('mouseReleased', lx, ly);
+        await sleep(100);
+        const s = await ev(`(() => {
+            window.__wallInputProbe.active = false;
+            const d = window.__wallInputProbe.deltas.slice(3).sort((a, b) => a - b);
+            const at = (q) => d[Math.min(d.length - 1, Math.floor(d.length * q))] || 0;
+            return {
+                frames: d.length,
+                p50: +at(0.5).toFixed(1), p95: +at(0.95).toFixed(1), max: +d[d.length - 1].toFixed(1),
+                over24: d.filter((x) => x > 24).length,
+                over50: d.filter((x) => x > 50).length,
+                pan: { x: App._wallPan.x, y: App._wallPan.y },
+                dragging: !!(App._wallDrag && App._wallDrag.dragging)
+            };
+        })()`);
+        inputResult = Object.assign({ moves: k, moved: +Math.hypot(s.pan.x - start.x, s.pan.y - start.y).toFixed(1) }, s);
     }
 
     const result = await ev(`(async () => {
         const EARLY_IN_PAGE = ${EARLY ? 'true' : 'false'};
         const g = document.getElementById('presetWallGrid');
         App.stopWallMotion();
+        // 程序化平移不是鼠标拖动，先撤掉鼠标悬停可能留下的 3D 倾斜卡；
+        // 否则测到的是"倾斜卡 + 每帧 scale"的额外开销，和真实拖动（pointerdown 会清掉）不一致。
+        const wt = App._wallTilt;
+        if (wt && wt.card) { wt.card.removeAttribute('data-tilting'); wt.card = null; wt.rx = 0; wt.ry = 0; }
         App.panWallTo(0, 0);
         if (!EARLY_IN_PAGE) await new Promise(r => setTimeout(r, 200));
 
@@ -119,9 +169,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
             splash: !!document.getElementById('bootSplash')
         };
     })()`);
+    if (inputResult) console.log('INPUT ' + JSON.stringify(inputResult));
     console.log('JANK ' + JSON.stringify(result));
 
     ws.close(); child.kill();
-    try { fs.rmSync(PROFILE, { recursive: true, force: true }); } catch (_) {}
+    try { fs.rmSync(PROFILE, { recursive: true, force: true }); } catch (_) { /* profile 可能还被 Chromium 占着，退出时清不掉就算了 */ }
     process.exit(0);
 })().catch((e) => { console.error('FAIL ' + (e && e.message)); process.exit(1); });

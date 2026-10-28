@@ -123,6 +123,9 @@ window.App = Object.assign(window.App || {}, {
             if (e.button !== 0) return;
             if (e.isPrimary === false && e.pointerType) return; // 多指/次级指针交给主指针
             this.stopWallMotion();
+            // 拖动期间不要让鼠标下那张卡继续保持 3D 倾斜：它会在每帧 scale 更新时
+            // 带着 perspective 重新栅格化，是拖动帧耗时的一个大头。
+            tiltRest();
             this._wallSwallowClick = false;
             const d = this._wallDrag;
             d.id = e.pointerId;
@@ -183,7 +186,9 @@ window.App = Object.assign(window.App || {}, {
         const within = (v) => Math.min(1, Math.max(-1, v));
         const tiltRest = () => {
             const t = this._wallTilt;
-            if (t.card) { t.card.removeAttribute('data-tilting'); t.card = null; }
+            if (!t.card) return; // 没有倾斜卡时不要白跑一次 focusWall
+            t.card.removeAttribute('data-tilting');
+            t.card = null;
             t.rx = 0; t.ry = 0;
             this.focusWall();
         };
@@ -264,6 +269,7 @@ window.App = Object.assign(window.App || {}, {
             if (e.ctrlKey || e.metaKey) return; // 缩放组合键不夺
             e.preventDefault();
             if (this._wallDrag.id !== null) return;
+            tiltRest(); // 滚轮平移时同样撤掉 3D 倾斜卡，避免它跟着每帧重栅格
             const { dx, dy } = this.wallWheelDelta(e);
             if (this.wallReducedMotion()) {
                 this.stopWallMotion();
@@ -532,7 +538,9 @@ window.App = Object.assign(window.App || {}, {
                 const z = String(Math.max(1, Math.round(100 - u * 95)));
                 // 同一格在 4 份拷贝里共用同一套值（倾斜只作用于指针下那一张）。
                 // 字符串每格只拼一次，不再给 4 份拷贝各拼一次。
-                const baseTf = 'perspective(760px) scale(' + s.toFixed(3) + ') rotateX(0.00deg) rotateY(0.00deg)';
+                // 非倾斜卡用纯 2D scale：perspective + 0 度旋转视觉完全一样，但 3D 渲染上下文
+                // 会在 opacity 同时变化时把卡片推上更重的合成路径。倾斜卡在下面单独用 3D。
+                const baseTf = 'scale(' + s.toFixed(3) + ')';
                 for (const tile of list) {
                     const copy = Number(tile.parentElement && tile.parentElement.dataset.copy) || 0;
                     const tx = b.pad + c * (b.tw + b.gap) + (copy % 2) * b.BW + ox;
@@ -546,7 +554,8 @@ window.App = Object.assign(window.App || {}, {
                     // 值没变就不写：平移时 scale 每帧都在变，但 opacity/zIndex 是按舍入档走的，
                     // 一小段时间内完全一致。跳过重复写入能省掉大量样式失效与重排。
                     if (tile.__tf !== tf) { tile.style.transform = tf; tile.__tf = tf; }
-                    if (tile.__op !== o.toFixed(3)) { tile.style.opacity = o.toFixed(3); tile.__op = o.toFixed(3); }
+                    const inner = tile.firstElementChild;
+                    if (inner && tile.__op !== o.toFixed(3)) { inner.style.opacity = o.toFixed(3); tile.__op = o.toFixed(3); }
                     if (tile.__z !== z) { tile.style.zIndex = z; tile.__z = z; }
                 }
             }
@@ -565,7 +574,8 @@ window.App = Object.assign(window.App || {}, {
                 t.style.transform = 'scale(0.72)';
                 t.__tf = 'scale(0.72)';
             }
-            t.style.opacity = '0.5'; t.__op = '0.5';
+            const inner = t.firstElementChild;
+            if (inner) { inner.style.opacity = '0.5'; t.__op = '0.5'; }
             t.style.zIndex = '1'; t.__z = '1';
         }
         for (const t of active) {
@@ -652,15 +662,21 @@ window.App = Object.assign(window.App || {}, {
             // 异步解码：90 张封面同步解码会卡住第一次绘制（打开墙时那一下顿）
             img.decoding = 'async';
             cover.appendChild(img);
-            tile.appendChild(cover);
+            // 内容包一层：聚焦时 opacity 写在 inner 上，tile 只负责 transform/z-index。
+            // 同一元素同时逐帧改 transform + opacity 会让 Chromium 每帧重绘卡片的
+            // 560px 封面（165Hz/DPR2 下直接掉一帧）；拆成两层后合成器可以分开处理。
+            const inner = document.createElement('div');
+            inner.className = 'pw-tile-inner';
+            inner.appendChild(cover);
             const name = document.createElement('div');
             name.className = 'pw-tile-name';
             name.textContent = item.name;
-            tile.appendChild(name);
+            inner.appendChild(name);
             const tag = document.createElement('div');
             tag.className = 'pw-tile-tag';
             tag.textContent = item.tag;
-            tile.appendChild(tag);
+            inner.appendChild(tag);
+            tile.appendChild(inner);
             return tile;
         };
         // 2×2 份相同的块：多出来的三份专门填回绕边界的空白。四份的同一格共用同一张预设，
@@ -673,9 +689,10 @@ window.App = Object.assign(window.App || {}, {
             for (let r = 0; r < b.Q; r++) {
                 for (let c = 0; c < b.P; c++) {
                     const tile = makeTile(r, c, copy);
-                    // 初始静态态（远离中心时的小卡状态）
+                    // 初始静态态（远离中心时的小卡状态）；opacity 在内容层上
                     tile.style.transform = 'scale(0.72)';
-                    tile.style.opacity = '0.5';
+                    const inner = tile.firstElementChild;
+                    if (inner) inner.style.opacity = '0.5';
                     tile.style.zIndex = '1';
                     const key = r + '_' + c;
                     (cells[key] || (cells[key] = [])).push(tile);
@@ -707,6 +724,12 @@ window.App = Object.assign(window.App || {}, {
         if (!b) return;
         // 键盘接管前先停掉惯性和滚轮补间，不然刚按方向键就被上一甩拽回去
         this.stopWallMotion();
+        // 键盘平移时也撤掉鼠标悬停留下的 3D 倾斜卡
+        const t = this._wallTilt;
+        if (t && t.card) {
+            t.card.removeAttribute('data-tilting');
+            t.card = null; t.rx = 0; t.ry = 0;
+        }
         const sel = this._wallSel;
         sel.r = ((sel.r + dr) % b.Q + b.Q) % b.Q;
         sel.c = ((sel.c + dc) % b.P + b.P) % b.P;
