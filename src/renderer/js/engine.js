@@ -837,6 +837,96 @@ function textLineAnchor(textLine, cw, ch, card, cardY, cardH) {
     return [tx, ty];
 }
 
+// ── 文字排版度量 ──
+// 一处算、三处用：drawTextLine（画）、hitTestTexts（点）、选中框（框）。
+// 之前命中框是「字数 × 字号 × 0.7」猜的，只对「横排、居中、无旋转」近似成立；
+// 一旦允许竖排/侧排/旋转，就会出现「字画在这里、点在那里」。
+/* exported textLineSpacing, textLineDir, textLineMetrics */
+
+// 字距(px)。预设里就是像素口径；非有限值/负数一律按 0。
+function textLineSpacing(line) {
+    const ls = Number(line && line.letterSpacing);
+    return Number.isFinite(ls) && ls > 0 ? ls : 0;
+}
+
+// 方向：h 横排（默认）/ v 竖排直立（逐字堆叠，中文用）/ side 侧排（整行 -90°，自下而上读）
+function textLineDir(line) {
+    const d = line && line.direction;
+    return (d === 'v' || d === 'side') ? d : 'h';
+}
+
+// 竖排的格距倍率（1.0 = 字紧贴；默认 1.2）。同一字段也当行距用，取值夹在 0.6~3。
+function textLineStepRatio(line) {
+    const g = Number(line && line.lineGap);
+    return Number.isFinite(g) && g >= 0.6 && g <= 3 ? g : 1.2;
+}
+
+// 量宽用的离屏 ctx：横排宽度必须真量（含字距），不能靠字数估。
+let _textMeasureCtx = null;
+function textMeasureCtx() {
+    if (!_textMeasureCtx) {
+        const c = document.createElement('canvas');
+        c.width = 1; c.height = 1;
+        _textMeasureCtx = c.getContext('2d');
+    }
+    return _textMeasureCtx;
+}
+
+// 横排文字宽度（含字距）。letterSpacing 必须是 CSS 长度字符串——
+// 给数字会被静默忽略（同 engine-styles.js:2093 记过这个坑）。
+function textLineAdvance(line, fs) {
+    const g = textMeasureCtx();
+    const ls = textLineSpacing(line);
+    g.font = `${line.fontWeight || 400} ${fs}px "${line.fontFamily || 'Microsoft YaHei'}"`;
+    if (ls > 0) g.letterSpacing = ls + 'px';
+    const w = g.measureText(String(line.text == null ? '' : line.text)).width;
+    if (ls > 0) g.letterSpacing = '0px';
+    return Math.max(1, w);
+}
+
+// 一行文字的几何。返回（全部为画布逻辑像素）：
+//   cx/cy  未旋转时的框中心（自由文字的 x/y 就是这个中心）
+//   lw/lh  未旋转时的框尺寸
+//   rot    实际旋转角（direction:'side' 已经折进来）
+//   by     横排/侧排的基线相对框中心的纵向偏移（正=在中心下方）
+//   step   竖排每字占的格高（含字距）
+//   x/y/w/h 旋转后的轴对齐外框（命中、选中框用）
+function textLineMetrics(line, cw, ch, card, cardY, cardH) {
+    const W = (cw > 1 ? cw : 1), H = (ch > 1 ? ch : 1);
+    const fs = Math.max(1, autoExifTextSize(line, W));
+    const dir = textLineDir(line);
+    const ls = textLineSpacing(line);
+    const text = String(line.text == null ? '' : line.text);
+    const n = text.length;
+    const ratio = textLineStepRatio(line);
+    // 竖排：一个字一格；字距是「字与字之间」的附加间隙
+    const step = fs * ratio + ls;
+    const lw = dir === 'v' ? fs * 1.15 : textLineAdvance(line, fs);
+    const lh = dir === 'v' ? Math.max(fs, n * step) : fs * 1.18;
+    const a = textLineAnchor(line, W, H, card || false, cardY || 0, cardH || 0);
+    let cx = a[0], cy = a[1];
+    if (line.align === 'free') {
+        // 自由文字：(x, y) 即框中心 —— 与拖拽/对齐/吸附同一口径
+    } else if (dir === 'v') {
+        // 竖排沿用横排锚点的含义（baseline 那条线）：顶对齐从锚点下方起排，
+        // 底对齐让末字贴着锚点，这样「贴顶/贴底」的既有语义不用改。
+        const top = line.align === 'top' ? (cy - fs * 0.8) : (cy + fs * 0.2 - lh);
+        cy = top + lh / 2;
+    } else {
+        // 横排：锚点是基线，框中心在基线上方约 0.21fs
+        cy = cy - fs * 0.8 + lh / 2;
+    }
+    const rot = (Number(line.rotation) || 0) + (dir === 'side' ? -90 : 0);
+    const th = rot * Math.PI / 180;
+    const hw = Math.abs(lw / 2 * Math.cos(th)) + Math.abs(lh / 2 * Math.sin(th));
+    const hh = Math.abs(lw / 2 * Math.sin(th)) + Math.abs(lh / 2 * Math.cos(th));
+    return {
+        dir, fs, ls, step, rot, cx, cy, lw, lh,
+        by: fs * 0.8 - lh / 2,
+        x: cx - hw, y: cy - hh, w: hw * 2, h: hh * 2,
+    };
+}
+
 // ── 智能反差 ──
 // 采样文字背后的实际像素,决定文字用什么颜色、要不要一圈反色边线。
 // 取样方式:把目标区域先缩到 32×8 再 getImageData —— 直接读原区域的话,6000px 宽的导出
@@ -891,18 +981,18 @@ function backdropStats(ctx, x, y, w, h) {
 
 // 文字行绘??原版 drawTextLine)
 /* exported drawTextLine */ function drawTextLine(ctx, line, cw, ch, card, cardY, cardH) {
+    if (!line || line.text == null || line.text === '') return;
+    const m = textLineMetrics(line, cw, ch, card, cardY, cardH);
+    const fs = m.fs;
     ctx.save();
-    const fs = autoExifTextSize(line, cw);
     ctx.font = `${line.fontWeight || 400} ${fs}px "${line.fontFamily || 'Microsoft YaHei'}"`;
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
     let fill = rgba(parseColor(line.colorHex, line.opacity));
     let outline = null;
-    const anchor = textLineAnchor(line, cw, ch, card || false, cardY || 0, cardH || 0);
-    // 智能反差(仅显式开启的行,如 EXIF 水印):按文字实际覆盖的区域取色
+    // 智能反差(仅显式开启的行,如 EXIF 水印):按文字实际覆盖的区域取色。
+    // 取的是度量外框,所以竖排/旋转时采样区也跟着对。
     if (line.autoContrast) {
-        const tw = Math.max(8, ctx.measureText(line.text).width);
-        const st = backdropStats(ctx, anchor[0] - tw / 2, anchor[1] - fs, tw, fs * 1.4);
+        const st = backdropStats(ctx, m.x, m.y, m.w, m.h);
         if (st) {
             const pick = contrastChoice(st.meanY, st.dev);
             const a = clamp((line.opacity == null ? 100 : line.opacity) / 100, 0, 1);
@@ -911,22 +1001,30 @@ function backdropStats(ctx, x, y, w, h) {
         }
     }
     ctx.fillStyle = fill;
-    const paint = (tx, ty) => {
+    const paint = (tx, ty, str) => {
         if (outline) {
             ctx.strokeStyle = outline;
             ctx.lineWidth = Math.max(1, Math.round(fs * 0.06));
             ctx.lineJoin = 'round';
-            ctx.strokeText(line.text, tx, ty);
+            ctx.strokeText(str, tx, ty);
         }
-        ctx.fillText(line.text, tx, ty);
+        ctx.fillText(str, tx, ty);
     };
-    const rot = line.rotation || 0;
-    if (rot !== 0) {
-        ctx.translate(anchor[0], anchor[1]);
-        ctx.rotate(rot * Math.PI / 180);
-        paint(0, 0);
+    // 旋转绕「框中心」而不是锚点:命中框、选中框算的都是这个中心,三者才对得上。
+    ctx.translate(m.cx, m.cy);
+    if (m.rot) ctx.rotate(m.rot * Math.PI / 180);
+    if (m.dir === 'v') {
+        // 竖排:每字占一格、格内居中;格高已经把字距算进去了(见 textLineMetrics.step)
+        ctx.textBaseline = 'middle';
+        const t = String(line.text);
+        for (let i = 0; i < t.length; i++) paint(0, -m.lh / 2 + m.step * (i + 0.5), t[i]);
     } else {
-        paint(anchor[0], anchor[1]);
+        ctx.textBaseline = 'alphabetic';
+        // 字距必须是 CSS 长度字符串:给数字会被静默忽略(engine-styles.js:2093 记过同一个坑)。
+        // 居中时 Chromium 把末字之后那段也计入 advance,故整体右移 ls/2,让「墨迹」真正居中。
+        if (m.ls > 0) ctx.letterSpacing = m.ls + 'px';
+        paint(m.ls / 2, m.by, String(line.text));
+        if (m.ls > 0) ctx.letterSpacing = '0px';
     }
     ctx.restore();
 }
@@ -1767,6 +1865,9 @@ window.__render = renderToCanvas;
 // 供 app.js 的「拖动叠加层」复用,保证拖拽中的画法与整帧渲染像素一致
 window.getElementBitmap = getElementBitmap;
 window.drawTextLine = drawTextLine;
+// 文字几何:命中框/选中框/面板要用同一份度量(见 textLineMetrics 注释)
+window.textLineMetrics = textLineMetrics;
+window.textLineDir = textLineDir;
 window.drawLogoElements = drawLogoElements;
 window.PUZZLE_LAYOUT_TYPES = PUZZLE_LAYOUT_TYPES;
 window.PUZZLE_LAYOUT_AXES = PUZZLE_LAYOUT_AXES;

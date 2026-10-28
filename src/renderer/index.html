@@ -743,6 +743,20 @@
                             <div class="param-row"><label>透明度</label><input type="range" id="slActiveIconOpacity" class="ctl-rng" min="0" max="100" value="100" /><input type="number" id="inpElOpacity" class="ctl-num" min="0" max="100" step="1" value="100" /><span class="pval" id="lblActiveIconOpacity"></span></div>
                             <div class="param-row"><label>缩放</label><input type="range" id="slElementSize" class="ctl-rng" min="16" max="10000" value="500" /><input type="number" id="inpElSize" class="ctl-num" min="16" step="1" value="500" /><span class="pval" id="lblElementSize"></span></div>
                             <div class="param-row"><label>旋转</label><input type="range" id="slElementRotation" class="ctl-rng" min="0" max="360" value="0" /><input type="number" id="inpElRotation" class="ctl-num" min="0" max="360" step="1" value="0" /><span class="pval" id="lblElementRotation"></span></div>
+                            <!-- 文字专属：方向与字距。选中 Logo/贴纸时这两行隐藏（syncTextRows） -->
+                            <div class="param-row" id="rowElTextDir" style="display:none">
+                                <label>文字方向</label>
+                                <select id="cbElTextDir" class="ctl-sel" title="横排 / 竖排（逐字直立，中文用）/ 侧排（整行旋转 90°，编号英文用）">
+                                    <option value="h">横排</option>
+                                    <option value="v">竖排（直立）</option>
+                                    <option value="side">侧排（旋转 90°）</option>
+                                </select>
+                            </div>
+                            <div class="param-row" id="rowElTextSpacing" style="display:none">
+                                <label>字距</label>
+                                <input type="range" id="slElTextSpacing" class="ctl-rng" min="0" max="40" step="1" value="0" />
+                                <span class="pval" id="lblElTextSpacing"></span>
+                            </div>
                             <div class="btn-row btn-4">
                                 <button class="mini-btn" id="btnZOrderTop" title="置于顶层">↑顶</button>
                                 <button class="mini-btn" id="btnZOrderUp" title="上移一层">上移</button>

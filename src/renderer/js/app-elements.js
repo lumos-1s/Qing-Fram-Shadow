@@ -53,18 +53,69 @@ window.App = Object.assign(window.App || {}, {
         return null;
     },
 
+    // 文字坐标是「画布逻辑像素」，而命中点来自 screenToCanvas（含 DPR 的画布像素）。
+    // 两者差一个 scale，DPR≠1 时不换算就会「点在这里、拖去那里」。
+    textSpaceScale() {
+        const cv = this.dom && this.dom.canvas;
+        if (!cv || !(cv.width > 1)) return 1;
+        const lw = (cv._logW > 1) ? cv._logW : cv.width;
+        return cv.width / lw;
+    },
+
+    // 引擎的「EXIF 参数条」占位行：exifAutoText 开启时它不绘制（由 buildExifLines 现算现画），
+    // 因此也不该出现在元素列表/命中里，否则用户会选中一行看不见的字。
+    _isHiddenExifLine(el, decor) {
+        if (!el || !el.text) return false;
+        const d = decor || (this.template && this.template.decorConfig) || {};
+        if ((d.exifAutoText || 0) !== 1) return false;
+        const lines = d.textLines || [];
+        const idx = lines.findIndex(l => l.text && (l.align === 'bottom' || l.align === 'exif'));
+        return idx >= 0 && lines[idx] === el;
+    },
+
     hitTestTexts(pt) {
-        const lines = (this.template && this.template.decorConfig && this.template.decorConfig.textLines) || [];
+        const decor = (this.template && this.template.decorConfig) || {};
+        const lines = decor.textLines || [];
+        const cv = this.dom && this.dom.canvas;
+        if (!cv || !(cv.width > 1) || !lines.length) return null;
+        const cw = (cv._logW > 1) ? cv._logW : cv.width;
+        const ch = (cv._logH > 1) ? cv._logH : cv.height;
+        const k = this.textSpaceScale();
+        const px = pt.x / k, py = pt.y / k;
+        const metrics = window.textLineMetrics;
+        if (typeof metrics !== 'function') return null;
         for (let i = lines.length - 1; i >= 0; i--) {
             const el = lines[i];
-            if (!el.text || el.align !== 'free') continue;
-            const fs = el.autoSize ? 24 : (el.fontSize || 18);
-            const w = Math.max(60, String(el.text).length * fs * 0.7), h = fs * 1.8;
-            if (Math.abs(pt.x - el.x) <= w / 2 && Math.abs(pt.y - el.y) <= h / 2) {
-                return { kind: 'text', obj: el, x0: el.x, y0: el.y, z: (el.z || 0) + 3 };
+            if (!el.text || this._isHiddenExifLine(el, decor)) continue;
+            // 外框已经含方向与角度：竖排/侧排/旋转都按同一套几何判定
+            const m = metrics(el, cw, ch, false, 0, 0);
+            if (px >= m.x && px <= m.x + m.w && py >= m.y && py <= m.y + m.h) {
+                return { kind: 'text', obj: el, x0: m.cx, y0: m.cy, z: (el.z || 0) + 3 };
             }
         }
         return null;
+    },
+
+    // 把「锚定在底边/顶边」的文字就地解锁成自由文字：坐标取当前几何框的中心，
+    // 所以画面一格都不跳。之后拖拽/输入才真的动得了它。
+    // 文字在「逻辑画布」里的几何（绘制口径）。算不出来时返回 null。
+    textMetricsOf(el) {
+        const cv = this.dom && this.dom.canvas;
+        const cw = (cv && cv._logW > 1) ? cv._logW : (cv ? cv.width : 0);
+        const ch = (cv && cv._logH > 1) ? cv._logH : (cv ? cv.height : 0);
+        if (!(cw > 1) || !(ch > 1) || typeof window.textLineMetrics !== 'function') return null;
+        return window.textLineMetrics(el, cw, ch, false, 0, 0);
+    },
+
+    promoteTextToFree(el) {
+        if (!el || el.align === 'free') return false;
+        const m = this.textMetricsOf(el);
+        if (!m) return false;
+        el.align = 'free';
+        el.x = Math.round(m.cx);
+        el.y = Math.round(m.cy);
+        delete el.rel;   // rel 是 logo 的口径（canvas.width 分数），文字不用
+        return true;
     },
 
     // 元素在画布上的中心点(像素)。三种坐标形式并存,按优先级解析:
@@ -238,8 +289,11 @@ window.App = Object.assign(window.App || {}, {
                 e.x = Math.max(20, Math.min(cw - 20, (e.x || 0) + dx));
                 e.y = Math.max(20, Math.min(ch - 20, (e.y || 0) + dy));
             } else if (sel.kind === 'text') {
-                e.x = Math.max(30, Math.min(cw - 30, (e.x || 0) + dx));
-                e.y = Math.max(20, Math.min(ch - 20, (e.y || 0) + dy));
+                this.promoteTextToFree(e);
+                const lw = (this.dom.canvas._logW > 1) ? this.dom.canvas._logW : cw;
+                const lh = (this.dom.canvas._logH > 1) ? this.dom.canvas._logH : ch;
+                e.x = Math.max(0, Math.min(lw, (e.x || 0) + dx));
+                e.y = Math.max(0, Math.min(lh, (e.y || 0) + dy));
             }
         });
         this.syncElInputs();
@@ -254,6 +308,12 @@ window.App = Object.assign(window.App || {}, {
             const p = this.logoPos(e, this.dom.canvas.width || 0, this.dom.canvas.height || 0, e.size || 60);
             return Math.round(p.cx);
         }
+        // 锚定文字没有 x/y（x=0 只是占位），面板要显示它「现在实际在哪」，
+        // 否则选了文字却看到 0,0，会以为坏了。
+        if (sel.kind === 'text' && e.align !== 'free') {
+            const m = this.textMetricsOf(e);
+            if (m) return Math.round(m.cx);
+        }
         return Math.round(e.x || 0);
     },
     _elCenterY(sel) {
@@ -262,6 +322,10 @@ window.App = Object.assign(window.App || {}, {
             if (typeof e.y === 'number') return Math.round(e.y);
             const p = this.logoPos(e, this.dom.canvas.width || 0, this.dom.canvas.height || 0, e.size || 60);
             return Math.round(p.cy);
+        }
+        if (sel.kind === 'text' && e.align !== 'free') {
+            const m = this.textMetricsOf(e);
+            if (m) return Math.round(m.cy);
         }
         return Math.round(e.y || 0);
     },
@@ -286,14 +350,37 @@ window.App = Object.assign(window.App || {}, {
         const cw = this.dom.canvas.width || 0, ch = this.dom.canvas.height || 0;
         if (sel.kind === 'logo') this.setLogoPixelPos(e, x, y);
         else if (sel.kind === 'sticker') { e.x = Math.max(20, Math.min(cw - 20, x)); e.y = Math.max(20, Math.min(ch - 20, y)); }
-        else if (sel.kind === 'text') { e.x = Math.max(30, Math.min(cw - 30, x)); e.y = Math.max(20, Math.min(ch - 20, y)); }
+        else if (sel.kind === 'text') {
+            // 锚定文字没有 x/y 可言：先在当前位置解锁成自由文字（画面不跳），再写坐标
+            this.promoteTextToFree(e);
+            const lw = (this.dom.canvas._logW > 1) ? this.dom.canvas._logW : cw;
+            const lh = (this.dom.canvas._logH > 1) ? this.dom.canvas._logH : ch;
+            e.x = Math.max(0, Math.min(lw, x));
+            e.y = Math.max(0, Math.min(lh, y));
+        }
     },
 
     rebindSelectedEls() { /* template引用稳定,无需重绑 */ },
 
     moveElement(drag, x, y) {
         const e = drag.ref;
-        const cw = this.dom.canvas.width || 0, ch = this.dom.canvas.height || 0;
+        const cv = this.dom.canvas;
+        const cw = cv.width || 0, ch = cv.height || 0;
+        if (drag.kind === 'text') {
+            // 文字坐标是逻辑口径，而拖拽位移是画布像素（含 DPR）——先换算再吸附/写回，
+            // 否则 DPR>1 的屏幕上文字会以 1.x 倍速跟手。
+            const k = this.textSpaceScale();
+            const lw = (cv._logW > 1) ? cv._logW : cw;
+            const lh = (cv._logH > 1) ? cv._logH : ch;
+            const snap = this.snapToGuides(drag.x + (x - drag.x) / k, drag.y + (y - drag.y) / k, lw, lh, e, 'text');
+            e.x = Math.max(0, Math.min(lw, snap.x));
+            e.y = Math.max(0, Math.min(lh, snap.y));
+            this._logoSnapV = snap.v; this._logoSnapH = snap.h;
+            this._logoSnapEdgeV = snap.vEdge; this._logoSnapEdgeH = snap.hEdge;
+            this._logoSnapPhotoV = snap.photoV; this._logoSnapPhotoH = snap.photoH;
+            this.onSettingChanged();
+            return;
+        }
         const snap = this.snapToGuides(x, y, cw, ch, e, drag.kind);
         if (drag.kind === 'logo') {
             // 用相对比例写回,换照片尺寸时不会跑到画布外
@@ -335,6 +422,15 @@ window.App = Object.assign(window.App || {}, {
     },
 
     _logoDrawSize(el, kind) {
+        if (kind === 'text' && el && typeof window.textLineMetrics === 'function') {
+            const cv = this.dom && this.dom.canvas;
+            const cw = (cv && cv._logW > 1) ? cv._logW : (cv ? cv.width : 0);
+            const ch = (cv && cv._logH > 1) ? cv._logH : (cv ? cv.height : 0);
+            if (cw > 1 && ch > 1) {
+                const m = window.textLineMetrics(el, cw, ch, false, 0, 0);
+                return { w: m.lw, h: m.lh };
+            }
+        }
         let size = Math.max(2, (el && el.size) || 60);
         if (kind === 'sticker') size = Math.max(6, Math.round(((el && el.scale) || 1) * 60));
         let ratio = (el && el.ratio) || 0;
@@ -442,7 +538,25 @@ window.App = Object.assign(window.App || {}, {
         if (inpR) inpR.value = ((e.rotation || 0) % 360 + 360) % 360;
         if (inpO) inpO.value = Math.round(e.opacity != null ? e.opacity : 100);
         if (inpS) inpS.value = sizeVal;
+        this.syncTextRows(el);
         this.syncElInputs();
+    },
+
+    // 文字专属的行（方向/字距）只在选中文字时露出，其余时候整行收起
+    syncTextRows(sel) {
+        const $ = this.$;
+        const isText = !!(sel && sel.kind === 'text' && sel.obj);
+        const rowDir = $('rowElTextDir'), rowLs = $('rowElTextSpacing');
+        if (rowDir) rowDir.style.display = isText ? '' : 'none';
+        if (rowLs) rowLs.style.display = isText ? '' : 'none';
+        if (!isText) return;
+        const e = sel.obj;
+        const cb = $('cbElTextDir');
+        if (cb) cb.value = (typeof window.textLineDir === 'function') ? window.textLineDir(e) : 'h';
+        const sl = $('slElTextSpacing');
+        const ls = Math.round(Number(e.letterSpacing) || 0);
+        if (sl) sl.value = Math.max(0, Math.min(40, ls));
+        this.updateLabel('lblElTextSpacing', ls + 'px');
     },
 
     drawSelectionBox() {
@@ -453,6 +567,31 @@ window.App = Object.assign(window.App || {}, {
             for (const sel of this.selectedEls) {
                 const e = sel.obj;
                 if (!e) continue;
+                // 文字用真实度量框（含方向/旋转）：原来按 logo 的 size 画 60px 方块，
+                // 对文字既不是它的位置也不是它的大小。
+                if (sel.kind === 'text' && typeof window.textLineMetrics === 'function') {
+                    const cw = (canvas._logW > 1) ? canvas._logW : canvas.width;
+                    const chh = (canvas._logH > 1) ? canvas._logH : canvas.height;
+                    const k = this.textSpaceScale();
+                    const m = window.textLineMetrics(e, cw, chh, false, 0, 0);
+                    const bw = Math.max(14, m.lw * k), bh = Math.max(14, m.lh * k);
+                    ctx.save();
+                    ctx.translate(m.cx * k, m.cy * k);
+                    if (m.rot) ctx.rotate(m.rot * Math.PI / 180);
+                    ctx.strokeStyle = '#00e5a0';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([6, 4]);
+                    ctx.strokeRect(-bw / 2 - 3, -bh / 2 - 3, bw + 6, bh + 6);
+                    ctx.setLineDash([]);
+                    // 四个角的小方块：提示「可拖」，与其它元素一致
+                    ctx.fillStyle = '#00e5a0';
+                    const h = 5;
+                    [[-bw/2-3, -bh/2-3], [bw/2+3-h, -bh/2-3], [-bw/2-3, bh/2+3-h], [bw/2+3-h, bh/2+3-h]].forEach(([x, y]) => {
+                        ctx.fillRect(x, y, h, h);
+                    });
+                    ctx.restore();
+                    continue;
+                }
                 let cx = e.x, cy = e.y, size = e.size || 60;
                 if (typeof cx !== 'number' || typeof cy !== 'number') {
                     const p = this.logoPos(e, canvas.width, canvas.height, size);
@@ -705,7 +844,11 @@ window.App = Object.assign(window.App || {}, {
         (t && t.logoElements || []).forEach((el, i) => items.push({ kind: 'logo', i, label: el.name || 'Logo', src: el.dataUrl, obj: el }));
         (t && t.decorConfig && t.decorConfig.stickers || []).forEach((el, i) => items.push({ kind: 'sticker', i, label: '贴纸', src: el.src, obj: el }));
         (t && t.decorConfig && t.decorConfig.textLines || []).forEach((el, i) => {
-            if (el.align === 'free') items.push({ kind: 'text', i, label: el.text.substring(0, 8), src: null, obj: el });
+            // 不再只收 align==='free'：87 个预设的文字全是锚定行，只收 free 等于
+            // 「元素管理」里一个字都看不到，用户只能改字号。这里全列出来，
+            // 拖动/输入坐标时才就地解锁（promoteTextToFree），画面不跳。
+            if (!el.text || this._isHiddenExifLine(el, t.decorConfig)) return;
+            items.push({ kind: 'text', i, label: String(el.text).substring(0, 8), src: null, obj: el });
         });
         list.innerHTML = '';
         if (!items.length) {
@@ -770,6 +913,7 @@ window.App = Object.assign(window.App || {}, {
         status.textContent = !first ? `共 ${items.length} 个元素,点击选择(可 Ctrl/Shift 多选)`
             : (n > 1 ? `已选中 ${n} 个元素` : `${tagMap[first.kind]}「${this.elLabel(first.obj)}」已选中`);
         if (first) this.syncSliderFromEl({ kind: first.kind, obj: first.obj });
+        else this.syncTextRows(null);   // 取消选中时把「方向/字距」两行也收起来
         this.syncElInputs();
     },
 

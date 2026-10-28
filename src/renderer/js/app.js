@@ -949,7 +949,14 @@ window.App = {
             if (this._dragEl) {
                 const dx = e.screenX - this._dragEl.sx, dy = e.screenY - this._dragEl.sy;
                 if (Math.abs(dx) + Math.abs(dy) > 2) {
-                    if (!this._dragEl.moved) { this._dragEl.moved = true; this.pushUndo(); }
+                    if (!this._dragEl.moved) {
+                        this._dragEl.moved = true;
+                        this.pushUndo();
+                        // 锚定文字（预设里那些贴底/贴顶的字）本来没有坐标可改。
+                        // 真正开始拖的一刻才解锁：单纯点一下只是选中，模板不被改动。
+                        // 解锁取的是当前几何框中心，所以这一帧画面不动。
+                        if (this._dragEl.kind === 'text') this.promoteTextToFree(this._dragEl.ref);
+                    }
                     const rect = canvas.getBoundingClientRect();
                     const kx = canvas.width / rect.width, ky = canvas.height / rect.height;
                     this.moveElement(this._dragEl, this._dragEl.x + dx * kx, this._dragEl.y + dy * ky);
@@ -2753,6 +2760,22 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
             this.updateLabel('lblActiveIconOpacity', v + '%');
             if ($('inpElOpacity')) $('inpElOpacity').value = v;
             this.applyToSelectedEls(el => { el.opacity = v; });
+            this.batchElOps();
+        });
+        // 文字方向：只有选中文字时这两行才露出（见 app-elements.syncTextRows）
+        if ($('cbElTextDir')) $('cbElTextDir').addEventListener('change', () => {
+            const v = $('cbElTextDir').value;
+            this.applyToSelectedEls((el, kind) => {
+                if (kind !== 'text') return;
+                // 'h' 是默认值，直接删字段，保持模板干净（预设文件里也不必写它）
+                if (v === 'h') delete el.direction; else el.direction = v;
+            });
+            this.batchElOps();
+        });
+        if ($('slElTextSpacing')) $('slElTextSpacing').addEventListener('input', () => {
+            const v = parseInt($('slElTextSpacing').value, 10) || 0;
+            this.updateLabel('lblElTextSpacing', v + 'px');
+            this.applyToSelectedEls((el, kind) => { if (kind === 'text') el.letterSpacing = v; });
             this.batchElOps();
         });
         if ($('slElementRotation')) $('slElementRotation').addEventListener('input', () => {

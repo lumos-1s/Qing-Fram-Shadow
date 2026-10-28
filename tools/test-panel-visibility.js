@@ -132,8 +132,12 @@ const SHOW_OK = new Set([
 //   它们,audit 会按"参照缺行"报 76 风格 × 3 = 228 条。它们和上面三行性质相同(都是能力表接入之后
 //   才有的行),按新增行记账即可;下次 --update 重建快照后它们自然会进 rowIds,默认模式的"缺行"
 //   也就归零了。
+// rowElTextDir / rowElTextSpacing:文字排版(方向/字距)两行,2026-10 新增。它们不是给所有风格
+// 开的,而是**跟着"选中了文字"显隐**(app-elements.syncTextRows),所以冻结基线里不可能有,
+// 一律按新增行记账。
 const NEW_ROWS = new Set(['rowCornerRadius', 'rowGlobalMargin', 'rowImgScale', 'rowAvatarShow',
-    'rowCreditMode', 'rowT2iColor', 'rowT2iEffect', 'rowT2iStyle']);
+    'rowCreditMode', 'rowT2iColor', 'rowT2iEffect', 'rowT2iStyle',
+    'rowElTextDir', 'rowElTextSpacing']);
 
 function drawKeys() {
     const src = fs.readFileSync(ENGINE, 'utf8');
