@@ -148,9 +148,15 @@ window.App = Object.assign(window.App || {}, {
             ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
             ctx.restore();
         } else if (kind === 'text') {
-            // 自由文字复用引擎绘制,同样传基准口径(引擎也是这么调的)
+            // 自由文字复用引擎绘制。引擎现在按「物理画布 + scl」画文字（见 engine.js 的
+            // textScl），这里必须给同一口径：以前传的是逻辑尺寸 ovBase 且不给 scl，
+            // 于是按下瞬间会多出一份「逻辑坐标、未缩放」的小字贴在左上角（用户实测）。
+            // 相框通道里 _logW == canvas.width，所以 scl 自然是 1，两种通道都对。
             if (el.text && el.align === 'free' && window.drawTextLine) {
-                window.drawTextLine(ctx, el, ovBase.w, ovBase.h, false, 0, 0);
+                const cvEl = this.dom.canvas;
+                const cw = cvEl.width || 1, chh = cvEl.height || 1;
+                const scl = (cvEl._logW > 1) ? cw / cvEl._logW : 1;
+                window.drawTextLine(ctx, el, cw, chh, false, 0, 0, scl);
             }
         }
         ctx.setTransform(1, 0, 0, 1, 0, 0);

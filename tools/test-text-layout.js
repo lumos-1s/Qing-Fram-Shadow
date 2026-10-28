@@ -268,6 +268,41 @@ const SCENARIO = `
     add(seqR.every(v => Math.abs(v * 10 - Math.round(v * 10)) < 1e-9), '⑬ 滚轮累加不产生浮点尾巴',
         seqR.join(' / '));
 
+    // ── ⑭ 拖动中的「单元素重绘」必须和整帧同一口径 ──
+    // 曾经的 bug：mousedown 后走「缓存底图 + 单独重画该元素」，那条路径传的是逻辑尺寸
+    // 且不给 scl，于是在物理画布上多出一份「逻辑坐标、未缩放」的小字贴在左上角。
+    // 这里直接调 _drawDraggedEl（就是那段代码），比模拟鼠标更确定：离屏画布上量墨迹位置。
+    decor.textLines = [{ text: '按住测试', align: 'free', x: CW / 2, y: CH / 2, fontSize: 64,
+                         fontFamily: 'Microsoft YaHei', colorHex: '#ffffff', opacity: 100, letterSpacing: 0 }];
+    const elH = decor.textLines[0];
+    const mH = M(elH, CW, CH);
+    const cvH = A.dom.canvas;
+    const offH = document.createElement('canvas');
+    offH.width = cvH.width; offH.height = cvH.height;
+    const gH = offH.getContext('2d');
+    gH.fillStyle = '#000'; gH.fillRect(0, 0, offH.width, offH.height);
+    A._drawDraggedEl(gH, elH, 'text');
+    const dH = gH.getImageData(0, 0, offH.width, offH.height).data;
+    let dx0 = 1e9, dy0 = 1e9, dx1 = -1, dy1 = -1, dn = 0;
+    for (let y = 0; y < offH.height; y += 2) {
+        for (let x = 0; x < offH.width; x += 2) {
+            const i = (y * offH.width + x) * 4;
+            if (dH[i] > 60 || dH[i + 1] > 60 || dH[i + 2] > 60) {
+                dn++; if (x < dx0) dx0 = x; if (x > dx1) dx1 = x; if (y < dy0) dy0 = y; if (y > dy1) dy1 = y;
+            }
+        }
+    }
+    const wantCx = mH.cx * k, wantCy = mH.cy * k;
+    const gotCx = dn ? (dx0 + dx1) / 2 : -1, gotCy = dn ? (dy0 + dy1) / 2 : -1;
+    // 横向必须严格对齐；纵向允许半个字号左右的基线偏移（墨迹中心本来就在基线之上）
+    add(dn > 50 && Math.abs(gotCx - wantCx) <= 8 && Math.abs(gotCy - wantCy) <= mH.fs * k * 0.4,
+        '⑭ 拖动重绘的墨迹落在元素中心（不会跑到左上角）',
+        '墨迹中心=' + Math.round(gotCx) + ',' + Math.round(gotCy) + ' 期望=' + Math.round(wantCx) + ',' + Math.round(wantCy)
+        + '（纵向容差 ' + Math.round(mH.fs * k * 0.4) + 'px 基线偏移）像素 ' + dn);
+    add(dn > 50 && Math.abs((dx1 - dx0) - mH.lw * k) <= mH.lw * k * 0.2,
+        '⑭ 拖动重绘的尺寸与整帧一致（没被缩小）',
+        '墨迹宽=' + (dx1 - dx0) + ' 框宽=' + Math.round(mH.lw * k));
+
     decor.textLines = savedLines;
 
     // ── ⑫ 大图（uiScale<1）也必须落在画布中心、且绘制尺寸与度量框一致 ──
