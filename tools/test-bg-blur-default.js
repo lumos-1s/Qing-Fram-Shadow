@@ -49,6 +49,21 @@ const SCENARIO = `
     const add = (ok, label, got) => res.push({ ok: !!ok, label, got: String(got) });
     const num = (v) => Number(v || 0);
 
+    // 面板几何断言要求"有照片"的状态：applyPreset() 现在会刷新空态，
+    // 而 #inspector.no-image 会把 #panel-canvas 的 param-group 全部 display:none，
+    // 没照片时 rect 恒为 0（CI 上的 row=0.0 就是这个）。这里给一张最小照片。
+    if (!A.images || !A.images.length) {
+        const c0 = document.createElement('canvas'); c0.width = 800; c0.height = 600;
+        c0.getContext('2d').fillRect(0, 0, 800, 600);
+        const im0 = new Image();
+        await new Promise((r) => { im0.onload = r; im0.src = c0.toDataURL('image/jpeg', 0.9); });
+        A.image = { el: im0, name: 't.jpg', w: 800, h: 600, exif: {} };
+        A.images = [A.image];
+        A.selectedIdx = [0]; A.currentIdx = 0;
+        A.template = A.template || A.defaultTemplate();
+        if (typeof A.updateEmptyState === 'function') A.updateEmptyState();
+    }
+
     // 等预设库真正加载完（init 里的 loadPresets 是异步的）
     for (let i = 0; i < 120 && !(A.presets || []).length; i++) await sleep(50);
     if (!(A.presets || []).length) throw new Error('预设库未加载');
@@ -159,10 +174,6 @@ app.whenReady().then(async () => {
     });
 
     await win.loadFile(PAGE);
-
-    // Electron 45 起隐藏窗口不做布局/绘制：几何与像素断言会拿到 0×0 / 空白。
-
-    // 必须让窗口真正参与合成，否则整片用例静默失灵（曾把 test:drag 全判失败）。
 
     win.showInactive();
 

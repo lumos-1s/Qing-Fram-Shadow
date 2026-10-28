@@ -221,9 +221,6 @@ app.whenReady().then(async () => {
     });
     win.webContents.on('console-message', (_e, l, m) => { const s = String(m); if (l >= 2 && !/willReadFrequently/.test(s)) console.log('  [renderer] ' + s.slice(0, 180)); });
     await win.loadFile(path.join(ROOT, 'src', 'renderer', 'index.html'));
-    // Electron 45 起隐藏窗口不做布局/绘制：几何与像素断言会拿到 0×0 / 空白。
-    // 必须让窗口真正参与合成，否则整片用例静默失灵（曾把 test:drag 全判失败）。
-    win.showInactive();
 
     for (let i = 0; i < 120; i++) {
         if (await win.webContents.executeJavaScript('!!(window.App && window.App.dom && window.App.dom.canvas && window.__render)')) break;
