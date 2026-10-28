@@ -34,7 +34,8 @@ window.App = Object.assign(window.App || {}, {
         document.addEventListener('keydown', (event) => this._onImmersiveKey(event), true);
         window.addEventListener('pointermove', () => this.wakeImmersiveChrome(), { passive: true });
         window.addEventListener('pointerdown', () => this.wakeImmersiveChrome(), { passive: true });
-        window.addEventListener('wheel', () => this.wakeImmersiveChrome(), { passive: true });
+        // 滚轮切换：不能 passive，否则无法阻止滚轮继续滚动背后的编辑器
+        el.overlay.addEventListener('wheel', (event) => this._onImmersiveWheel(event), { passive: false });
         window.addEventListener('resize', () => {
             if (!this._immersionOpen) return;
             clearTimeout(this._immersionResizeTimer);
@@ -104,6 +105,7 @@ window.App = Object.assign(window.App || {}, {
             lastFocus: document.activeElement
         };
         this._immersion = state;
+        this._immersionWheelState = null;
         this._immersionOpen = true;
         // 展示期间不响应编辑器的“适应窗口”重算，退出后保留原缩放/平移
         clearTimeout(this._fitResizeT);
@@ -148,6 +150,7 @@ window.App = Object.assign(window.App || {}, {
         const last = state && state.lastFocus;
 
         this._immersionOpen = false;
+        this._immersionWheelState = null;
         clearTimeout(this._immersionIdleTimer);
         clearTimeout(this._immersionResizeTimer);
         if (state) clearTimeout(state.renderTimer);
@@ -485,6 +488,51 @@ window.App = Object.assign(window.App || {}, {
         if (!this._immersionOpen || !this._immersion) return;
         if (this._immersion.list.length <= 1) return;
         this.showImmersiveAt(this._immersion.index + delta);
+    },
+
+    // 鼠标滚轮：向下滚 = 下一张，向上滚 = 上一张。
+    // 鼠标滚轮按刻度逐张切；触控板惯性会连续发很多小增量，一次手势只切一张，避免一划飞过多张。
+    _onImmersiveWheel(event) {
+        if (!this._immersionOpen) return;
+        this.wakeImmersiveChrome();
+        if (event.ctrlKey || event.metaKey) return;
+        const dy = event.deltaY;
+        if (!dy) return;
+        event.preventDefault();
+        const state = this._immersion;
+        if (!state || state.list.length <= 1) return;
+
+        const now = event.timeStamp || performance.now();
+        const g = this._immersionWheelState || (this._immersionWheelState = {
+            last: -Infinity, lastStep: -Infinity, acc: 0, trackpad: false, stepped: false
+        });
+        // 停 320ms 以上算新手势，重新允许切换（留足离屏渲染卡顿的余量）
+        if (now - g.last > 320) {
+            g.acc = 0;
+            g.trackpad = false;
+            g.stepped = false;
+        }
+        g.last = now;
+
+        // 一次手势里只要出现过触控板特征，后续大增量也按触控板算，
+        // 否则惯性峰值会被误判成鼠标滚轮而多切几张。
+        const trackpad = g.trackpad || (event.deltaMode === 0 &&
+            (Math.abs(dy) < 50 || (event.deltaX !== 0 && dy !== 0)));
+        if (trackpad) {
+            g.trackpad = true;
+            if (g.stepped) return;
+            g.acc += dy;
+            if (Math.abs(g.acc) < 24) return;
+            g.stepped = true;
+            g.acc = 0;
+            this.stepImmersive(dy > 0 ? 1 : -1);
+            return;
+        }
+
+        // 鼠标滚轮/高精度离散滚动：120ms 内只认一次，防止系统重复事件
+        if (now - g.lastStep < 120) return;
+        g.lastStep = now;
+        this.stepImmersive(dy > 0 ? 1 : -1);
     },
 
     wakeImmersiveChrome() {

@@ -231,8 +231,60 @@ async function main() {
     check(next.currentTiles > 0, '墙上的当前高亮同步');
     check(next.x !== beforeWall.x || next.y !== beforeWall.y, '背景墙随切换滚动', `${beforeWall.x},${beforeWall.y} -> ${next.x},${next.y}`);
 
+    // 滚轮：向下 = 下一张，向上 = 上一张；同时必须吞掉默认滚动
+    const wheelUp = await exec(`(async () => {
+        const overlay = document.getElementById('immersion');
+        const ev = new WheelEvent('wheel', { deltaY: -120, deltaMode: 0, bubbles: true, cancelable: true });
+        overlay.dispatchEvent(ev);
+        await new Promise((r) => setTimeout(r, 280));
+        return {
+            index: window.App._immersion.index,
+            count: document.getElementById('immersionCount').textContent,
+            file: document.getElementById('immersionFile').textContent,
+            prevented: ev.defaultPrevented
+        };
+    })()`);
+    check(wheelUp.index === 0 && wheelUp.count === '01 / 02', '滚轮向上切换到上一张', JSON.stringify(wheelUp));
+    check(wheelUp.file === setup.names[0], '滚轮向上切换后文件名同步', wheelUp.file);
+    check(wheelUp.prevented === true, '滚轮切换阻止背景滚动');
+
+    const wheelDown = await exec(`(async () => {
+        const overlay = document.getElementById('immersion');
+        const ev = new WheelEvent('wheel', { deltaY: 120, deltaMode: 0, bubbles: true, cancelable: true });
+        overlay.dispatchEvent(ev);
+        await new Promise((r) => setTimeout(r, 280));
+        return {
+            index: window.App._immersion.index,
+            count: document.getElementById('immersionCount').textContent,
+            file: document.getElementById('immersionFile').textContent
+        };
+    })()`);
+    check(wheelDown.index === 1 && wheelDown.count === '02 / 02', '滚轮向下切换到下一张', JSON.stringify(wheelDown));
+    check(wheelDown.file === setup.names[2], '滚轮向下切换后文件名同步', wheelDown.file);
+
+    // 触控板惯性会连发小增量：同一手势只切一张，停手后新手势可继续
+    const trackpad = await exec(`(async () => {
+        const overlay = document.getElementById('immersion');
+        const fire = (dy) => overlay.dispatchEvent(new WheelEvent('wheel', {
+            deltaY: dy, deltaMode: 0, bubbles: true, cancelable: true
+        }));
+        for (let i = 0; i < 3; i++) fire(8);
+        await new Promise((r) => setTimeout(r, 40));
+        const afterStep = window.App._immersion.index;
+        for (let i = 0; i < 12; i++) fire(8);
+        fire(80); // 惯性峰值：仍应算同一次手势
+        await new Promise((r) => setTimeout(r, 40));
+        const afterInertia = window.App._immersion.index;
+        await new Promise((r) => setTimeout(r, 360));
+        for (let i = 0; i < 3; i++) fire(-8);
+        await new Promise((r) => setTimeout(r, 40));
+        return { afterStep, afterInertia, afterNextGesture: window.App._immersion.index };
+    })()`);
+    check(trackpad.afterStep === 0 && trackpad.afterInertia === 0, '触控板一次手势只切换一张', JSON.stringify(trackpad));
+    check(trackpad.afterNextGesture === 1, '触控板新手势可继续切换', JSON.stringify(trackpad));
+
     // 自动隐藏：静止 2 秒后隐藏光标/工具层，移动恢复
-    await sleep(2300);
+    await sleep(2800);
     const idle = await exec(`(() => {
         const overlay = document.getElementById('immersion');
         const close = document.getElementById('immersionClose');
