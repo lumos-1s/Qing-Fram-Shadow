@@ -1430,9 +1430,15 @@ window.App = {
     updatePersonalVisibility() {
         if (!this.template) return;
         const rows = window.StyleCaps.visibleRows(this.template.photoFrameStyle || '');
+        const blurOn = !!(document.getElementById('chkBgBlur') || {}).checked;
         for (const id in rows) {
             const el = document.getElementById(id);
-            if (el) el.style.display = rows[id] ? '' : 'none';
+            if (!el) continue;
+            // 背景模糊程度是条件行：能力表是在 signBgBlur=0 的基线下实测的，
+            // 支持背景模糊开关的风格会被测成 bi=false。用户把模糊打开后，引擎确实会读
+            // blurIntensity，所以这里按开关状态补展开，避免“开了模糊却调不了程度”。
+            const show = (id === 'rowBgBlurInt' && blurOn && rows.rowBgBlur) ? true : rows[id];
+            el.style.display = show ? '' : 'none';
         }
         this.syncEmptyGroups();
     },

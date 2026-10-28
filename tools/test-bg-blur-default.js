@@ -97,6 +97,7 @@ const SCENARIO = `
     await sleep(40);
     add(num(A.template.signBgBlur) === 1, '切预设后仍默认开', num(A.template.signBgBlur));
     add(document.getElementById('chkBgBlur').checked === true, '切预设后复选框仍勾选', document.getElementById('chkBgBlur').checked);
+    add(getComputedStyle(rowInt).display !== 'none', '切预设后模糊程度行仍展开', getComputedStyle(rowInt).display);
 
     // ③ 不支持模糊的风格：按钮不露出，预设值不被改写
     A.applyPreset(pNo);
@@ -118,6 +119,7 @@ const SCENARIO = `
     await sleep(40);
     add(num(A.template.signBgBlur) === 0, '默认关在下一预设生效', num(A.template.signBgBlur));
     add(document.getElementById('chkBgBlur').checked === false, '默认关时复选框不勾选', document.getElementById('chkBgBlur').checked);
+    add(getComputedStyle(rowInt).display === 'none', '默认关时模糊程度行收起', getComputedStyle(rowInt).display);
 
     if (pExplicit) {
         A.applyPreset(pExplicit);
@@ -176,6 +178,7 @@ app.whenReady().then(async () => {
             text: (document.getElementById('btnBgBlurDefault') || {}).textContent || '',
             sign: Number(A.template.signBgBlur || 0),
             checked: !!(document.getElementById('chkBgBlur') || {}).checked,
+            rowInt: getComputedStyle(document.getElementById('rowBgBlurInt')).display,
         };
         try { localStorage.removeItem('qfs_bg_blur_default'); } catch (e) {}
         return out;
@@ -188,6 +191,7 @@ app.whenReady().then(async () => {
     add(persisted.text.trim() === '默认开', '重载后按钮文案=默认开', persisted.text.trim());
     add(persisted.sign === 1, '重载后预设仍默认开', persisted.sign);
     add(persisted.checked === true, '重载后复选框勾选', persisted.checked);
+    add(persisted.rowInt !== 'none', '重载后模糊程度行仍展开', persisted.rowInt);
 
     let fail = 0;
     console.log('背景模糊默认记忆  (样本: ' + first.pFollow + ' / ' + first.pNext + (first.pExplicit ? ' / ' + first.pExplicit : '') + ')');
