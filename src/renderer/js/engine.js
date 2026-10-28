@@ -248,14 +248,18 @@ function renderTemplateStyle(app) {
     // 元素叠层(基准画布像素坐标):文字/贴纸/四角括号/EXIF 参数 + Logo
     const cw = app.dom.canvas.width, ch = app.dom.canvas.height;
     const scl = canvasW > 0 ? cw / canvasW : 1;
+    // 文字/贴纸层的坐标口径是「显示逻辑尺寸」_logW(=_logH)，不是基准 canvasW：
+    // 大图会被 uiScale 缩到 displayMax，此时 cw/canvasW = uiScale*dpr，而元素坐标
+    // 只按 dpr 放大。用错这一层，文字会偏到左上、并且比选中框小一圈（用户实测症状）。
+    const textScl = (app.dom.canvas._logW > 1) ? cw / app.dom.canvas._logW : 1;
     const pm = image.el ? (template.baseMargin || {}) : {};
     const pih = (image.el ? image.el.naturalHeight : 0) * (pm.imgScale || 1);
     const pusableH = canvasH - (pm.marginTop || 0) - (pm.marginBottom || 0);
     const stripTop = image.el ? ((pm.marginTop || 0) + (pusableH - pih) / 2 + (pm.imgOffsetY || 0) + pih) * scl : ch;
     // Logo/贴纸/文字/装饰仅允许出现在“加边框后的成品图片”范围内:圆角卡片时剪辑到卡片轮廓
     const cardClip = beginCardClip(ctx, template, cw, ch);
-    drawDecoration(ctx, template.decorConfig || {}, cw, ch, image, template, stripTop, scl);
-    drawDraftText(ctx, template, cw, ch, scl);
+    drawDecoration(ctx, template.decorConfig || {}, cw, ch, image, template, stripTop, textScl);
+    drawDraftText(ctx, template, cw, ch, textScl);
     drawLogoElements(ctx, template.logoElements || [], cw, ch);
     if (cardClip) ctx.restore();
 
@@ -1278,8 +1282,10 @@ function renderCardStyle(app) {
     // 元素叠层(基准画布像素坐标)
     const cw = app.dom.canvas.width, ch = app.dom.canvas.height;
     const cardScl = canvasW > 0 ? cw / canvasW : 1;
-    drawDecoration(ctx, template.decorConfig || {}, cw, ch, image, template, (drawY + drawH) * cardScl, cardScl);
-    drawDraftText(ctx, template, cw, ch, cardScl);
+    // 同上：文字层按 _logW 口径换算（与 app-elements 的 textSpaceScale 一致）
+    const textScl2 = (app.dom.canvas._logW > 1) ? cw / app.dom.canvas._logW : 1;
+    drawDecoration(ctx, template.decorConfig || {}, cw, ch, image, template, (drawY + drawH) * cardScl, textScl2);
+    drawDraftText(ctx, template, cw, ch, textScl2);
     drawLogoElements(ctx, template.logoElements || [], cw, ch);
 
     app.applyZoomStyle();

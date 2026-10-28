@@ -251,6 +251,71 @@ const SCENARIO = `
         'h=' + mStyled.lh.toFixed(1) + ' 期望 ' + (88 * 1.18).toFixed(1));
 
     decor.textLines = savedLines;
+
+    // ── ⑫ 大图（uiScale<1）也必须落在画布中心、且绘制尺寸与度量框一致 ──
+    // 这条是为一个真 bug 加的：文字层用 cw/canvasW（含 uiScale）当缩放因子，
+    // 而元素坐标是 _logW 口径 —— 大图上文字会偏到左上、框比字大一圈。
+    const bigImg = await (async () => {
+        const c = document.createElement('canvas'); c.width = 4000; c.height = 3000;
+        const g = c.getContext('2d'); g.fillStyle = '#2b2f33'; g.fillRect(0, 0, 4000, 3000);
+        const im = new Image();
+        await new Promise(r => { im.onload = r; im.onerror = r; im.src = c.toDataURL('image/jpeg', 0.9); });
+        return im;
+    })();
+    A.image = { el: bigImg, name: 'big.jpg', w: 4000, h: 3000, exif: {} };
+    A.images = [A.image]; A.selectedIdx = [0]; A.currentIdx = 0;
+    A.template = A.defaultTemplate();
+    A.setTpl(A.image, A.template);
+    if (typeof A.updateEmptyState === 'function') A.updateEmptyState();
+    A.scheduleRender(true);
+    await sleep(1400);   // 3600×2700 的画布，500ms 来不及重绘（实测会读到旧帧）
+    const cvB = A.dom.canvas;
+    const kB = A.textSpaceScale();
+    const decorB = A.template.decorConfig || (A.template.decorConfig = {});
+    decorB.textLines = [];
+    A.addFreeText();
+    await sleep(320);
+    fillModal('大图居中');
+    await sleep(700);
+    const elB = decorB.textLines[0];
+    const mB = M(elB, cvB._logW, cvB._logH);
+    add(Math.abs(elB.x - cvB._logW / 2) <= 1 && Math.abs(elB.y - cvB._logH / 2) <= 1,
+        '⑫ 大图：新建文字落在逻辑画布中心（uiScale<1）',
+        'el=' + elB.x + ',' + elB.y + ' 中心=' + Math.round(cvB._logW / 2) + ',' + Math.round(cvB._logH / 2)
+        + ' 画布 ' + cvB.width + '×' + cvB.height + ' 逻辑 ' + cvB._logW + '×' + cvB._logH);
+    // 差分找真实墨迹：每 4 像素采样（9.7M 像素全扫太慢，采样足够定位中心/尺寸）
+    const grabB = async () => {
+        A.scheduleRender(true);
+        await sleep(1400);   // 同上：大画布重绘慢，等太短两帧会是同一张旧图
+        return cvB.getContext('2d').getImageData(0, 0, cvB.width, cvB.height).data;
+    };
+    const onB = await grabB();
+    elB.opacity = 0;
+    const offB = await grabB();
+    elB.opacity = 100;
+    let bx0 = 1e9, by0 = 1e9, bx1 = -1, by1 = -1, bn = 0;
+    for (let y = 0; y < cvB.height; y += 4) {
+        for (let x = 0; x < cvB.width; x += 4) {
+            const i = (y * cvB.width + x) * 4;
+            if (Math.abs(onB[i] - offB[i]) + Math.abs(onB[i + 1] - offB[i + 1]) + Math.abs(onB[i + 2] - offB[i + 2]) > 30) {
+                bn++; if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y;
+            }
+        }
+    }
+    const inkCx = bn ? (bx0 + bx1) / 2 : -1;
+    const inkCy = bn ? (by0 + by1) / 2 : -1;
+    const inkW = bn ? bx1 - bx0 : 0;
+    add(bn > 0 && Math.abs(inkCx - cvB.width / 2) <= cvB.width * 0.03
+        && Math.abs(inkCy - cvB.height / 2) <= cvB.height * 0.03,
+        '⑫ 大图：墨迹真的画在画布中心（不是左上角）',
+        '墨迹中心=' + Math.round(inkCx) + ',' + Math.round(inkCy) + ' 画布中心=' + (cvB.width / 2) + ',' + (cvB.height / 2));
+    add(bn > 0 && Math.abs(inkW - mB.lw * kB) <= mB.lw * kB * 0.15,
+        '⑫ 大图：绘制宽度与度量框一致（不会小一圈）',
+        '墨迹宽=' + inkW + ' 框宽=' + Math.round(mB.lw * kB));
+    elB.opacity = 100;
+    A.scheduleRender(true);
+    await sleep(300);
+
     return out;
 })()
 `;
