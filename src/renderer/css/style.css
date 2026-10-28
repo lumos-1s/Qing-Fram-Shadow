@@ -678,6 +678,8 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
 .param-row .pval {
     flex: 0 0 46px; text-align: right; color: var(--text);
     font-size: var(--fs-12); font-variant-numeric: tabular-nums;
+    /* 数值位固定 46px：一旦出现超长小数（如 3.200000000000017）不能溢出到面板外 */
+    overflow: hidden; white-space: nowrap;
 }
 /* 数值可点开输入:滑块负责手感和范围,数字负责精确值(37px 不用再靠手感)。
    .pval 仍保留在 DOM 里更新文本(测试/读屏都读它),只做视觉隐藏,不占布局。 */

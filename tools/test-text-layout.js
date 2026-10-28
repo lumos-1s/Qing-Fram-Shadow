@@ -250,6 +250,24 @@ const SCENARIO = `
     add(Math.abs(mStyled.lh - 88 * 1.18) <= 2, '⑪ 字号 88 立刻反映到几何框',
         'h=' + mStyled.lh.toFixed(1) + ' 期望 ' + (88 * 1.18).toFixed(1));
 
+    // ── ⑬ 旋转角显示：跨过 360 不能冒出 3.1999999999998 这种长串（用户截图） ──
+    const elR = newLine;
+    elR.rotation = 363.2;
+    A.syncSliderFromEl({ kind: 'text', obj: elR });
+    const lblR = document.getElementById('lblElementRotation');
+    const inpR = document.getElementById('inpElRotation');
+    add(!!lblR && lblR.textContent === '3.2°' && !!inpR && inpR.value === '3.2',
+        '⑬ 旋转角跨 360 后显示为 3.2°（不是浮点长串）',
+        (lblR ? lblR.textContent : '?') + ' / ' + (inpR ? inpR.value : '?'));
+    // 面板可能没展开（clientWidth=0），宽度断言会是空过；改成"文本必须够短"这条硬判据：
+    // 46px 的数值位放得下 "359.9°"（6 字符），放不下原来那串 18 字符的浮点尾巴。
+    add(!!lblR && lblR.textContent.length <= 8, '⑬ 旋转数值文本够短（放得进 46px 数值位）',
+        '"' + (lblR ? lblR.textContent : '?') + '" 长度 ' + (lblR ? lblR.textContent.length : '?'));
+    const seqR = [];
+    for (let i = 0; i < 3; i++) { A.nudgeElement({ kind: 'text', obj: elR }, 'rot', 1); seqR.push(elR.rotation); }
+    add(seqR.every(v => Math.abs(v * 10 - Math.round(v * 10)) < 1e-9), '⑬ 滚轮累加不产生浮点尾巴',
+        seqR.join(' / '));
+
     decor.textLines = savedLines;
 
     // ── ⑫ 大图（uiScale<1）也必须落在画布中心、且绘制尺寸与度量框一致 ──

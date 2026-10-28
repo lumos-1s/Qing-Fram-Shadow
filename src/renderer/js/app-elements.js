@@ -358,13 +358,19 @@ window.App = Object.assign(window.App || {}, {
         const e = el.obj;
         if (el.kind === 'logo') {
             if (typeof e.x !== 'number') { const p = this.logoPos(e, this.dom.canvas.width, this.dom.canvas.height, e.size || 60); this.setLogoPixelPos(e, p.cx, p.cy); }
-            if (mode === 'rot') e.rotation = (e.rotation || 0) + dir * 5;
+            // 取 1 位小数再存：3.2 + 5 这类累加会变成 8.199999999999989，
+            // 显示层虽然会圆，但值会写进模板/导出，不该带这种尾巴。
+            if (mode === 'rot') e.rotation = Math.round((((e.rotation || 0) + dir * 5) % 360 + 360) % 360 * 10) / 10;
             else e.size = clampNum((e.size || 60) + dir * 25, 8, 10000);
         } else if (el.kind === 'sticker') {
-            if (mode === 'rot') e.rotation = (e.rotation || 0) + dir * 5;
+            // 取 1 位小数再存：3.2 + 5 这类累加会变成 8.199999999999989，
+            // 显示层虽然会圆，但值会写进模板/导出，不该带这种尾巴。
+            if (mode === 'rot') e.rotation = Math.round((((e.rotation || 0) + dir * 5) % 360 + 360) % 360 * 10) / 10;
             else e.scale = clampNum((e.scale || 1) * (dir > 0 ? 1.1 : 0.9), 0.02, 3);
         } else if (el.kind === 'text') {
-            if (mode === 'rot') e.rotation = (e.rotation || 0) + dir * 5;
+            // 取 1 位小数再存：3.2 + 5 这类累加会变成 8.199999999999989，
+            // 显示层虽然会圆，但值会写进模板/导出，不该带这种尾巴。
+            if (mode === 'rot') e.rotation = Math.round((((e.rotation || 0) + dir * 5) % 360 + 360) % 360 * 10) / 10;
             else { e.fontSize = clampNum((e.fontSize || 18) + dir * 2, 6, 300); if (e.autoSize) e.autoSize = 0; }
         }
         this.syncSliderFromEl(el);
@@ -626,16 +632,19 @@ window.App = Object.assign(window.App || {}, {
         const e = el.obj;
         const $ = this.$;
         const rot = $('slElementRotation'), op = $('slActiveIconOpacity'), sz = $('slElementSize');
-        if (rot) rot.value = ((e.rotation || 0) % 360 + 360) % 360;
+        // 先归一化到 [0,360) 再取 1 位小数：直接取模会把 3.2 变成 3.200000000000017，
+        // 那个长串会从 46px 的 .pval 里溢出来（用户截图里就是它）。
+        const rotDeg = Math.round((((Number(e.rotation) || 0) % 360) + 360) % 360 * 10) / 10;
+        if (rot) rot.value = rotDeg;
         if (op) op.value = Math.round(e.opacity != null ? e.opacity : 100);
         const sizeVal = el.kind === 'logo' ? Math.round(e.size || 60) : el.kind === 'sticker' ? Math.round((e.scale || 1) * 60) : 60;
         // 缩放滑块用平方映射覆盖 16~10000:低值端(常用的小 Logo)分度仍然细,高值端也能拖到
         if (sz) sz.value = Math.round(1000 * Math.sqrt(clampNum((sizeVal - 16) / (10000 - 16), 0, 1)));
-        this.updateLabel('lblElementRotation', ((e.rotation || 0) % 360 + 360) % 360 + '°');
+        this.updateLabel('lblElementRotation', rotDeg + '°');
         this.updateLabel('lblActiveIconOpacity', Math.round(e.opacity != null ? e.opacity : 100) + '%');
         this.updateLabel('lblElementSize', sizeVal);
         const inpR = $('inpElRotation'), inpO = $('inpElOpacity'), inpS = $('inpElSize');
-        if (inpR) inpR.value = ((e.rotation || 0) % 360 + 360) % 360;
+        if (inpR) inpR.value = rotDeg;
         if (inpO) inpO.value = Math.round(e.opacity != null ? e.opacity : 100);
         if (inpS) inpS.value = sizeVal;
         this.syncTextRows(el);
