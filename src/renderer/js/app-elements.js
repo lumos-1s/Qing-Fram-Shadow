@@ -107,6 +107,106 @@ window.App = Object.assign(window.App || {}, {
         return window.textLineMetrics(el, cw, ch, false, 0, 0);
     },
 
+    // 逻辑画布尺寸（绘制口径）。文字的一切坐标都按这个口径存。
+    _logCanvas() {
+        const cv = this.dom && this.dom.canvas;
+        return {
+            w: (cv && cv._logW > 1) ? cv._logW : (cv ? cv.width : 0),
+            h: (cv && cv._logH > 1) ? cv._logH : (cv ? cv.height : 0),
+        };
+    },
+
+    // ── 文字工具（像 PS 那样：新建一段文字，落在画布中央，随即可拖/转/双击改字）──
+    async addFreeText() {
+        const { w, h } = this._logCanvas();
+        if (!(w > 1) || !(h > 1)) { this.setStatus('先导入一张照片，再添加文字'); return; }
+        const typed = await this.promptText('输入文字内容（确定后落在画布中央）', '');
+        if (typed == null) return;                 // 取消
+        const text = String(typed).trim();
+        if (!text) { this.setStatus('内容为空，未添加'); return; }
+
+        const tpl = this.template || (this.template = this.defaultTemplate());
+        const decor = tpl.decorConfig || (tpl.decorConfig = {});
+        if (!decor.textLines) decor.textLines = [];
+        const line = {
+            text,
+            align: 'free',
+            x: Math.round(w / 2),
+            y: Math.round(h / 2),
+            fontFamily: 'Microsoft YaHei',
+            fontSize: Math.max(12, Math.round(Math.min(w, h) * 0.06)),
+            fontWeight: 400,
+            letterSpacing: 0,
+            colorHex: '#ffffff',
+            opacity: 100,
+            rotation: 0,
+            enableShadow: 0,
+        };
+        this.pushUndo();
+        decor.textLines.push(line);
+        this.selectedEls = [{ kind: 'text', obj: line }];
+        this.refreshElList();
+        this.saveCurrentTemplate();
+        this.scheduleRender(true);
+        this.setStatus('已添加文字「' + text.slice(0, 12) + '」：拖动移动，拖上方圆点旋转，双击改内容');
+    },
+
+    // 双击画布上的文字 → 改内容（PS 的文字工具就是这条路）
+    async editTextContent(el) {
+        if (!el) return;
+        const v = await this.promptText('编辑文字内容', el.text || '');
+        if (v == null) return;
+        const t = String(v).trim();
+        if (!t) { this.setStatus('内容不能为空'); return; }
+        this.pushUndo();
+        el.text = t;
+        this.refreshElList();
+        this.saveCurrentTemplate();
+        this.scheduleRender(true);
+        this.setStatus('文字已更新');
+    },
+
+    // ── 鼠标旋转 ──
+    // 把手画在选中框上方（drawSelectionBox 里算好坐标存在 _rotHandle），
+    // 命中检测直接读它 —— 两处各算一遍角度迟早对不上。
+    hitRotateHandle(pt) {
+        const hd = this._rotHandle;
+        if (!hd) return false;
+        return Math.hypot(pt.x - hd.x, pt.y - hd.y) <= hd.r + 6;
+    },
+
+    beginRotate(pt) {
+        const sel = this.selectedEls && this.selectedEls[0];
+        if (!sel || !sel.obj) return null;
+        const m = this.textMetricsOf(sel.obj);
+        if (!m) return null;
+        const k = this.textSpaceScale();
+        const px = pt.x / k, py = pt.y / k;
+        this._rotEl = {
+            ref: sel.obj, kind: sel.kind,
+            cx: m.cx, cy: m.cy,
+            base: Number(sel.obj.rotation) || 0,
+            a0: Math.atan2(py - m.cy, px - m.cx),
+            moved: false,
+        };
+        return this._rotEl;
+    },
+
+    // shiftKey 时按 15° 吸附，和 PS 一致
+    applyRotate(pt, shift) {
+        const r = this._rotEl;
+        if (!r) return;
+        const k = this.textSpaceScale();
+        const px = pt.x / k, py = pt.y / k;
+        const a = Math.atan2(py - r.cy, px - r.cx);
+        let deg = r.base + (a - r.a0) * 180 / Math.PI;
+        deg = ((deg % 360) + 360) % 360;
+        if (shift) deg = (Math.round(deg / 15) * 15) % 360;
+        r.ref.rotation = Math.round(deg * 10) / 10;
+        r.moved = true;
+        this.scheduleRender();
+    },
+
     promoteTextToFree(el) {
         if (!el || el.align === 'free') return false;
         const m = this.textMetricsOf(el);
@@ -542,15 +642,55 @@ window.App = Object.assign(window.App || {}, {
         this.syncElInputs();
     },
 
-    // 文字专属的行（方向/字距）只在选中文字时露出，其余时候整行收起
+    // 把 #RRGGBB / rrggbb / 颜色名 归一成 <input type=color> 能吃的 #rrggbb
+    _hex6(c) {
+        const v = String(c == null ? '' : c).trim();
+        if (/^#?[0-9a-f]{6}$/i.test(v)) return '#' + v.replace('#', '').toLowerCase();
+        if (/^#?[0-9a-f]{3}$/i.test(v)) {
+            const h = v.replace('#', '');
+            return ('#' + h[0] + h[0] + h[1] + h[1] + h[2] + h[2]).toLowerCase();
+        }
+        return '#ffffff';
+    },
+
+    // 文字专属的行只在选中文字时露出，其余时候整行收起。
+    // 同时把「缩放」行换成「字号」——文字用 8~400 的线性字号滑条，
+    // 比复用 logo 那条 16~10000 的平方映射好用得多（后者对 40px 的字几乎不可调）。
     syncTextRows(sel) {
         const $ = this.$;
         const isText = !!(sel && sel.kind === 'text' && sel.obj);
-        const rowDir = $('rowElTextDir'), rowLs = $('rowElTextSpacing');
-        if (rowDir) rowDir.style.display = isText ? '' : 'none';
-        if (rowLs) rowLs.style.display = isText ? '' : 'none';
+        const textRows = ['rowElTextContent', 'rowElTextFont', 'rowElTextSize', 'rowElTextColor',
+                          'rowElTextDir', 'rowElTextSpacing'];
+        textRows.forEach(id => {
+            const r = $(id);
+            if (r) r.style.display = isText ? '' : 'none';
+        });
+        const rowScale = $('rowElSize');
+        if (rowScale) rowScale.style.display = isText ? 'none' : '';
         if (!isText) return;
+
         const e = sel.obj;
+        // 内容：正在输入时不覆盖，否则每帧渲染都会把光标位置顶掉
+        const tf = $('tfElText');
+        if (tf && document.activeElement !== tf) tf.value = e.text || '';
+
+        // 字体：预设里可能写成 '"Microsoft YaHei", sans-serif'，取第一个族名去匹配
+        const cbF = $('cbElTextFont');
+        if (cbF) {
+            const fam = String(e.fontFamily || 'Microsoft YaHei').split(',')[0].replace(/["']/g, '').trim();
+            if ([].some.call(cbF.options, o => o.value === fam)) cbF.value = fam;
+            else if (cbF.options.length) cbF.value = cbF.options[0].value;
+        }
+
+        const fs = Math.round(Number(e.fontSize) || 18);
+        const slS = $('slElTextSize'), inS = $('inpElTextSize');
+        if (slS) slS.value = Math.max(8, Math.min(400, fs));
+        if (inS) inS.value = fs;
+        this.updateLabel('lblElTextSize', fs + 'px');
+
+        const cp = $('cpElTextColor');
+        if (cp) cp.value = this._hex6(e.colorHex);
+
         const cb = $('cbElTextDir');
         if (cb) cb.value = (typeof window.textLineDir === 'function') ? window.textLineDir(e) : 'h';
         const sl = $('slElTextSpacing');
@@ -560,6 +700,7 @@ window.App = Object.assign(window.App || {}, {
     },
 
     drawSelectionBox() {
+        this._rotHandle = null;   // 只有「单选一个元素」时才会重新写它
         try {
             const canvas = this.dom.canvas;
             if (!canvas || !this.selectedEls || !this.selectedEls.length) return;
@@ -589,6 +730,22 @@ window.App = Object.assign(window.App || {}, {
                     [[-bw/2-3, -bh/2-3], [bw/2+3-h, -bh/2-3], [-bw/2-3, bh/2+3-h], [bw/2+3-h, bh/2+3-h]].forEach(([x, y]) => {
                         ctx.fillRect(x, y, h, h);
                     });
+                    // 旋转把手：框顶外侧一个圆点。位置在这里算一次并存下来，
+                    // 命中检测(mousedown)直接用 —— 两处各算一遍角度迟早对不上。
+                    if (this.selectedEls.length === 1) {
+                        const dist = bh / 2 + 26;
+                        const th = m.rot * Math.PI / 180;
+                        const bx = m.cx * k, by = m.cy * k;
+                        const topX = bx + (bh / 2) * Math.sin(th), topY = by - (bh / 2) * Math.cos(th);
+                        const hx = bx + dist * Math.sin(th), hy = by - dist * Math.cos(th);
+                        ctx.strokeStyle = 'rgba(0,229,160,0.9)';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath(); ctx.moveTo(topX, topY); ctx.lineTo(hx, hy); ctx.stroke();
+                        ctx.beginPath(); ctx.arc(hx, hy, 6, 0, Math.PI * 2);
+                        ctx.fillStyle = '#00e5a0'; ctx.fill();
+                        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+                        this._rotHandle = { x: hx, y: hy, r: 6 };
+                    }
                     ctx.restore();
                     continue;
                 }

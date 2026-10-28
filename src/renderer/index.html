@@ -737,11 +737,31 @@
                         <div class="param-group">
                             <div class="pg-title collapsible">元素管理</div>
                             <div class="el-status" id="elStatus">未选中元素</div>
+                            <button class="mini-btn block" id="btnAddFreeText" title="新建一段文字：输入内容后落在画布中央，可直接拖动/旋转，双击改字">＋ 添加文字</button>
                             <div class="el-list" id="elList"></div>
                             <div class="param-row"><label>位置 X</label><input type="number" id="inpElX" class="ctl-num" min="0" step="1" value="0" title="元素中心 X(像素),方向键微移 / 直接输入精确值" /></div>
                             <div class="param-row"><label>位置 Y</label><input type="number" id="inpElY" class="ctl-num" min="0" step="1" value="0" title="元素中心 Y(像素),方向键微移 / 直接输入精确值" /></div>
                             <div class="param-row"><label>透明度</label><input type="range" id="slActiveIconOpacity" class="ctl-rng" min="0" max="100" value="100" /><input type="number" id="inpElOpacity" class="ctl-num" min="0" max="100" step="1" value="100" /><span class="pval" id="lblActiveIconOpacity"></span></div>
-                            <div class="param-row"><label>缩放</label><input type="range" id="slElementSize" class="ctl-rng" min="16" max="10000" value="500" /><input type="number" id="inpElSize" class="ctl-num" min="16" step="1" value="500" /><span class="pval" id="lblElementSize"></span></div>
+                            <div class="param-row" id="rowElSize"><label id="lblElSizeName">缩放</label><input type="range" id="slElementSize" class="ctl-rng" min="16" max="10000" value="500" /><input type="number" id="inpElSize" class="ctl-num" min="16" step="1" value="500" /><span class="pval" id="lblElementSize"></span></div>
+                            <!-- 文字专属基础项：内容/字体/字号/颜色。选中 Logo/贴纸时整组隐藏 -->
+                            <div class="param-row" id="rowElTextContent" style="display:none">
+                                <label>文字</label>
+                                <input type="text" id="tfElText" class="ctl-tx" placeholder="输入文字，或在画布上双击修改" />
+                            </div>
+                            <div class="param-row" id="rowElTextFont" style="display:none">
+                                <label>字体</label>
+                                <select id="cbElTextFont" class="ctl-sel"></select>
+                            </div>
+                            <div class="param-row" id="rowElTextSize" style="display:none">
+                                <label>字号</label>
+                                <input type="range" id="slElTextSize" class="ctl-rng" min="8" max="400" step="1" value="48" />
+                                <input type="number" id="inpElTextSize" class="ctl-num" min="6" max="600" step="1" value="48" />
+                                <span class="pval" id="lblElTextSize"></span>
+                            </div>
+                            <div class="param-row" id="rowElTextColor" style="display:none">
+                                <label>颜色</label>
+                                <input type="color" id="cpElTextColor" class="ctl-cl" value="#ffffff" />
+                            </div>
                             <div class="param-row"><label>旋转</label><input type="range" id="slElementRotation" class="ctl-rng" min="0" max="360" value="0" /><input type="number" id="inpElRotation" class="ctl-num" min="0" max="360" step="1" value="0" /><span class="pval" id="lblElementRotation"></span></div>
                             <!-- 文字专属：方向与字距。选中 Logo/贴纸时这两行隐藏（syncTextRows） -->
                             <div class="param-row" id="rowElTextDir" style="display:none">

@@ -168,6 +168,88 @@ const SCENARIO = `
     const shownX = inpX ? Number(inpX.value) : -1;
     add(shownX > 1, '⑦ 位置框回显锚定文字的真实中心', 'x=' + shownX + ' y=' + (inpY ? inpY.value : '?'));
 
+    // ── ⑧–⑪ 文字工具：新建 / 鼠标旋转 / 双击改字 / 字体颜色字号 ──
+    const lastModal = () => [...document.querySelectorAll('.modal-overlay')].pop();
+    const fillModal = (val) => {
+        const ov = lastModal();
+        if (!ov) return null;
+        const inp = ov.querySelector('input');
+        if (!inp) return null;
+        if (val != null) inp.value = val;
+        const ok = [...ov.querySelectorAll('button')].find(b => b.textContent === '确定');
+        if (!ok) return null;
+        ok.click();
+        return true;
+    };
+    const toClient = (lx, ly) => {
+        const cv2 = A.dom.canvas, r2 = cv2.getBoundingClientRect();
+        return { x: r2.left + (lx * k) / cv2.width * r2.width, y: r2.top + (ly * k) / cv2.height * r2.height };
+    };
+
+    const beforeCount = (decor.textLines || []).length;
+    A.addFreeText();                       // 故意不 await：它要等弹窗
+    await sleep(320);
+    const modalOk = fillModal('测试新建');
+    await sleep(420);
+    const linesNow = decor.textLines || [];
+    const newLine = linesNow[linesNow.length - 1];
+    add(!!modalOk && linesNow.length === beforeCount + 1 && newLine && newLine.align === 'free' && newLine.text === '测试新建',
+        '⑧ 添加文字：新建一条自由文字并选中',
+        'modal=' + !!modalOk + ' 条数 ' + beforeCount + '→' + linesNow.length + ' text=' + (newLine && newLine.text));
+    add(!!(newLine && A.selectedEls.some(x => x.obj === newLine)), '⑧ 新建后自动选中（面板才会跟着变）',
+        '选中 ' + A.selectedEls.length);
+    const rowFont = document.getElementById('rowElTextFont');
+    const rowScale = document.getElementById('rowElSize');
+    add(rowFont && getComputedStyle(rowFont).display !== 'none' && rowScale && getComputedStyle(rowScale).display === 'none',
+        '⑧ 选中文字时露出字体/字号行、收起缩放行',
+        'font=' + (rowFont ? getComputedStyle(rowFont).display : '?') + ' scale=' + (rowScale ? getComputedStyle(rowScale).display : '?'));
+
+    A.selectedEls = [{ kind: 'text', obj: newLine }];
+    A.scheduleRender(true);
+    await sleep(520);
+    const hd = A._rotHandle;
+    add(!!hd, '⑨ 选中文字后出现旋转把手', hd ? Math.round(hd.x) + ',' + Math.round(hd.y) : 'null');
+    if (hd) {
+        const m0 = M(newLine, CW, CH);
+        const spinning = A.beginRotate({ x: hd.x, y: hd.y });
+        add(!!spinning, '⑨ 把手可被命中（先于元素命中判断）', spinning ? 'ok' : 'null');
+        // 从正上方拖到正右方 = +90°
+        A.applyRotate({ x: (m0.cx + 160) * k, y: m0.cy * k }, false);
+        const rot1 = newLine.rotation;
+        A.applyRotate({ x: (m0.cx + 160) * k + 2, y: m0.cy * k }, true);   // Shift 吸附
+        const rotSnap = newLine.rotation;
+        A._rotEl = null;
+        add(Math.abs(rot1 - 90) <= 3, '⑨ 鼠标旋转：拖到正右 ≈ 90°', rot1 + '°');
+        add(rotSnap % 15 === 0, '⑨ Shift 吸附到 15° 整数倍', rotSnap + '°');
+    }
+
+    // 双击画布上的文字 → 弹窗（预填当前内容）→ 改完生效
+    const mDouble = M(newLine, CW, CH);
+    const pc = toClient(mDouble.cx, mDouble.cy);
+    A.dom.canvas.dispatchEvent(new MouseEvent('dblclick', { clientX: pc.x, clientY: pc.y, bubbles: true, button: 0 }));
+    await sleep(320);
+    const ovD = lastModal();
+    const prefill = ovD && ovD.querySelector('input') ? ovD.querySelector('input').value : null;
+    const dblOk = fillModal('双击改字');
+    await sleep(400);
+    add(!!dblOk && newLine.text === '双击改字', '⑩ 双击画布文字 → 改内容生效',
+        '预填=' + prefill + ' 之后=' + newLine.text);
+
+    // 字体 / 颜色 / 字号
+    const cbF = document.getElementById('cbElTextFont');
+    const cpC = document.getElementById('cpElTextColor');
+    const slS = document.getElementById('slElTextSize');
+    if (cbF && cbF.options.length > 3) { cbF.value = cbF.options[3].value; cbF.dispatchEvent(new Event('change')); }
+    if (cpC) { cpC.value = '#ffcc00'; cpC.dispatchEvent(new Event('input')); cpC.dispatchEvent(new Event('change')); }
+    if (slS) { slS.value = 88; slS.dispatchEvent(new Event('input')); slS.dispatchEvent(new Event('change')); }
+    await sleep(400);
+    const mStyled = M(newLine, CW, CH);
+    add(!!cbF && newLine.fontFamily === cbF.options[3].value && newLine.colorHex === '#ffcc00' && newLine.fontSize === 88,
+        '⑪ 字体/颜色/字号都写进元素',
+        newLine.fontFamily + ' / ' + newLine.colorHex + ' / ' + newLine.fontSize + 'px');
+    add(Math.abs(mStyled.lh - 88 * 1.18) <= 2, '⑪ 字号 88 立刻反映到几何框',
+        'h=' + mStyled.lh.toFixed(1) + ' 期望 ' + (88 * 1.18).toFixed(1));
+
     decor.textLines = savedLines;
     return out;
 })()

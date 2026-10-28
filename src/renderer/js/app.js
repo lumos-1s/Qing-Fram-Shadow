@@ -881,6 +881,16 @@ window.App = {
                 this.clearActivePuzzleSlot();
             }
             const pt = this.screenToCanvas(e);
+            // 旋转把手画在框**外**的空处，必须先于元素命中判断，否则永远点不到
+            if (this.hitRotateHandle(pt)) {
+                const r = this.beginRotate(pt);
+                if (r) {
+                    e.preventDefault();
+                    this._dragEl = null;
+                    canvas.style.cursor = 'grabbing';
+                    return;
+                }
+            }
             const el = this.pickElement(pt);
             if (el) {
                 e.preventDefault();
@@ -902,6 +912,15 @@ window.App = {
             this._followFit = false;
             this._pan = { sx: e.screenX, sy: e.screenY, px: this.panX, py: this.panY };
             canvas.style.cursor = 'grabbing';
+        });
+        // 双击文字 = 改内容（PS 的文字工具就是这条路；不用先去面板里找输入框）
+        canvas.addEventListener('dblclick', e => {
+            if (!this.image) return;
+            const el = this.pickElement(this.screenToCanvas(e));
+            if (el && el.kind === 'text') {
+                e.preventDefault();
+                this.editTextContent(el.obj);
+            }
         });
         // 悬停分隔线:换成 row/col-resize 光标 + 画布高亮线,让"可拖动"看得见
         canvas.addEventListener('mousemove', e => {
@@ -935,6 +954,10 @@ window.App = {
             this.clearActivePuzzleSlot();
         }, true);
         window.addEventListener('mousemove', e => {
+            if (this._rotEl) {
+                this.applyRotate(this.screenToCanvas(e), e.shiftKey);
+                return;
+            }
             if (this._dragPz) {
                 const pk = this.tplPuzzle();
                 if (pk) {
@@ -969,6 +992,16 @@ window.App = {
             this.applyZoomStyle();
         });
         window.addEventListener('mouseup', () => {
+            if (this._rotEl) {
+                const r = this._rotEl;
+                this._rotEl = null;
+                if (r.moved) {
+                    this.saveCurrentTemplate();
+                    this.setStatus('已旋转 ' + Math.round(r.ref.rotation || 0) + '°（按住 Shift 按 15° 吸附）');
+                }
+                this.scheduleRender();
+                return;
+            }
             if (this._dragPz) {
                 const d = this._dragPz;
                 const pk = this.tplPuzzle();
@@ -2517,7 +2550,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
 
     /* ══ 字体下拉填充(装饰文字/拼图字幕共用 curatedFonts) ══ */
     populateFonts() {
-        ['cbCapFont1', 'cbCapFont2'].forEach(id => {
+        ['cbCapFont1', 'cbCapFont2', 'cbElTextFont'].forEach(id => {
             const sel = this.$(id);
             if (!sel) return;
             sel.innerHTML = '';
@@ -2762,6 +2795,44 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
             this.applyToSelectedEls(el => { el.opacity = v; });
             this.batchElOps();
         });
+        // ── 文字工具：新建 / 内容 / 字体 / 字号 / 颜色 ──
+        bindBtn('btnAddFreeText', () => this.addFreeText());
+        if ($('tfElText')) $('tfElText').addEventListener('change', () => {
+            const v = $('tfElText').value;
+            const sel = this.selectedEls[0];
+            if (!sel || sel.kind !== 'text') return;
+            if (!String(v).trim()) { this.syncTextRows(sel); return; }   // 空内容不接受，回显原值
+            this.applyToSelectedEls((el, kind) => { if (kind === 'text') el.text = v; });
+            this.refreshElList();
+            this.batchElOps();
+        });
+        if ($('cbElTextFont')) $('cbElTextFont').addEventListener('change', () => {
+            const v = $('cbElTextFont').value;
+            this.applyToSelectedEls((el, kind) => { if (kind === 'text') el.fontFamily = v; });
+            this.batchElOps();
+        });
+        if ($('cpElTextColor')) $('cpElTextColor').addEventListener('input', () => {
+            const v = $('cpElTextColor').value;
+            this.applyToSelectedEls((el, kind) => { if (kind === 'text') el.colorHex = v; });
+            this.scheduleRender();
+        });
+        if ($('cpElTextColor')) $('cpElTextColor').addEventListener('change', () => this.batchElOps());
+        {
+            const applySize = (v) => {
+                const n = Math.max(6, Math.min(600, Math.round(Number(v) || 0)));
+                this.applyToSelectedEls((el, kind) => { if (kind === 'text') el.fontSize = n; });
+                if ($('slElTextSize')) $('slElTextSize').value = Math.max(8, Math.min(400, n));
+                if ($('inpElTextSize')) $('inpElTextSize').value = n;
+                this.updateLabel('lblElTextSize', n + 'px');
+                this.scheduleRender();
+            };
+            if ($('slElTextSize')) $('slElTextSize').addEventListener('input', () => applySize($('slElTextSize').value));
+            if ($('inpElTextSize')) $('inpElTextSize').addEventListener('change', () => applySize($('inpElTextSize').value));
+            ['slElTextSize', 'inpElTextSize'].forEach(id => {
+                if ($(id)) $(id).addEventListener('change', () => this.saveCurrentTemplate());
+            });
+        }
+
         // 文字方向：只有选中文字时这两行才露出（见 app-elements.syncTextRows）
         if ($('cbElTextDir')) $('cbElTextDir').addEventListener('change', () => {
             const v = $('cbElTextDir').value;

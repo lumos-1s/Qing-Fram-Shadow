@@ -254,8 +254,8 @@ function renderTemplateStyle(app) {
     const stripTop = image.el ? ((pm.marginTop || 0) + (pusableH - pih) / 2 + (pm.imgOffsetY || 0) + pih) * scl : ch;
     // Logo/贴纸/文字/装饰仅允许出现在“加边框后的成品图片”范围内:圆角卡片时剪辑到卡片轮廓
     const cardClip = beginCardClip(ctx, template, cw, ch);
-    drawDecoration(ctx, template.decorConfig || {}, cw, ch, image, template, stripTop);
-    drawDraftText(ctx, template, cw, ch);
+    drawDecoration(ctx, template.decorConfig || {}, cw, ch, image, template, stripTop, scl);
+    drawDraftText(ctx, template, cw, ch, scl);
     drawLogoElements(ctx, template.logoElements || [], cw, ch);
     if (cardClip) ctx.restore();
 
@@ -891,9 +891,14 @@ function textLineAdvance(line, fs) {
 //   by     横排/侧排的基线相对框中心的纵向偏移（正=在中心下方）
 //   step   竖排每字占的格高（含字距）
 //   x/y/w/h 旋转后的轴对齐外框（命中、选中框用）
-function textLineMetrics(line, cw, ch, card, cardY, cardH) {
+function textLineMetrics(line, cw, ch, card, cardY, cardH, scl) {
     const W = (cw > 1 ? cw : 1), H = (ch > 1 ? ch : 1);
-    const fs = Math.max(1, autoExifTextSize(line, W));
+    // 文字/贴纸层是在 ctx.restore() 之后用**物理**画布尺寸画的，而 fontSize 与
+    // 自由文字的 x/y 都是逻辑量 —— 因此在 DPR≠1 时，文字会只有一半大、自由坐标还会
+    // 偏到左上角（老 bug）。scl = 物理/逻辑，把这两样放大即可；锚点分支本来就用
+    // 物理 cw/ch，不能再乘。
+    const S = (Number(scl) > 0 ? scl : 1);
+    const fs = Math.max(1, autoExifTextSize(line, W / S) * S);
     const dir = textLineDir(line);
     const ls = textLineSpacing(line);
     const text = String(line.text == null ? '' : line.text);
@@ -906,7 +911,8 @@ function textLineMetrics(line, cw, ch, card, cardY, cardH) {
     const a = textLineAnchor(line, W, H, card || false, cardY || 0, cardH || 0);
     let cx = a[0], cy = a[1];
     if (line.align === 'free') {
-        // 自由文字：(x, y) 即框中心 —— 与拖拽/对齐/吸附同一口径
+        // 自由文字：(x, y) 即框中心（逻辑口径），绘制时按 S 放大
+        cx = a[0] * S; cy = a[1] * S;
     } else if (dir === 'v') {
         // 竖排沿用横排锚点的含义（baseline 那条线）：顶对齐从锚点下方起排，
         // 底对齐让末字贴着锚点，这样「贴顶/贴底」的既有语义不用改。
@@ -980,9 +986,9 @@ function backdropStats(ctx, x, y, w, h) {
 }
 
 // 文字行绘??原版 drawTextLine)
-/* exported drawTextLine */ function drawTextLine(ctx, line, cw, ch, card, cardY, cardH) {
+/* exported drawTextLine */ function drawTextLine(ctx, line, cw, ch, card, cardY, cardH, scl) {
     if (!line || line.text == null || line.text === '') return;
-    const m = textLineMetrics(line, cw, ch, card, cardY, cardH);
+    const m = textLineMetrics(line, cw, ch, card, cardY, cardH, scl);
     const fs = m.fs;
     ctx.save();
     ctx.font = `${line.fontWeight || 400} ${fs}px "${line.fontFamily || 'Microsoft YaHei'}"`;
@@ -1030,9 +1036,9 @@ function backdropStats(ctx, x, y, w, h) {
 }
 
 // 实时草稿文字(align:'live',??UI 预览??不写??textLines)
-function drawDraftText(ctx, template, cw, ch) {
+function drawDraftText(ctx, template, cw, ch, scl) {
     const d = template && template._draftText;
-    if (d && d.text) drawTextLine(ctx, d, cw, ch, false, 0, 0);
+    if (d && d.text) drawTextLine(ctx, d, cw, ch, false, 0, 0, scl);
 }
 
 // 依据 decor.showExif 构建 EXIF 水印文字??web 特??保留)
@@ -1080,7 +1086,7 @@ function stripExifSrc(manual, image) {
 }
 
 // 装饰总入??原版 drawDecoration:文字/贴纸/四角括号/EXIF 底条)
-function drawDecoration(ctx, decor, cw, ch, image, template, stripTop) {
+function drawDecoration(ctx, decor, cw, ch, image, template, stripTop, scl) {
     if (!decor) return;
 
     const exifOn = (decor.exifAutoText || 0) === 1;
@@ -1100,10 +1106,10 @@ function drawDecoration(ctx, decor, cw, ch, image, template, stripTop) {
         const textLine = lines[i];
         if (!textLine.text) continue;
         if (i === exifLineIdx) continue;
-        drawTextLine(ctx, textLine, cw, ch, false, 0, 0);
+        drawTextLine(ctx, textLine, cw, ch, false, 0, 0, scl);
     }
     const exifLines = buildExifLines({ decor }, image);
-    for (const line of exifLines) drawTextLine(ctx, line, cw, ch, false, 0, 0);
+    for (const line of exifLines) drawTextLine(ctx, line, cw, ch, false, 0, 0, scl);
     for (const sticker of (decor.stickers || [])) {
         if (!sticker.src) continue;
         const tex = getElementBitmap(sticker.src);
@@ -1272,8 +1278,8 @@ function renderCardStyle(app) {
     // 元素叠层(基准画布像素坐标)
     const cw = app.dom.canvas.width, ch = app.dom.canvas.height;
     const cardScl = canvasW > 0 ? cw / canvasW : 1;
-    drawDecoration(ctx, template.decorConfig || {}, cw, ch, image, template, (drawY + drawH) * cardScl);
-    drawDraftText(ctx, template, cw, ch);
+    drawDecoration(ctx, template.decorConfig || {}, cw, ch, image, template, (drawY + drawH) * cardScl, cardScl);
+    drawDraftText(ctx, template, cw, ch, cardScl);
     drawLogoElements(ctx, template.logoElements || [], cw, ch);
 
     app.applyZoomStyle();
