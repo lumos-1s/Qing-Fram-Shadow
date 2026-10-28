@@ -623,7 +623,7 @@
             showToast('静态原型：设置面板尚未接入');
         });
         el.aboutBtn.addEventListener('click', () => {
-            showToast('清框影 · 看片台静态原型 v0.1.20');
+            showToast('清框影 · 看片台静态原型 v0.1.21');
         });
         el.brandHome.addEventListener('click', (event) => {
             event.preventDefault();

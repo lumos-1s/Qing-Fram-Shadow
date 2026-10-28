@@ -158,7 +158,7 @@ for (const channel of [
 ipcMain.handle('get-prefs', () => ({}));
 ipcMain.handle('get-user', () => null);
 ipcMain.handle('get-app-info', () => ({
-    version: '0.1.20', electron: '31.7.7', chrome: '126.0.6478.234', node: '20.18.3',
+    version: '0.1.21', electron: '31.7.7', chrome: '126.0.6478.234', node: '20.18.3',
     platform: 'win32', arch: 'x64', packaged: false, portable: false,
     osRelease: '10.0.22631', userData: process.env.TEMP, appPath: ROOT
 }));

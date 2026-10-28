@@ -17,8 +17,8 @@ portable executable.
 
 Parameters:
 
-- `version` — `0.1.20`
-- `app-version` — `0.1.20.0`
+- `version` — `0.1.21`
+- `app-version` — `0.1.21.0`
 
 `app-version` is separate because electron-builder writes the application PE
 `ProductVersion` as a four-part version, while `FileVersion` is three-part.
@@ -32,7 +32,7 @@ them from the signed application directory.
 
 Parameter:
 
-- `version` — `0.1.20`
+- `version` — `0.1.21`
 
 The artifact configuration expects the ZIP created by
 `actions/upload-artifact` to contain exactly these files at its root:
@@ -127,8 +127,8 @@ electron-builder:
 
 - Product name: `清框影`
 - Company name: `Qingframe`
-- Application executable: `ProductVersion` `0.1.20.0`, `FileVersion` `0.1.20`
-- Installer/portable: `ProductVersion` and `FileVersion` `0.1.20`
+- Application executable: `ProductVersion` `0.1.21.0`, `FileVersion` `0.1.21`
+- Installer/portable: `ProductVersion` and `FileVersion` `0.1.21`
 
 If `productName`, `executableName`, or version formatting changes, update the
 XML and the SignPath artifact configuration before the next release.

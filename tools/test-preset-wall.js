@@ -37,7 +37,7 @@ for (const channel of ['open-images', 'open-sticker-image', 'import-template', '
     'read-exif']) ipcMain.handle(channel, CANCEL);
 ipcMain.handle('get-prefs', () => ({}));
 ipcMain.handle('get-user', () => null);
-ipcMain.handle('get-app-info', () => ({ version: '0.1.20', electron: '31', chrome: '126', node: '20',
+ipcMain.handle('get-app-info', () => ({ version: '0.1.21', electron: '31', chrome: '126', node: '20',
     platform: 'win32', arch: 'x64', packaged: false, portable: false, userData: process.env.TEMP, appPath: ROOT }));
 // 预设墙自定义封面：默认空，用例里临时塞一条再清掉
 let wallCovers = {};
