@@ -1,3 +1,4 @@
+<a id="readme-top"></a>
 <p align="center">
   <img src="assets/readme/hero.svg" width="100%" alt="清框影 QingFramShadow · Frame Studio — 本地照片加边框工具">
 </p>
@@ -18,6 +19,23 @@
   <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-31-47848F?style=flat-square" alt="Electron 31"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4?style=flat-square" alt="Windows 10/11">
 </p>
+
+<details>
+<summary><strong>目录 · Table of Contents</strong></summary>
+
+- [最近更新](#whats-new)
+- [下载](#download)
+- [核心功能](#features)
+- [预设效果](#preset-gallery)
+- [快速开始](#quick-start)
+- [技术栈](#tech-stack)
+- [项目结构](#project-structure)
+- [开发与校验](#development)
+- [代码签名政策](#code-signing)
+- [参与贡献](#contributing)
+- [素材与许可](#assets-license)
+
+</details>
 
 ---
 
@@ -41,6 +59,20 @@
 
 > **English** — A Windows desktop app for framing photos locally: 87 presets, 92 frame styles, live frame/light/logo/EXIF controls, reusable templates, collage, grid slicing and batch export. No account, no uploads.
 
+<a id="whats-new"></a>
+## 最近更新 · What's New
+
+### v0.1.21
+
+- **沉浸展示支持滚轮切换** — 鼠标滚轮上下滚动即可切换上一张/下一张；触控板惯性按一次手势处理，不会一划跳过很多张。
+- **背景模糊默认开关** — 可选择「跟随预设 / 默认开 / 默认关」，切预设和重启后仍记住选择；默认开时模糊程度调节正常显示。
+- **预设视觉更新** — 重做 NOMO 复古相机，预设墙同步多张自定义封面。
+- **预设墙体验优化** — 外圈聚焦隔帧刷新，拖动前撤掉悬停倾斜，浏览更稳。
+
+> **English** — v0.1.21 adds mouse-wheel navigation in immersive view, a remembered background-blur default, a reworked NOMO preset and refreshed preset-wall covers.
+
+完整变更与安装包见 [GitHub Releases](https://github.com/lumos-1s/Qing-Fram-Shadow/releases)。
+
 <a id="download"></a>
 ## 下载 · Download
 
@@ -59,10 +91,13 @@
 2. 点「仍要运行 / Run anyway」，再在 UAC 里点「是 / Yes」。
 3. 不放心就先核对文件校验值（`certutil -hashfile <安装包> SHA256`），或改用免安装的便携版。
 
+<a id="features"></a>
 ## 核心功能 · Features
 
 - **87 个内置模板 · 92 种边框风格** — 杂志、拍立得、撕纸、胶带、邮票、报纸、胶片、渐变卡、漫画分镜、3D 卡、签名纪念与头像叠加，以及自动取色边框等快速预设；选中即套用，再继续微调。
+- **预设墙启动页** — 启动即进入 87 张预设封面墙，方向键、滚轮或拖动浏览，点击直接套用并进入编辑；支持用自定义照片替换封面。
 - **参数实时可调** — 圆角、边距、照片缩放/偏移、内/外阴影、描边、投影、画布比例、纹理/渐变填充，改动即时反馈。
+- **背景模糊默认偏好** — 在「跟随预设 / 默认开 / 默认关」之间切换，切预设或重启后仍记住选择。
 - **分区编辑台** — 左侧预设显示与预设墙一致的封面缩略图，墙上换封面会同步到工作台；右侧按「画布 / 文字 / 边框 / 光影 / Logo / 模板」分区，拼图与切图单独归入工具行；滑块旁可输入精确数值，双击参数名复位单行，按住 Shift 拖动可微调；左右侧栏可收起、拖宽并记住上次宽度；多选照片后自动浮出批量操作条。
 - **光影与质感** — 暗角、漏光、暖光/冷光、胶片颗粒，以及纸张、布料等纹理，给整张成片统一的氛围。
 - **Logo、EXIF 与签名** — 品牌 Logo 或自定义图标水印；自动读取品牌、型号、焦距、光圈、ISO、快门，可手动修改；签名与头像组合排版。
@@ -73,8 +108,9 @@
 - **导出** — PNG / JPEG / WebP，质量可调；原图、1080、2048、4096、8192px；选好位置后渲染写入，默认原图尺寸。
 - **全本地** — 无需登录、不上传照片；照片、EXIF 与模板都留在本机。
 
-> **English** — 87 presets and 92 frame styles for magazine, polaroid, torn paper, tape, stamp, newspaper, film, gradient, comic, 3D card, signature and avatar layouts; live frame, shadow, texture and light controls; preset thumbnails, split canvas/text panels, exact numeric slider input, double-click row reset and Shift fine-tuning; collapsible resizable side panels; logo/EXIF/signature layers; `.qfs` and `.json` templates; collage, grid slicing, batch export and an immersive photo-wall presentation; PNG/JPEG/WebP up to 8192px. Everything local.
+> **English** — 87 presets and 92 frame styles for magazine, polaroid, torn paper, tape, stamp, newspaper, film, gradient, comic, 3D card, signature and avatar layouts; a preset-wall launcher; live frame, shadow, texture and light controls; remembered background-blur defaults; preset thumbnails, split canvas/text panels, exact numeric slider input, double-click row reset and Shift fine-tuning; collapsible resizable side panels; logo/EXIF/signature layers; `.qfs` and `.json` templates; collage, grid slicing, batch export and an immersive photo-wall presentation with wheel navigation; PNG/JPEG/WebP up to 8192px. Everything local.
 
+<a id="preset-gallery"></a>
 ## 预设效果 · Preset Gallery
 
 <p align="center">
@@ -87,6 +123,7 @@
 
 87 个模板覆盖复古胶片、拍立得、邮票、报纸、杂志、撕纸、胶带、漫画、签名、拼图等方向；每个模板都能继续改边距、圆角、纹理、光影与文字。六张预设图都由引擎实际渲染，不是手工绘制的模拟效果，也没有使用图库或用户照片。
 
+<a id="quick-start"></a>
 ## 快速开始 · Quick Start
 
 **直接使用**：从 [Releases](https://github.com/lumos-1s/Qing-Fram-Shadow/releases) 下载 Windows 安装版或便携版。
@@ -141,6 +178,7 @@ npm run gen:wall
 
 > **English** — Drop photos named after a category into `design/preset-wall-samples/` (e.g. `个性.jpg`), then run `npm run gen:wall`. Categories without an override keep the default sample from `tools/preset-wall.config.json`. For one-off cover changes, put an image in `wall-covers/<preset>.webp` via the in-app “换封面” button and restart.
 
+<a id="tech-stack"></a>
 ## 技术栈 · Tech Stack
 
 [![Tech Stack](https://skillicons.dev/icons?i=js,html,css,electron,nodejs,npm,git,github)](https://skillicons.dev)
@@ -154,6 +192,7 @@ npm run gen:wall
 
 没有前端框架，也没有后端服务；边框、光影、文字与导出都在渲染进程的 Canvas 2D 里完成。
 
+<a id="project-structure"></a>
 ## 项目结构 · Project Structure
 
 ```
@@ -176,6 +215,7 @@ npm run gen:wall
 └─ package.json
 ```
 
+<a id="development"></a>
 ## 开发与校验 · Development
 
 <details>
@@ -201,6 +241,7 @@ npm run verify:pkg    # 另加安装包核验：Setup.exe 体积与 latest.yml �
 
 </details>
 
+<a id="code-signing"></a>
 ## 代码签名政策 · Code signing policy
 
 **Windows 产物目前未签名。** 本项目曾向 [SignPath Foundation](https://signpath.org/) 申请开源项目的免费代码签名；因项目公开可见度尚未达到该计划的门槛（其评审看的是 Star、Fork、外部引用与社区活跃度等公开信号），申请未获通过，达到条件后会重新申请。
@@ -215,6 +256,19 @@ npm run verify:pkg    # 另加安装包核验：Setup.exe 体积与 latest.yml �
 
 > **English** — Windows builds are unsigned for now. An application to the SignPath Foundation OSS program was declined because the project does not yet meet the program's public-visibility bar; the project will reapply. Do not describe any current release as signed. See [`CODE_SIGNING.md`](./CODE_SIGNING.md) for verification.
 
+<a id="contributing"></a>
+## 参与贡献 · Contributing
+
+欢迎提交 Issue 或 Pull Request：
+
+1. Fork 本仓库。
+2. 新建分支：`git checkout -b feature/your-feature`。
+3. 提交改动，并运行 `npm run check`；涉及 UI 时再运行对应的 Electron 用例。
+4. 推送分支并创建 Pull Request。
+
+> **English** — Issues and pull requests are welcome. Fork the repo, create a feature branch, run `npm run check`, and open a PR.
+
+<a id="assets-license"></a>
 ## 素材与许可 · Assets & License
 
 代码采用 [MIT](./LICENSE) 许可。该许可仅覆盖 `src/` 下的源代码与 `shared/presets/` 中的原创模板；`shared/brandlogos/` 与 `shared/textures/` 中的素材不适用，其权利归各自权利人所有。
@@ -230,5 +284,7 @@ npm run verify:pkg    # 另加安装包核验：Setup.exe 体积与 latest.yml �
 ---
 
 <sub>关键词 / Keywords：照片加边框 · 艺术边框 · 水印 · EXIF 相机参数 · 拼图 · 九宫格切图 · 批量导出 · 桌面工具 · Electron · Canvas 2D · photo frame · watermark · collage · grid slice · batch export</sub>
+
+<p align="center"><a href="#readme-top">回到顶部 ↑</a></p>
 
 <p align="center"><sub>如果清框影对你有帮助，欢迎点一个 ⭐ Star。</sub></p>
