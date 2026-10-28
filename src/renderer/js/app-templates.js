@@ -1044,6 +1044,11 @@ window.App = Object.assign(window.App || {}, {
         }
         this.pendingPreset = JSON.parse(JSON.stringify(preset));
         this.template = JSON.parse(JSON.stringify(preset));
+        // 没照片时也要把「背景模糊默认」记忆铺到空画布和待导入模板上。
+        if (typeof this.applyBgBlurDefault === 'function') {
+            this.applyBgBlurDefault(this.pendingPreset);
+            this.applyBgBlurDefault(this.template);
+        }
         if (typeof this.normalizeTemplate === 'function') this.normalizeTemplate();
         if (typeof this.pushRecent === 'function') this.pushRecent(preset.templateName);
         this.buildTree(this._searchVal || '');
@@ -1079,6 +1084,10 @@ window.App = Object.assign(window.App || {}, {
     applyPreset(p) {
         const prev = this.template || {};
         const next = JSON.parse(JSON.stringify(p));
+
+        // 全局「背景模糊默认」偏好：显式记忆过时覆盖预设自带值；
+        // 未设置(null)时保持预设原样，旧行为和视觉基线都不变。
+        if (typeof this.applyBgBlurDefault === 'function') this.applyBgBlurDefault(next);
 
         // 用户内容:logo(品牌/自定义图标)与贴纸
         if (Array.isArray(prev.logoElements) && prev.logoElements.length) next.logoElements = JSON.parse(JSON.stringify(prev.logoElements));

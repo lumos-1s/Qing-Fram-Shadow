@@ -868,6 +868,14 @@ html.dark .mini-btn.primary { color: #0c1914; }
 /* ── 静态控件骨架 ── */
 .chk-row { gap: var(--sp-2-5); }
 .chk-hint { flex: 1; font-size: var(--fs-11); color: var(--text-3); padding-right: var(--sp-1); }
+/* 背景模糊行尾的「默认」记忆键：跟随预设 / 默认开 / 默认关 */
+.chk-default-btn {
+    flex: 0 0 auto; margin-left: auto; padding: 3px 8px;
+    border-radius: 999px; font-size: 10.5px; line-height: 1.35;
+}
+.chk-default-btn[aria-pressed="true"] {
+    color: var(--primary); border-color: var(--primary); background: var(--primary-soft);
+}
 .ctl-sel, .ctl-tx, .ctl-cl, .ctl-num {
     flex: 1; min-width: 0; border: 1px solid var(--border-strong);
     border-radius: 9px; background: var(--surface); padding: 5px 7px; font-size: var(--fs-12); color: var(--text);

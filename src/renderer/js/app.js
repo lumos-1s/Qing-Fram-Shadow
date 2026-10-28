@@ -46,6 +46,7 @@ window.App = {
     _puzzlePick: null,       // 拖拽抓取预览 {mode:'target'|'float',...}
     _puzzleDropTarget: null, // 拖拽互换预备目标格
     _skipPuzzleCapture: false,
+    _bgBlurDefault: null,    // 背景模糊默认记忆:null=跟随预设, 1=默认开, 0=默认关
 
     restoreLastState() {
         try {
@@ -74,10 +75,54 @@ window.App = {
                 if (s.brandSize) this.template.brandSize = s.brandSize;
                 if (s.brandLogo != null) this.template.brandLogo = s.brandLogo;
                 if (s.paramScale) this.template.paramScale = s.paramScale;
+                // 用户显式记忆过「背景模糊默认开/关」时，它优先于旧草稿里的单次值。
+                if (typeof this.applyBgBlurDefault === 'function') this.applyBgBlurDefault(this.template);
                 this.refreshUI();
                 this.scheduleRender();
             }
         } catch (_) {}
+    },
+
+    // ── 背景模糊「默认」记忆 ──
+    // chkBgBlur 只改当前模板的 signBgBlur；切预设/重启时会被预设自带值覆盖。
+    // 这里额外记一个全局偏好：null=跟随预设（保持旧行为/视觉基线），1/0=用户显式指定。
+    // 存 localStorage 而不是主进程 prefs：save-prefs 是整对象替换，加字段容易误删导出偏好。
+    readBgBlurDefault() {
+        try {
+            const v = localStorage.getItem('qfs_bg_blur_default');
+            return v === '1' ? 1 : v === '0' ? 0 : null;
+        } catch (_) { return null; }
+    },
+
+    saveBgBlurDefault(v) {
+        this._bgBlurDefault = v ? 1 : 0;
+        try { localStorage.setItem('qfs_bg_blur_default', this._bgBlurDefault ? '1' : '0'); } catch (_) {}
+        this.refreshBgBlurDefaultUI();
+    },
+
+    // 只对面板里真的露出「背景模糊」开关的风格生效；
+    // 卡片/模糊系风格的模糊是预设结构的一部分，不能被这个开关误改。
+    bgBlurToggleSupported(style) {
+        const caps = window.StyleCaps;
+        if (!caps || typeof caps.visibleRows !== 'function') return false;
+        return !!caps.visibleRows(style || '').rowBgBlur;
+    },
+
+    applyBgBlurDefault(tpl) {
+        if (!tpl || this._bgBlurDefault == null) return;
+        if (!this.bgBlurToggleSupported(tpl.photoFrameStyle)) return;
+        tpl.signBgBlur = this._bgBlurDefault ? 1 : 0;
+    },
+
+    refreshBgBlurDefaultUI() {
+        const btn = document.getElementById('btnBgBlurDefault');
+        if (!btn) return;
+        const v = this._bgBlurDefault;
+        btn.textContent = v == null ? '默认跟随' : (v ? '默认开' : '默认关');
+        btn.setAttribute('aria-pressed', v === 1 ? 'true' : 'false');
+        btn.title = v == null
+            ? '未设置：跟随各预设自带的背景模糊开关。点击记住为“默认开启”'
+            : (v ? '已记住：支持背景模糊的预设默认开启。点击改为“默认关闭”' : '已记住：支持背景模糊的预设默认关闭。点击改为“默认开启”');
     },
 
     // macOS 显示 ⌘,Windows/Linux 显示 Ctrl
@@ -100,6 +145,7 @@ window.App = {
     init() {
         this.initSplash();
         this.cacheDom();
+        this._bgBlurDefault = this.readBgBlurDefault();
         this.bind();
         if (this.initImmersive) this.initImmersive();
         if (this.initPresetWall) this.initPresetWall();
@@ -484,6 +530,21 @@ window.App = {
             if (rowBI) rowBI.style.display = chkBB.checked ? '' : 'none';
             this.syncEmptyGroups();
             this.onSettingChanged();
+        });
+        const btnBBD = document.getElementById('btnBgBlurDefault');
+        if (btnBBD) btnBBD.addEventListener('click', () => {
+            // null(跟随) → 默认开；已显式记忆时在开/关之间切换。
+            const next = this._bgBlurDefault === 1 ? 0 : 1;
+            this.saveBgBlurDefault(next);
+            // 立即套到当前预设，而不是只等下一次切预设。
+            if (this.template && this.bgBlurToggleSupported(this.template.photoFrameStyle)) {
+                this.template.signBgBlur = next;
+                if (chkBB) chkBB.checked = !!next;
+                const rowBI = document.getElementById('rowBgBlurInt');
+                if (rowBI) rowBI.style.display = next ? '' : 'none';
+                this.syncEmptyGroups();
+                this.onSettingChanged();
+            }
         });
         const slBI = document.getElementById('slBgBlurInt');
         if (slBI) {
@@ -1482,6 +1543,7 @@ window.App = {
             if (rowBI2) rowBI2.style.display = $('chkBgBlur') && $('chkBgBlur').checked ? '' : 'none';
             if ($('cbParamColor')) $('cbParamColor').value = this.template.paramColor || 'auto';
             this.updatePersonalVisibility();
+            this.refreshBgBlurDefaultUI();
             if (this.template.userAvatar) {
                 const img = new Image();
                 img.onload = () => { this.avatarImg = img; window.__qfsAvatarImg = img; this.renderPreview(); };
