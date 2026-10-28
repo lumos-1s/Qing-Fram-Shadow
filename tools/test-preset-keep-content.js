@@ -64,6 +64,8 @@ const SCENARIOS = `
     for (const preset of targets) {
         const im = await mkImg(1200, 900, '#5a86bb');
         A.image = im; A.images = [im]; A.imageTemplates = new Map();
+    // 伪造 images 后刷新空态，否则画布 display:none、rect 恒为 0（logo 命中会全 miss）
+    if (typeof A.updateEmptyState === 'function') A.updateEmptyState();
         A.selectedIdx = [0]; A.currentIdx = 0; A.selectedEls = [];
         A.template = A.defaultTemplate();
         A.normalizeTemplate(); A.invalidateStyleCaches();
