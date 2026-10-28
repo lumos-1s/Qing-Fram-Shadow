@@ -25,7 +25,7 @@
 | | `shared/textures/`(10 PNG) | 纹理，仅图层管线消费 |
 | | `shared/brandlogos/`(106 文件) | 本机素材，**不入库、不进包** |
 
-**安全姿态**：`contextIsolation:true`、`nodeIntegration:false`、`sandbox:true`、CSP 写死在 `index.html:5`（`script-src 'self'`，图片允许 `qflocal:`）。自动更新只走 GitHub 直连，不经过第三方镜像（清单与二进制必须同源）。
+**安全姿态**：`contextIsolation:true`、`nodeIntegration:false`、`sandbox:true`、CSP 写死在 `index.html:5`（`script-src 'self'`，图片允许 `qflocal:`）。自动更新默认直连 GitHub，不自动改道任何第三方镜像（清单与二进制必须同源）。用户可在「关于 → 更新下载源」自行填镜像：**清单与 sha512 始终取自 GitHub**，只有安装包下载地址被替换（`src/main/update-mirror.js`），下完仍按 GitHub 的 sha512 校验，不匹配即丢弃并回退直连。
 
 **照片不走 IPC**：主进程注册 `qflocal://`，渲染侧用 `qflocal://img?p=<绝对路径>` 直读磁盘，避免 base64 过桥；协议只服务**图片扩展名且被主进程登记过**的路径（文件选择/拖放/剪贴板/封面目录/`read-exif`），并开启 `corsEnabled`。只有**模板/工程文件**与**导出写盘**才走 IPC；导出写盘只认 `pick-export-location` 发出的令牌，渲染层不能直接指定路径。
 

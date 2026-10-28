@@ -5,6 +5,7 @@ const os = require('os');
 const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 const { createStateStore } = require('./state');
+const { normalizeMirror, mirrorUrlFor, downloadVerified, releaseAssetUrl } = require('./update-mirror');
 
 // 仓库改名后统一从这里取,避免菜单 / 更新源 / 下载兜底 / 外链白名单各写一份。
 const REPO_URL = 'https://github.com/lumos-1s/Qing-Fram-Shadow';
@@ -351,6 +352,9 @@ app.whenReady().then(() => {
         }
     };
     let updater = null;
+    // 清单来自 GitHub（含 sha512）；镜像只替换下载地址。两者都要留到最后才用。
+    let lastUpdateInfo = null;
+    let mirrorInstallerPath = '';
     if (app.isPackaged) {
         // portable 单文件版/未打包开发版不生成 app-update.yml,electron-updater 读取时会抛
         // ENOENT 导致启动后弹"检查更新失败";没有该文件就直接跳过自动更新。
@@ -366,7 +370,11 @@ app.whenReady().then(() => {
                 const w = BrowserWindow.getAllWindows()[0];
                 if (w && !w.isDestroyed()) w.webContents.send('updater:event', Object.assign({ type }, payload || {}));
             };
-            autoUpdater.on('update-available', (info) => pushUpdater('available', { version: info && info.version, releaseNotes: info && (info.releaseNotes || info.releaseNotesString) }));
+            autoUpdater.on('update-available', (info) => {
+                lastUpdateInfo = info || null;
+                mirrorInstallerPath = '';
+                pushUpdater('available', { version: info && info.version, releaseNotes: info && (info.releaseNotes || info.releaseNotesString) });
+            });
             autoUpdater.on('update-not-available', () => pushUpdater('not-available'));
             autoUpdater.on('download-progress', (p) => pushUpdater('progress', { percent: p && p.percent, speed: p && p.bytesPerSecond }));
             autoUpdater.on('update-downloaded', () => pushUpdater('downloaded'));
@@ -396,6 +404,28 @@ app.whenReady().then(() => {
         }
     });
     let updateDownloadInFlight = false; // 防连点:测速+下载+自动重试全程只允许一个在飞
+
+    // 走镜像下载：地址换成镜像，校验仍用 GitHub 清单里的 sha512。
+    // 任何一步失败都抛错，由调用方回退到 electron-updater 的默认通道（GitHub 直连）。
+    const downloadViaMirror = async (mirror) => {
+        const info = lastUpdateInfo;
+        const file = info && Array.isArray(info.files) ? info.files[0] : null;
+        if (!info || !file || !file.sha512) throw new Error('清单里没有可用的校验值，已回退 GitHub 直连');
+        const fileName = path.basename(String(file.url || info.path || '')) || ('Qingframe-Setup-' + info.version + '.exe');
+        const original = releaseAssetUrl({ owner: 'lumos-1s', repo: 'Qing-Fram-Shadow', version: info.version, file: fileName });
+        const url = mirrorUrlFor(original, mirror);
+        const dest = path.join(app.getPath('userData'), 'update-cache', fileName);
+        const w = BrowserWindow.getAllWindows()[0];
+        const push = (type, payload) => { if (w && !w.isDestroyed()) w.webContents.send('updater:event', Object.assign({ type }, payload || {})); };
+        console.log('[updater] 镜像下载:', url);
+        await downloadVerified({
+            url, sha512: file.sha512, dest, total: file.size,
+            onProgress: (p) => push('progress', { percent: p.percent, speed: p.bytesPerSecond })
+        });
+        mirrorInstallerPath = dest;
+        console.log('[updater] 镜像下载完成并通过校验:', dest);
+    };
+
     ipcMain.handle('start-update-download', async () => {
         if (!updater) return { ok: false, message: '当前版本不支持在线自动更新,请到 GitHub Releases 下载新版' };
         if (updateDownloadInFlight) return { ok: false, message: '更新下载已在进行中' };
@@ -406,6 +436,20 @@ app.whenReady().then(() => {
                 const w = BrowserWindow.getAllWindows()[0];
                 if (w && !w.isDestroyed()) w.webContents.send('updater:event', { type: 'progress', percent: 0, speed: 0 });
             } catch (_) { /* ignore */ }
+            const mirror = normalizeMirror((loadState().prefs || {}).updateMirror);
+            if (mirror.ok && mirror.value) {
+                try {
+                    await downloadViaMirror(mirror.value);
+                    return { ok: true, viaMirror: true };
+                } catch (e) {
+                    // 镜像不可用不该让用户卡死：退回 GitHub 直连（慢，但能装）
+                    console.warn('[updater] 镜像下载失败，回退直连:', e && e.message);
+                    try {
+                        const w = BrowserWindow.getAllWindows()[0];
+                        if (w && !w.isDestroyed()) w.webContents.send('updater:event', { type: 'progress', percent: 0, speed: 0, note: '镜像不可用，已回退 GitHub 直连' });
+                    } catch (_) { /* ignore */ }
+                }
+            }
             await updater.downloadUpdate();
             seedCachedInstaller();
             return { ok: true };
@@ -414,8 +458,25 @@ app.whenReady().then(() => {
         }
     });
     ipcMain.handle('quit-and-install', () => {
+        // 镜像通道下载的安装包不经 electron-updater，自己静默装（/S）再退出
+        if (mirrorInstallerPath && fs.existsSync(mirrorInstallerPath)) {
+            try {
+                const { spawn } = require('child_process');
+                spawn(mirrorInstallerPath, ['/S'], { detached: true, stdio: 'ignore' }).unref();
+                setTimeout(() => app.quit(), 200);
+                return { ok: true, viaMirror: true };
+            } catch (e) { console.warn('[updater] 静默安装失败，改用内置安装器:', e && e.message); }
+        }
         if (updater) { try { updater.quitAndInstall(); } catch (e) { console.warn('[updater] quitAndInstall:', e && e.message); } }
         return { ok: true };
+    });
+
+    // 更新下载源（空 = GitHub 直连）。只允许 http(s)，http 仅限本机，其余一律拒绝。
+    ipcMain.handle('set-update-mirror', (_e, raw) => {
+        const r = normalizeMirror(raw);
+        if (!r.ok) return { ok: false, error: r.error, mirror: '' };
+        saveState({ prefs: { updateMirror: r.value } });
+        return { ok: true, mirror: r.value };
     });
 
 });

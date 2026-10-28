@@ -49,6 +49,8 @@ contextBridge.exposeInMainWorld('qingframe', {
     externalizeDraft: (draft) => ipcRenderer.invoke('draft-externalize', draft),
     hydrateDraft: (draft) => ipcRenderer.invoke('draft-hydrate', draft),
     clearDraftAssets: () => ipcRenderer.invoke('draft-clear-assets'),
+    // 更新下载源（空 = GitHub 直连）；清单与校验值始终来自 GitHub
+    setUpdateMirror: (url) => ipcRenderer.invoke('set-update-mirror', url),
     readExif: (filePath) => ipcRenderer.invoke('read-exif', filePath),
     openStickerImage: () => ipcRenderer.invoke('open-sticker-image'),
     getAppInfo: () => ipcRenderer.invoke('get-app-info'),

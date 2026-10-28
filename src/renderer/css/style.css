@@ -1113,6 +1113,16 @@ html.dark .icon-pool .icon-cell {
 .about-status.error { color: var(--rose); }
 .about-status-row .about-link, .about-diag-status .about-link { font-size: 11.5px; }
 .about-diag-status { min-height: 16px; margin-top: 7px; overflow-wrap: anywhere; }
+/* 更新下载源：一行输入 + 保存，尺寸与 about-status-row 对齐 */
+.about-mirror { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
+.about-mirror-label { flex: 0 0 auto; font-size: 11.5px; color: var(--text-3); }
+.about-mirror-input {
+    flex: 1 1 auto; min-width: 0; padding: 4px 7px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+    font: inherit; font-size: 11.5px;
+}
+.about-mirror-input:focus { outline: none; border-color: var(--primary); }
+.about-mirror-hint { min-height: 15px; margin-top: 4px; }
 .about-details {
     margin-top: var(--sp-2-5); padding: 9px 11px; border: 1px solid var(--border);
     border-radius: 10px; background: var(--bg-soft);

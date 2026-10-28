@@ -62,7 +62,7 @@
     "test:grain": "node tools/run-electron.js tools/test-film-grain.js",
     "test:visual": "node tools/run-electron.js tools/visual-regression.js",
     "test": "npm run check && npm run test:gui && npm run test:visual",
-    "check": "npm run lint && npm run validate:presets && npm run check:readme && npm run check:caps && npm run check:marks && npm run test:mainio && npm run test:exifwrite && npm run test:focaleq && npm run test:syncadapt && npm run test:sharecode && npm run test:icons && npm run test:engine",
+    "check": "npm run lint && npm run validate:presets && npm run check:readme && npm run check:caps && npm run check:marks && npm run test:updatemirror && npm run test:mainio && npm run test:exifwrite && npm run test:focaleq && npm run test:syncadapt && npm run test:sharecode && npm run test:icons && npm run test:engine",
     "app:dir": "electron-builder --win --dir",
     "verify:dist": "node tools/verify-dist.js",
     "verify:pkg": "node tools/verify-dist.js --installers",
@@ -83,7 +83,8 @@
     "wall:jank": "node tools/wall-jank.js",
     "boot:time": "node tools/boot-time.js",
     "wall:writes": "node tools/wall-writes.js",
-    "test:integration": "node tools/run-electron.js tools/test-integration.js"
+    "test:integration": "node tools/run-electron.js tools/test-integration.js",
+    "test:updatemirror": "node tools/test-update-mirror.js"
   },
   "author": "Qingframe",
   "license": "MIT",

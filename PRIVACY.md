@@ -18,9 +18,14 @@ The application checks GitHub Releases for updates:
 - It requests release metadata from
   `https://github.com/lumos-1s/Qing-Fram-Shadow/releases`.
 - Update downloads are requested only after you choose to download an update.
-- These requests go directly to GitHub; the application does not route them
-  through third-party update mirrors. They are subject to GitHub's privacy
-  policy.
+- These requests go directly to GitHub by default; the application does not
+  route them through third-party update mirrors on its own. They are subject to
+  GitHub's privacy policy.
+- Advanced: you may enter a download mirror under "About → 更新下载源". If set,
+  only the **installer download** goes to that host; the release metadata and
+  the SHA-512 used to verify the file still come from GitHub, so a mirror
+  cannot substitute a different binary without failing the check. Leave it
+  empty to connect to GitHub directly.
 
 External links are opened only when you choose them.
 

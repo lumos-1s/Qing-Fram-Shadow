@@ -570,6 +570,37 @@ window.App = Object.assign(window.App || {}, {
         if (nm) nm.addEventListener('click', (e) => { if (e.target === nm) this.hideUpdateNotes(); });
     },
 
+    // ── 更新下载源(镜像)：清单与校验值始终来自 GitHub，这里只换二进制下载地址 ──
+    async syncUpdateMirrorField() {
+        const el = document.getElementById('tfUpdateMirror');
+        const hint = document.getElementById('aboutMirrorHint');
+        if (!el) return;
+        try {
+            const p = (window.qingframe && window.qingframe.getPrefs) ? await window.qingframe.getPrefs() : null;
+            el.value = (p && p.updateMirror) || '';
+            if (hint) {
+                hint.textContent = el.value ? '当前走镜像下载；校验值仍取自 GitHub 清单' : '当前直连 GitHub';
+                hint.className = 'about-status about-mirror-hint';
+            }
+        } catch (_) { /* 读不到 prefs 就当直连 */ }
+    },
+    async saveUpdateMirror() {
+        const el = document.getElementById('tfUpdateMirror');
+        const hint = document.getElementById('aboutMirrorHint');
+        if (!el || !window.qingframe || !window.qingframe.setUpdateMirror) return;
+        const r = await window.qingframe.setUpdateMirror(el.value)
+            .catch((e) => ({ ok: false, error: (e && e.message) || '保存失败' }));
+        if (!hint) return;
+        if (r && r.ok) {
+            el.value = r.mirror || '';
+            hint.textContent = r.mirror ? '已保存：下次下载走该镜像（校验值仍取自 GitHub）' : '已清空：恢复 GitHub 直连';
+            hint.className = 'about-status about-mirror-hint ok';
+        } else {
+            hint.textContent = '保存失败：' + ((r && r.error) || '未知错误');
+            hint.className = 'about-status about-mirror-hint error';
+        }
+    },
+
     // ── 关于页内联状态(避免结果落到被弹窗遮住的主界面状态栏) ──
     _setAboutUpdateStatus(text, tone) {
         const el = document.getElementById('aboutUpdateStatus');

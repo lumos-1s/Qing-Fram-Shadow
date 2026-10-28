@@ -1050,6 +1050,15 @@
                     <button class="about-link" id="aboutUpdateAction" type="button" style="display:none"></button>
                 </div>
 
+                <!-- 更新下载源：清单始终来自 GitHub（校验用），这里只换二进制下载地址 -->
+                <div class="about-mirror">
+                    <label for="tfUpdateMirror" class="about-mirror-label" title="留空=GitHub 直连。可填镜像前缀（如 https://ghproxy.net/{url}）或自建反代地址；下载完仍按 GitHub 清单里的 sha512 校验">更新下载源</label>
+                    <input id="tfUpdateMirror" class="about-mirror-input" type="text" spellcheck="false" autocomplete="off"
+                           placeholder="留空 = GitHub 直连；可填 https://ghproxy.net/{url}" />
+                    <button id="btnSaveUpdateMirror" class="mini-btn" type="button">保存</button>
+                </div>
+                <div id="aboutMirrorHint" class="about-status about-mirror-hint" role="status" aria-live="polite"></div>
+
                 <details class="about-details">
                     <summary>快捷键</summary>
                     <div class="about-shortcuts">
