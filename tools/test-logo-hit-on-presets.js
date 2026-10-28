@@ -56,6 +56,8 @@ const PREP = `
     const img = { el: im, name: 'p.jpg', w: 1200, h: 900, exif: {} };
 
     A.image = img; A.images = [img]; A.imageTemplates = new Map();
+    // 伪造 images 后要刷新空态，否则画布 display:none、坐标点击全落空（Electron 45 上暴露）
+    if (typeof A.updateEmptyState === 'function') A.updateEmptyState();
     A.selectedIdx = [0]; A.currentIdx = 0; A.selectedEls = [];
     A.template = A.defaultTemplate();
     A.normalizeTemplate(); A.invalidateStyleCaches();

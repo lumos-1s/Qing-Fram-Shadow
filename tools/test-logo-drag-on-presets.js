@@ -41,6 +41,8 @@ const PREP = `
     await new Promise(r => { im.onload = r; im.src = c.toDataURL('image/jpeg', 0.95); });
     A.image = { el: im, name: 'p.jpg', w: 900, h: 676, exif: {} };
     A.images = [A.image]; A.imageTemplates = new Map();
+    // 伪造 images 后要刷新空态，否则画布 display:none、坐标点击全落空（Electron 45 上暴露）
+    if (typeof A.updateEmptyState === 'function') A.updateEmptyState();
     A.selectedIdx = [0]; A.currentIdx = 0; A.selectedEls = [];
     A.template = A.defaultTemplate(); A.normalizeTemplate(); A.invalidateStyleCaches();
     delete A.uiDprOverride; delete A.exportScale; A.displayMax = 1100;

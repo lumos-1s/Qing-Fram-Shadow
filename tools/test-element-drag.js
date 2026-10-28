@@ -49,6 +49,9 @@ const SETUP = `
     A.images = [A.image];
     A.imageTemplates = new Map();
     A.selectedIdx = [0]; A.currentIdx = 0; A.selectedEls = [];
+    // 伪造了 A.images 之后必须走一次公开的空态刷新，否则画布仍是 display:none
+    // （updateEmptyState 按 images.length 决定显隐）→ getBoundingClientRect 恒为 0×0。
+    if (typeof A.updateEmptyState === 'function') A.updateEmptyState();
     A.template = A.defaultTemplate();
     A.template.photoFrameStyle = 'NONE';
     A.template.logoElements = [];
