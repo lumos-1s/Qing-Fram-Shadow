@@ -111,7 +111,19 @@ const SETUP = `
     // 表现为按下不进选中、直接进平移(曾经造成「拖不出边界」用例偶发失败)。
     const base = A.logoBaseForOverlay();
     const p = A.logoPos(el, base.w, base.h, el.size);
+    // 诊断：Electron 45 在无桌面环境下可能不触发 rAF，渲染排程就永远跑不到，
+    // 画布宽高停在 0 —— 这里把"rAF 活没活、文档可不可见"一起带回去，失败时能直接定位。
+    const rafOk = await new Promise((res) => {
+        let fired = false;
+        requestAnimationFrame(() => { fired = true; res(true); });
+        setTimeout(() => { if (!fired) res(false); }, 800);
+    });
+    const cvm = A.dom.canvas;
+    const rMeas = cvm.getBoundingClientRect();
     return {
+        diag: { rafOk, hidden: document.hidden, vis: document.visibilityState,
+                attr: cvm.width + 'x' + cvm.height,
+                css: Math.round(rMeas.width) + 'x' + Math.round(rMeas.height) },
         rx0: el.rx, ry0: el.ry,
         x: r.left + (p.cx / cv.width) * r.width,
         y: r.top + (p.cy / cv.height) * r.height,
@@ -185,6 +197,7 @@ app.whenReady().then(async () => {
 
     // ① 画布内拖拽:基本能力
     let s = await win.webContents.executeJavaScript(SETUP);
+    if (s && s.diag) console.log('  [diag] ' + JSON.stringify(s.diag));
     if (s && s.failed) { console.log('  SETUP 失败: ' + s.why); console.log(JSON.stringify(s, null, 2)); dbg.detach(); finish(1); return; }
 
     // 按压点在「按下前一刻」按当前 rect/画布重算:布局在 SETUP 返回后仍可能微调
