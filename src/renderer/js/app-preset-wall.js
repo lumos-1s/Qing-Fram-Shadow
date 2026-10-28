@@ -455,6 +455,10 @@ window.App = Object.assign(window.App || {}, {
         const BW = pad * 2 + P * tw + (P - 1) * gap;
         const BH = pad * 2 + Q * th + (Q - 1) * gap;
         this._wallBounds = { pad, gap, tw, th, P, Q, BW, BH };
+        // 视口尺寸缓存：focusWall 每帧都要用，但 clientWidth/clientHeight 是布局读取；
+        // 拖动时 pointermove 可能一帧触发多次，读一次就够，别让每帧都去问布局。
+        this._wallViewW = vw;
+        this._wallViewH = grid.clientHeight;
         blocks.forEach((block, i) => {
             block.style.width = BW + 'px';
             block.style.height = BH + 'px';
@@ -483,12 +487,13 @@ window.App = Object.assign(window.App || {}, {
         if (!grid || !block) return;
         const b = this._wallBounds;
         if (!b) return;
-        // 与 applyWallTransform 同一条兜底：滚动偏移会让下面的中心距计算整体偏一格。
-        if (grid.scrollLeft || grid.scrollTop) { grid.scrollLeft = 0; grid.scrollTop = 0; }
         // 每个格子有 4 个节点（2×2 份拷贝），cells[key] 是节点数组
         const cells = (el && el.cells) || {};
         if (!Object.keys(cells).length) return;
-        const vw = grid.clientWidth, vh = grid.clientHeight;
+        // 视口尺寸用 layoutWallTiles 缓存的；这里不再读取 clientWidth/clientHeight，
+        // 否则 pointermove 每次进来都可能强制一次布局。
+        const vw = this._wallViewW || (this._wallViewW = grid.clientWidth);
+        const vh = this._wallViewH || (this._wallViewH = grid.clientHeight);
         const cx = vw / 2, cy = vh / 2;
         const ox = this._wallOffsetX || 0, oy = this._wallOffsetY || 0;
         const cxw = cx - ox, cyw = cy - oy; // 视口中心在块坐标系中的位置（块坐标 p 的屏幕位置 = p + offset）
@@ -502,6 +507,11 @@ window.App = Object.assign(window.App || {}, {
         const cc = Math.round((cxw - b.pad - b.tw / 2) / (b.tw + b.gap));
         const rc = Math.round((cyw - b.pad - b.th / 2) / (b.th + b.gap));
         const active = new Set();
+        // 只更新视口附近的拷贝：2×2 份拷贝里，同一格通常只有 1 份在屏幕上。
+        // 之前每帧把 4 份都写一遍（9 格 × 4 = 36 个节点），在 165Hz / DPR2 下光样式写入
+        // 就要 6ms 以上；实际看得见的只有一份，离屏拷贝等进入视口前再写完全来得及。
+        // margin 至少留一张卡，快速甩动时也不会等到贴边才补值。
+        const margin = Math.max(b.tw, b.th);
         for (let dr = -1; dr <= 1; dr++) {
             for (let dc = -1; dc <= 1; dc++) {
                 const r = wrap(rc + dr, b.Q);
@@ -520,28 +530,33 @@ window.App = Object.assign(window.App || {}, {
                 const s = maxScale - u * (maxScale - minScale);
                 const o = 1 - u * 0.65;
                 const z = String(Math.max(1, Math.round(100 - u * 95)));
-                // 同一格在 4 份拷贝里各有一个节点，必须给同样的 scale/opacity，
-                // 否则回绕那一刻接缝两侧一大一小，看起来就是"闪了一下"。
+                // 同一格在 4 份拷贝里共用同一套值（倾斜只作用于指针下那一张）。
+                // 字符串每格只拼一次，不再给 4 份拷贝各拼一次。
+                const baseTf = 'perspective(760px) scale(' + s.toFixed(3) + ') rotateX(0.00deg) rotateY(0.00deg)';
                 for (const tile of list) {
+                    const copy = Number(tile.parentElement && tile.parentElement.dataset.copy) || 0;
+                    const tx = b.pad + c * (b.tw + b.gap) + (copy % 2) * b.BW + ox;
+                    const ty = b.pad + r * (b.th + b.gap) + Math.floor(copy / 2) * b.BH + oy;
+                    if (tx > vw + margin || tx + b.tw < -margin || ty > vh + margin || ty + b.th < -margin) continue;
                     active.add(tile);
                     const isTilting = (tilt && tilt.card === tile);
-                    const rx = isTilting ? tilt.rx : 0;
-                    const ry = isTilting ? tilt.ry : 0;
+                    const tf = isTilting
+                        ? 'perspective(760px) scale(' + s.toFixed(3) + ') rotateX(' + tilt.rx.toFixed(2) + 'deg) rotateY(' + tilt.ry.toFixed(2) + 'deg)'
+                        : baseTf;
                     // 值没变就不写：平移时 scale 每帧都在变，但 opacity/zIndex 是按舍入档走的，
                     // 一小段时间内完全一致。跳过重复写入能省掉大量样式失效与重排。
-                    const tf = 'perspective(760px) scale(' + s.toFixed(3) + ') rotateX(' + rx.toFixed(2) + 'deg) rotateY(' + ry.toFixed(2) + 'deg)';
                     if (tile.__tf !== tf) { tile.style.transform = tf; tile.__tf = tf; }
                     if (tile.__op !== o.toFixed(3)) { tile.style.opacity = o.toFixed(3); tile.__op = o.toFixed(3); }
                     if (tile.__z !== z) { tile.style.zIndex = z; tile.__z = z; }
                 }
             }
         }
-        // 复位离开中心区的卡片 → 静态态；倾斜卡若不在中心区则单独保持倾斜
+        // 复位离开动态区的卡片 → 静态态；倾斜卡若不在中心区则单独保持倾斜
         const prev = this._wallFocusTiles;
         for (const t of prev) {
             if (active.has(t)) continue;
             const isTilting = (tilt && tilt.card === t);
-            // 离开动态区就撤层，避免层数越攒越多（层只给真正在动的 9 张）
+            // 离开动态区就撤层，避免层数越攒越多（层只给真正在动的可见卡）
             t.style.willChange = 'auto';
             if (isTilting) {
                 t.style.transform = 'perspective(760px) scale(0.72) rotateX(' + tilt.rx.toFixed(2) + 'deg) rotateY(' + tilt.ry.toFixed(2) + 'deg)';
