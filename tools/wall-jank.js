@@ -6,7 +6,9 @@
 //   node tools/wall-jank.js --dpr2               # 按 2 倍像素密度测（高分屏近似）
 //   node tools/wall-jank.js --dpr2 --input       # 用真实鼠标拖（含悬停倾斜；额外输出 INPUT）
 //
-// 判读：p95 ≤ 16.7 算 60fps 达标；over24 是掉到 40fps 以下的帧数（能感觉到的卡顿）。
+// 判读：这块屏是 165Hz，vsync ≈ 6.06ms；p95 ≤ 6.3 才算满帧，over12 是掉到 82fps 档的帧数。
+//       16.7ms（60fps）只是最低及格线，不是这面墙的目标；over24 才是明显卡顿。
+//       看 mean/fps 比只看 p50 可靠：p50 6.1 时仍可能有三成帧在 12ms。
 // 注意：这台机器同时跑别的 Electron / CI 时数字会明显变差，比较前后务必在同样负载下跑两遍。
 // --input 的 INPUT 行统计的是"鼠标事件派发期间"的 rAF 帧间隔；JANK 行仍是松手后的程序化平移。
 'use strict';
@@ -111,9 +113,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
             window.__wallInputProbe.active = false;
             const d = window.__wallInputProbe.deltas.slice(3).sort((a, b) => a - b);
             const at = (q) => d[Math.min(d.length - 1, Math.floor(d.length * q))] || 0;
+            const mean = d.reduce((a, b) => a + b, 0) / d.length;
             return {
                 frames: d.length,
                 p50: +at(0.5).toFixed(1), p95: +at(0.95).toFixed(1), max: +d[d.length - 1].toFixed(1),
+                mean: +mean.toFixed(2), fps: +(1000 / mean).toFixed(1),
+                over12: d.filter((x) => x > 12).length,
+                over16: d.filter((x) => x > 16).length,
                 over24: d.filter((x) => x > 24).length,
                 over50: d.filter((x) => x > 50).length,
                 pan: { x: App._wallPan.x, y: App._wallPan.y },
@@ -159,9 +165,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
         const d = deltas.slice(3).sort((a, b) => a - b);
         const at = (q) => d[Math.min(d.length - 1, Math.floor(d.length * q))] || 0;
+        const mean = d.reduce((a, b) => a + b, 0) / d.length;
         return {
             frames: d.length,
             p50: +at(0.5).toFixed(1), p95: +at(0.95).toFixed(1), max: +d[d.length - 1].toFixed(1),
+            mean: +mean.toFixed(2), fps: +(1000 / mean).toFixed(1),
+            over12: d.filter(x => x > 12).length,
+            over16: d.filter(x => x > 16).length,
             over24: d.filter(x => x > 24).length,
             over50: d.filter(x => x > 50).length,
             tiles: g.querySelectorAll('.pw-tile').length,

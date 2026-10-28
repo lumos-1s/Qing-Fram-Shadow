@@ -17,6 +17,10 @@ const _pwWrap = (v, span) => {
 // 卡片尺寸系数：1 = 原来的 340px 档（一屏约 3×3），0.7 = 缩 30%（一屏约 5×2.5）。
 // 改这一个数就能调密度；调大到盖不住视口之前请确认周期块仍然大于视口（wallWrapSpan 会兜住，但会失去无限感）。
 const WALL_CARD_SCALE = 0.7;
+// 聚焦缩放的更新节奏：中心格每帧；外圈 8 格按“边/角”分两帧更新，相当于每帧只动 5–7 张卡。
+// 外圈单张卡仍有 82Hz，165Hz 屏上肉眼仍是连续缩放，但逐帧 scale 写入少一半。
+// 保留开关便于回归对比：false = 原来的 9 格全部每帧。
+const WALL_FOCUS_STAGGER = true;
 const _pwPanCfg = {
     dragThresholdPx: 7,
     // 点选容差：按下到抬起位移不超过它、且时间够短，就算一次点击（哪怕中途已经越过拖动阈值）。
@@ -80,6 +84,24 @@ window.App = Object.assign(window.App || {}, {
             }
         });
         if (el.back) el.back.addEventListener('click', () => this.openPresetWall());
+        // 165Hz 屏才启用“外圈隔帧”；60Hz 屏每帧都更新，否则外圈只有 30Hz，会看出阶梯。
+        // 用 3 个 rAF 间隔取中位数，窗口被节流/高负载时测出大间隔就退回全量更新。
+        this._wallHighRefresh = false;
+        let hzLast = 0;
+        const hzSamples = [];
+        const measureHz = (t) => {
+            if (hzLast) {
+                hzSamples.push(t - hzLast);
+                if (hzSamples.length >= 3) {
+                    const sorted = hzSamples.slice().sort((a, b) => a - b);
+                    this._wallHighRefresh = sorted[1] > 0 && sorted[1] < 11;
+                    return;
+                }
+            }
+            hzLast = t;
+            requestAnimationFrame(measureHz);
+        };
+        requestAnimationFrame(measureHz);
         // 键盘：方向键移动选中（上下左右，周期内循环）、Enter / 空格触发卡片
         el.grid.addEventListener('keydown', (e) => {
             const dir = { ArrowRight: [0, 1], ArrowLeft: [0, -1], ArrowUp: [-1, 0], ArrowDown: [1, 0] }[e.key];
@@ -89,6 +111,11 @@ window.App = Object.assign(window.App || {}, {
             if (!tile) return;
             e.preventDefault();
             this.enterEditorFromWall(tile.dataset.idx);
+        });
+        // Tab / 程序化聚焦卡片时，旧内核可能把 grid 滚到卡片位置；只在聚焦事件上清一次。
+        // 平移热路径里不再每帧读 scrollLeft/scrollTop（那会强制同步布局）。
+        el.grid.addEventListener('focusin', () => {
+            requestAnimationFrame(() => this.resetWallScroll());
         });
         // Bravais 式无限磁贴墙：周期块平铺 + 拖动取模回绕（无边界），视口中心卡片最显眼
         this._wallPan = { x: 0, y: 0 };   // 未回绕的平移累计（惯性/滚轮都往这里积分）
@@ -110,7 +137,7 @@ window.App = Object.assign(window.App || {}, {
             const t = this._wallTilt;
             if (t && t.card) { t.card.removeAttribute('data-tilting'); t.card = null; }
             if (t) { t.rx = 0; t.ry = 0; }
-            this.focusWall();
+            this.focusWall(true);
         };
         if (this._wallReduceMq && this._wallReduceMq.addEventListener) {
             this._wallReduceMq.addEventListener('change', this._wallReduceHandler);
@@ -122,6 +149,7 @@ window.App = Object.assign(window.App || {}, {
         el.grid.addEventListener('pointerdown', (e) => {
             if (e.button !== 0) return;
             if (e.isPrimary === false && e.pointerType) return; // 多指/次级指针交给主指针
+            this.resetWallScroll();
             this.stopWallMotion();
             // 拖动期间不要让鼠标下那张卡继续保持 3D 倾斜：它会在每帧 scale 更新时
             // 带着 perspective 重新栅格化，是拖动帧耗时的一个大头。
@@ -150,7 +178,7 @@ window.App = Object.assign(window.App || {}, {
             d.id = null;
             el.grid.classList.remove('pw-dragging');
             try { if (el.grid.hasPointerCapture(e.pointerId)) el.grid.releasePointerCapture(e.pointerId); } catch (_) {}
-            if (e.type !== 'pointerup') { this._wallSwallowClick = false; return; }
+            if (e.type !== 'pointerup') { this._wallSwallowClick = false; this.focusWall('stale'); return; }
             const dist = Math.hypot(e.clientX - d.startX, e.clientY - d.startY);
             const quick = e.timeStamp - d.downT <= _pwPanCfg.clickSlopMs;
             // 点选：位移在容差内且够快 → 当点击处理（并把这几像素的平移抹掉）。
@@ -168,8 +196,10 @@ window.App = Object.assign(window.App || {}, {
             this._wallSwallowClick = false;
             if (!d.dragging) return;
             // 松手前已经停住（超过 staleReleaseMs 没再采样）就不滑行，免得"静止松手蹭出去一段"
-            if (e.timeStamp - d.lastT > _pwPanCfg.inertia.staleReleaseMs) return;
+            if (e.timeStamp - d.lastT > _pwPanCfg.inertia.staleReleaseMs) { this.focusWall('stale'); return; }
             this.coastWall(d.vx, d.vy);
+            // 外圈隔帧可能把最后几格留在上一档；这里补一次没轮到的半圈。起了惯性也只是多跑一遍。
+            this.focusWall('stale');
         };
         el.grid.addEventListener('pointerup', endDrag);
         el.grid.addEventListener('pointercancel', endDrag);
@@ -182,30 +212,51 @@ window.App = Object.assign(window.App || {}, {
 
         // folia 式卡片倾斜：指针下的卡片朝指针方向 3D 倾斜，封面高光跟随指针
         // （机制同 folia exploreTilt；旋转角度并入 focusWall 的 transform，高光变量写 CSS）
-        this._wallTilt = { raf: 0, card: null, x: 0, y: 0, rx: 0, ry: 0 };
+        this._wallTilt = { raf: 0, card: null, x: 0, y: 0, rx: 0, ry: 0, lastPaint: 0, box: null };
         const within = (v) => Math.min(1, Math.max(-1, v));
         const tiltRest = () => {
             const t = this._wallTilt;
             if (!t.card) return; // 没有倾斜卡时不要白跑一次 focusWall
-            t.card.removeAttribute('data-tilting');
+            const card = t.card;
+            card.removeAttribute('data-tilting');
             t.card = null;
             t.rx = 0; t.ry = 0;
-            this.focusWall();
+            t.box = null;
+            t.lastPaint = 0;
+            // 外圈卡不在 focusWall 的活动集里，直接恢复它的 2D scale，别让它留在 3D 姿态。
+            const s = card.__s || 0.72;
+            card.style.transform = 'scale(' + s.toFixed(3) + ')';
+            card.__tf = card.style.transform;
         };
         const tiltLean = () => {
             const t = this._wallTilt;
             t.raf = 0;
             const card = t.card;
             if (!card || !card.isConnected) return;
-            const box = card.getBoundingClientRect();
-            const ax = within((t.x - (box.left + box.width / 2)) / (card.offsetWidth / 2 || 1));
-            const ay = within((t.y - (box.top + box.height / 2)) / (card.offsetHeight / 2 || 1));
+            // 倾斜是装饰：60Hz 就够。165Hz 每帧重栅格 560px 封面会偶发 40ms+ 尖峰。
+            const now = performance.now();
+            if (now - (t.lastPaint || 0) < 15) { t.raf = requestAnimationFrame(tiltLean); return; }
+            t.lastPaint = now;
+            // 几何只在开始倾斜时量一次；每帧 getBoundingClientRect/offsetWidth 会强制布局。
+            let box = t.box;
+            if (!box) {
+                const r = card.getBoundingClientRect();
+                box = t.box = {
+                    cx: r.left + r.width / 2, cy: r.top + r.height / 2,
+                    hw: card.offsetWidth / 2 || 1, hh: card.offsetHeight / 2 || 1
+                };
+            }
+            const ax = within((t.x - box.cx) / box.hw);
+            const ay = within((t.y - box.cy) / box.hh);
             const deg = 8;
             t.rx = -ay * deg;
             t.ry = ax * deg;
             card.style.setProperty('--pw-hx', (((ax + 1) / 2) * 100).toFixed(2) + '%');
             card.style.setProperty('--pw-hy', (((ay + 1) / 2) * 100).toFixed(2) + '%');
-            this.focusWall();
+            // 只写这一张卡的 transform，不再跑整遍 focusWall（其余卡的值都没变）。
+            const s = card.__s || 1;
+            card.style.transform = 'perspective(760px) scale(' + s.toFixed(3) + ') rotateX(' + t.rx.toFixed(2) + 'deg) rotateY(' + t.ry.toFixed(2) + 'deg)';
+            card.__tf = card.style.transform;
         };
         // 合并处理：按住拖动 → 整墙平移（取模回绕）；未按住 → 卡片倾斜
         el.grid.addEventListener('pointermove', (e) => {
@@ -242,6 +293,8 @@ window.App = Object.assign(window.App || {}, {
             if (card !== t.card) {
                 tiltRest();
                 t.card = card;
+                t.box = null;
+                t.lastPaint = 0;
                 if (card) card.setAttribute('data-tilting', '');
             }
             if (!card) return;
@@ -312,15 +365,20 @@ window.App = Object.assign(window.App || {}, {
         return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     },
 
+    // 旧内核把 overflow:clip 当 hidden，聚焦卡片时 scrollIntoView 会在 grid 上留下滚动偏移。
+    // 不能在平移热路径里每帧读 scrollLeft/scrollTop：刚写过 transform 再读滚动量会强制同步布局，
+    // 实测 applyWallTransform 会因此从 0.05ms 涨到 0.9ms/帧。只在可能产生偏移的事件上清一次。
+    resetWallScroll() {
+        const grid = this._wallDom && this._wallDom.grid;
+        if (!grid) return;
+        if (grid.scrollLeft || grid.scrollTop) { grid.scrollLeft = 0; grid.scrollTop = 0; }
+    },
+
     // 应用整墙平移（wrapper transform）
     applyWallTransform() {
         const el = this._wallDom;
         const wall = el && el.wall;
         if (!wall) return;
-        // 兜底：任何来源（聚焦、旧版本残留、程序化 scrollIntoView）产生的滚动偏移都清零，
-        // 否则它会在 transform 之外再叠一层位移，画面和 _wallOffset 对不上。
-        const grid = el.grid;
-        if (grid && (grid.scrollLeft || grid.scrollTop)) { grid.scrollLeft = 0; grid.scrollTop = 0; }
         // 位移对齐到整设备像素（同 Folia 的 formatWorldTransform）：小数像素会让 Chromium
         // 每帧重栅格化整面墙，平移时会看到细密的抖动。
         const dpr = window.devicePixelRatio || 1;
@@ -349,6 +407,8 @@ window.App = Object.assign(window.App || {}, {
         this._wallPan = { x, y };
         this._wallOffsetX = _pwWrap(x, span.w);
         this._wallOffsetY = _pwWrap(y, span.h);
+        // 倾斜卡片的几何缓存跟着墙一起失效；下一帧只重量一次。
+        if (this._wallTilt) { this._wallTilt.box = null; this._wallTilt.lastPaint = 0; }
         this.applyWallTransform();
         this.focusWall();
     },
@@ -386,6 +446,7 @@ window.App = Object.assign(window.App || {}, {
             } else {
                 this._wallMotion = 0;
                 if (grid) grid.classList.remove('pw-moving');
+                this.focusWall('stale'); // 停稳后补齐隔帧跳过的外圈，静态画面没有一档误差
             }
         };
         this._wallMotion = requestAnimationFrame(step);
@@ -438,6 +499,7 @@ window.App = Object.assign(window.App || {}, {
                 this.panWallTo(this._wallPan.x + pending.x, this._wallPan.y + pending.y);
                 this._wallWheelPending = null;
                 if (grid) grid.classList.remove('pw-moving');
+                this.focusWall('stale'); // 滚轮停住后同样补齐外圈
             }
         };
         this._wallWheelFrame = requestAnimationFrame(step);
@@ -450,6 +512,8 @@ window.App = Object.assign(window.App || {}, {
         const grid = el && el.grid;
         const blocks = (el && el.blocks) || [];
         if (!grid || !blocks.length) return;
+        this.resetWallScroll();
+        if (this._wallTilt) { this._wallTilt.box = null; this._wallTilt.lastPaint = 0; }
         const vw = grid.clientWidth;
         if (vw <= 0) return;
         const pad = 28, gap = 24, P = 9, Q = 10;
@@ -481,12 +545,15 @@ window.App = Object.assign(window.App || {}, {
         });
         // 偏移保持当前值（可为任意等价周期位置），拖动时由 pointermove 取模回绕
         this.applyWallTransform();
-        this.focusWall();
+        this.focusWall(true);
     },
 
     // 中心聚焦：距离视口中心越近的卡片越大越亮（最中间的图片最显眼），
     // 越往四周越小越暗；倾斜角度（--pw tilt 状态）并入同一 transform。
-    focusWall() {
+    // force=true 时忽略外圈隔帧策略，用于布局/开墙/键盘跳转这种非连续动画；
+    // force='stale' 只补上次隔帧没轮到的那半圈，用于运动停稳后的收尾（比全量省一半写入）。
+    focusWall(force) {
+        const settle = force === 'stale';
         const el = this._wallDom;
         const grid = el && el.grid;
         const block = el && el.block;
@@ -495,7 +562,8 @@ window.App = Object.assign(window.App || {}, {
         if (!b) return;
         // 每个格子有 4 个节点（2×2 份拷贝），cells[key] 是节点数组
         const cells = (el && el.cells) || {};
-        if (!Object.keys(cells).length) return;
+        if (!el.cellsReady) return;
+        if (settle && !this._wallFocusStaggered) return; // 上一次已经是全量，没有遗留
         // 视口尺寸用 layoutWallTiles 缓存的；这里不再读取 clientWidth/clientHeight，
         // 否则 pointermove 每次进来都可能强制一次布局。
         const vw = this._wallViewW || (this._wallViewW = grid.clientWidth);
@@ -507,6 +575,15 @@ window.App = Object.assign(window.App || {}, {
         const distNorm = Math.max(180, Math.min(b.tw, b.th) * 1.7);
         const tilt = this._wallTilt;
         const wrap = (v, n) => ((v % n) + n) % n;
+        const canStagger = WALL_FOCUS_STAGGER && !!this._wallHighRefresh;
+        // 外圈隔帧的相位：同一帧里 pointermove 可能多次调用 focusWall，用时间门限保证一帧只翻一次。
+        const tickNow = performance.now();
+        if (canStagger && !force && tickNow - (this._wallFocusTickAt || 0) >= 5) {
+            this._wallFocusTick = (this._wallFocusTick || 0) ^ 1;
+            this._wallFocusTickAt = tickNow;
+        }
+        const focusTick = this._wallFocusTick || 0;
+        const lastTick = this._wallFocusLastTick || 0;
         // 中心格：列（X 方向）用 tw，行（Y 方向）用 th。这里原来把两者算反了——
         // X 推出列号却当成行号用，等到 _wallOffset 被规整到 [-BW,0] 之后，3×3 动态区
         // 就整体漂到别处，中心那张卡再也拿不到 1.25（test-preset-wall 的"最中间的图片最显眼"会红）。
@@ -524,6 +601,11 @@ window.App = Object.assign(window.App || {}, {
                 const c = wrap(cc + dc, b.P);
                 const list = cells[r + '_' + c];
                 if (!list || !list.length) continue;
+                const ring = Math.abs(dr) + Math.abs(dc);
+                const phase = ring === 2 ? 1 : 0;
+                const skipCell = settle
+                    ? (ring === 0 || phase !== (1 - lastTick))
+                    : (!force && canStagger && ring > 0 && phase !== focusTick);
                 // 格中心在块坐标系中的位置 → 到视口中心的"最近周期副本"距离
                 const wx = b.pad + c * (b.tw + b.gap) + b.tw / 2 + ox;
                 const wy = b.pad + r * (b.th + b.gap) + b.th / 2 + oy;
@@ -535,6 +617,7 @@ window.App = Object.assign(window.App || {}, {
                 const u = Math.min(1, dist / distNorm);
                 const s = maxScale - u * (maxScale - minScale);
                 const o = 1 - u * 0.65;
+                const os = o.toFixed(3);
                 const z = String(Math.max(1, Math.round(100 - u * 95)));
                 // 同一格在 4 份拷贝里共用同一套值（倾斜只作用于指针下那一张）。
                 // 字符串每格只拼一次，不再给 4 份拷贝各拼一次。
@@ -548,14 +631,16 @@ window.App = Object.assign(window.App || {}, {
                     if (tx > vw + margin || tx + b.tw < -margin || ty > vh + margin || ty + b.th < -margin) continue;
                     active.add(tile);
                     const isTilting = (tilt && tilt.card === tile);
+                    if (skipCell && !isTilting) continue;
                     const tf = isTilting
                         ? 'perspective(760px) scale(' + s.toFixed(3) + ') rotateX(' + tilt.rx.toFixed(2) + 'deg) rotateY(' + tilt.ry.toFixed(2) + 'deg)'
                         : baseTf;
                     // 值没变就不写：平移时 scale 每帧都在变，但 opacity/zIndex 是按舍入档走的，
                     // 一小段时间内完全一致。跳过重复写入能省掉大量样式失效与重排。
                     if (tile.__tf !== tf) { tile.style.transform = tf; tile.__tf = tf; }
-                    const inner = tile.firstElementChild;
-                    if (inner && tile.__op !== o.toFixed(3)) { inner.style.opacity = o.toFixed(3); tile.__op = o.toFixed(3); }
+                    tile.__s = s;
+                    const inner = tile.__inner || (tile.__inner = tile.firstElementChild);
+                    if (inner && tile.__op !== os) { inner.style.opacity = os; tile.__op = os; }
                     if (tile.__z !== z) { tile.style.zIndex = z; tile.__z = z; }
                 }
             }
@@ -574,7 +659,8 @@ window.App = Object.assign(window.App || {}, {
                 t.style.transform = 'scale(0.72)';
                 t.__tf = 'scale(0.72)';
             }
-            const inner = t.firstElementChild;
+            t.__s = 0.72;
+            const inner = t.__inner || (t.__inner = t.firstElementChild);
             if (inner) { inner.style.opacity = '0.5'; t.__op = '0.5'; }
             t.style.zIndex = '1'; t.__z = '1';
         }
@@ -582,6 +668,12 @@ window.App = Object.assign(window.App || {}, {
             if (!prev.has(t)) t.style.willChange = 'transform, opacity';
         }
         this._wallFocusTiles = active;
+        if (settle) {
+            this._wallFocusStaggered = false;
+        } else {
+            this._wallFocusLastTick = focusTick;
+            this._wallFocusStaggered = !force && canStagger;
+        }
     },
 
     // 用户自备封面：userData/wall-covers/<预设名>.webp|jpg|png
@@ -677,6 +769,7 @@ window.App = Object.assign(window.App || {}, {
             tag.textContent = item.tag;
             inner.appendChild(tag);
             tile.appendChild(inner);
+            tile.__inner = inner;
             return tile;
         };
         // 2×2 份相同的块：多出来的三份专门填回绕边界的空白。四份的同一格共用同一张预设，
@@ -691,7 +784,8 @@ window.App = Object.assign(window.App || {}, {
                     const tile = makeTile(r, c, copy);
                     // 初始静态态（远离中心时的小卡状态）；opacity 在内容层上
                     tile.style.transform = 'scale(0.72)';
-                    const inner = tile.firstElementChild;
+                    tile.__s = 0.72;
+                    const inner = tile.__inner;
                     if (inner) inner.style.opacity = '0.5';
                     tile.style.zIndex = '1';
                     const key = r + '_' + c;
@@ -707,6 +801,7 @@ window.App = Object.assign(window.App || {}, {
         el.wall = wall;
         el.blocks = blocks;
         el.cells = cells;
+        el.cellsReady = true;
         el.block = blocks[0]; // 兼容仍按单块取用的地方（选择态、测试）
         this.layoutWallTiles();
         // 墙整体淡入（卡片自身不做动画，transform 由 JS 接管）；降级动效时直接出现
@@ -760,7 +855,7 @@ window.App = Object.assign(window.App || {}, {
             }
         }
         this.applyWallTransform();
-        this.focusWall();
+        this.focusWall(true);
     },
 
     // 回墙时把选中框落到「当前模板用的那个预设」上：用户不用再满墙找刚才选的是哪张
