@@ -120,10 +120,16 @@ const SETUP = `
     });
     const cvm = A.dom.canvas;
     const rMeas = cvm.getBoundingClientRect();
+    const box = (el) => el ? Math.round(el.getBoundingClientRect().width) + 'x' + Math.round(el.getBoundingClientRect().height) : 'none';
+    const cvStyle = getComputedStyle(cvm);
     return {
         diag: { rafOk, hidden: document.hidden, vis: document.visibilityState,
                 attr: cvm.width + 'x' + cvm.height,
-                css: Math.round(rMeas.width) + 'x' + Math.round(rMeas.height) },
+                css: Math.round(rMeas.width) + 'x' + Math.round(rMeas.height),
+                win: innerWidth + 'x' + innerHeight, body: box(document.body),
+                app: box(document.getElementById('app')), stage: box(cvm.parentElement),
+                cvDisp: cvStyle.display + '/' + cvStyle.width + '/' + cvStyle.height,
+                wallHidden: (document.getElementById('presetWall') || {}).hidden },
         rx0: el.rx, ry0: el.ry,
         x: r.left + (p.cx / cv.width) * r.width,
         y: r.top + (p.cy / cv.height) * r.height,
