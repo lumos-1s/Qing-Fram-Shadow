@@ -159,6 +159,13 @@ app.whenReady().then(async () => {
     });
 
     await win.loadFile(PAGE);
+
+    // Electron 45 起隐藏窗口不做布局/绘制：几何与像素断言会拿到 0×0 / 空白。
+
+    // 必须让窗口真正参与合成，否则整片用例静默失灵（曾把 test:drag 全判失败）。
+
+    win.showInactive();
+
     await waitForApp(win);
     const first = await win.webContents.executeJavaScript(SCENARIO);
 

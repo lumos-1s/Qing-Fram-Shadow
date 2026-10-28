@@ -105,6 +105,10 @@ const CHECK = `
 app.whenReady().then(async () => {
     const win = new BrowserWindow({ width: 1400, height: 1000, show: false, webPreferences: { backgroundThrottling: false, sandbox: false } });
     await win.loadFile(PAGE);
+    // Electron 45 起隐藏窗口不做布局/绘制：几何与像素断言会拿到 0×0 / 空白。
+    // 必须让窗口真正参与合成，否则整片用例静默失灵（曾把 test:drag 全判失败）。
+    win.showInactive();
+
     await new Promise(r => setTimeout(r, 1200));
     const r = await win.webContents.executeJavaScript(CHECK).catch(e => ({ err: String((e && e.message) || e) }));
 

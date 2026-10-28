@@ -150,6 +150,10 @@ app.whenReady().then(async () => {
     });
     const win = new BrowserWindow({ width: 1500, height: 950, show: false, webPreferences: { preload: path.join(__dirname, 'preload-measure.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false } });
     await win.loadFile(path.join(ROOT, 'src', 'renderer', 'index.html'));
+    // Electron 45 起隐藏窗口不做布局/绘制：几何与像素断言会拿到 0×0 / 空白。
+    // 必须让窗口真正参与合成，否则整片用例静默失灵（曾把 test:drag 全判失败）。
+    win.showInactive();
+
     for (let i = 0; i < 120; i++) { if (await win.webContents.executeJavaScript('!!(window.App && window.App.dom && window.App.dom.canvas)')) break; await new Promise(r => setTimeout(r, 250)); }
     for (let i = 0; i < 80; i++) { if ((await win.webContents.executeJavaScript('(window.App.presets || []).length')) > 0) break; await new Promise(r => setTimeout(r, 250)); }
     const count = await win.webContents.executeJavaScript('(window.App.presets || []).length');

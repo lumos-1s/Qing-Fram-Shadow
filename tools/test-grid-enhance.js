@@ -133,6 +133,10 @@ app.whenReady().then(async () => {
         }
     });
     await win.loadFile(path.join(ROOT, 'src', 'renderer', 'index.html'));
+    // Electron 45 起隐藏窗口不做布局/绘制：几何与像素断言会拿到 0×0 / 空白。
+    // 必须让窗口真正参与合成，否则整片用例静默失灵（曾把 test:drag 全判失败）。
+    win.showInactive();
+
     const r = await win.webContents.executeJavaScript('(' + CHECK + ')()').catch(e => 'EXEC-ERR: ' + (e && e.message));
     if (typeof r === 'string' && r.startsWith('FAIL')) fails.push(r);
     else if (r !== 'PASS-RENDER') fails.push('渲染层未给出结论:' + String(r));
