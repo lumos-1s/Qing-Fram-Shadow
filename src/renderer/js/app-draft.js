@@ -83,7 +83,12 @@ window.App = Object.assign(window.App || {}, {
             const draft = {
                 v: 1,
                 savedAt: Date.now(),
-                images: savable.map(im => ({ name: im.name, path: im.path, w: im.w, h: im.h })),
+                // 调色只存 7 个数字，重启后在新解码的底图上重放即可 —— 与裁切不同，
+                // 它不需要重新编码，所以是真正无损可持久的
+                images: savable.map(im => ({
+                    name: im.name, path: im.path, w: im.w, h: im.h,
+                    grade: (im.grade && !this.isNeutralGrade(im.grade)) ? im.grade : undefined
+                })),
                 currentIdx: cur,
                 template: tpl,
                 imageTemplates
@@ -213,8 +218,11 @@ window.App = Object.assign(window.App || {}, {
                 w: oriented ? oriented.w : img.naturalWidth,
                 h: oriented ? oriented.h : img.naturalHeight,
                 exif,
-                customSettings: null
+                customSettings: null,
+                grade: meta.grade || null
             };
+            // 有调色参数就得让它立刻生效：invalidateGrade 会清缓存并按参数重烘焙
+            if (im.grade && this.invalidateGrade) this.invalidateGrade(im);
             if (savedTpl) this.setTpl(im, savedTpl);
             this.queueThumb(im);
             return im;

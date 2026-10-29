@@ -5332,7 +5332,10 @@ const w = natW;
     function renderPhotoFrame(app) {
         const t = app.template;
         const styleName = String(t.photoFrameStyle || 'NONE').toUpperCase();
-        const img = app.image.el;
+        // 必须走 photoSrc:它是「调色过就取烘焙画布,否则取原图」的唯一入口。
+        // 这里曾经直取 app.image.el,结果套了相框样式(带 photoFrameStyle 的预设)后
+        // 调色滑块完全不起作用 —— 用户看到的就是"加框后调色没变化"。
+        const img = (typeof window.photoSrc === 'function' ? window.photoSrc(app.image) : null) || app.image.el;
         const iw = img.naturalWidth, ih = img.naturalHeight;
         const displayMax = app.displayMax || DISPLAY_MAX;
         const size = scaledSize(img, Math.max(5, t.photoFrameBorderSize || 5));

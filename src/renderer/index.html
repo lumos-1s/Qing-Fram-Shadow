@@ -190,6 +190,7 @@
             <section id="canvasPane">
                 <div class="stage">
                     <canvas id="previewCanvas" width="800" height="600"></canvas>
+                    <div id="rotHint" class="rot-hint" hidden>↻ 拖动旋转<span>Shift 15°</span></div>
                 </div>
                 <button id="btnImmersive" class="stage-immersive-btn" type="button" title="全屏沉浸展示 (Ctrl+Shift+P)" aria-label="全屏沉浸展示" hidden>
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -238,7 +239,7 @@
                     <button class="tab" data-tab="text" role="tab" aria-selected="false">文字</button>
                     <button class="tab" data-tab="border" role="tab" aria-selected="false">边框</button>
 
-                    <button class="tab" data-tab="light" role="tab" aria-selected="false">光影</button>
+                    <button class="tab" data-tab="grade" role="tab" aria-selected="false" title="调色：像素调色（曝光/曲线/细节/校准/混色器）+ 氛围（暗角/漏光/颗粒）">调色</button>
 
                     <button class="tab" data-tab="logo" role="tab" aria-selected="false">Logo</button>
                     <button class="tab" data-tab="template" role="tab" aria-selected="false">模板</button>
@@ -297,6 +298,11 @@
                                 <input type="range" id="slCornerRadius" class="ctl-rng" min="0" max="500" value="0" />
                                 <span class="pval" id="lblCornerRadius"></span>
                             </div>
+                            <!-- 裁切属于"对照片本身动手"，和上面的缩放/圆角同一族；顶部工具栏留给文件级操作 -->
+                            <button id="btnCrop" class="mini-btn block" type="button"
+                                    title="裁切照片：拖动框与手柄，方向键微调，Enter 应用 / Esc 取消">裁切照片…</button>
+                            <button id="btnRestoreOriginal" class="mini-btn block" type="button" hidden
+                                    title="回到裁切 / 旋转之前的原图">还原原图</button>
                         </div>
 
                         <div class="param-group">
@@ -316,6 +322,82 @@
 
                     <!-- ══ Tab2 文字 / 信息 ══ -->
                     <div class="tab-panel" id="panel-text">
+                        <div class="param-group" id="grpCustomText">
+                            <div class="pg-title collapsible">自定义文字</div>
+                            <button class="mini-btn block" id="btnAddFreeText" aria-pressed="false" title="点一下按钮进入添加模式，再在画布上双击你要放字的位置；双击已有文字改内容，拖四角缩放，拖顶部圆点旋转">＋ 添加文字（双击画布放置）</button>
+                            <div class="el-status" id="txtStyleStatus">未选中文字</div>
+<!--                            <div class="pool-note">点上面的「添加文字」进入添加模式，再在画布上双击位置。放好后直接打字，Ctrl+Enter 或点空白处确认，Esc 取消。选中一段文字后，下面的字体 / 字号 / 颜色 / 字重 / 描边 / 阴影会立刻生效；位置 / 旋转 / 层级在「Logo → 元素管理」里调。</div>-->
+                            <div class="param-row" id="rowElTextContent" style="display:none">
+                                <label>文字</label>
+                                <textarea id="tfElText" class="ctl-tx" rows="2" placeholder="输入文字，支持多行；也可在画布上双击修改" title="支持多行：回车换行，Ctrl+Enter 或点空白处确认，Esc 取消"></textarea>
+                            </div>
+                            <div class="param-row" id="rowElTextFont" style="display:none">
+                                <label>字体</label>
+                                <select id="cbElTextFont" class="ctl-sel"></select>
+                            </div>
+                            <div class="param-row" id="rowElTextWeight" style="display:none">
+                                <label>字重</label>
+                                <select id="cbElTextWeight" class="ctl-sel">
+                                    <option value="300">细体 300</option>
+                                    <option value="400">常规 400</option>
+                                    <option value="500">中等 500</option>
+                                    <option value="600">半粗 600</option>
+                                    <option value="700">粗体 700</option>
+                                    <option value="900">特粗 900</option>
+                                </select>
+                            </div>
+                            <div class="param-row" id="rowElTextSize" style="display:none">
+                                <label>字号</label>
+                                <input type="range" id="slElTextSize" class="ctl-rng" min="8" max="400" step="1" value="48" />
+                                <input type="number" id="inpElTextSize" class="ctl-num" min="6" max="600" step="1" value="48" />
+                                <span class="pval" id="lblElTextSize"></span>
+                            </div>
+                            <div class="param-row" id="rowElTextColor" style="display:none">
+                                <label>颜色</label>
+                                <input type="color" id="cpElTextColor" class="ctl-cl" value="#ffffff" />
+                            </div>
+                            <div class="param-row" id="rowElTextDir" style="display:none">
+                                <label>文字方向</label>
+                                <select id="cbElTextDir" class="ctl-sel" title="横排 / 竖排（逐字直立，中文用）/ 侧排（整行旋转 90°，编号英文用）">
+                                    <option value="h">横排</option>
+                                    <option value="v">竖排（直立）</option>
+                                    <option value="side">侧排（旋转 90°）</option>
+                                </select>
+                            </div>
+                            <div class="param-row" id="rowElTextSpacing" style="display:none">
+                                <label>字距</label>
+                                <input type="range" id="slElTextSpacing" class="ctl-rng" min="0" max="40" step="1" value="0" />
+                                <span class="pval" id="lblElTextSpacing"></span>
+                            </div>
+                            <div class="param-row" id="rowElTextStroke" style="display:none">
+                                <label>描边</label>
+                                <input type="checkbox" id="chkElTextStroke" class="ctl-chk" title="给文字加描边，深色底/亮照片上都更清楚" />
+                                <input type="color" id="cpElTextStroke" class="ctl-cl" value="#000000" title="描边颜色" />
+                                <span class="chk-hint">颜色</span>
+                            </div>
+                            <div class="param-row" id="rowElTextStrokeWidth" style="display:none">
+                                <label>描边粗细</label>
+                                <input type="range" id="slElTextStrokeWidth" class="ctl-rng" min="1" max="40" step="1" value="3" />
+                                <span class="pval" id="lblElTextStrokeWidth"></span>
+                            </div>
+                            <div class="param-row" id="rowElTextShadow" style="display:none">
+                                <label>阴影</label>
+                                <input type="checkbox" id="chkElTextShadow" class="ctl-chk" title="给文字加投影，白字压亮背景时不再糊成一片" />
+                                <input type="color" id="cpElTextShadow" class="ctl-cl" value="#000000" title="阴影颜色" />
+                                <span class="chk-hint">颜色</span>
+                            </div>
+                            <div class="param-row" id="rowElTextShadowBlur" style="display:none">
+                                <label>阴影模糊</label>
+                                <input type="range" id="slElTextShadowBlur" class="ctl-rng" min="0" max="60" step="1" value="8" />
+                                <span class="pval" id="lblElTextShadowBlur"></span>
+                            </div>
+                            <div class="param-row" id="rowElTextShadowOffset" style="display:none">
+                                <label>阴影偏移</label>
+                                <input type="number" id="inpElTextShadowX" class="ctl-num ctl-num-sm" step="1" value="0" title="阴影水平偏移（像素）" />
+                                <input type="number" id="inpElTextShadowY" class="ctl-num ctl-num-sm" step="1" value="2" title="阴影垂直偏移（像素）" />
+                                <span class="chk-hint">X / Y</span>
+                            </div>
+                        </div>
                         <div class="param-empty-note">导入照片后即可调节文字与相机信息</div>
 
                         <div class="param-group">
@@ -453,7 +535,7 @@
 
                         <div class="param-group">
                             <div class="pg-title collapsible">相机参数(自动识别)</div>
-                            <div class="hint-box">已自动识别照片 EXIF 并显示在下方，可直接修改，画布实时更新；全部清空则走原版随机相机参数。</div>
+<!--                            <div class="hint-box">已自动识别照片 EXIF 并显示在下方，可直接修改，画布实时更新；全部清空则走原版随机相机参数。</div>-->
                             <div class="param-row"><label>参数库</label><select id="cbCamLib" class="ctl-sel"><option value="">-- 选择已存参数(自动填入) --</option></select></div>
                             <div class="btn-row btn-3">
                                 <button class="mini-btn" id="btnCamLibSave" title="把当前参数保存到库,下次一键填入">存入库</button>
@@ -629,40 +711,6 @@
                     </div>
 
                     <!-- ══ Tab4 光影 ══ -->
-                    <div class="tab-panel" id="panel-light">
-                        <div class="param-group ctl-grp-light">
-                            <div class="pg-title collapsible">暗角</div>
-                            <div class="param-row chk-row">
-                                <label>暗角</label>
-                                <input type="checkbox" id="cbVignette" class="ctl-chk" />
-                            </div>
-                            <div class="param-row"><label>强度</label><input type="range" id="slVignetteStrength" class="ctl-rng" min="0" max="100" value="0" /><span class="pval" id="lblVignetteStrength"></span></div>
-                            <div class="param-row"><label>羽化</label><input type="range" id="slVignetteFeather" class="ctl-rng" min="0" max="100" value="50" /><span class="pval" id="lblVignetteFeather"></span></div>
-                        </div>
-
-                        <div class="param-group ctl-grp-light">
-                            <div class="pg-title collapsible">漏光</div>
-                            <div class="param-row chk-row">
-                                <label>漏光</label>
-                                <input type="checkbox" id="cbLightLeak" class="ctl-chk" />
-                            </div>
-                            <div class="param-row">
-                                <label>漏光类型</label>
-                                <select id="cbLeakType" class="ctl-sel">
-                                    <option value="warm">暖光</option>
-                                    <option value="cool">冷光</option>
-                                    <option value="magenta">品红</option>
-                                </select>
-                            </div>
-                            <div class="param-row"><label>漏光强度</label><input type="range" id="slLeakOpacity" class="ctl-rng" min="0" max="100" value="40" /><span class="pval" id="lblLeakOpacity"></span></div>
-                            <div class="param-row"><label>漏光角度</label><input type="range" id="slLeakAngle" class="ctl-rng" min="0" max="360" value="225" /><span class="pval" id="lblLeakAngle"></span></div>
-                        </div>
-                        <div class="param-group ctl-grp-light">
-                            <div class="pg-title collapsible">胶片颗粒</div>
-                            <div class="param-row"><label>颗粒强度</label><input type="range" id="slFilmGrain" class="ctl-rng" min="0" max="100" value="0" /><span class="pval" id="lblFilmGrain"></span></div>
-                        </div>
-                    </div>
-
                     <!-- ══ Tab5 Logo ══ -->
                     <div class="tab-panel" id="panel-logo">
                         <div class="param-group">
@@ -737,46 +785,13 @@
                         <div class="param-group">
                             <div class="pg-title collapsible">元素管理</div>
                             <div class="el-status" id="elStatus">未选中元素</div>
-                            <button class="mini-btn block" id="btnAddFreeText" title="新建一段文字：输入内容后落在画布中央，可直接拖动/旋转，双击改字">＋ 添加文字</button>
                             <div class="el-list" id="elList"></div>
+                            <div class="pool-note" id="elTextStyleHint" style="display:none">这段文字的内容 / 字体 / 字号 / 颜色 / 描边 / 阴影在「文字」页签里调；这里只调位置、旋转和层级。</div>
                             <div class="param-row"><label>位置 X</label><input type="number" id="inpElX" class="ctl-num" min="0" step="1" value="0" title="元素中心 X(像素),方向键微移 / 直接输入精确值" /></div>
                             <div class="param-row"><label>位置 Y</label><input type="number" id="inpElY" class="ctl-num" min="0" step="1" value="0" title="元素中心 Y(像素),方向键微移 / 直接输入精确值" /></div>
                             <div class="param-row"><label>透明度</label><input type="range" id="slActiveIconOpacity" class="ctl-rng" min="0" max="100" value="100" /><input type="number" id="inpElOpacity" class="ctl-num" min="0" max="100" step="1" value="100" /><span class="pval" id="lblActiveIconOpacity"></span></div>
                             <div class="param-row" id="rowElSize"><label id="lblElSizeName">缩放</label><input type="range" id="slElementSize" class="ctl-rng" min="16" max="10000" value="500" /><input type="number" id="inpElSize" class="ctl-num" min="16" step="1" value="500" /><span class="pval" id="lblElementSize"></span></div>
-                            <!-- 文字专属基础项：内容/字体/字号/颜色。选中 Logo/贴纸时整组隐藏 -->
-                            <div class="param-row" id="rowElTextContent" style="display:none">
-                                <label>文字</label>
-                                <input type="text" id="tfElText" class="ctl-tx" placeholder="输入文字，或在画布上双击修改" />
-                            </div>
-                            <div class="param-row" id="rowElTextFont" style="display:none">
-                                <label>字体</label>
-                                <select id="cbElTextFont" class="ctl-sel"></select>
-                            </div>
-                            <div class="param-row" id="rowElTextSize" style="display:none">
-                                <label>字号</label>
-                                <input type="range" id="slElTextSize" class="ctl-rng" min="8" max="400" step="1" value="48" />
-                                <input type="number" id="inpElTextSize" class="ctl-num" min="6" max="600" step="1" value="48" />
-                                <span class="pval" id="lblElTextSize"></span>
-                            </div>
-                            <div class="param-row" id="rowElTextColor" style="display:none">
-                                <label>颜色</label>
-                                <input type="color" id="cpElTextColor" class="ctl-cl" value="#ffffff" />
-                            </div>
                             <div class="param-row"><label>旋转</label><input type="range" id="slElementRotation" class="ctl-rng" min="0" max="360" value="0" /><input type="number" id="inpElRotation" class="ctl-num" min="0" max="360" step="1" value="0" /><span class="pval" id="lblElementRotation"></span></div>
-                            <!-- 文字专属：方向与字距。选中 Logo/贴纸时这两行隐藏（syncTextRows） -->
-                            <div class="param-row" id="rowElTextDir" style="display:none">
-                                <label>文字方向</label>
-                                <select id="cbElTextDir" class="ctl-sel" title="横排 / 竖排（逐字直立，中文用）/ 侧排（整行旋转 90°，编号英文用）">
-                                    <option value="h">横排</option>
-                                    <option value="v">竖排（直立）</option>
-                                    <option value="side">侧排（旋转 90°）</option>
-                                </select>
-                            </div>
-                            <div class="param-row" id="rowElTextSpacing" style="display:none">
-                                <label>字距</label>
-                                <input type="range" id="slElTextSpacing" class="ctl-rng" min="0" max="40" step="1" value="0" />
-                                <span class="pval" id="lblElTextSpacing"></span>
-                            </div>
                             <div class="btn-row btn-4">
                                 <button class="mini-btn" id="btnZOrderTop" title="置于顶层">↑顶</button>
                                 <button class="mini-btn" id="btnZOrderUp" title="上移一层">上移</button>
@@ -973,6 +988,196 @@
                         </div>
                     </div>
 
+                    <!-- ══ Tab9 调色（工具） ══ -->
+                    <div class="tab-panel" id="panel-grade">
+                        <div class="param-empty-note">导入照片后即可调色</div>
+                        <div class="param-group" id="grpGrade">
+                            <div class="pg-title collapsible">调色</div>
+                            <div class="param-row" id="rowGradeExp">
+                                <label>曝光</label>
+                                <input type="range" id="slGradeExp" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblGradeExp">0</span>
+                            </div>
+                            <div class="param-row" id="rowGradeCon">
+                                <label>对比度</label>
+                                <input type="range" id="slGradeCon" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblGradeCon">0</span>
+                            </div>
+
+                            <div class="param-row" id="rowGradeHi">
+                                <label>高光</label>
+                                <input type="range" id="slGradeHi" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblGradeHi">0</span>
+                            </div>
+                            <div class="param-row" id="rowGradeSh">
+                                <label>阴影</label>
+                                <input type="range" id="slGradeSh" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblGradeSh">0</span>
+                            </div>
+                            <div class="param-row" id="rowGradeWhite">
+                                <label>白色</label>
+                                <input type="range" id="slGradeWhite" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblGradeWhite">0</span>
+                            </div>
+                            <div class="param-row" id="rowGradeBlack">
+                                <label>黑色</label>
+                                <input type="range" id="slGradeBlack" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblGradeBlack">0</span>
+                            </div>
+                            <div class="param-row" id="rowGradeSat">
+                                <label>饱和度</label>
+                                <input type="range" id="slGradeSat" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblGradeSat">0</span>
+                            </div>
+                            <div class="param-row" id="rowGradeTemp">
+                                <label>色温</label>
+                                <input type="range" id="slGradeTemp" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblGradeTemp">0</span>
+                            </div>
+                            <div class="param-row" id="rowGradeTint">
+                                <label>色调</label>
+                                <input type="range" id="slGradeTint" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblGradeTint">0</span>
+                            </div>
+                            <div class="param-row grade-acts">
+                                <button id="btnGradeReset" class="mini-btn" type="button" title="全部归零，回到照片本色">重置</button>
+                                <button id="btnGradeApplyAll" class="mini-btn" type="button" title="把这套参数复制给本次导入的所有照片">应用到全部</button>
+                            </div>
+                        </div>
+<!--                        <div class="pg-section-title">氛围</div>-->
+                        <div class="param-group ctl-grp-light">
+                            <div class="pg-title collapsible">暗角</div>
+                            <div class="param-row"><label>强度</label><input type="range" id="slVignetteStrength" class="ctl-rng" min="0" max="100" value="0" /><span class="pval" id="lblVignetteStrength"></span></div>
+                            <div class="param-row"><label>羽化</label><input type="range" id="slVignetteFeather" class="ctl-rng" min="0" max="100" value="50" /><span class="pval" id="lblVignetteFeather"></span></div>
+                        </div>
+                        <div class="param-group ctl-grp-light">
+                            <div class="pg-title collapsible">漏光</div>
+                            <div class="param-row">
+                                <label>类型</label>
+                                <select id="cbLeakType" class="ctl-sel">
+                                    <option value="warm">暖光</option>
+                                    <option value="cool">冷光</option>
+                                    <option value="magenta">品红</option>
+                                </select>
+                            </div>
+                            <div class="param-row"><label>强度</label><input type="range" id="slLeakOpacity" class="ctl-rng" min="0" max="100" value="0" /><span class="pval" id="lblLeakOpacity"></span></div>
+                            <div class="param-row"><label>角度</label><input type="range" id="slLeakAngle" class="ctl-rng" min="0" max="360" value="225" /><span class="pval" id="lblLeakAngle"></span></div>
+                        </div>
+                        <div class="param-group ctl-grp-light">
+                            <div class="pg-title collapsible">胶片颗粒</div>
+                            <div class="param-row"><label>强度</label><input type="range" id="slFilmGrain" class="ctl-rng" min="0" max="100" value="0" /><span class="pval" id="lblFilmGrain"></span></div>
+                        </div>
+<!--                        <div class="hint-box"></div>-->
+                        <div class="param-group" id="grpCurve">
+                            <div class="pg-title collapsible">曲线</div>
+                            <div class="curve-bar">
+                                <div class="curve-chans" id="curveChans">
+                                    <button type="button" class="curve-chan active" data-chan="rgb">RGB</button>
+                                    <button type="button" class="curve-chan" data-chan="r">红</button>
+                                    <button type="button" class="curve-chan" data-chan="g">绿</button>
+                                    <button type="button" class="curve-chan" data-chan="b">蓝</button>
+                                </div>
+                                <button type="button" class="mini-btn" id="btnCurveReset" title="把四条曲线全部拉回直线">重置</button>
+                            </div>
+                            <canvas id="curveCanvas" class="curve-canvas" aria-label="曲线编辑器"></canvas>
+<!--                            <div class="hint-box">横轴是原亮度、纵轴是输出亮度：往上提变亮，往下拉变暗。拖动控制点调形，点空白处加点，双击点删掉；S 形加对比度，抬左下角做褪色灰调。</div>-->
+                        </div>
+                        <div class="param-group" id="grpDet">
+                            <div class="pg-title collapsible">细节</div>
+                            <div class="param-row">
+                                <label>清晰度</label>
+                                <input type="range" id="slDetClar" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblDetClar">0</span>
+                            </div>
+                            <div class="param-row">
+                                <label>纹理</label>
+                                <input type="range" id="slDetTex" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblDetTex">0</span>
+                            </div>
+                            <div class="param-row">
+                                <label>去除薄雾</label>
+                                <input type="range" id="slDetDhz" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblDetDhz">0</span>
+                            </div>
+<!--                            <div class="hint-box">清晰度管中间调立体感，纹理管表面细节，负值都是柔化。去除薄雾为简化版：正档提通透，负档做起雾褪色。</div>-->
+                        </div>
+
+                        <div class="param-group" id="grpMix" data-m="h">
+                            <div class="pg-title collapsible">混色器</div>
+                            <div class="curve-bar">
+                                <div class="curve-chans" id="mixMetrics">
+                                    <button type="button" class="curve-chan active" data-m="h">色相</button>
+                                    <button type="button" class="curve-chan" data-m="s">饱和度</button>
+                                    <button type="button" class="curve-chan" data-m="l">明亮度</button>
+                                </div>
+                                <button type="button" class="mini-btn" id="btnMixReset" title="八条色相带全部归零">重置</button>
+                            </div>
+                            <div id="mixRows">
+                                <div class="param-row mix-row" data-m="h"><label>红色</label><input type="range" id="slMixRH" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixRH">0</span></div>
+                                <div class="param-row mix-row" data-m="h"><label>橙色</label><input type="range" id="slMixOH" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixOH">0</span></div>
+                                <div class="param-row mix-row" data-m="h"><label>黄色</label><input type="range" id="slMixYH" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixYH">0</span></div>
+                                <div class="param-row mix-row" data-m="h"><label>绿色</label><input type="range" id="slMixGH" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixGH">0</span></div>
+                                <div class="param-row mix-row" data-m="h"><label>浅绿色</label><input type="range" id="slMixAH" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixAH">0</span></div>
+                                <div class="param-row mix-row" data-m="h"><label>蓝色</label><input type="range" id="slMixBH" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixBH">0</span></div>
+                                <div class="param-row mix-row" data-m="h"><label>紫色</label><input type="range" id="slMixPH" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixPH">0</span></div>
+                                <div class="param-row mix-row" data-m="h"><label>洋红</label><input type="range" id="slMixMH" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixMH">0</span></div>
+                                <div class="param-row mix-row" data-m="s"><label>红色</label><input type="range" id="slMixRS" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixRS">0</span></div>
+                                <div class="param-row mix-row" data-m="s"><label>橙色</label><input type="range" id="slMixOS" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixOS">0</span></div>
+                                <div class="param-row mix-row" data-m="s"><label>黄色</label><input type="range" id="slMixYS" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixYS">0</span></div>
+                                <div class="param-row mix-row" data-m="s"><label>绿色</label><input type="range" id="slMixGS" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixGS">0</span></div>
+                                <div class="param-row mix-row" data-m="s"><label>浅绿色</label><input type="range" id="slMixAS" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixAS">0</span></div>
+                                <div class="param-row mix-row" data-m="s"><label>蓝色</label><input type="range" id="slMixBS" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixBS">0</span></div>
+                                <div class="param-row mix-row" data-m="s"><label>紫色</label><input type="range" id="slMixPS" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixPS">0</span></div>
+                                <div class="param-row mix-row" data-m="s"><label>洋红</label><input type="range" id="slMixMS" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixMS">0</span></div>
+                                <div class="param-row mix-row" data-m="l"><label>红色</label><input type="range" id="slMixRL" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixRL">0</span></div>
+                                <div class="param-row mix-row" data-m="l"><label>橙色</label><input type="range" id="slMixOL" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixOL">0</span></div>
+                                <div class="param-row mix-row" data-m="l"><label>黄色</label><input type="range" id="slMixYL" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixYL">0</span></div>
+                                <div class="param-row mix-row" data-m="l"><label>绿色</label><input type="range" id="slMixGL" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixGL">0</span></div>
+                                <div class="param-row mix-row" data-m="l"><label>浅绿色</label><input type="range" id="slMixAL" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixAL">0</span></div>
+                                <div class="param-row mix-row" data-m="l"><label>蓝色</label><input type="range" id="slMixBL" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixBL">0</span></div>
+                                <div class="param-row mix-row" data-m="l"><label>紫色</label><input type="range" id="slMixPL" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixPL">0</span></div>
+                                <div class="param-row mix-row" data-m="l"><label>洋红</label><input type="range" id="slMixML" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixML">0</span></div>
+                            </div>
+                            <div class="mix-na-note">此环境不支持 WebGL，混色器不可用（其余调色功能不受影响）。</div>
+<!--                            <div class="hint-box">按色相带调整：橙/红管肤色，蓝管天色，绿管植物。负明亮度压暗 + 正饱和度是「加深某色」的常用组合。</div>-->
+                        </div>
+<!--                        <div class="hint-box">调色只作用于当前选中的照片，参数是记录值（随草稿保存），随时可重置，不破坏原图。「应用到全部」把这组数值复制给本次导入的所有照片。</div>-->
+                        <div class="param-group" id="grpCal">
+                            <div class="pg-title collapsible">校准</div>
+                            <div class="param-row">
+                                <label>红·色相</label>
+                                <input type="range" id="slCalRH" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblCalRH">0</span>
+                            </div>
+                            <div class="param-row">
+                                <label>红·饱和</label>
+                                <input type="range" id="slCalRS" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblCalRS">0</span>
+                            </div>
+                            <div class="param-row">
+                                <label>绿·色相</label>
+                                <input type="range" id="slCalGH" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblCalGH">0</span>
+                            </div>
+                            <div class="param-row">
+                                <label>绿·饱和</label>
+                                <input type="range" id="slCalGS" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblCalGS">0</span>
+                            </div>
+                            <div class="param-row">
+                                <label>蓝·色相</label>
+                                <input type="range" id="slCalBH" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblCalBH">0</span>
+                            </div>
+                            <div class="param-row">
+                                <label>蓝·饱和</label>
+                                <input type="range" id="slCalBS" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblCalBS">0</span>
+                            </div>
+                            <!--                            <div class="hint-box">动三根基色而非某个色相带：胶片感的隐藏利器（蓝原色降饱和 + 色相偏紫是经典手法）。</div>-->
+                        </div>
+                    </div>
+
                 </div>
                 <div id="inspectorResizer" class="side-resizer resizer-left" title="拖动调整参数栏宽度，双击恢复默认"></div>
             </aside>
@@ -1039,6 +1244,43 @@
                 </div>
             </figcaption>
         </figure>
+    </div>
+
+    <!-- ═══ 裁切照片 ═══ -->
+    <div id="cropModal" class="modal-overlay crop-overlay" style="display:none" role="dialog" aria-modal="true" aria-label="裁切照片">
+        <div class="crop-card">
+            <div class="modal-header">
+                <span class="modal-title">裁切照片</span>
+                <button id="cropClose" class="modal-close" title="关闭（Esc）" aria-label="关闭裁切">&times;</button>
+            </div>
+            <div class="crop-stage" id="cropStage">
+                <canvas id="cropCanvas" aria-label="裁切区域：拖动框内移动，拖四角或四边缩放，框外拖动重新框选"></canvas>
+            </div>
+            <div class="crop-bar">
+                <div class="crop-ratios" id="cropRatios" role="group" aria-label="裁切比例">
+                    <button class="crop-chip is-on" data-r="free" type="button" title="自由比例">自由</button>
+                    <button class="crop-chip" data-r="orig" type="button" title="保持照片原始宽高比">原图</button>
+                    <button class="crop-chip" data-r="1:1" type="button" title="正方形">1:1</button>
+                    <button class="crop-chip" data-r="4:3" type="button" title="横构图 4:3">4:3</button>
+                    <button class="crop-chip" data-r="3:4" type="button" title="竖构图 3:4">3:4</button>
+                    <button class="crop-chip" data-r="16:9" type="button" title="宽幅 16:9">16:9</button>
+                    <button class="crop-chip" data-r="9:16" type="button" title="竖屏 9:16">9:16</button>
+                    <input id="cropRatioCustom" class="crop-ratio-inp" type="text" inputmode="decimal"
+                           placeholder="自定义" title="自己输入比例：5:7、2.35、16/9 都行，回车生效（Esc 仍可关闭）"
+                           aria-label="自定义裁切比例" spellcheck="false" autocomplete="off" />
+                </div>
+                <div class="crop-tools">
+                    <button id="cropRotate" class="mini-btn" type="button" title="把照片顺时针转 90°（只影响本次裁切）">旋转 90°</button>
+                    <button id="cropRevert" class="mini-btn" type="button" title="清掉框选与旋转，回到手里这张（裁过就是裁过的）">还原</button>
+                    <button id="cropRestoreOriginal" class="mini-btn" type="button" hidden title="回到裁切 / 旋转之前的原图">还原原图</button>
+                </div>
+                <div class="crop-size" id="cropSize">—</div>
+                <div class="crop-actions">
+                    <button id="cropDiscard" class="mini-btn" type="button" title="不保存，关闭（Esc）">取消</button>
+                    <button id="cropApply" class="mini-btn primary" type="button" title="按当前框裁切（Enter）">应用</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="updateNotesModal" class="modal-overlay" style="display:none">
@@ -1302,10 +1544,17 @@
                 <h1 class="pw-title">选择边框风格</h1>
                 <p class="pw-sub" id="pwSub">加载中…</p>
             </div>
+            <div id="pwMode" class="pw-mode" role="group" aria-label="封面墙浏览方式">
+                <button class="pw-mode-btn is-on" type="button" data-wall-mode="infinite"
+                        aria-pressed="true" title="无限墙：拖不到头，看完会从头再来">无限</button>
+                <button class="pw-mode-btn" type="button" data-wall-mode="finite"
+                        aria-pressed="false" title="有限墙：有首有尾，拖到头就停，右侧进度条显示看到哪儿了">有限</button>
+            </div>
             <button id="pwCovers" class="pw-skip" type="button" title="换封面：打开封面文件夹，图片名用预设名（如「圆角卡片.webp」）">换封面</button>
             <button id="pwSkip" class="pw-skip" type="button" title="跳过，直接进入工作台">进入工作台</button>
         </header>
         <div id="presetWallGrid" class="pw-grid" tabindex="-1"></div>
+        <div id="pwRail" class="pw-rail" aria-hidden="true" hidden><i></i></div>
 <!--        <div class="pw-hint">按住拖动浏览 · 点击卡片开始编辑</div>-->
     </div>
 
@@ -1335,5 +1584,9 @@
     <script src="js/app-immersive.js"></script>
     <script src="assets/preset-wall/preset-wall-data.js"></script>
     <script src="js/app-preset-wall.js"></script>
+    <script src="js/app-crop.js"></script>
+    <script src="js/app-grade.js"></script>
+    <script src="js/app-curve.js"></script>
+    <script src="js/app-mix.js"></script>
 </body>
 </html>

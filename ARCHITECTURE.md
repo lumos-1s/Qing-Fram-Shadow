@@ -113,6 +113,12 @@
 
 **拼图**（`app-puzzle.js`）：12 种布局、`axisVals`、`slots{i:{imageIndex,zoom,offsetX,offsetY,rotate,fillMode}}`、格字幕与间隙字幕、轴线拖动与整格 swap；导出恒 **4000px PNG**，不读导出尺寸档。
 
+**调色**（`app-grade.js` + `app-curve.js` + `app-mix.js`，第一行页签「调色」，与画布/文字/边框同族）：9 档滑块（曝/对/饱/色温/色调/高光/阴影/白色/黑色，±100，0 为不变）+ **曲线编辑器**（RGB/R/G/B 四条，单调三次插值 Fritsch–Carlson 防过冲）都挂在 `im.grade` 上、随草稿持久化，属**记录值**而非破坏性编辑。渲染链零改动：`photoSrcOf(im) = im._grade.canvas || im._grade.low || im.el`，只把取源换成烘焙画布。烘焙用原生 `ctx.filter`（`brightness/contrast/saturate/hue-rotate` + `url(#qfsGradeLut)` 的 `feComponentTransfer` 256 项 LUT，必须 `sRGB`），不逐像素、不上 WebGL —— 实测 2400×1600 一次全滤镜约 25ms，逐像素 JS 同尺寸 300ms+。曲线不单独走像素：在 `buildTables` 里串联在色温/高光/阴影的表输出之后（与 PS 复合顺序一致），开曲线不增加烘焙成本。数据只存控制点（`curve:{rgb:[…],r:[…]}`），应用到全部时**深拷贝**。两级缓存：拖动中 1600px 降采样、松手后原尺寸（`ensureFullGrade`），LRU 4 张；中性时不烘焙、不占内存；烘焙画布的 `naturalWidth/Height` 恒等于原图（自适应 EXIF 字号按它算，报像素尺寸会让文字随拖动跳变）。高光/阴影用钟形增益 `v²(1-v)`/`v(1-v)²`，两端锚死，纯黑纯白永不动；白色/黑色是端点操作（白点内移 `v/(1-w·0.25)`、黑点抬升 `v(1-b·0.22)+b·0.22` 或压死 `(v+b·0.22)/(1+b·0.22)`），分别按 `v²`/`(1-v)²` 加权只吃亮部/暗部，故意允许端点溢出（曲线也可以突破锚点）。
+
+**扩展档位**（对齐 LR）：**细节** = 清晰度/纹理用 `feGaussianBlur`+`feComposite(arithmetic)` 的 USM 串进同一条滤镜链（模糊半径按烘焙分辨率缩放：纹理 ~long/250、清晰度 ~long/40，拖动降采样时半径同步变小），负档反向柔化；去除薄雾为简化版 = LUT 黑场（正档压黑点/负档抬黑）+ `contrast()/saturate()` 复合。**校准** = `feColorMatrix` 3×3 通道混合矩阵：色相 = 原色轴在原色平面内旋转（±45°），饱和 = 轴向灰矢量(1/3,1/3,1/3)收放，各列改动量均摊配平保证 Σ列=(1,1,1)——灰与白边在任何校准组合下恒不偏色（线性 3×3 下纯原色全去饱和必然带邻色，这是数学极限）。**混色器**（`app-mix.js`，8 色相带 × 色相/饱和/明亮度）是唯一走 WebGL 的档位：按色相选区是三维操作，逐通道 LUT 与 SVG 掩膜（8 带×十几原语，烘焙慢一个量级）都不可行；实现为烘焙**前置级** `原图 → GL 单 pass(RGB↔HSV + smoothstep 带权重、跨带取加权平均) → ctx.filter 其余全部`，色相满档 ±40°；GL 不可用/上下文丢失时 `pass()` 返回 null 自动退回原图，混色器整组标记 `.mix-na` 降级，其余功能不受影响。`isNeutral/signature` 计入全部扩展档；`mix` 是两层嵌套结构，应用到全部时深拷贝。
+
+页签归属：调色是**单张照片**的参数面板，与「画布/文字/边框/Logo/模板」同族，故挂在第一行；工具行只保留「拼图/切图」（多图合成与输出，会切走画布状态并走独立导出路径）。原「光影」页签的暗角/漏光/胶片颗粒作为「氛围」分区并入调色面板 —— 它们与调色同作用域（都写在当前照片的 `im.customSettings` 模板快照里）；但渲染语义不同：调色只改照片像素，氛围叠加在整张成片（含白边/边框）之上。相框样式（`photoFrameStyle`）管线不支持氛围三组，`.ctl-grp-light` 仍由 `engine.js` 的 `showLight` 统一隐藏。氛围三组是**常开滑块**（无独立开关，强度 0 即关）：`syncModelFromUI` 里由滑块值反推 `vignetteEnable/lightLeakEnable/filmGrainEnable`，而 `refreshUI` 回显时反过来以 enable 为准（`enable===1 ? 强度 : 0`）—— 预设有 81 个存着 `enable:0 + 强度:35` 的模板默认值，只看强度会让整库预设凭空长出暗角，故双向都以 enable 为准。
+
 **剪贴快捷键**（`app-view.js:56`）：Ctrl+O/Z/Y/A/C/V/E/D/0、Ctrl+Shift+S、Delete/Backspace（先判拼图字幕再判元素）、方向键微移选中元素（Shift=10px；无选中时 ←/→ 切图），输入框聚焦时屏蔽。
 
 ## 4. 工程化与质量门

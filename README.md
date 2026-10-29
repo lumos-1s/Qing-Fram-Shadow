@@ -98,8 +98,9 @@
 - **预设墙启动页** — 启动即进入 87 张预设封面墙，方向键、滚轮或拖动浏览，点击直接套用并进入编辑；支持用自定义照片替换封面。
 - **参数实时可调** — 圆角、边距、照片缩放/偏移、内/外阴影、描边、投影、画布比例、纹理/渐变填充，改动即时反馈。
 - **背景模糊默认偏好** — 在「跟随预设 / 默认开 / 默认关」之间切换，切预设或重启后仍记住选择。
-- **分区编辑台** — 左侧预设显示与预设墙一致的封面缩略图，墙上换封面会同步到工作台；右侧按「画布 / 文字 / 边框 / 光影 / Logo / 模板」分区，拼图与切图单独归入工具行；滑块旁可输入精确数值，双击参数名复位单行，按住 Shift 拖动可微调；左右侧栏可收起、拖宽并记住上次宽度；多选照片后自动浮出批量操作条。
-- **光影与质感** — 暗角、漏光、暖光/冷光、胶片颗粒，以及纸张、布料等纹理，给整张成片统一的氛围。
+- **分区编辑台** — 左侧预设显示与预设墙一致的封面缩略图，墙上换封面会同步到工作台；右侧按「画布 / 文字 / 边框 / 调色 / Logo / 模板」分区，拼图与切图归入工具行（原「光影」的暗角/漏光/颗粒已并入调色页签的「氛围」分区）；滑块旁可输入精确数值，双击参数名、数字框或滑轨本身即可复位该行，按住 Shift 拖动可微调；左右侧栏可收起、拖宽并记住上次宽度；多选照片后自动浮出批量操作条。
+- **基础调色** — 曝光、对比度、饱和度、色温、色调、高光、阴影、白色、黑色九档滑块（白色/黑色是 Lightroom 那对黑场白场：白色并合高光、黑色抬黑或压死暗部），外加 RGB / 红 / 绿 / 蓝四条可拖动曲线（S 形加对比、抬黑点做褪色灰调、分通道调色）；再往上是「细节」（清晰度 / 纹理 / 去除薄雾）、「校准」（红/绿/蓝原色 · 色相/饱和）与「混色器」（8 色相带 × 色相/饱和度/明亮度，彩色轨道子页切换）；只作用于当前选中的照片，参数随草稿保存、随时可重置，也可一键复制到本次导入的全部照片，不改动原图。
+- **光影与质感** — 暗角、漏光、暖光/冷光、胶片颗粒（在「调色 → 氛围」里，都是常开滑块、强度 0 即关闭，叠加于整张成片含边框），以及纸张、布料等纹理，给整张成片统一的氛围。
 - **Logo、EXIF 与签名** — 品牌 Logo 或自定义图标水印；自动读取品牌、型号、焦距、光圈、ISO、快门，可手动修改；签名与头像组合排版。
 - **模板系统** — 保存/导入/导出 `.qfs` 工程与 `.json`；支持搜索、标签分组、缩略图预览、应用、重命名与带确认的删除。
 - **拼图与九宫格** — 多图网格拼贴，间距、圆角与字幕可调；九宫格切图把当前画布按 n×n 切成多张，预览确认后导出。
@@ -108,7 +109,7 @@
 - **导出** — PNG / JPEG / WebP，质量可调；原图、1080、2048、4096、8192px；选好位置后渲染写入，默认原图尺寸。
 - **全本地** — 无需登录、不上传照片；照片、EXIF 与模板都留在本机。
 
-> **English** — 87 presets and 92 frame styles for magazine, polaroid, torn paper, tape, stamp, newspaper, film, gradient, comic, 3D card, signature and avatar layouts; a preset-wall launcher; live frame, shadow, texture and light controls; remembered background-blur defaults; preset thumbnails, split canvas/text panels, exact numeric slider input, double-click row reset and Shift fine-tuning; collapsible resizable side panels; logo/EXIF/signature layers; `.qfs` and `.json` templates; collage, grid slicing, batch export and an immersive photo-wall presentation with wheel navigation; PNG/JPEG/WebP up to 8192px. Everything local.
+> **English** — 87 presets and 92 frame styles for magazine, polaroid, torn paper, tape, stamp, newspaper, film, gradient, comic, 3D card, signature and avatar layouts; a preset-wall launcher; live frame, shadow, texture and light controls; remembered background-blur defaults; basic per-photo grading (exposure, contrast, saturation, temperature, tint, highlight, shadow); preset thumbnails, split canvas/text panels, exact numeric slider input, double-click row reset and Shift fine-tuning; collapsible resizable side panels; logo/EXIF/signature layers; `.qfs` and `.json` templates; collage, grid slicing, batch export and an immersive photo-wall presentation with wheel navigation; PNG/JPEG/WebP up to 8192px. Everything local.
 
 <a id="preset-gallery"></a>
 ## 预设效果 · Preset Gallery
@@ -131,7 +132,7 @@
 **三步出片**：
 
 1. 从预设墙选一个模板进入编辑，或导入一张/多张照片；还没照片时可点「先用示例图看看」。
-2. 在左侧换模板；右侧「画布」调边距、缩放与圆角，「文字」调字号与相机 EXIF，「边框 / 光影 / Logo / 模板」继续细化。
+2. 在左侧换模板；右侧「画布」调边距、缩放与圆角，「文字」调字号与相机 EXIF，「边框 / 调色 / Logo / 模板」继续细化。
 3. 点「导出」，选择 PNG / JPEG / WebP 与导出尺寸。
 
 > **English** — Download a Windows build from Releases, import photos, pick a preset, adjust the frame/light/logo/EXIF, then export as PNG, JPEG or WebP.

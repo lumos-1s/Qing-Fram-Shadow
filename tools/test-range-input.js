@@ -150,6 +150,15 @@ const CHECK = `
   App._resetRangeRow(rng);
   const defaultReset = snap();
 
+  // 6.5) 双击滑轨本身也要复位(与双击数字框/参数名共用 _resetRangeRow)。
+  resetRow(100);
+  focus();
+  type(57);
+  commit();
+  const dblBefore = snap();
+  rng.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+  const dblRail = snap();
+
   // 7) 面板快捷键:输入框内不拦截;普通区域拦截一次;repeat 不触发。
   // 用临时探针输入框，避免当前预设把签名输入行隐藏后 focus() 落空。
   const input = document.createElement('input');
@@ -184,6 +193,7 @@ const CHECK = `
     emptyBlur,
     resetWhileFocused,
     defaultReset: { undoBeforeDefaultReset, ...defaultReset },
+    dblRail: { before: dblBefore, after: dblRail },
     shortcut: { collapsed0, activeInInput, activeAfterInput, preventedInInput, collapsedInInput, preventedOnBody, collapsedOnBody, preventedRepeat, collapsedOnRepeat }
   };
 })()
@@ -249,6 +259,13 @@ app.whenReady().then(async () => {
   eq('默认值复位后滑块仍为 100', dr.rng, '100');
   eq('默认值复位后数字框仍为 100', dr.num, '100');
   eq('默认值复位后不应残留手势', dr.gesture, false);
+
+  const db = got.dblRail;
+  eq('双击滑轨前滑块已被改成 55', db.before.rng, '55');
+  eq('双击滑轨后滑块回到默认 100', db.after.rng, '100');
+  eq('双击滑轨后数字框回到 100', db.after.num, '100');
+  eq('双击滑轨后标签回到 100%', db.after.label, '100%');
+  eq('双击滑轨后模板回到 1', db.after.tpl, 1);
 
   const sc = got.shortcut;
   eq('输入框内 Ctrl+[ 不拦截', sc.preventedInInput, false);

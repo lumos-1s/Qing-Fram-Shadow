@@ -372,6 +372,27 @@ html.dark .stage {
         inset 0 1px 0 rgba(255,255,255,.06);
 }
 .stage:not(.has-img) { display: none; }
+/* 悬停文字旋转把手时的提示：画布默认光标本来就是 grab，单靠 cursor
+   用户看不出这是旋转热区，所以在把手旁边给一个可见的小气泡。 */
+.rot-hint {
+    position: absolute;
+    z-index: 19;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px;
+    border-radius: 8px;
+    background: rgba(10, 14, 13, .84);
+    color: #eafff8;
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: nowrap;
+    pointer-events: none;
+    transform: translate(-50%, -100%);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .32), 0 0 0 1px rgba(0, 229, 160, .35);
+}
+.rot-hint[hidden] { display: none; }
+.rot-hint span { color: rgba(234, 255, 248, .60); }
 #previewCanvas {
     display: block;
     cursor: grab;
@@ -566,9 +587,13 @@ body.inspector-collapsed #inspector { display: none; }
    画布/照片/文字/相机这些组本来就点不了;露着只会像「面板没加载完」。
    其余「行全空」的组在有模板时仍由 syncEmptyGroups 收敛,这里不抢它的活。 */
 #inspector.no-image #panel-canvas .param-group,
-#inspector.no-image #panel-text .param-group { display: none; }
+#inspector.no-image #panel-text .param-group,
+#inspector.no-image #panel-grade .param-group { display: none; }
 #inspector.no-image #panel-canvas .param-empty-note,
-#inspector.no-image #panel-text .param-empty-note { display: block; }
+#inspector.no-image #panel-text .param-empty-note,
+#inspector.no-image #panel-grade .param-empty-note { display: block; }
+/* 调色页签独占一页,提示语放在最上面时会显得孤零零,顺手把说明也一并收起 */
+#inspector.no-image #panel-grade .hint-box { display: none; }
 .param-empty-note {
     display: none; margin: 2px 2px var(--sp-2-5); padding: var(--sp-2-5) var(--sp-3);
     font-size: var(--fs-12); line-height: 1.6; color: var(--text-3); text-align: center;
@@ -607,6 +632,10 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
     background: var(--surface); border-left: 1px solid var(--border);
     display: flex; flex-direction: column; min-height: 0;
     position: relative;
+    /* 侧栏宽度可拖(260~440):面板内的网格要按自身宽度自适应,
+       所以这里建一个容器查询上下文(见 .btn-row.btn-12 的窄栏规则) */
+    container-type: inline-size;
+    container-name: inspector;
 }
 /* 页签分两层:上层是"改外观"的属性页,下层是"换工作模式"的工具页。
    拼图/切图不是样式属性,和边框/光影并排会让人以为只是另一种边框。 */
@@ -660,6 +689,12 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
 .pg-title::before {
     content: ""; width: 4px; height: 13px; border-radius: 2px;
     background: var(--primary); flex: 0 0 auto;
+}
+/* 面板内的大分区标签（如调色页签里的「氛围」），比组标题低一档 */
+.pg-section-title {
+    font-size: var(--fs-11); font-weight: 700; color: var(--text-3);
+    letter-spacing: 1.2px; text-transform: uppercase;
+    padding: 12px var(--sp-1) 2px;
 }
 .param-row {
     display: flex; align-items: center; gap: var(--sp-2);
@@ -727,6 +762,24 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
     outline: none; transition: border-color .15s;
 }
 .param-row select:focus, .param-row input[type=text]:focus, .param-row .ctl-num:focus { border-color: var(--primary); }
+/* 多行文字输入：与单行 .ctl-tx 同一套外观，但允许换行、能拉高一点看清多行内容 */
+.param-row textarea.ctl-tx {
+    flex: 1; min-width: 0; border: 1px solid var(--border-strong);
+    border-radius: 9px; background: var(--surface); padding: 5px 7px;
+    font-size: var(--fs-12); color: var(--text); outline: none;
+    resize: vertical; min-height: 52px; max-height: 140px;
+    line-height: 1.4; font-family: inherit;
+}
+.param-row textarea.ctl-tx:focus { border-color: var(--primary); }
+/* 画布内文字编辑器：定位/尺寸/字体由 app-elements._positionTextEditor 按画布实时算，
+   这里只管观感。用 fixed 是为了不被 panel/stage 的 overflow 裁掉。 */
+.canvas-text-editor {
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.35), 0 4px 18px rgba(0,0,0,.28);
+}
+.canvas-text-editor::selection { background: rgba(0,229,160,.35); }
 .exif-line {
     font-size: var(--fs-12); color: var(--primary);
     background: var(--primary-soft); border-radius: 9px;
@@ -789,11 +842,88 @@ input[type=color]::-webkit-color-swatch {
 .mini-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); transform: translateY(-1px); }
 .mini-btn:active { transform: translateY(0) scale(.97); }
 .mini-btn.danger:hover { border-color: var(--rose); color: var(--rose); background: rgba(212,98,122,.10); }
+
+/* 调色：两个操作按钮并排，不跟 .param-row 的三栏网格抢宽度 */
+.param-row.grade-acts { display: flex; gap: var(--sp-2); padding-top: 2px; }
+.param-row.grade-acts .mini-btn { flex: 1; text-align: center; padding: 6px 4px; }
+#grpGrade.grade-on .pg-title { color: var(--primary); }
+#grpGrade.grade-on .pg-title::after {
+    content: '已调整'; margin-left: 6px; font-size: var(--fs-10);
+    color: var(--primary); background: var(--primary-soft);
+    border-radius: 6px; padding: 1px 5px; vertical-align: middle;
+}
+/* 细节/校准/混色器组共用同一套「已调整」徽章 */
+#grpDet.grade-on .pg-title, #grpCal.grade-on .pg-title, #grpMix.grade-on .pg-title { color: var(--primary); }
+#grpDet.grade-on .pg-title::after, #grpCal.grade-on .pg-title::after, #grpMix.grade-on .pg-title::after {
+    content: '已调整'; margin-left: 6px; font-size: var(--fs-10);
+    color: var(--primary); background: var(--primary-soft);
+    border-radius: 6px; padding: 1px 5px; vertical-align: middle;
+}
+
+/* 混色器：色相/饱和度/明亮度三个子页，只显示当前页的 8 条 */
+#grpMix[data-m="h"] .mix-row:not([data-m="h"]),
+#grpMix[data-m="s"] .mix-row:not([data-m="s"]),
+#grpMix[data-m="l"] .mix-row:not([data-m="l"]) { display: none; }
+/* 滑轨按各自色相画渐变色带（--h 由 app-mix.js 写入），LR 混色器的观感 */
+.rng-mix::-webkit-slider-runnable-track { background: var(--thumb-bg); box-shadow: inset 0 1px 2px rgba(0,0,0,.10); }
+#grpMix[data-m="h"] .rng-mix::-webkit-slider-runnable-track {
+    background: linear-gradient(90deg,
+        hsl(calc(var(--h) - 50), 70%, 58%),
+        hsl(var(--h), 85%, 52%),
+        hsl(calc(var(--h) + 50), 70%, 58%));
+}
+#grpMix[data-m="s"] .rng-mix::-webkit-slider-runnable-track {
+    background: linear-gradient(90deg,
+        hsl(var(--h), 0%, 62%),
+        hsl(var(--h), 85%, 52%),
+        hsl(var(--h), 100%, 46%));
+}
+#grpMix[data-m="l"] .rng-mix::-webkit-slider-runnable-track {
+    background: linear-gradient(90deg,
+        hsl(var(--h), 65%, 16%),
+        hsl(var(--h), 65%, 52%),
+        hsl(var(--h), 65%, 88%));
+}
+/* WebGL 不可用：整组只留一句说明 */
+#grpMix.mix-na #mixRows, #grpMix.mix-na .curve-bar, #grpMix.mix-na .hint-box { display: none; }
+#grpMix.mix-na .mix-na-note { display: block; }
+.mix-na-note { display: none; font-size: var(--fs-11); color: var(--text-2); padding: 6px 0; }
+
+/* 曲线编辑器：通道切换 + 画布 */
+.curve-bar { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.curve-chans { display: flex; gap: 3px; flex: 1 1 auto; min-width: 0; }
+.curve-chan {
+    flex: 1 1 0; min-width: 0; cursor: pointer;
+    border: 1px solid var(--border); background: transparent; color: var(--text-2);
+    font-size: var(--fs-11); padding: 4px 0; border-radius: 8px;
+    transition: all .15s;
+}
+.curve-chan:hover { color: var(--text); background: var(--surface-alt); }
+.curve-chan.active {
+    color: var(--primary); border-color: var(--primary);
+    background: var(--primary-soft); font-weight: 600;
+}
+.curve-canvas {
+    display: block; width: 100%; height: 176px;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--surface-alt); cursor: crosshair; touch-action: none;
+}
+#grpCurve.curve-on .pg-title { color: var(--primary); }
+#grpCurve.curve-on .pg-title::after {
+    content: '已调整'; margin-left: 6px; font-size: var(--fs-10);
+    color: var(--primary); background: var(--primary-soft);
+    border-radius: 6px; padding: 1px 5px; vertical-align: middle;
+}
+
 .mini-btn.primary {
     background: var(--primary-grad); color: #fff; border-color: transparent;
     box-shadow: 0 3px 10px var(--primary-soft);
 }
 html.dark .mini-btn.primary { color: #0c1914; }
+.mini-btn.active {
+    border-color: var(--primary); color: var(--primary); background: var(--primary-soft);
+    box-shadow: inset 0 0 0 1px var(--primary-soft);
+}
 .mini-btn.block { display: block; width: 100%; margin-top: var(--sp-1-5); }
 .hint-box {
     font-size: var(--fs-11); color: var(--text-3); line-height: 1.6;
@@ -897,6 +1027,13 @@ html.dark .mini-btn.primary { color: #0c1914; }
 .btn-row.btn-4 .mini-btn { flex: 1; }
 .btn-row.btn-12 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-1-5); }
 .btn-row.btn-12 .mini-btn { flex: none; }
+/* 拼图布局 12 个按钮:4 列时每列至少要 ~68px(4 字标签 + 内边距),
+   侧栏一拖窄就放不下 —— 260px 时实测溢出 52px,最后一列被卡片裁掉。
+   按容器宽度退成 3 列并收窄内边距/字号,保证永远不溢出。 */
+@container inspector (max-width: 330px) {
+    .btn-row.btn-12 { grid-template-columns: repeat(3, 1fr); }
+    .btn-row.btn-12 .mini-btn { padding-left: 8px; padding-right: 8px; font-size: 10.5px; }
+}
 
 .pool-title { font-size: var(--fs-11); color: var(--text-2); padding: var(--sp-2) 2px var(--sp-1); display: flex; align-items: center; gap: var(--sp-1-5); }
 .pool-title .cnt { font-size: 10px; color: var(--text-3); }
@@ -1294,7 +1431,10 @@ button:disabled, input:disabled, select:disabled, textarea:disabled {
 .pg-title.collapsible { cursor: pointer; user-select: none; display: flex; align-items: center; gap: var(--sp-1-5); }
 .pg-title.collapsible::before { content: '▾'; font-size: 10px; color: var(--text-3); transition: transform .15s; }
 .param-group.collapsed .pg-title.collapsible::before { transform: rotate(-90deg); }
-.param-group.collapsed > .param-row, .param-group.collapsed > .hint-box, .param-group.collapsed > .pool-note { display: none; }
+/* 折叠时隐藏除标题外的一切子节点。
+   原先只点名 .param-row/.hint-box/.pool-note，曲线组的 .curve-bar+canvas、
+   混色器组的 #mixRows 都不在名单里 —— 标题能点、箭头会转，内容纹丝不动。 */
+.param-group.collapsed > :not(.pg-title) { display: none; }
 
 /* ── 九宫格切分预览 ── */
 .grid-preview-card { width: 560px; max-width: 92vw; max-height: 86vh; overflow: auto; }
@@ -1307,6 +1447,50 @@ button:disabled, input:disabled, select:disabled, textarea:disabled {
 .grid-preview-cell img { width: 100%; display: block; }
 .grid-preview-cap { padding: 5px var(--sp-1-5); font-size: var(--fs-11); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .modal-actions { display: flex; justify-content: flex-end; gap: var(--sp-2-5); margin-top: 14px; }
+
+/* ═══ 裁切照片弹层 ═══ */
+/* 比普通弹窗再高一层：它可能从「关于 / 更新说明」里都点不到，但别被它们盖住 */
+.crop-overlay { z-index: 10000; background: rgba(6,8,8,.72); }
+.crop-card {
+    display: flex; flex-direction: column;
+    width: min(1120px, 94vw); height: min(88vh, 900px); max-height: 92vh;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r-l); box-shadow: var(--shadow-lg);
+    overflow: hidden; animation: slideUp .2s ease;
+}
+/* 画布区永远填满剩余高度：JS 按这个盒子的真实尺寸设 canvas 的 backing store，
+   所以这里不能有 padding/border（否则坐标会差一圈，框拖起来"偏"） */
+.crop-stage { position: relative; flex: 1 1 auto; min-height: 220px; background: #0D1211; }
+.crop-stage canvas { position: absolute; inset: 0; display: block; cursor: crosshair; touch-action: none; }
+.crop-bar {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+    padding: 10px 14px; border-top: 1px solid var(--border); background: var(--surface);
+}
+.crop-ratios { display: flex; flex-wrap: wrap; gap: 4px; }
+.crop-chip {
+    border: 1px solid var(--border); background: var(--surface-alt); color: var(--text-2);
+    border-radius: 7px; padding: 4px 9px; font-size: 12px; line-height: 1.4;
+    cursor: pointer; transition: color .14s ease, border-color .14s ease, background .14s ease;
+}
+.crop-chip:hover { color: var(--primary); border-color: var(--primary); }
+.crop-chip.is-on { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); font-weight: 600; }
+/* 自定义比例输入框：和 chips 同一档尺寸，亮起/报错都靠边框，不跳布局 */
+.crop-ratio-inp {
+    width: 78px; border: 1px solid var(--border); background: var(--surface-alt);
+    color: var(--text); border-radius: 7px; padding: 4px 8px;
+    font-size: 12px; line-height: 1.4; outline: none;
+    transition: border-color .14s ease, background .14s ease, color .14s ease;
+}
+.crop-ratio-inp::placeholder { color: var(--text-3); }
+.crop-ratio-inp:hover { border-color: var(--border-strong); }
+.crop-ratio-inp:focus { border-color: var(--primary); background: var(--surface); }
+.crop-ratio-inp.is-on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); }
+.crop-ratio-inp.is-bad { border-color: var(--rose); color: var(--rose); background: rgba(212,98,122,.10); }
+.crop-tools, .crop-actions { display: flex; gap: 6px; }
+.crop-size { margin-left: auto; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+    .crop-size { order: 3; width: 100%; margin-left: 0; }
+}
 .grid-preview-cell { cursor: zoom-in; }
 .grid-preview-zoom { text-align: center; }
 .grid-preview-zoom img { max-width: 100%; max-height: 60vh; border-radius: 6px; border: 1px solid var(--border-strong); }
@@ -1848,6 +2032,31 @@ body.editing #canvasPane { flex: 1 1 auto; }
     font-size: 12px; padding: 6px 14px; cursor: pointer; transition: border-color .15s ease, background .15s ease;
 }
 .pw-skip:hover { border-color: rgba(220,186,121,.55); background: rgba(255,255,255,.08); }
+/* 无限 / 有限 切换：分段控件，状态由 aria-pressed + .is-on 双写（读屏和肉眼都拿得到） */
+.pw-mode {
+    display: flex; flex: 0 0 auto; gap: 2px; padding: 2px;
+    border: 1px solid rgba(255,255,255,.14); border-radius: 8px;
+    background: rgba(255,255,255,.05);
+}
+.pw-mode-btn {
+    border: 0; border-radius: 6px; background: transparent;
+    color: rgba(232,236,241,.6); font-size: 12px; line-height: 1.5;
+    padding: 3px 11px; cursor: pointer; white-space: nowrap;
+    transition: background .15s ease, color .15s ease;
+}
+.pw-mode-btn:hover { color: #e8ecf1; }
+.pw-mode-btn.is-on { background: rgba(220,186,121,.2); color: #f2e4c4; }
+.pw-mode-btn:focus-visible { outline: 2px solid rgba(220,186,121,.8); outline-offset: 1px; }
+/* 有限墙的浏览进度条：相对 .preset-wall（fixed）定位，宽度 3px 不挡卡片 */
+.pw-rail {
+    position: absolute; right: 10px; top: 88px; bottom: 22px; width: 3px;
+    border-radius: 2px; background: rgba(255,255,255,.07);
+    pointer-events: none; z-index: 2;
+}
+.pw-rail i {
+    position: absolute; left: 0; width: 100%; border-radius: 2px;
+    background: rgba(220,186,121,.62);
+}
 .pw-grid {
     /* overflow:clip 不建立滚动容器 —— 卡片获焦时浏览器无法把它 scrollIntoView，
        从根上避免"点一下整墙跳位"；hidden 保留给不支持 clip 的旧内核兜底。 */

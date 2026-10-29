@@ -1,6 +1,19 @@
 // 清框影 App 控制器 —— 依据 Java 版 MainController 交互逻辑重写
 // 核心:onSettingChanged(高频防抖)/onSettingCommit(提交压栈)/scheduleRender(防抖渲染)/refreshUI(回显)
 // 撤销/重做栈 + 每图独立模板(imageTemplates) + 画布元素(logo/贴纸/文字)管理
+
+// 旋转把手专用光标。画布默认就是 grab，若旋转热区也用 grab，用户完全看不出
+// 光标发生了变化；这里给一个带环形箭头的自定义光标（失败时回退 grab）。
+const ROTATE_CURSOR_SVG = "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>"
+    + "<circle cx='12' cy='12' r='10' fill='#0b1411' fill-opacity='.82'/>"
+    + "<path d='M19 12a7 7 0 1 1-2.05-4.95' fill='none' stroke='#00e5a0' stroke-width='2' stroke-linecap='round'/>"
+    + "<path d='M19 5v5h-5' fill='none' stroke='#00e5a0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/>"
+    + "</svg>";
+const ROTATE_CURSOR = 'url("data:image/svg+xml,' + encodeURIComponent(ROTATE_CURSOR_SVG) + '") 12 12, grab';
+// 浏览器可能把内联 cursor 规范化，不能拿完整字符串做等值判断；
+// 认 data:image/svg+xml 前缀即可可靠区分「旋转专用光标」。
+const isRotateCursor = (c) => String(c).indexOf('data:image/svg+xml') >= 0;
+
 window.App = {
     image: null,          // 当前图片 {el, name, w, h, exif, customSettings}
     images: [],
@@ -149,6 +162,8 @@ window.App = {
         this.bind();
         if (this.initImmersive) this.initImmersive();
         if (this.initPresetWall) this.initPresetWall();
+        if (this.initCrop) this.initCrop();
+        if (this.initGrade) this.initGrade();
         this.loadPrefs();
         this._presetsReady = this.loadPresets();   // 墙/侧栏点击要等它就绪，否则头一秒点卡片会点空
         this.restoreLastState();
@@ -175,7 +190,14 @@ window.App = {
             t._bound = true;
             t.addEventListener('click', () => {
                 const g = t.parentElement;
-                if (g) g.classList.toggle('collapsed');
+                if (!g) return;
+                g.classList.toggle('collapsed');
+                // 曲线画布折叠时布局尺寸为 0，期间的重绘会按兜底尺寸建 backing store，
+                // 展开后必须按真实尺寸重画一次，否则糊成一片。
+                if (!g.classList.contains('collapsed')
+                    && g.querySelector('#curveCanvas') && typeof this.drawCurve === 'function') {
+                    this.drawCurve();
+                }
             });
         });
         const tplSearch = document.getElementById('tfTemplateSearch');
@@ -842,6 +864,14 @@ window.App = {
         canvas.addEventListener('mousedown', e => {
             const pk = this.tplPuzzle();
             if ((!this.image && !pk) || e.button !== 0) return;
+            this._hideRotateHint();
+            // 文字放置模式：单击只用于「定位」，不选中/不拖动/不平移；
+            // 真正落字在 dblclick 里，双击位置才是用户要放字的位置。
+            // 这一支必须先于拼图/元素命中，否则点在有元素的位置会被当成选中。
+            if (this._textPlaceMode) {
+                e.preventDefault();
+                return;
+            }
             if (pk) {
                 const hp = this.puzzleHitTest(e);
                 if (hp) {
@@ -881,6 +911,18 @@ window.App = {
                 this.clearActivePuzzleSlot();
             }
             const pt = this.screenToCanvas(e);
+            // 四角缩放手柄和旋转把手都画在框边/框外，必须先于元素命中判断。
+            // 缩放优先：文字很小时两个把手可能挨得很近，角手柄才是用户更常抓的。
+            const rh = this.hitResizeHandle(pt);
+            if (rh) {
+                const rs = this.beginResize(pt);
+                if (rs) {
+                    e.preventDefault();
+                    this._dragEl = null;
+                    canvas.style.cursor = rh.cursor;
+                    return;
+                }
+            }
             // 旋转把手画在框**外**的空处，必须先于元素命中判断，否则永远点不到
             if (this.hitRotateHandle(pt)) {
                 const r = this.beginRotate(pt);
@@ -914,17 +956,55 @@ window.App = {
             canvas.style.cursor = 'grabbing';
         });
         // 双击文字 = 改内容（PS 的文字工具就是这条路；不用先去面板里找输入框）
+        // 双击空白 = 什么都不建；必须先点右侧「文字」→「添加文字」进入添加模式，
+        // 再双击画布才落字（位置就是双击点），避免浏览时误触新建文字。
         canvas.addEventListener('dblclick', e => {
-            if (!this.image) return;
-            const el = this.pickElement(this.screenToCanvas(e));
-            if (el && el.kind === 'text') {
+            if (!this.image || this._textEditor) return;
+            if (this.tplPuzzle()) return;   // 拼图双击是「打开该格图片」
+            const pt = this.screenToCanvas(e);
+            if (this._textPlaceMode) {
                 e.preventDefault();
-                this.editTextContent(el.obj);
+                const k = this.textSpaceScale();
+                this.createTextAt(pt.x / k, pt.y / k);
+                return;
             }
+            const el = this.pickElement(pt);
+            if (el) {
+                if (el.kind === 'text') {
+                    e.preventDefault();
+                    this.editTextContent(el.obj);
+                }
+                return;
+            }
+            e.preventDefault();
+            this.setStatus('先点右侧「文字」→「添加文字」，再在画布上双击放置');
         });
         // 悬停分隔线:换成 row/col-resize 光标 + 画布高亮线,让"可拖动"看得见
         canvas.addEventListener('mousemove', e => {
-            if (this._dragPz || this._dragEl || this._pan) return;
+            if (this._dragPz || this._dragEl || this._pan || this._resizeEl || this._rotEl) return;
+            if (this._textPlaceMode) {
+                this._hideRotateHint();
+                if (canvas.style.cursor !== 'text') canvas.style.cursor = 'text';
+                return;
+            }
+            const pt = this.screenToCanvas(e);
+            const rh = this.hitResizeHandle(pt);
+            if (rh) {
+                this._hideRotateHint();
+                if (canvas.style.cursor !== rh.cursor) canvas.style.cursor = rh.cursor;
+                this._setPuzzleAxisHover(null);
+                return;
+            }
+            const rotH = this.hitRotateHandle(pt);
+            if (rotH) {
+                this._showRotateHint(rotH);
+                if (!isRotateCursor(canvas.style.cursor)) canvas.style.cursor = ROTATE_CURSOR;
+                this._setPuzzleAxisHover(null);
+                return;
+            }
+            this._hideRotateHint();
+            if (isRotateCursor(canvas.style.cursor) || canvas.style.cursor === 'grab'
+                || canvas.style.cursor === 'nwse-resize' || canvas.style.cursor === 'nesw-resize') canvas.style.cursor = '';
             const pk = this.tplPuzzle();
             if (!pk) return;
             const p = this.puzzlePx(e);
@@ -940,7 +1020,9 @@ window.App = {
         });
         canvas.addEventListener('mouseleave', () => {
             if (this._dragPz) return;
-            if (canvas.style.cursor === 'col-resize' || canvas.style.cursor === 'row-resize') canvas.style.cursor = '';
+            this._hideRotateHint();
+            if (canvas.style.cursor === 'col-resize' || canvas.style.cursor === 'row-resize'
+                || isRotateCursor(canvas.style.cursor)) canvas.style.cursor = '';
             this._setPuzzleAxisHover(null);
         });
         // 拼图选中是"图片以外一律取消":点舞台灰底/工具栏/左侧预设/胶片条/其他面板都清掉蓝框。
@@ -954,6 +1036,10 @@ window.App = {
             this.clearActivePuzzleSlot();
         }, true);
         window.addEventListener('mousemove', e => {
+            if (this._resizeEl) {
+                this.applyResize(this.screenToCanvas(e));
+                return;
+            }
             if (this._rotEl) {
                 this.applyRotate(this.screenToCanvas(e), e.shiftKey);
                 return;
@@ -992,9 +1078,27 @@ window.App = {
             this.applyZoomStyle();
         });
         window.addEventListener('mouseup', () => {
+            if (this._resizeEl) {
+                const r = this._resizeEl;
+                this._resizeEl = null;
+                this._skipUserEl = null;
+                this._dropDragBase();
+                this._hideRotateHint();
+                canvas.style.cursor = '';
+                if (r.moved) {
+                    this.commitNoPush();
+                    this.setStatus('字号 ' + Math.round(r.ref.fontSize || 0) + 'px（拖角可继续等比缩放）');
+                }
+                this.scheduleRender();
+                return;
+            }
             if (this._rotEl) {
                 const r = this._rotEl;
                 this._rotEl = null;
+                this._skipUserEl = null;
+                this._dropDragBase();
+                this._hideRotateHint();
+                canvas.style.cursor = '';
                 if (r.moved) {
                     this.saveCurrentTemplate();
                     this.setStatus('已旋转 ' + Math.round(r.ref.rotation || 0) + '°（按住 Shift 按 15° 吸附）');
@@ -1067,6 +1171,10 @@ window.App = {
                 canvas.style.cursor = '';
             }
             if (this._dragEl) { this._dragEl = null; this._skipUserEl = null; this._dropDragBase(); this._logoSnapV = null; this._logoSnapH = null; this._logoSnapEdgeV = null; this._logoSnapEdgeH = null; this._logoSnapPhotoV = null; this._logoSnapPhotoH = null; }
+            if (this._resizeEl) { this._resizeEl = null; this._skipUserEl = null; this._dropDragBase(); canvas.style.cursor = ''; }
+            if (this._rotEl) { this._rotEl = null; this._skipUserEl = null; this._dropDragBase(); canvas.style.cursor = ''; }
+            this._hideRotateHint();
+            if (isRotateCursor(canvas.style.cursor)) canvas.style.cursor = '';
             if (this._pan) { this._pan = null; canvas.style.cursor = ''; }
         };
         window.addEventListener('blur', cancelDrags);
@@ -1128,25 +1236,37 @@ window.App = {
                 }
             }
             e.preventDefault();
-            this.openCtx(e.clientX, e.clientY, [
+            const canRestore = !!(this.image && this.image.orig && this.restoreOriginalPhoto);
+            const items = [
                 ['适应窗口', () => this.fitZoom && this.fitZoom()],
                 ['1:1 实际大小', () => this.zoomActual && this.zoomActual()],
                 ['对比原图 (空格按住)', () => this.toggleCompare && this.toggleCompare()],
+                ['裁切照片…', () => this.openCrop()],
                 ['旋转 90°', () => this.rotateCurrentPhoto()],
+            ];
+            // 裁/转过才出现：没动过位图时这一项点了也没意义
+            if (canRestore) items.push(['还原原图（撤销裁切 / 旋转）', () => this.restoreOriginalPhoto()]);
+            items.push(
                 ['—', null],
                 [`撤销 (${mod}+Z)`, () => this.undo()],
                 [`重做 (${mod}+Y)`, () => this.redo()],
                 ['—', null],
                 [`复制图片 (${mod}+Shift+C)`, () => this.copyImage && this.copyImage()],
                 [`粘贴剪贴板图片 (${mod}+Shift+V)`, () => this.pasteImageFromClipboard()],
-                ['导出图片', () => this.doExport && this.doExport()],
-            ]);
+                ['导出图片', () => this.doExport && this.doExport()]
+            );
+            this.openCtx(e.clientX, e.clientY, items);
         });
         document.addEventListener('mousedown', e => {
             if (this._ctx && !this._ctx.contains(e.target)) this.closeCtx();
         });
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') this.closeCtx();
+            if (e.key !== 'Escape') return;
+            // 文字工具：Esc 先退编辑，再退「点哪放哪」，最后清掉拖角状态
+            if (this._textEditor) { this.cancelTextEditor(); return; }
+            if (this._textPlaceMode) { this.cancelAddText(); return; }
+            if (this._resizeEl) { this._resizeEl = null; canvas.style.cursor = ''; }
         });
         document.addEventListener('click', e => {
             if (e.target === canvas) return;
@@ -1204,7 +1324,7 @@ window.App = {
             },
             lightEffect: {
                 vignetteEnable: 0, vignetteStrength: 0, vignetteFeather: 50,
-                lightLeakEnable: 0, lightLeakType: 'warm', lightLeakOpacity: 40, lightLeakAngle: 225,
+                lightLeakEnable: 0, lightLeakType: 'warm', lightLeakOpacity: 0, lightLeakAngle: 225,
                 filmGrainEnable: 0, filmGrainIntensity: 0,
             },
             decorConfig: {
@@ -1301,12 +1421,17 @@ window.App = {
         ft.tearStrength = $('slTearStrength') ? parseInt($('slTearStrength').value, 10) : 50;
         ft.tearDensity = $('slTearDensity') ? parseInt($('slTearDensity').value, 10) : 8;
 
-        le.vignetteEnable = ($('cbVignette') && $('cbVignette').checked) ? 1 : 0;
-        le.vignetteStrength = $('slVignetteStrength') ? parseInt($('slVignetteStrength').value, 10) : 0;
+        // 暗角/漏光/颗粒统一为「滑块常开型」:没有独立开关,强度 0 即关闭。
+        // enable 标志仍然要写(引擎只认它):老预设里大量存在
+        // enable:0 + 强度:35(模板默认值,从未生效),只看强度会把整库预设的暗角全打开。
+        const vgv = $('slVignetteStrength') ? parseInt($('slVignetteStrength').value, 10) : 0;
+        le.vignetteStrength = vgv;
+        le.vignetteEnable = vgv > 0 ? 1 : 0;
         le.vignetteFeather = $('slVignetteFeather') ? parseInt($('slVignetteFeather').value, 10) : 50;
-        le.lightLeakEnable = ($('cbLightLeak') && $('cbLightLeak').checked) ? 1 : 0;
+        const lkv = $('slLeakOpacity') ? parseInt($('slLeakOpacity').value, 10) : 0;
+        le.lightLeakEnable = lkv > 0 ? 1 : 0;
         le.lightLeakType = $('cbLeakType') ? $('cbLeakType').value : 'warm';
-        le.lightLeakOpacity = $('slLeakOpacity') ? parseInt($('slLeakOpacity').value, 10) : 40;
+        le.lightLeakOpacity = lkv;
         le.lightLeakAngle = $('slLeakAngle') ? parseInt($('slLeakAngle').value, 10) : 225;
         // 颗粒只有一个滑块,没有独立开关:强度 0 即"关闭"。
         // 这样面板少一行,而且不会出现"开关开着但强度是 0,看着像坏了"的组合。
@@ -1316,7 +1441,7 @@ window.App = {
         // applyFilmGrain 上方注释)。引擎认这个 flag,所以从预设载入时必须保留它。
         const fgv = $('slFilmGrain') ? parseInt($('slFilmGrain').value, 10) : 0;
         le.filmGrainIntensity = fgv;
-        if (fgv > 0) le.filmGrainEnable = 1;
+        le.filmGrainEnable = fgv > 0 ? 1 : 0;
 
         if ($('cbExifText')) decor.exifAutoText = $('cbExifText').checked ? 1 : 0;
         if ($('cbFocalEq')) this.template.focalEq = $('cbFocalEq').checked ? 1 : 0;
@@ -1654,16 +1779,20 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             this.updateLabel('lblTearDensity', ft.tearDensity || 8);
 
             const le = this.template.lightEffect || {};
-            if ($('cbVignette')) $('cbVignette').checked = (le.vignetteEnable || 0) === 1;
-            if ($('slVignetteStrength')) $('slVignetteStrength').value = le.vignetteStrength || 0;
+            // 常开滑块:显示值以 enable 为准。老预设普遍存着 enable:0 + 强度:35,
+            // 直接显示强度会让滑块停在 35 却画面上什么都没有(和颗粒当年同一个坑)。
+            const vgOn = le.vignetteEnable === 1;
+            const vgVal = vgOn ? (le.vignetteStrength || 0) : 0;
+            if ($('slVignetteStrength')) $('slVignetteStrength').value = vgVal;
             if ($('slVignetteFeather')) $('slVignetteFeather').value = le.vignetteFeather != null ? le.vignetteFeather : 50;
-            this.updateLabel('lblVignetteStrength', (le.vignetteStrength || 0) + '%');
+            this.updateLabel('lblVignetteStrength', vgVal + '%');
             this.updateLabel('lblVignetteFeather', le.vignetteFeather != null ? le.vignetteFeather : 50);
-            if ($('cbLightLeak')) $('cbLightLeak').checked = (le.lightLeakEnable || 0) === 1;
+            const lkOn = le.lightLeakEnable === 1;
+            const lkVal = lkOn ? (le.lightLeakOpacity || 0) : 0;
             if ($('cbLeakType')) $('cbLeakType').value = le.lightLeakType || 'warm';
-            if ($('slLeakOpacity')) $('slLeakOpacity').value = le.lightLeakOpacity != null ? le.lightLeakOpacity : 40;
+            if ($('slLeakOpacity')) $('slLeakOpacity').value = lkVal;
             if ($('slLeakAngle')) $('slLeakAngle').value = le.lightLeakAngle != null ? le.lightLeakAngle : 225;
-            this.updateLabel('lblLeakOpacity', (le.lightLeakOpacity != null ? le.lightLeakOpacity : 40) + '%');
+            this.updateLabel('lblLeakOpacity', lkVal + '%');
             this.updateLabel('lblLeakAngle', (le.lightLeakAngle != null ? le.lightLeakAngle : 225) + '°');
             // 颗粒:以 enable 为准显示,而不是直接显示 intensity。
             // 绝大多数预设存的是 filmGrainEnable:0 + filmGrainIntensity:10(那个 10 是
@@ -1710,15 +1839,8 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         // 撕边(胶片齿孔掩膜)只在默认图层管线读 filmTearConfig;相框样式 / 卡片(模糊底)渲染不走该管线,整组隐藏
         const torn = document.getElementById('pbTornFilm');
         if (torn) torn.style.display = showLayers ? '' : 'none';
-        const lightTab = document.querySelector('#inspTabs [data-tab="light"]');
-        if (lightTab) lightTab.style.display = showLight ? '' : 'none';
-        if (!showLight) {
-            const active = document.querySelector('.tab.active');
-            if (active && active.getAttribute('data-tab') === 'light') {
-                const firstVis = document.querySelector('#inspTabs .tab[data-tab]:not([style*="display: none"])');
-                if (firstVis) firstVis.click();
-            }
-        }
+        // 「氛围」三组（暗角/漏光/颗粒）已并入调色页签，不再整页签隐藏：
+        // 相框样式管线不支持它们时只隐藏这三组，调色的其余档位照常可用。
         // 当前样式条:把"现在走哪条渲染管线"显性化,解释为何部分控件消失
         const ms = document.getElementById('modeStatus');
         if (ms) {
@@ -1844,6 +1966,10 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         this.refreshUI();
         this.autoFit = true;
         this.scheduleRender(true);
+        // 每张照片的原图备份是独立的：切图后「还原原图」的显隐要跟着换
+        if (this.syncCropOriginalBtn) this.syncCropOriginalBtn();
+        // 调色参数挂在每张照片上，切图后滑块要回显这张的参数（不是上一张的）
+        if (this.syncGradeUI) this.syncGradeUI();
     },
 
     selectImage(idx) {
@@ -1883,13 +2009,18 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         const out = new Image();
         await new Promise(r => { out.onload = r; out.onerror = r; out.src = canvas.toDataURL('image/jpeg', 0.95); });
         if (!out.naturalWidth) { this.setStatus('旋转失败'); return; }
+        // 旋转同样不可撤销，留一份原图供「还原原图」用（app-crop.js）
+        if (this.savePhotoOrigin) this.savePhotoOrigin(im);
         im.el = out;
         im.w = canvas.width;
         im.h = canvas.height;
         im.rotate = ((im.rotate || 0) + 1) % 4;
         if (this.invalidateStyleCaches) this.invalidateStyleCaches();
+        // 底图换了：调色缓存作废，参数保留 —— 下次渲染会在新底图上重放
+        if (this.invalidateGrade) this.invalidateGrade(im);
         if (this.buildThumbnails) this.buildThumbnails();
         this.scheduleRender(true);
+        if (this.syncCropOriginalBtn) this.syncCropOriginalBtn();
         this.setStatus('照片已旋转 90°(再次右键可继续旋转)');
     },
 
@@ -2609,7 +2740,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
 
         // 复选框 -> onSettingCommit
         const chks = ['cbCornerLock', 'cbShadow', 'cbGlow', 'cbTearEnable',
-            'cbVignette', 'cbLightLeak', 'cbCornerDecor', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq'];
+            'cbCornerDecor', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq'];
         chks.forEach(id => {
             const el = $(id);
             if (el) el.addEventListener('change', () => this.onSettingCommit());
@@ -2796,19 +2927,38 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
             this.batchElOps();
         });
         // ── 文字工具：新建 / 内容 / 字体 / 字号 / 颜色 ──
+        // 「添加文字」只保留在右侧「文字」页签：点它进入添加模式，再双击画布落字。
         bindBtn('btnAddFreeText', () => this.addFreeText());
-        if ($('tfElText')) $('tfElText').addEventListener('change', () => {
-            const v = $('tfElText').value;
-            const sel = this.selectedEls[0];
-            if (!sel || sel.kind !== 'text') return;
-            if (!String(v).trim()) { this.syncTextRows(sel); return; }   // 空内容不接受，回显原值
-            this.applyToSelectedEls((el, kind) => { if (kind === 'text') el.text = v; });
-            this.refreshElList();
-            this.batchElOps();
-        });
+        {
+            const tf = $('tfElText');
+            const applyText = () => {
+                const sel = this.selectedEls[0];
+                if (!sel || sel.kind !== 'text') return;
+                const v = tf.value;
+                if (!String(v).trim()) return;   // 空内容不接受，等 change 时回显原值
+                this.applyToSelectedEls((el, kind) => { if (kind === 'text') el.text = v; });
+                this.refreshElList();
+                this.scheduleRender();
+            };
+            if (tf) {
+                tf.addEventListener('input', applyText);
+                tf.addEventListener('change', () => {
+                    const sel = this.selectedEls[0];
+                    if (!sel || sel.kind !== 'text') return;
+                    if (!String(tf.value).trim()) { this.syncTextRows(sel); return; }
+                    applyText();
+                    this.batchElOps();
+                });
+            }
+        }
         if ($('cbElTextFont')) $('cbElTextFont').addEventListener('change', () => {
             const v = $('cbElTextFont').value;
             this.applyToSelectedEls((el, kind) => { if (kind === 'text') el.fontFamily = v; });
+            this.batchElOps();
+        });
+        if ($('cbElTextWeight')) $('cbElTextWeight').addEventListener('change', () => {
+            const v = Math.max(100, Math.min(900, parseInt($('cbElTextWeight').value, 10) || 400));
+            this.applyToSelectedEls((el, kind) => { if (kind === 'text') el.fontWeight = v; });
             this.batchElOps();
         });
         if ($('cpElTextColor')) $('cpElTextColor').addEventListener('input', () => {
@@ -2849,6 +2999,121 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
             this.applyToSelectedEls((el, kind) => { if (kind === 'text') el.letterSpacing = v; });
             this.batchElOps();
         });
+
+        // ── 描边 / 阴影（PS 里最常用的两种“字压不住底”的解法）──
+        if ($('chkElTextStroke')) $('chkElTextStroke').addEventListener('change', () => {
+            const on = $('chkElTextStroke').checked ? 1 : 0;
+            this.applyToSelectedEls((el, kind) => {
+                if (kind !== 'text') return;
+                el.strokeEnable = on;
+                if (on) {
+                    if (!(Number(el.strokeWidth) > 0)) el.strokeWidth = Math.max(2, Math.round((Number(el.fontSize) || 18) * 0.08));
+                    if (!el.strokeColorHex) el.strokeColorHex = '#000000';
+                    if (el.strokeOpacity == null) el.strokeOpacity = 100;
+                }
+            });
+            const sel = this.selectedEls[0];
+            if (sel) this.syncTextRows(sel);
+            this.batchElOps();
+        });
+        if ($('slElTextStrokeWidth')) $('slElTextStrokeWidth').addEventListener('input', () => {
+            const v = Math.max(1, Math.min(40, parseInt($('slElTextStrokeWidth').value, 10) || 1));
+            this.updateLabel('lblElTextStrokeWidth', v + 'px');
+            this.applyToSelectedEls((el, kind) => {
+                if (kind !== 'text') return;
+                el.strokeEnable = 1;
+                el.strokeWidth = v;
+            });
+            const chk = $('chkElTextStroke');
+            if (chk) chk.checked = true;
+            this.scheduleRender();
+        });
+        if ($('slElTextStrokeWidth')) $('slElTextStrokeWidth').addEventListener('change', () => {
+            const sel = this.selectedEls[0];
+            if (sel) this.syncTextRows(sel);
+            this.batchElOps();
+        });
+        if ($('cpElTextStroke')) $('cpElTextStroke').addEventListener('input', () => {
+            const v = $('cpElTextStroke').value;
+            this.applyToSelectedEls((el, kind) => {
+                if (kind !== 'text') return;
+                el.strokeEnable = 1;
+                el.strokeColorHex = v;
+            });
+            const chk = $('chkElTextStroke');
+            if (chk) chk.checked = true;
+            this.scheduleRender();
+        });
+        if ($('cpElTextStroke')) $('cpElTextStroke').addEventListener('change', () => this.batchElOps());
+
+        if ($('chkElTextShadow')) $('chkElTextShadow').addEventListener('change', () => {
+            const on = $('chkElTextShadow').checked ? 1 : 0;
+            this.applyToSelectedEls((el, kind) => {
+                if (kind !== 'text') return;
+                el.enableShadow = on;
+                if (on) {
+                    // 老预设只有开关、没有参数：勾选时补齐一套能看见的默认阴影
+                    if (el.shadowBlur == null) el.shadowBlur = Math.max(2, Math.round((Number(el.fontSize) || 18) * 0.18));
+                    if (el.shadowOffsetX == null) el.shadowOffsetX = 0;
+                    if (el.shadowOffsetY == null) el.shadowOffsetY = Math.max(1, Math.round((Number(el.fontSize) || 18) * 0.05));
+                    if (!el.shadowColorHex) el.shadowColorHex = '#000000';
+                    if (el.shadowOpacity == null) el.shadowOpacity = 45;
+                }
+            });
+            const sel = this.selectedEls[0];
+            if (sel) this.syncTextRows(sel);
+            this.batchElOps();
+        });
+        if ($('slElTextShadowBlur')) $('slElTextShadowBlur').addEventListener('input', () => {
+            const v = Math.max(0, Math.min(60, parseInt($('slElTextShadowBlur').value, 10) || 0));
+            this.updateLabel('lblElTextShadowBlur', v + 'px');
+            this.applyToSelectedEls((el, kind) => {
+                if (kind !== 'text') return;
+                el.enableShadow = 1;
+                el.shadowBlur = v;
+                if (el.shadowOffsetX == null) el.shadowOffsetX = 0;
+                if (el.shadowOffsetY == null) el.shadowOffsetY = Math.max(1, Math.round((Number(el.fontSize) || 18) * 0.05));
+            });
+            const sel = this.selectedEls[0];
+            if (sel && sel.kind === 'text') this.syncTextRows(sel);
+            this.scheduleRender();
+        });
+        if ($('slElTextShadowBlur')) $('slElTextShadowBlur').addEventListener('change', () => {
+            const sel = this.selectedEls[0];
+            if (sel) this.syncTextRows(sel);
+            this.batchElOps();
+        });
+        if ($('cpElTextShadow')) $('cpElTextShadow').addEventListener('input', () => {
+            const v = $('cpElTextShadow').value;
+            this.applyToSelectedEls((el, kind) => {
+                if (kind !== 'text') return;
+                el.enableShadow = 1;
+                el.shadowColorHex = v;
+                if (el.shadowBlur == null) el.shadowBlur = 8;
+                if (el.shadowOffsetX == null) el.shadowOffsetX = 0;
+                if (el.shadowOffsetY == null) el.shadowOffsetY = 2;
+            });
+            const sel = this.selectedEls[0];
+            if (sel && sel.kind === 'text') this.syncTextRows(sel);
+            this.scheduleRender();
+        });
+        if ($('cpElTextShadow')) $('cpElTextShadow').addEventListener('change', () => this.batchElOps());
+        const bindShadowOffset = () => {
+            const x = parseFloat(($('inpElTextShadowX') || {}).value);
+            const y = parseFloat(($('inpElTextShadowY') || {}).value);
+            this.applyToSelectedEls((el, kind) => {
+                if (kind !== 'text') return;
+                el.enableShadow = 1;
+                el.shadowOffsetX = Number.isFinite(x) ? x : 0;
+                el.shadowOffsetY = Number.isFinite(y) ? y : 0;
+                if (el.shadowBlur == null) el.shadowBlur = 8;
+            });
+            const sel = this.selectedEls[0];
+            if (sel && sel.kind === 'text') this.syncTextRows(sel);
+            this.batchElOps();
+        };
+        if ($('inpElTextShadowX')) $('inpElTextShadowX').addEventListener('change', bindShadowOffset);
+        if ($('inpElTextShadowY')) $('inpElTextShadowY').addEventListener('change', bindShadowOffset);
         if ($('slElementRotation')) $('slElementRotation').addEventListener('input', () => {
             const v = parseInt($('slElementRotation').value, 10);
             this.updateLabel('lblElementRotation', v + '°');
@@ -2950,7 +3215,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
             // Shift + 拖动 = 微调:原生 range 的灵敏度由控件宽度决定,一像素跨好几个档位,
             // 这里按住 Shift 时改为「相对起点、十分之一灵敏度」的拖动,仍写回同一个 range,
             // 因此 input 事件、撤销栈、标签刷新全部沿用原路径。
-            rng.title = (rng.title ? rng.title + '；' : '') + '按住 Shift 拖动可微调';
+            rng.title = (rng.title ? rng.title + '；' : '') + '按住 Shift 拖动可微调；双击复位';
             rng.addEventListener('pointerdown', (e) => {
                 if (!e.shiftKey || e.button !== 0) return;
                 e.preventDefault();
@@ -3063,6 +3328,9 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
                 }
             });
             num.addEventListener('dblclick', (e) => { e.preventDefault(); this._resetRangeRow(rng); });
+            // 双击滑轨本身也复位:数字框很窄,而"拖过头了想回默认"最直接的动作就是双击滑轨。
+            // 与双击参数名/数字框共用 _resetRangeRow,撤销栈与状态提示都是同一套。
+            rng.addEventListener('dblclick', (e) => { e.preventDefault(); this._resetRangeRow(rng); });
             const label = row.querySelector('label');
             if (label) {
                 label.title = '双击复位到默认值';

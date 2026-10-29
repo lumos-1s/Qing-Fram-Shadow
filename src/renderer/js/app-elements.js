@@ -116,54 +116,284 @@ window.App = Object.assign(window.App || {}, {
         };
     },
 
-    // ── 文字工具（像 PS 那样：新建一段文字，落在画布中央，随即可拖/转/双击改字）──
-    async addFreeText() {
+    // ── 文字工具（像 PS 那样：双击画布落字、画布内编辑、拖角缩放）──
+    // 必须先点右侧「文字」页签里的「添加文字」进入放置状态，再双击画布才创建；
+    // 这样位置是用户双击的位置，也不会在普通浏览时误触新建文字。
+    beginAddText() {
+        // 再点一次按钮 = 取消（和 PS 工具按钮一样是可切换的）
+        if (this._textPlaceMode) { this.cancelAddText(); return; }
+        if (!this.image) { this.setStatus('先导入一张照片，再添加文字'); return; }
         const { w, h } = this._logCanvas();
         if (!(w > 1) || !(h > 1)) { this.setStatus('先导入一张照片，再添加文字'); return; }
-        const typed = await this.promptText('输入文字内容（确定后落在画布中央）', '');
-        if (typed == null) return;                 // 取消
-        const text = String(typed).trim();
-        if (!text) { this.setStatus('内容为空，未添加'); return; }
+        this._textPlaceMode = true;
+        this.dom.canvas.style.cursor = 'text';
+        // 文字设置在「文字」页签：进入放置态就把它翻出来，放好字后不用再找。
+        if (typeof this.switchTab === 'function') this.switchTab('text');
+        this.setStatus('添加模式：在画布上双击放置文字；Esc 取消');
+        this._syncAddTextBtn();
+    },
 
+    // 兼容旧调用点/测试：以前这里直接弹窗新建，现在进入放置状态
+    addFreeText() { this.beginAddText(); },
+
+    cancelAddText() {
+        if (!this._textPlaceMode) return;
+        this._textPlaceMode = false;
+        if (this.dom.canvas) this.dom.canvas.style.cursor = '';
+        this.setStatus('已取消添加文字');
+        this._syncAddTextBtn();
+    },
+
+    // 右侧「文字」页签里的入口按钮要能看出「正在放置」：再点一次可取消，
+    // 和 PS 里工具按钮的按下态一致。
+    _syncAddTextBtn() {
+        const btn = document.getElementById('btnAddFreeText');
+        if (!btn) return;
+        const on = !!this._textPlaceMode;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        btn.textContent = on ? '✕ 取消添加文字' : '＋ 添加文字（双击画布放置）';
+        btn.title = on
+            ? '正在添加文字：在画布上双击放置；Esc 取消'
+            : '点一下进入添加模式，再在画布上双击你要放字的位置；双击已有文字改内容';
+    },
+
+    // 在逻辑画布坐标 (lx, ly) 创建一段文字，并立刻进入画布内编辑。
+    // 字号按短边 6% 起步；默认给一层很轻的阴影，白字放在亮照片上也读得清。
+    createTextAt(lx, ly) {
+        const { w, h } = this._logCanvas();
+        if (!(w > 1) || !(h > 1)) { this.setStatus('先导入一张照片，再添加文字'); return null; }
+        this._textPlaceMode = false;
+        if (this.dom.canvas) this.dom.canvas.style.cursor = '';
+        this._syncAddTextBtn();
         const tpl = this.template || (this.template = this.defaultTemplate());
         const decor = tpl.decorConfig || (tpl.decorConfig = {});
         if (!decor.textLines) decor.textLines = [];
+        const fs = Math.max(12, Math.round(Math.min(w, h) * 0.06));
         const line = {
-            text,
+            text: '文字',
             align: 'free',
-            x: Math.round(w / 2),
-            y: Math.round(h / 2),
+            x: Math.round(Math.max(0, Math.min(w, lx))),
+            y: Math.round(Math.max(0, Math.min(h, ly))),
             fontFamily: 'Microsoft YaHei',
-            fontSize: Math.max(12, Math.round(Math.min(w, h) * 0.06)),
+            fontSize: fs,
             fontWeight: 400,
             letterSpacing: 0,
             colorHex: '#ffffff',
             opacity: 100,
             rotation: 0,
-            enableShadow: 0,
+            enableShadow: 1,
+            shadowColorHex: '#000000',
+            shadowOpacity: 45,
+            shadowBlur: Math.max(2, Math.round(fs * 0.18)),
+            shadowOffsetX: 0,
+            shadowOffsetY: Math.max(1, Math.round(fs * 0.05)),
         };
+        // 先压撤销快照，再写入新元素：撤销时应当「整段文字消失」，而不是退回占位字
         this.pushUndo();
         decor.textLines.push(line);
         this.selectedEls = [{ kind: 'text', obj: line }];
         this.refreshElList();
-        this.saveCurrentTemplate();
+        this.openTextEditor(line, { isNew: true, pushedUndo: true });
         this.scheduleRender(true);
-        this.setStatus('已添加文字「' + text.slice(0, 12) + '」：拖动移动，拖上方圆点旋转，双击改内容');
+        return line;
     },
 
-    // 双击画布上的文字 → 改内容（PS 的文字工具就是这条路）
-    async editTextContent(el) {
+    // 双击已有文字 → 画布内编辑（不再弹 prompt）。textarea 用与画布同一套
+    // 字体/字号/字距/旋转，输入时实时回写，Ctrl+Enter 或失焦提交，Esc 取消。
+    editTextContent(el) {
         if (!el) return;
-        const v = await this.promptText('编辑文字内容', el.text || '');
-        if (v == null) return;
-        const t = String(v).trim();
-        if (!t) { this.setStatus('内容不能为空'); return; }
-        this.pushUndo();
-        el.text = t;
+        this.openTextEditor(el);
+    },
+
+    _textEditorCssScale(cv) {
+        const rect = cv.getBoundingClientRect();
+        const lw = (cv._logW > 1) ? cv._logW : cv.width;
+        return lw > 0 ? rect.width / lw : 1;
+    },
+
+    _textEditorMetrics(el) {
+        const cv = this.dom && this.dom.canvas;
+        if (!cv) return null;
+        const lw = (cv._logW > 1) ? cv._logW : cv.width;
+        const lh = (cv._logH > 1) ? cv._logH : cv.height;
+        if (!(lw > 1) || !(lh > 1) || typeof window.textLineMetrics !== 'function') return null;
+        return window.textLineMetrics(el, lw, lh, false, 0, 0);
+    },
+
+    _positionTextEditor() {
+        const st = this._textEditor;
+        if (!st) return;
+        const cv = this.dom.canvas;
+        const m = this._textEditorMetrics(st.el);
+        if (!cv || !m) return;
+        const rect = cv.getBoundingClientRect();
+        const css = this._textEditorCssScale(cv);
+        const fsCss = Math.max(8, m.fs * css);
+        const boxW = Math.max(30, m.lw * css + 6, (m.dir === 'v' ? fsCss * 4 : 0));
+        const boxH = Math.max(24, m.lh * css + 4, (m.dir === 'v' ? fsCss * 2 : 0));
+        const ta = st.ta;
+        ta.style.left = (rect.left + m.cx * css) + 'px';
+        ta.style.top = (rect.top + m.cy * css) + 'px';
+        ta.style.width = boxW + 'px';
+        ta.style.height = boxH + 'px';
+        ta.style.transform = `translate(-50%,-50%) rotate(${m.rot}deg)`;
+        ta.style.fontSize = fsCss + 'px';
+        ta.style.fontFamily = `"${st.el.fontFamily || 'Microsoft YaHei'}"`;
+        ta.style.fontWeight = String(st.el.fontWeight || 400);
+        ta.style.letterSpacing = (m.ls * css) + 'px';
+        ta.style.color = this._hex6(st.el.colorHex);
+    },
+
+    openTextEditor(el, opts) {
+        this.commitTextEditor();
+        if (!el) return;
+        const cv = this.dom && this.dom.canvas;
+        if (!cv) return;
+        const m = this._textEditorMetrics(el);
+        if (!m) return;
+        this.selectedEls = [{ kind: 'text', obj: el }];
+        this.refreshElList();
+        // 双击画布上的文字/新建文字时，把「文字」页签翻出来：字体/字号/描边就在眼前。
+        if (typeof this.switchTab === 'function') this.switchTab('text');
+        const pushedUndo = !(opts && opts.pushedUndo);
+        if (pushedUndo) this.pushUndo();
+        const ta = document.createElement('textarea');
+        ta.className = 'canvas-text-editor';
+        ta.value = String(el.text == null ? '' : el.text);
+        ta.spellcheck = false;
+        ta.setAttribute('wrap', 'off');
+        ta.style.position = 'fixed';
+        ta.style.zIndex = '9999';
+        ta.style.margin = '0';
+        ta.style.padding = '0 2px';
+        ta.style.border = '1px dashed #00e5a0';
+        ta.style.borderRadius = '3px';
+        ta.style.background = 'rgba(0,0,0,0.22)';
+        ta.style.boxSizing = 'border-box';
+        ta.style.lineHeight = '1.18';
+        ta.style.textAlign = 'center';
+        ta.style.overflow = 'hidden';
+        ta.style.resize = 'none';
+        ta.style.outline = 'none';
+        ta.style.caretColor = '#00e5a0';
+        ta.style.whiteSpace = 'pre';
+        const state = {
+            el, ta,
+            initial: ta.value,
+            isNew: !!(opts && opts.isNew),
+            pushedUndo: true,
+            cancelled: false,
+        };
+        this._textEditor = state;
+        this._positionTextEditor();
+        // 先把画布上的旧字清掉，再把 textarea 放进 DOM。只 scheduleRender 不够：
+        // 大图一帧要 100ms 以上，这期间半透明输入框会盖在旧字上，看起来就是重影。
+        // 同步重画只发生在「打开编辑器」这一次，输入时仍走 rAF 队列。
+        let cleanCanvas = false;
+        try {
+            if (typeof this.renderPreview === 'function') {
+                this.renderPreview();
+                cleanCanvas = true;
+            }
+        } catch (e) {
+            console.warn('openTextEditor render', e);
+        }
+        document.body.appendChild(ta);
+        this._positionTextEditor();
+        ta.focus();
+        this.setStatus((opts && opts.isNew ? '输入文字' : '编辑文字') + '；Ctrl+Enter 完成，Esc 取消');
+        if (opts && opts.caretEnd) {
+            const n = ta.value.length;
+            ta.setSelectionRange(n, n);
+        } else {
+            ta.select();
+        }
+        ta.addEventListener('input', () => {
+            el.text = ta.value;
+            this._positionTextEditor();
+            this.scheduleRender();
+        });
+        ta.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                this.cancelTextEditor();
+            } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                this.commitTextEditor();
+            } else if (e.key === 'Tab') {
+                e.preventDefault();
+                this.commitTextEditor();
+            }
+        });
+        ta.addEventListener('blur', () => {
+            if (this._textEditor === state) this.commitTextEditor();
+        });
+        // 同步重画失败时的兜底：至少下一帧会把旧字清掉，不至于一直叠着。
+        if (!cleanCanvas) this.scheduleRender(true);
+    },
+
+    _dropUndo() {
+        if (this.undoStack && this.undoStack.length) {
+            this.undoStack.pop();
+            this.updateHistoryButtons();
+        }
+    },
+
+    _removeTextEl(el) {
+        const arr = (this.template && this.template.decorConfig && this.template.decorConfig.textLines) || [];
+        const i = arr.indexOf(el);
+        if (i >= 0) arr.splice(i, 1);
+        this.selectedEls = (this.selectedEls || []).filter(s => s.obj !== el);
+    },
+
+    commitTextEditor() {
+        const st = this._textEditor;
+        if (!st) return;
+        this._textEditor = null;
+        st.ta.remove();
+        const el = st.el;
+        const text = st.ta.value;
+        if (!String(text).trim()) {
+            this._removeTextEl(el);
+            if (st.pushedUndo) this._dropUndo();
+            this.refreshElList();
+            this.saveCurrentTemplate();
+            this.scheduleRender(true);
+            this.setStatus('文字为空，已移除');
+            return;
+        }
+        if (st.isNew && text === st.initial) {
+            // 新建后没改占位字：当作取消，别留下一个“文字”层
+            this._removeTextEl(el);
+            if (st.pushedUndo) this._dropUndo();
+            this.refreshElList();
+            this.saveCurrentTemplate();
+            this.scheduleRender(true);
+            this.setStatus('已取消添加文字');
+            return;
+        }
+        el.text = text;
+        if (text === st.initial && st.pushedUndo) this._dropUndo();
         this.refreshElList();
         this.saveCurrentTemplate();
         this.scheduleRender(true);
         this.setStatus('文字已更新');
+    },
+
+    cancelTextEditor() {
+        const st = this._textEditor;
+        if (!st) return;
+        this._textEditor = null;
+        st.cancelled = true;
+        st.ta.remove();
+        st.el.text = st.initial;
+        if (st.isNew) this._removeTextEl(st.el);
+        if (st.pushedUndo) this._dropUndo();
+        this.refreshElList();
+        this.saveCurrentTemplate();
+        this.scheduleRender(true);
+        this.setStatus(st.isNew ? '已取消添加文字' : '已取消编辑');
     },
 
     // ── 鼠标旋转 ──
@@ -171,8 +401,30 @@ window.App = Object.assign(window.App || {}, {
     // 命中检测直接读它 —— 两处各算一遍角度迟早对不上。
     hitRotateHandle(pt) {
         const hd = this._rotHandle;
-        if (!hd) return false;
-        return Math.hypot(pt.x - hd.x, pt.y - hd.y) <= hd.r + 6;
+        const sel = this.selectedEls;
+        // 同 hitResizeHandle：选中态已变但还没重绘时，旧把手不能再生效
+        if (!hd || !sel || sel.length !== 1 || sel[0].kind !== 'text') return null;
+        return Math.hypot(pt.x - hd.x, pt.y - hd.y) <= hd.r + 6 ? hd : null;
+    },
+
+    // 悬停旋转把手时在把手附近显示提示：画布默认光标就是 grab，
+    // 只换 cursor 用户看不出变化，必须给一个可见的「可拖动」反馈。
+    _showRotateHint(hd) {
+        const hint = document.getElementById('rotHint');
+        const cv = this.dom && this.dom.canvas;
+        const stage = this.dom && this.dom.stage;
+        if (!hint || !cv || !stage || !hd) return;
+        const cr = cv.getBoundingClientRect();
+        const sr = stage.getBoundingClientRect();
+        if (!(cr.width > 0) || !(cr.height > 0)) return;
+        hint.style.left = (cr.left - sr.left + (hd.x / Math.max(1, cv.width)) * cr.width) + 'px';
+        hint.style.top = (cr.top - sr.top + (hd.y / Math.max(1, cv.height)) * cr.height - 12) + 'px';
+        hint.hidden = false;
+    },
+
+    _hideRotateHint() {
+        const hint = document.getElementById('rotHint');
+        if (hint) hint.hidden = true;
     },
 
     beginRotate(pt) {
@@ -182,6 +434,12 @@ window.App = Object.assign(window.App || {}, {
         if (!m) return null;
         const k = this.textSpaceScale();
         const px = pt.x / k, py = pt.y / k;
+        // 旋转只改这一段文字：把它从背景合成里排除，之后每帧只需
+        // 「拷贝静态背景 + 重画文字 + 选择框」，不再整帧重排文字。
+        this._skipUserEl = sel.obj;
+        this._dropDragBase();
+        this._hideRotateHint();
+        this._primeTransformGuides(sel.obj, 'text', m.cx, m.cy);
         this._rotEl = {
             ref: sel.obj, kind: sel.kind,
             cx: m.cx, cy: m.cy,
@@ -205,6 +463,80 @@ window.App = Object.assign(window.App || {}, {
         r.ref.rotation = Math.round(deg * 10) / 10;
         r.moved = true;
         this.scheduleRender();
+    },
+
+    // 四角缩放手柄：drawSelectionBox 把四个角的物理像素坐标存在 _resizeHandles。
+    // 命中半径要跟着 DPR 走，否则高分屏上 7px 的小方块只有 3.5 CSS px，点不中。
+    hitResizeHandle(pt) {
+        const hs = this._resizeHandles;
+        const sel = this.selectedEls;
+        // 取消选中后可能还没来得及重绘，旧手柄坐标仍在内存里；没有「单选文字」就不算命中
+        if (!hs || !hs.length || !pt || !sel || sel.length !== 1 || sel[0].kind !== 'text') return null;
+        const k = this.textSpaceScale();
+        const r = Math.max(8, 9 * k);
+        for (const hd of hs) {
+            if (Math.hypot(pt.x - hd.x, pt.y - hd.y) <= r) return hd;
+        }
+        return null;
+    },
+
+    // 以文字中心为基准，拖角 = 等比缩放字号（PS 的角手柄语义）。
+    // 锚定文字第一次真正拖动时先解锁成自由文字，中心不变，画面不跳。
+    beginResize(pt) {
+        const sel = this.selectedEls && this.selectedEls[0];
+        if (!sel || sel.kind !== 'text' || !sel.obj) return null;
+        const m = this.textMetricsOf(sel.obj);
+        if (!m) return null;
+        const k = this.textSpaceScale();
+        const px = pt.x / k, py = pt.y / k;
+        // 和旋转同一套快速通道：背景缓存里先排除这段文字。
+        this._skipUserEl = sel.obj;
+        this._dropDragBase();
+        this._hideRotateHint();
+        this._primeTransformGuides(sel.obj, 'text', m.cx, m.cy);
+        this._resizeEl = {
+            ref: sel.obj,
+            cx: m.cx,
+            cy: m.cy,
+            d0: Math.max(4, Math.hypot(px - m.cx, py - m.cy)),
+            fs0: Math.max(1, Number(sel.obj.fontSize) || m.fs),
+            ls0: Math.max(0, Number(sel.obj.letterSpacing) || 0),
+            sw0: Math.max(0, Number(sel.obj.strokeWidth) || 0),
+            sb0: Math.max(0, Number(sel.obj.shadowBlur) || 0),
+            sx0: Number(sel.obj.shadowOffsetX) || 0,
+            sy0: Number(sel.obj.shadowOffsetY) || 0,
+            moved: false,
+        };
+        return this._resizeEl;
+    },
+
+    applyResize(pt) {
+        const r = this._resizeEl;
+        if (!r) return false;
+        const k = this.textSpaceScale();
+        const px = pt.x / k, py = pt.y / k;
+        const d = Math.hypot(px - r.cx, py - r.cy);
+        // 手抖 1~2px 不该算一次缩放（会留下无意义的撤销步）
+        if (!r.moved && Math.abs(d - r.d0) < 2) return false;
+        if (!r.moved) {
+            r.moved = true;
+            this.pushUndo();
+            // 锚定文字没有可写的中心；先按当前几何中心解锁，再缩放
+            if (r.ref.align !== 'free') this.promoteTextToFree(r.ref);
+        }
+        const ratio = Math.max(0.05, Math.min(20, d / r.d0));
+        const fs = Math.max(4, Math.min(2000, Math.round(r.fs0 * ratio)));
+        const kk = fs / r.fs0;
+        r.ref.fontSize = fs;
+        if (r.ls0 > 0) r.ref.letterSpacing = Math.round(r.ls0 * kk * 10) / 10;
+        if (r.sw0 > 0) r.ref.strokeWidth = Math.round(r.sw0 * kk * 10) / 10;
+        if (r.sb0 > 0) r.ref.shadowBlur = Math.round(r.sb0 * kk * 10) / 10;
+        if (r.sx0) r.ref.shadowOffsetX = Math.round(r.sx0 * kk * 10) / 10;
+        if (r.sy0) r.ref.shadowOffsetY = Math.round(r.sy0 * kk * 10) / 10;
+        this.syncSliderFromEl({ kind: 'text', obj: r.ref });
+        this._positionTextEditor();
+        this.scheduleRender();
+        return true;
     },
 
     promoteTextToFree(el) {
@@ -617,6 +949,24 @@ window.App = Object.assign(window.App || {}, {
         };
     },
 
+    // 旋转/拖角缩放时，元素中心是固定的。提前按中心算一次命中的参考线，
+    // drawLogoGuides 就能在旋转过程中把中心所在的线高亮出来。
+    // 只借 snapToGuides 的命中标签，不写回 x/y —— 旋转不应该偷偷移动元素。
+    _primeTransformGuides(el, kind, cx, cy) {
+        const cv = this.dom && this.dom.canvas;
+        if (!cv || !el) return;
+        const lw = (cv._logW > 1) ? cv._logW : cv.width;
+        const lh = (cv._logH > 1) ? cv._logH : cv.height;
+        if (!(lw > 1) || !(lh > 1)) return;
+        const snap = this.snapToGuides(cx, cy, lw, lh, el, kind || 'text');
+        this._logoSnapV = snap.v;
+        this._logoSnapH = snap.h;
+        this._logoSnapEdgeV = snap.vEdge;
+        this._logoSnapEdgeH = snap.hEdge;
+        this._logoSnapPhotoV = snap.photoV;
+        this._logoSnapPhotoH = snap.photoH;
+    },
+
     textureEl(src) {
         if (!src) return null;
         if (this.logoImgCache[src]) return this.logoImgCache[src];
@@ -669,13 +1019,27 @@ window.App = Object.assign(window.App || {}, {
         const $ = this.$;
         const isText = !!(sel && sel.kind === 'text' && sel.obj);
         const textRows = ['rowElTextContent', 'rowElTextFont', 'rowElTextSize', 'rowElTextColor',
-                          'rowElTextDir', 'rowElTextSpacing'];
+                          'rowElTextDir', 'rowElTextSpacing',
+                          'rowElTextWeight', 'rowElTextStroke', 'rowElTextStrokeWidth',
+                          'rowElTextShadow', 'rowElTextShadowBlur', 'rowElTextShadowOffset'];
         textRows.forEach(id => {
             const r = $(id);
             if (r) r.style.display = isText ? '' : 'none';
         });
         const rowScale = $('rowElSize');
         if (rowScale) rowScale.style.display = isText ? 'none' : '';
+        // 「文字」页签顶部的状态：没选中文字时告诉用户去哪选，选中后显示当前这段字。
+        // 样式行本身只在选中文字时出现，避免整页常驻一堆灰行。
+        const status = $('txtStyleStatus');
+        if (status) {
+            status.textContent = isText
+                ? '正在调整：文字「' + String(sel.obj.text || '空文字').replace(/\s+/g, ' ').substring(0, 10) + '」'
+                : '未选中文字：先在画布上点一段文字';
+        }
+        // Logo → 元素管理里只留位置/旋转/层级；给选中文字的人一条明确指路，
+        // 不然把字体/描边搬走后，用户会以为功能没了。
+        const hint = $('elTextStyleHint');
+        if (hint) hint.style.display = isText ? '' : 'none';
         if (!isText) return;
 
         const e = sel.obj;
@@ -706,10 +1070,52 @@ window.App = Object.assign(window.App || {}, {
         const ls = Math.round(Number(e.letterSpacing) || 0);
         if (sl) sl.value = Math.max(0, Math.min(40, ls));
         this.updateLabel('lblElTextSpacing', ls + 'px');
+
+        // ── 字重 ──
+        const cbW = $('cbElTextWeight');
+        if (cbW) {
+            const w = String(Math.round(Number(e.fontWeight) || 400));
+            if ([].some.call(cbW.options, o => o.value === w)) cbW.value = w;
+            else cbW.value = '400';
+        }
+
+        // ── 描边 / 阴影 ──
+        // 老预设只有 enableShadow 开关、没有模糊/偏移字段（引擎也不会画），
+        // 所以“阴影”勾选状态要与引擎同源：字段齐全才算真的开着，否则显示未勾选。
+        const strokeOn = Number(e.strokeEnable) === 1;
+        const chkStroke = $('chkElTextStroke');
+        if (chkStroke) chkStroke.checked = strokeOn;
+        const cpStroke = $('cpElTextStroke');
+        if (cpStroke) cpStroke.value = this._hex6(e.strokeColorHex || '#000000');
+        const slSW = $('slElTextStrokeWidth');
+        const sw = Math.max(1, Math.round(Number(e.strokeWidth) || Math.max(1, fs * 0.06)));
+        if (slSW) slSW.value = Math.min(40, sw);
+        this.updateLabel('lblElTextStrokeWidth', Math.min(40, sw) + 'px');
+        const rowSW = $('rowElTextStrokeWidth');
+        if (rowSW) rowSW.classList.toggle('row-disabled', !strokeOn);
+
+        const shadowOn = Number(e.enableShadow) === 1
+            && (e.shadowBlur != null || e.shadowOffsetX != null || e.shadowOffsetY != null);
+        const chkShadow = $('chkElTextShadow');
+        if (chkShadow) chkShadow.checked = shadowOn;
+        const cpShadow = $('cpElTextShadow');
+        if (cpShadow) cpShadow.value = this._hex6(e.shadowColorHex || '#000000');
+        const slSB = $('slElTextShadowBlur');
+        const sb = Math.max(0, Math.round(Number(e.shadowBlur) || 8));
+        if (slSB) slSB.value = Math.min(60, sb);
+        this.updateLabel('lblElTextShadowBlur', Math.min(60, sb) + 'px');
+        const inSX = $('inpElTextShadowX'), inSY = $('inpElTextShadowY');
+        if (inSX) inSX.value = Number(e.shadowOffsetX) || 0;
+        if (inSY) inSY.value = (e.shadowOffsetY != null ? Number(e.shadowOffsetY) : 2) || 0;
+        ['rowElTextShadowBlur', 'rowElTextShadowOffset'].forEach(id => {
+            const r = $(id);
+            if (r) r.classList.toggle('row-disabled', !shadowOn);
+        });
     },
 
     drawSelectionBox() {
         this._rotHandle = null;   // 只有「单选一个元素」时才会重新写它
+        this._resizeHandles = null;
         try {
             const canvas = this.dom.canvas;
             if (!canvas || !this.selectedEls || !this.selectedEls.length) return;
@@ -717,7 +1123,10 @@ window.App = Object.assign(window.App || {}, {
             for (const sel of this.selectedEls) {
                 const e = sel.obj;
                 if (!e) continue;
-                // 文字用真实度量框（含方向/旋转）：原来按 logo 的 size 画 60px 方块，
+                // 正在画布内编辑的文字已经有 textarea 边框和把手外的编辑框，
+                // 再画一遍选中框会出现两层虚线，视觉上很脏。
+                if (this._textEditor && this._textEditor.el === e) continue;
+                // 文字用真实度量框（含方向/旋转/多行）：原来按 logo 的 size 画 60px 方块，
                 // 对文字既不是它的位置也不是它的大小。
                 if (sel.kind === 'text' && typeof window.textLineMetrics === 'function') {
                     const cw = (canvas._logW > 1) ? canvas._logW : canvas.width;
@@ -725,20 +1134,35 @@ window.App = Object.assign(window.App || {}, {
                     const k = this.textSpaceScale();
                     const m = window.textLineMetrics(e, cw, chh, false, 0, 0);
                     const bw = Math.max(14, m.lw * k), bh = Math.max(14, m.lh * k);
+                    const rotTh = m.rot * Math.PI / 180;
                     ctx.save();
                     ctx.translate(m.cx * k, m.cy * k);
-                    if (m.rot) ctx.rotate(m.rot * Math.PI / 180);
+                    if (m.rot) ctx.rotate(rotTh);
                     ctx.strokeStyle = '#00e5a0';
                     ctx.lineWidth = 2;
                     ctx.setLineDash([6, 4]);
                     ctx.strokeRect(-bw / 2 - 3, -bh / 2 - 3, bw + 6, bh + 6);
                     ctx.setLineDash([]);
-                    // 四个角的小方块：提示「可拖」，与其它元素一致
+                    // 四个角的小方块：现在不只是提示「可拖」，拖它们会等比缩放字号。
                     ctx.fillStyle = '#00e5a0';
-                    const h = 5;
-                    [[-bw/2-3, -bh/2-3], [bw/2+3-h, -bh/2-3], [-bw/2-3, bh/2+3-h], [bw/2+3-h, bh/2+3-h]].forEach(([x, y]) => {
-                        ctx.fillRect(x, y, h, h);
-                    });
+                    const h = Math.max(6, 7 * k);
+                    const corners = [
+                        ['nw', -bw / 2 - 3, -bh / 2 - 3],
+                        ['ne', bw / 2 + 3 - h, -bh / 2 - 3],
+                        ['sw', -bw / 2 - 3, bh / 2 + 3 - h],
+                        ['se', bw / 2 + 3 - h, bh / 2 + 3 - h],
+                    ];
+                    corners.forEach(([, x, y]) => ctx.fillRect(x, y, h, h));
+                    if (this.selectedEls.length === 1) {
+                        const hand = h / 2;
+                        this._resizeHandles = corners.map(([name, x, y]) => {
+                            const lx = x + hand, ly = y + hand;
+                            const ax = m.cx * k + lx * Math.cos(rotTh) - ly * Math.sin(rotTh);
+                            const ay = m.cy * k + lx * Math.sin(rotTh) + ly * Math.cos(rotTh);
+                            return { name, x: ax, y: ay,
+                                cursor: (name === 'nw' || name === 'se') ? 'nwse-resize' : 'nesw-resize' };
+                        });
+                    }
                     // 旋转把手：框顶外侧一个圆点。位置在这里算一次并存下来，
                     // 命中检测(mousedown)直接用 —— 两处各算一遍角度迟早对不上。
                     if (this.selectedEls.length === 1) {
@@ -786,10 +1210,14 @@ window.App = Object.assign(window.App || {}, {
         } catch(err) { console.warn('drawSelectionBox', err); }
     },
 
-    // 拖 logo 时叠加参考线:三分/中心线、四边吸附高亮、安全区提示
+    // 拖动/旋转/拖角缩放时叠加参考线:三分/中心线、四边吸附高亮、安全区提示。
+    // 旋转时位置不动，但中心所在的线仍然高亮，并额外画一组随文字转动的轴线。
     drawLogoGuides() {
         try {
-            if (!this._dragEl) return;
+            const xf = (typeof this._activeTransform === 'function')
+                ? this._activeTransform()
+                : (this._dragEl || this._rotEl || this._resizeEl);
+            if (!xf || !xf.ref) return;
             const canvas = this.dom.canvas;
             if (!canvas || !canvas.width) return;
             const ctx = canvas.getContext('2d');
@@ -824,7 +1252,12 @@ window.App = Object.assign(window.App || {}, {
             else if (eh === 'bottom') drawLine(0, ch - 1, cw, ch - 1, true);
 
             // 安全区:提示"贴到这里以内不会被裁"。(居中吸附时不画,避免与中心线视觉混淆)
-            const dim = this._logoDrawSize(this._dragEl.ref, this._dragEl.kind);
+            // 文字度量是逻辑口径；参考线画在物理画布上，需要乘 DPR 才是真实尺寸。
+            let dim = this._logoDrawSize(xf.ref, xf.kind || 'text');
+            if ((xf.kind || 'text') === 'text') {
+                const tk = this.textSpaceScale();
+                dim = { w: dim.w * tk, h: dim.h * tk };
+            }
             const kx = Math.max(10, Math.min(cw * 0.05, dim.w / 2));
             const ky = Math.max(10, Math.min(ch * 0.05, dim.h / 2));
             ctx.setLineDash([7, 6]);
@@ -855,9 +1288,9 @@ window.App = Object.assign(window.App || {}, {
                 if (ph === 'pvcenter') drawP(0, pr.y + pr.h / 2, cw, pr.y + pr.h / 2, true);
             }
 
-            // 命中反馈:在元素中心画瞄准环
-            if (this._logoSnapV != null || this._logoSnapH != null || ev || eh || this._logoSnapPhotoV || this._logoSnapPhotoH) {
-                const el = this._dragEl.ref;
+            // 命中反馈:拖动时在元素中心画瞄准环（旋转/缩放不画，避免盖住文字）
+            if (this._dragEl && (this._logoSnapV != null || this._logoSnapH != null || ev || eh || this._logoSnapPhotoV || this._logoSnapPhotoH)) {
+                const el = xf.ref;
                 const size = el.size || 60;
                 // 与 hitTestLogos 同理:瞄准环要画在 logo 实际绘制处(rel 用 _logW 口径),
                 // 画布口径会偏 2 倍(dpr=2 时),环与 logo 对不上。
@@ -881,8 +1314,70 @@ window.App = Object.assign(window.App || {}, {
                 ctx.fillStyle = '#00e5a0';
                 ctx.fill();
             }
+            if (this._rotEl || this._resizeEl) this._drawTransformAxes(ctx, xf, cw, ch);
             ctx.restore();
         } catch(err) { console.warn('drawLogoGuides', err); }
+    },
+
+    // 旋转/缩放时围绕文字框画一组随角度转动的虚线轴：从框的四边向外延伸，
+    // 不穿过文字；中心点标出旋转轴心。画布三分/中心线由 drawLogoGuides 负责，
+    // 这里补的是「当前角度」这一层参考。
+    _drawTransformAxes(ctx, xf, cw, ch) {
+        try {
+            if (!xf || !xf.ref || typeof window.textLineMetrics !== 'function') return;
+            if (!this._rotEl && !this._resizeEl) return;
+            const cv = this.dom && this.dom.canvas;
+            if (!cv || !cw || !ch) return;
+            const k = this.textSpaceScale();
+            const logW = (cv._logW > 1) ? cv._logW : cw;
+            const logH = (cv._logH > 1) ? cv._logH : ch;
+            const m = window.textLineMetrics(xf.ref, logW, logH, false, 0, 0);
+            if (!m) return;
+            const cx = m.cx * k, cy = m.cy * k;
+            const th = m.rot * Math.PI / 180;
+            const co = Math.cos(th), si = Math.sin(th);
+            const hw = Math.max(7, m.lw * k / 2);
+            const hh = Math.max(7, m.lh * k / 2);
+            const gap = 10 * k;
+            // 轴线只伸出文字框一小段：足够看清当前角度，又不会在整张照片上
+            // 拉出一个巨大的 X 盖住画面。画布三分/中心线由 drawLogoGuides 负责。
+            const arm = Math.max(70 * k, Math.min(180 * k, Math.min(cw, ch) * 0.16));
+            const ray = (ux, uy, start) => {
+                const end = start + arm;
+                const x1 = cx + ux * start, y1 = cy + uy * start;
+                const x2 = cx + ux * end, y2 = cy + uy * end;
+                ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                ctx.strokeStyle = 'rgba(0,0,0,0.42)';
+                ctx.lineWidth = 3.5 * k;
+                ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                ctx.strokeStyle = 'rgba(0,229,160,0.55)';
+                ctx.lineWidth = 1.25 * k;
+                ctx.setLineDash([6 * k, 5 * k]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            };
+            ctx.save();
+            // 文字框本地 X/Y 轴的四根射线，从框外开始，避免压在文字上。
+            // 上方那根给旋转把手让位，从把手外侧再起笔，别把把手盖住。
+            ray(co, si, hw + gap);
+            ray(-co, -si, hw + gap);
+            ray(-si, co, hh + gap);
+            ray(si, -co, hh + gap + 34 * k);
+            // 旋转轴心：小圆点 + 十字
+            const pr = 5 * k;
+            ctx.strokeStyle = 'rgba(0,229,160,0.85)';
+            ctx.lineWidth = 1.25 * k;
+            ctx.beginPath();
+            ctx.moveTo(cx - pr, cy); ctx.lineTo(cx + pr, cy);
+            ctx.moveTo(cx, cy - pr); ctx.lineTo(cx, cy + pr);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(cx, cy, 2.5 * k, 0, Math.PI * 2);
+            ctx.fillStyle = '#00e5a0';
+            ctx.fill();
+            ctx.restore();
+        } catch (err) { console.warn('_drawTransformAxes', err); }
     },
 
     armLogoPlacement(logo) {

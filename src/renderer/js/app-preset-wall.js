@@ -21,6 +21,10 @@ const WALL_CARD_SCALE = 0.7;
 // 外圈单张卡仍有 82Hz，165Hz 屏上肉眼仍是连续缩放，但逐帧 scale 写入少一半。
 // 保留开关便于回归对比：false = 原来的 9 格全部每帧。
 const WALL_FOCUS_STAGGER = true;
+// 浏览方式：'infinite' = 现在的周期磁贴墙（拖不到头，像永远看不完）；
+// 'finite' = 同一批预设只铺一份、偏移夹在首尾之间（拖到头就停，右侧有进度条）。
+// 用户可在墙头切换，选择写 localStorage —— 抱怨"不知道划没划过"的人下次开机还是有限墙。
+const WALL_MODE_KEY = 'qfs_wall_mode';
 const _pwPanCfg = {
     dragThresholdPx: 7,
     // 点选容差：按下到抬起位移不超过它、且时间够短，就算一次点击（哪怕中途已经越过拖动阈值）。
@@ -46,6 +50,8 @@ window.App = Object.assign(window.App || {}, {
             block: null,  // 周期网格块（90 格）
             sub: $('pwSub'),
             skip: $('pwSkip'),
+            mode: $('pwMode'),
+            rail: $('pwRail'),
             back: $('btnBackWall'),
             backSep: $('backWallSep')
         };
@@ -84,6 +90,14 @@ window.App = Object.assign(window.App || {}, {
             }
         });
         if (el.back) el.back.addEventListener('click', () => this.openPresetWall());
+        // 无限 / 有限 切换：一个委托监听，按钮状态由 syncWallModeUI 统一回写
+        if (el.mode) {
+            el.mode.addEventListener('click', (e) => {
+                const btn = (e.target instanceof Element) ? e.target.closest('[data-wall-mode]') : null;
+                if (!btn) return;
+                this.setWallMode(btn.dataset.wallMode);
+            });
+        }
         // 165Hz 屏才启用“外圈隔帧”；60Hz 屏每帧都更新，否则外圈只有 30Hz，会看出阶梯。
         // 用 3 个 rAF 间隔取中位数，窗口被节流/高负载时测出大间隔就退回全量更新。
         this._wallHighRefresh = false;
@@ -349,11 +363,124 @@ window.App = Object.assign(window.App || {}, {
         window.addEventListener('focus', this._wallFocusRefresh);
 
         this.renderPresetWall();
+        // 开关状态按上次的选择回填（默认无限），进度条按模式显隐
+        this.syncWallModeUI();
     },
 
     // 用户是否用过「换封面」（用过才值得每次开墙扫一遍目录）
     wallCoversEnabled() {
         try { return localStorage.getItem('qfs_wall_covers_on') === '1'; } catch (_) { return false; }
+    },
+
+    // 当前浏览方式：'infinite' | 'finite'。缓存到 _wallMode，避免每帧读 localStorage。
+    // 默认无限（老行为不变）；用户切过一次之后按他选的来，重启也记得。
+    wallMode() {
+        if (this._wallMode === 'finite' || this._wallMode === 'infinite') return this._wallMode;
+        let v = '';
+        try { v = localStorage.getItem(WALL_MODE_KEY) || ''; } catch (_) { /* 隐私模式：按默认 */ }
+        this._wallMode = v === 'finite' ? 'finite' : 'infinite';
+        return this._wallMode;
+    },
+
+    // 切换浏览方式：重排整墙（有限墙的格子数、份数都不一样），并把位移/选中复位。
+    // 有限墙是有"第一屏"的，切过去停在墙中间就等于又让人找不着北。
+    setWallMode(mode) {
+        const next = mode === 'finite' ? 'finite' : 'infinite';
+        const changed = next !== this.wallMode();
+        this._wallMode = next;
+        try { localStorage.setItem(WALL_MODE_KEY, next); } catch (_) { /* 存不了也照样生效 */ }
+        this.syncWallModeUI();
+        if (!changed) return false;
+        this.stopWallMotion();
+        const el = this._wallDom;
+        if (el && el.grid) for (const t of el.grid.querySelectorAll('.pw-tile.selected')) t.classList.remove('selected');
+        this._wallPan = { x: 0, y: 0 };
+        this._wallOffsetX = 0;
+        this._wallOffsetY = 0;
+        this._wallSel = { r: 0, c: 0 };
+        this._wallBounds = null;      // 让 renderPresetWall 按新模式重算几何
+        this.renderPresetWall();
+        return true;
+    },
+
+    // 开关状态 / 进度条显隐回写（初始化、切换、开墙时都走这里，避免两处各写一套）
+    syncWallModeUI() {
+        const mode = this.wallMode();
+        const box = (this._wallDom && this._wallDom.mode) || document.getElementById('pwMode');
+        if (box) {
+            for (const btn of box.querySelectorAll('[data-wall-mode]')) {
+                const on = btn.dataset.wallMode === mode;
+                btn.classList.toggle('is-on', on);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            }
+        }
+        const rail = (this._wallDom && this._wallDom.rail) || document.getElementById('pwRail');
+        if (rail) rail.hidden = mode !== 'finite';
+        const sub = (this._wallDom && this._wallDom.sub) || document.getElementById('pwSub');
+        if (sub) sub.textContent = this.wallSubText();
+        this.updateWallRail();
+        return mode;
+    },
+
+    // 副标题：有限墙把"不循环"直接写在脸上，比任何图标都省解释
+    wallSubText() {
+        const data = window.PRESET_WALL;
+        const n = (data && Array.isArray(data.items) && data.items.length) || 87;
+        return this.wallMode() === 'finite'
+            ? n + ' 种预设 · 有首有尾，拖到头即止 · 点击卡片进入编辑'
+            : n + ' 种预设 · 按住拖动浏览 · 点击卡片进入编辑';
+    },
+
+    // 墙的几何：两种模式共用同一张 9×10 网格、同一套卡片尺寸 —— 切模式时墙不该"换个版面"，
+    // 只该"有没有尽头"不同。无限墙把这张网格铺 2×2 份用于回绕；有限墙只铺 1 份、四边夹住。
+    // （曾经让有限墙按视口算列数"刚好塞满"，结果横向没有可滑的余量、拖左右完全不动，
+    //   同一块画布换个模式就少一个方向，用户第一反应就是"坏了"。）
+    wallGeom(vw) {
+        const pad = 28, gap = 24;
+        const mode = this.wallMode();
+        const base = Math.max(240, Math.min(340, Math.floor((vw - pad * 2 - gap * 2) / 4)));
+        const tw = Math.round(base * WALL_CARD_SCALE);
+        const th = Math.round(tw * 1.25);
+        const data = window.PRESET_WALL;
+        const n = (data && Array.isArray(data.items) && data.items.length) || 87;
+        const P = 9, Q = 10;
+        return {
+            mode, pad, gap, tw, th, P, Q, n,
+            BW: pad * 2 + P * tw + (P - 1) * gap,
+            BH: pad * 2 + Q * th + (Q - 1) * gap
+        };
+    },
+
+    // 有限墙的位移夹取：内容比视口小就居中，比视口大就夹在 [视口-内容, 0]。
+    // 无限墙不走这里（它取模回绕，根本没有边界）。
+    clampWallPan(x, y) {
+        const b = this._wallBounds;
+        if (!b) return { x, y };
+        const vw = this._wallViewW || 0, vh = this._wallViewH || 0;
+        const one = (v, content, view) => {
+            if (content <= view) return Math.round((view - content) / 2);
+            return Math.max(view - content, Math.min(0, v));
+        };
+        return { x: one(x, b.BW, vw), y: one(y, b.BH, vh) };
+    },
+
+    // 进度条：滑块高度 = 视口/内容，位置 = 已滑过的比例。拖到顶/底时滑块贴边，
+    // 用户一眼就能看出"到头了"还是"还有一半"。
+    updateWallRail() {
+        const rail = (this._wallDom && this._wallDom.rail) || document.getElementById('pwRail');
+        if (!rail) return;
+        const b = this._wallBounds;
+        const grid = this._wallDom && this._wallDom.grid;
+        if (!b || !grid || this.wallMode() !== 'finite') { rail.hidden = true; return; }
+        rail.hidden = false;
+        const bar = rail.firstElementChild;
+        if (!bar) return;
+        const vh = this._wallViewH || grid.clientHeight || 1;
+        const scrollable = Math.max(0, b.BH - vh);
+        const thumb = Math.max(6, Math.min(100, (vh / b.BH) * 100));
+        const ratio = scrollable > 1 ? (-this._wallOffsetY) / scrollable : 0;
+        bar.style.height = thumb.toFixed(2) + '%';
+        bar.style.top = (Math.max(0, Math.min(1, ratio)) * (100 - thumb)).toFixed(2) + '%';
     },
 
     // 是否降级动效：系统「减少动态效果」开启时返回 true。
@@ -387,6 +514,8 @@ window.App = Object.assign(window.App || {}, {
         // 3128×4272 在 DPR=2 下约 440MB 纹理，软件渲染每帧 blit 这个量级就是几十毫秒。
         // 2D 平移不建层，Chromium 只重绘视口内那十几张卡。
         wall.style.transform = 'translate(' + snap(this._wallOffsetX) + 'px, ' + snap(this._wallOffsetY) + 'px)';
+        // 有限墙的进度条跟着位移走：写两个百分比，跟 buildWallTransform 同一次样式变更里完成
+        if (this.wallMode() === 'finite') this.updateWallRail();
     },
 
     // 回绕跨度 = 一个完整周期 BW/BH。之所以能取满一个周期：墙渲染了 2×2 份相同的块，
@@ -398,15 +527,24 @@ window.App = Object.assign(window.App || {}, {
         return { w: Math.max(1, b.BW), h: Math.max(1, b.BH) };
     },
 
-    // 平移到未回绕坐标 (x, y)：累加器保留原值，可见偏移取模回绕 —— 惯性和滚轮都走这里，
+    // 平移到未回绕坐标 (x, y)：无限墙累加器保留原值、可见偏移取模回绕 —— 惯性和滚轮都走这里，
     // 这样两者叠加时不会因为回绕跳变而断掉速度。
+    // 有限墙没有回绕：直接夹在首尾之间，连累加器一起夹 —— 否则松手惯性会在墙外继续"积攒"位移，
+    // 往反方向拖时先要空走一段才动，手感像卡住。
     panWallTo(x, y) {
         const b = this._wallBounds;
         if (!b) return;
-        const span = this.wallWrapSpan();
-        this._wallPan = { x, y };
-        this._wallOffsetX = _pwWrap(x, span.w);
-        this._wallOffsetY = _pwWrap(y, span.h);
+        if (this.wallMode() === 'finite') {
+            const c = this.clampWallPan(x, y);
+            this._wallPan = { x: c.x, y: c.y };
+            this._wallOffsetX = c.x;
+            this._wallOffsetY = c.y;
+        } else {
+            const span = this.wallWrapSpan();
+            this._wallPan = { x, y };
+            this._wallOffsetX = _pwWrap(x, span.w);
+            this._wallOffsetY = _pwWrap(y, span.h);
+        }
         // 倾斜卡片的几何缓存跟着墙一起失效；下一帧只重量一次。
         if (this._wallTilt) { this._wallTilt.box = null; this._wallTilt.lastPaint = 0; }
         this.applyWallTransform();
@@ -507,6 +645,7 @@ window.App = Object.assign(window.App || {}, {
 
     // Bravais 式周期布局：单块 9 列 × 10 行 = 90 格（87 张预设循环填充），整墙铺 2×2 份相同块，
     // 块宽高 BW/BH 均大于视口，偏移在 [-BW,0]×[-BH,0] 内取模回绕 → 无缝无限。
+    // 有限墙则只有 1 份、网格不变，位移四边夹住（左右照样能拖，只是拖到头就停）。
     layoutWallTiles() {
         const el = this._wallDom;
         const grid = el && el.grid;
@@ -516,31 +655,32 @@ window.App = Object.assign(window.App || {}, {
         if (this._wallTilt) { this._wallTilt.box = null; this._wallTilt.lastPaint = 0; }
         const vw = grid.clientWidth;
         if (vw <= 0) return;
-        const pad = 28, gap = 24, P = 9, Q = 10;
-        // 卡片尺寸：基准是"视口约显示 3×3 张"，再乘 WALL_CARD_SCALE 整体缩放。
-        // 0.7 → 340px 档位实际落在 224px，一屏约 5×2.5 张。
-        const base = Math.max(240, Math.min(340, Math.floor((vw - pad * 2 - gap * 2) / 4)));
-        const tw = Math.round(base * WALL_CARD_SCALE);
-        const th = Math.round(tw * 1.25);
-        const BW = pad * 2 + P * tw + (P - 1) * gap;
-        const BH = pad * 2 + Q * th + (Q - 1) * gap;
-        this._wallBounds = { pad, gap, tw, th, P, Q, BW, BH };
+        const b = this.wallGeom(vw);
+        // 换模式要重建：无限 4 份拷贝、有限 1 份，节点数不一样（尺寸变了不用重建，下面会重写宽度）。
+        // 用"渲染时记下的模式+行列数"比对，而不是数节点：重建后 layoutWallTiles 会再进来一次，
+        // 这时 key 已经一致，不会无限递归。
+        if (el.renderedKey !== b.mode + ':' + b.P + 'x' + b.Q) {
+            this.renderPresetWall();
+            return;
+        }
+        const { P, Q } = b;
+        this._wallBounds = b;
         // 视口尺寸缓存：focusWall 每帧都要用，但 clientWidth/clientHeight 是布局读取；
         // 拖动时 pointermove 可能一帧触发多次，读一次就够，别让每帧都去问布局。
         this._wallViewW = vw;
         this._wallViewH = grid.clientHeight;
         blocks.forEach((block, i) => {
-            block.style.width = BW + 'px';
-            block.style.height = BH + 'px';
-            block.style.gridTemplateColumns = 'repeat(' + P + ', ' + tw + 'px)';
-            block.style.gridTemplateRows = 'repeat(' + Q + ', ' + th + 'px)';
+            block.style.width = b.BW + 'px';
+            block.style.height = b.BH + 'px';
+            block.style.gridTemplateColumns = 'repeat(' + P + ', ' + b.tw + 'px)';
+            block.style.gridTemplateRows = 'repeat(' + Q + ', ' + b.th + 'px)';
             // 2×2：左上角一份在 (0,0)，右/下各偏移一个周期（多出来的两份专门用来填回绕边界）
-            block.style.transform = 'translate(' + ((i % 2) * BW) + 'px, ' + (Math.floor(i / 2) * BH) + 'px)';
+            block.style.transform = 'translate(' + ((i % 2) * b.BW) + 'px, ' + (Math.floor(i / 2) * b.BH) + 'px)';
             const tiles = Array.from(block.querySelectorAll('.pw-tile'));
             for (const t of tiles) {
-                t.style.width = tw + 'px';
+                t.style.width = b.tw + 'px';
                 const img = t.querySelector('.pw-tile-cover img');
-                if (img) img.style.height = th + 'px';
+                if (img) img.style.height = b.th + 'px';
             }
         });
         // 偏移保持当前值（可为任意等价周期位置），拖动时由 pointermove 取模回绕
@@ -575,6 +715,7 @@ window.App = Object.assign(window.App || {}, {
         const distNorm = Math.max(180, Math.min(b.tw, b.th) * 1.7);
         const tilt = this._wallTilt;
         const wrap = (v, n) => ((v % n) + n) % n;
+        const finite = this.wallMode() === 'finite';
         const canStagger = WALL_FOCUS_STAGGER && !!this._wallHighRefresh;
         // 外圈隔帧的相位：同一帧里 pointermove 可能多次调用 focusWall，用时间门限保证一帧只翻一次。
         const tickNow = performance.now();
@@ -611,8 +752,10 @@ window.App = Object.assign(window.App || {}, {
                 const wy = b.pad + r * (b.th + b.gap) + b.th / 2 + oy;
                 const dx = wx - cx;
                 const dy = wy - cy;
-                const ddx = dx - Math.round(dx / b.BW) * b.BW;
-                const ddy = dy - Math.round(dy / b.BH) * b.BH;
+                // 无限墙：取"最近的那份周期拷贝"的距离（否则中心的卡永远算很远）；
+                // 有限墙只有一份，直接用真实距离，墙边那张卡就该是小的。
+                const ddx = finite ? dx : dx - Math.round(dx / b.BW) * b.BW;
+                const ddy = finite ? dy : dy - Math.round(dy / b.BH) * b.BH;
                 const dist = Math.hypot(ddx, ddy);
                 const u = Math.min(1, dist / distNorm);
                 const s = maxScale - u * (maxScale - minScale);
@@ -706,8 +849,8 @@ window.App = Object.assign(window.App || {}, {
         return applied;
     },
 
-    // 渲染 90 格周期网格（87 张预设循环填充）：
-    // 槽位 i = r*P + c，映射到 preset i % 87 —— 周期网格内容循环，配合取模回绕形成无缝无限墙。
+    // 渲染墙：无限墙 = 9×10 的周期块铺 2×2 份（87 张预设循环填充，槽位 i 映射 preset i % 87）；
+    // 有限墙 = 只铺 1 份，槽位 i 就是 preset i，多出来的格子直接不建 —— 每张预设只出现一次。
     renderPresetWall() {
         const el = this._wallDom;
         if (!el || !el.grid) return;
@@ -720,15 +863,16 @@ window.App = Object.assign(window.App || {}, {
         }
         const wall = document.createElement('div');
         wall.className = 'pw-wall';
-        const b = this._wallBounds || {
-            pad: 28, gap: 24, P: 9, Q: 10,
-            tw: Math.round(300 * WALL_CARD_SCALE), th: Math.round(300 * WALL_CARD_SCALE * 1.25)
-        };
+        // 几何按当前视口现算：初始化时墙可能还没显示（clientWidth=0），退到 1400 估一个，
+        // 真正打开时 layoutWallTiles 会发现 key 对不上并重建一次。
+        const vw = el.grid.clientWidth || 0;
+        const b = this.wallGeom(vw > 0 ? vw : 1400);
+        const finite = b.mode === 'finite';
+        const copies = finite ? 1 : 4;
         const cells = {};
         const blocks = [];
         const n = data.items.length;
-        const makeTile = (r, c, copy) => {
-            const item = data.items[(r * b.P + c) % n];
+        const makeTile = (r, c, copy, item) => {
             const tile = document.createElement('div');
             tile.className = 'pw-tile';
             tile.dataset.cell = r + '_' + c;
@@ -774,14 +918,19 @@ window.App = Object.assign(window.App || {}, {
         };
         // 2×2 份相同的块：多出来的三份专门填回绕边界的空白。四份的同一格共用同一张预设，
         // 所以偏移跨过一整周期回绕时，屏幕上的画面逐像素一致 —— 不会"跳一下像刷新"。
-        for (let copy = 0; copy < 4; copy++) {
+        // 有限墙只铺 1 份（copies=1），没有边界填充的需求，也不该有重复卡片。
+        for (let copy = 0; copy < copies; copy++) {
             const block = document.createElement('div');
             block.className = 'pw-block';
             block.dataset.copy = String(copy);
             const frag = document.createDocumentFragment();
             for (let r = 0; r < b.Q; r++) {
                 for (let c = 0; c < b.P; c++) {
-                    const tile = makeTile(r, c, copy);
+                    const slot = r * b.P + c;
+                    // 有限墙：槽位就是预设下标，越过最后一个预设的格子留空，不循环
+                    if (finite && slot >= n) continue;
+                    const item = data.items[finite ? slot : slot % n];
+                    const tile = makeTile(r, c, copy, item);
                     // 初始静态态（远离中心时的小卡状态）；opacity 在内容层上
                     tile.style.transform = 'scale(0.72)';
                     tile.__s = 0.72;
@@ -803,10 +952,13 @@ window.App = Object.assign(window.App || {}, {
         el.cells = cells;
         el.cellsReady = true;
         el.block = blocks[0]; // 兼容仍按单块取用的地方（选择态、测试）
+        // 记下这一版是按什么模式/行列数渲染的：layoutWallTiles 靠它判断要不要重建
+        el.renderedKey = b.mode + ':' + b.P + 'x' + b.Q;
+        this._wallBounds = b;
         this.layoutWallTiles();
         // 墙整体淡入（卡片自身不做动画，transform 由 JS 接管）；降级动效时直接出现
         if (!this.wallReducedMotion()) wall.style.animation = 'pwWallIn .55s ease-out both';
-        if (el.sub) el.sub.textContent = data.items.length + ' 种预设 · 按住拖动浏览 · 点击卡片进入编辑';
+        if (el.sub) el.sub.textContent = this.wallSubText();
     },
 
     // 方向键在磁贴墙中移动选中卡片：上下左右 ±1（周期内循环），选中卡片自动滚到视口中心
@@ -826,8 +978,16 @@ window.App = Object.assign(window.App || {}, {
             t.card = null; t.rx = 0; t.ry = 0;
         }
         const sel = this._wallSel;
-        sel.r = ((sel.r + dr) % b.Q + b.Q) % b.Q;
-        sel.c = ((sel.c + dc) % b.P + b.P) % b.P;
+        if (this.wallMode() === 'finite') {
+            // 有限墙：走到头就停住（不绕回另一端），最后一行没铺满的格子也不许选
+            const prev = { r: sel.r, c: sel.c };
+            sel.r = Math.min(b.Q - 1, Math.max(0, sel.r + dr));
+            sel.c = Math.min(b.P - 1, Math.max(0, sel.c + dc));
+            if (sel.r * b.P + sel.c >= b.n) { sel.r = prev.r; sel.c = prev.c; return; }
+        } else {
+            sel.r = ((sel.r + dr) % b.Q + b.Q) % b.Q;
+            sel.c = ((sel.c + dc) % b.P + b.P) % b.P;
+        }
         for (const t of grid.querySelectorAll('.pw-tile.selected')) t.classList.remove('selected');
         this.centerWallOn(sel.r, sel.c);
     },
@@ -842,10 +1002,19 @@ window.App = Object.assign(window.App || {}, {
         const wx = b.pad + c * (b.tw + b.gap) + b.tw / 2;
         const wy = b.pad + r * (b.th + b.gap) + b.th / 2;
         const cx = grid.clientWidth / 2, cy = grid.clientHeight / 2;
-        const span = this.wallWrapSpan();
-        this._wallPan = { x: cx - wx, y: cy - wy };
-        this._wallOffsetX = _pwWrap(this._wallPan.x, span.w);
-        this._wallOffsetY = _pwWrap(this._wallPan.y, span.h);
+        const targetX = cx - wx, targetY = cy - wy;
+        if (this.wallMode() === 'finite') {
+            // 有限墙：想要居中，但到了墙边就贴边停 —— 不能像无限墙那样绕到另一头
+            const c = this.clampWallPan(targetX, targetY);
+            this._wallPan = { x: c.x, y: c.y };
+            this._wallOffsetX = c.x;
+            this._wallOffsetY = c.y;
+        } else {
+            const span = this.wallWrapSpan();
+            this._wallPan = { x: targetX, y: targetY };
+            this._wallOffsetX = _pwWrap(targetX, span.w);
+            this._wallOffsetY = _pwWrap(targetY, span.h);
+        }
         for (const t of grid.querySelectorAll('.pw-tile.selected')) t.classList.remove('selected');
         const targets = (el.cells || {})[r + '_' + c] || [];
         if (select !== false) {
@@ -871,8 +1040,13 @@ window.App = Object.assign(window.App || {}, {
         const idx = data.items.findIndex((it) => key(it.name) === want || key(it.preset) === want);
         if (idx < 0) return false;
         // 90 格按 slot % n 取预设，找第一个正好显示它的槽位
+        // 有限墙里槽位就是预设下标，直接落过去
         let slot = -1;
-        for (let s = 0; s < b.P * b.Q; s++) { if (s % n === idx) { slot = s; break; } }
+        if (this.wallMode() === 'finite') {
+            slot = idx < b.P * b.Q ? idx : -1;
+        } else {
+            for (let s = 0; s < b.P * b.Q; s++) { if (s % n === idx) { slot = s; break; } }
+        }
         if (slot < 0) return false;
         this._wallSel = { r: Math.floor(slot / b.P), c: slot % b.P };
         this.centerWallOn(this._wallSel.r, this._wallSel.c);
@@ -896,6 +1070,7 @@ window.App = Object.assign(window.App || {}, {
         this._wallPan = { x: 0, y: 0 };
         this._wallOffsetX = 0;
         this._wallOffsetY = 0;
+        this.syncWallModeUI();
         this.applyWallTransform();
         this.layoutWallTiles();
         // 回墙先把选中框落到「当前图正在用的预设」上：找回来不用满墙翻。
@@ -904,7 +1079,10 @@ window.App = Object.assign(window.App || {}, {
         const current = (this.template && this.template.templateName) || '';
         if (!current || !this.selectWallPreset(current)) {
             const b = this._wallBounds;
-            if (b && el.grid) {
+            if (b && el.grid && b.mode === 'finite') {
+                // 有限墙是有第一屏的：从头开始，别一开就落在墙中间（那正是"不知道划过没有"）
+                this.panWallTo(0, 0);
+            } else if (b && el.grid) {
                 const cc = Math.round((el.grid.clientWidth / 2 - b.pad - b.tw / 2) / (b.tw + b.gap));
                 const rc = Math.round((el.grid.clientHeight / 2 - b.pad - b.th / 2) / (b.th + b.gap));
                 this.centerWallOn(((rc % b.Q) + b.Q) % b.Q, ((cc % b.P) + b.P) % b.P, false);

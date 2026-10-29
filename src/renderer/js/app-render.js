@@ -89,6 +89,17 @@ window.App = Object.assign(window.App || {}, {
             && c.img === (this.image && this.image.el));
     },
 
+    // 当前正在做的手势：拖动 / 旋转 / 拖角缩放。三者都只改一个元素，
+    // 都能复用「静态背景 + 单元素重绘」的快速通道，避免每帧全量合成。
+    _activeTransform() {
+        if (this._dragEl && this._dragEl.ref) {
+            return { ref: this._dragEl.ref, kind: this._dragEl.kind || 'text' };
+        }
+        if (this._rotEl && this._rotEl.ref) return { ref: this._rotEl.ref, kind: 'text' };
+        if (this._resizeEl && this._resizeEl.ref) return { ref: this._resizeEl.ref, kind: 'text' };
+        return null;
+    },
+
     _dragBaseBuild() {
         const canvas = this.dom.canvas;
         const bmp = document.createElement('canvas');
@@ -148,11 +159,13 @@ window.App = Object.assign(window.App || {}, {
             ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
             ctx.restore();
         } else if (kind === 'text') {
-            // 自由文字复用引擎绘制。引擎现在按「物理画布 + scl」画文字（见 engine.js 的
+            // 文字复用引擎绘制。引擎现在按「物理画布 + scl」画文字（见 engine.js 的
             // textScl），这里必须给同一口径：以前传的是逻辑尺寸 ovBase 且不给 scl，
             // 于是按下瞬间会多出一份「逻辑坐标、未缩放」的小字贴在左上角（用户实测）。
             // 相框通道里 _logW == canvas.width，所以 scl 自然是 1，两种通道都对。
-            if (el.text && el.align === 'free' && window.drawTextLine) {
+            // 不限制 align：预设里锚定在顶部/底部的文字旋转/缩放时也要先画出来，
+            // drawTextLine 自己会按锚点算位置。
+            if (el.text && window.drawTextLine) {
                 const cvEl = this.dom.canvas;
                 const cw = cvEl.width || 1, chh = cvEl.height || 1;
                 const scl = (cvEl._logW > 1) ? cw / cvEl._logW : 1;
@@ -184,14 +197,16 @@ window.App = Object.assign(window.App || {}, {
             // 不再用 customSettings 替换 this.template,保持编辑对象引用稳定
             this.normalizeTemplate();
             this.dom.stage.classList.toggle('has-img', !!this.image);
-            // 拖动中且背景缓存有效 → 只拷贝背景 + 重绘被拖元素,跳过整帧合成
-            // (缓存键在校验尺寸/模板/图源,任一变即回落到正常整帧渲染)
-            const dragRef = this._dragEl && this._dragEl.ref;
-            if (dragRef && this._dragBaseValid()) {
+            // 拖动 / 旋转 / 拖角缩放中且背景缓存有效 → 只拷贝背景 + 重绘该元素,
+            // 跳过整帧合成 (缓存键在校验尺寸/模板/图源,任一变即回落到正常整帧渲染)
+            const xf = this._activeTransform();
+            const xfRef = xf && xf.ref;
+            if (xfRef && this._dragBaseValid()) {
                 this._blitDragBase();
-                this._drawDraggedEl(this.dom.canvas.getContext('2d'), dragRef, this._dragEl.kind);
+                this._drawDraggedEl(this.dom.canvas.getContext('2d'), xfRef, xf.kind);
                 this.drawSelectionBox();
                 this.drawLogoGuides();
+                if (this._textEditor) this._positionTextEditor();
                 this.updateStatusBar();
                 return;
             }
@@ -203,9 +218,8 @@ window.App = Object.assign(window.App || {}, {
             const previewTpl = assigned ? this.template : this.defaultTemplate();
             const prevTpl = this.template;
             this.template = previewTpl;
-            // 拖动首帧:合成完整帧(此时被拖元素已被 _skipUserEl 排除)后缓存为背景,供后续帧复用
-            const needDragBase = !!(dragRef && this._dragEl
-                && (!this._dragBase || !this._dragBaseValid()));
+            // 手势首帧:合成完整帧(此时该元素已被 _skipUserEl 排除)后缓存为背景,供后续帧复用
+            const needDragBase = !!(xfRef && (!this._dragBase || !this._dragBaseValid()));
             try {
                 const puzzle = previewTpl && previewTpl.puzzle && previewTpl.puzzle.enabled;
                 const fire = () => {
@@ -214,14 +228,16 @@ window.App = Object.assign(window.App || {}, {
                 };
                 fire();
                 // 引擎在分辨率刚变化时首帧不稳定(实测同一路径连渲两次,首帧与次帧最大通道差可达 86),
-                // 而缓存一旦建在这种帧上,整个拖动过程都会沿用错误背景。再渲一次取其稳定结果。
+                // 而缓存一旦建在这种帧上,整个手势过程都会沿用错误背景。再渲一次取其稳定结果。
                 if (needDragBase) fire();
             } finally {
                 this.template = prevTpl;
             }
-            if (needDragBase && this._dragEl) this._dragBaseBuild();
+            if (needDragBase) this._dragBaseBuild();
             this.drawSelectionBox();
             this.drawLogoGuides();
+            // 缩放/平移/窗口变化后，画布内文字编辑器要跟着画布走（它是 fixed 定位）
+            if (this._textEditor) this._positionTextEditor();
             if (this.autoFit) {
                 this.autoFit = false;
                 requestAnimationFrame(() => this.fitZoom());

@@ -273,6 +273,114 @@ async function main() {
         '跨一个周期回绕后同一位置仍是同一张卡（不跳不换）', `${seam.before} → ${seam.after}`);
     check(seam.midInBlock, '半周期处视口仍是墙面而不是空白');
 
+    // 2.66 无限 / 有限 切换：用户抱怨"不知道划没划过"，所以给了个开关。
+    //      有限墙必须是「每张预设只出现一次 + 拖到头就停 + 有进度条」，否则等于没修。
+    const finite = await exec(`(async () => {
+        const A = window.App;
+        const g = document.getElementById('presetWallGrid');
+        A.setWallMode('finite');
+        await new Promise((r) => setTimeout(r, 250));
+        const b = A._wallBounds;
+        const tiles = Array.from(g.querySelectorAll('.pw-tile'));
+        const uniq = new Set(tiles.map((t) => Number(t.dataset.idx)));
+        const n = (window.PRESET_WALL.items || []).length;
+        // 往左上猛拖：偏移不能越过"第一屏"，否则又成了循环墙
+        A.panWallTo(900, 900);
+        const top = { x: A._wallOffsetX, y: A._wallOffsetY };
+        const topBar = document.querySelector('#pwRail i').style.top;
+        // 往右下猛拖：偏移停在最后一屏
+        A.panWallTo(-99999, -99999);
+        const bottom = { x: A._wallOffsetX, y: A._wallOffsetY };
+        const rail = document.getElementById('pwRail');
+        // 方向键到边不能再绕到另一端
+        const t0 = g.querySelector('.pw-tile');
+        t0.focus();
+        A._wallSel = { r: 0, c: 0 };
+        t0.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+        t0.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+        await new Promise((r) => setTimeout(r, 50));
+        const sel0 = { r: A._wallSel.r, c: A._wallSel.c };
+        A._wallSel = { r: 0, c: b.P - 1 };
+        t0.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+        await new Promise((r) => setTimeout(r, 50));
+        const selEdge = { r: A._wallSel.r, c: A._wallSel.c };
+        return {
+            blocks: g.querySelectorAll('.pw-block').length, tiles: tiles.length, uniq: uniq.size, n,
+            P: b.P, Q: b.Q, BW: b.BW, BH: b.BH, vw: g.clientWidth, vh: g.clientHeight,
+            top, bottom, topBar,
+            railShown: !!rail && !rail.hidden,
+            railHeight: rail ? rail.querySelector('i').style.height : '',
+            onBtn: document.querySelector('#pwMode [data-wall-mode="finite"]').classList.contains('is-on'),
+            infiniteBtn: document.querySelector('#pwMode [data-wall-mode="infinite"]').classList.contains('is-on'),
+            stored: localStorage.getItem('qfs_wall_mode'),
+            sub: document.getElementById('pwSub').textContent,
+            sel0, selEdge,
+            expectTop: {
+                x: b.BW <= g.clientWidth ? Math.round((g.clientWidth - b.BW) / 2) : 0,
+                y: b.BH <= g.clientHeight ? Math.round((g.clientHeight - b.BH) / 2) : 0
+            },
+            // 横向装得下就居中（列数取整后总会剩几十像素），装不下才夹到右边界
+            expectBottom: {
+                x: b.BW <= g.clientWidth ? Math.round((g.clientWidth - b.BW) / 2) : g.clientWidth - b.BW,
+                y: b.BH <= g.clientHeight ? Math.round((g.clientHeight - b.BH) / 2) : g.clientHeight - b.BH
+            }
+        };
+    })()`);
+    check(finite.blocks === 1 && finite.tiles === finite.n && finite.uniq === finite.n,
+        '有限墙：只铺一份，每张预设只出现一次（不再循环）',
+        `blocks=${finite.blocks} tiles=${finite.tiles} uniq=${finite.uniq} n=${finite.n}`);
+    check(finite.P * finite.Q >= finite.n && finite.BW > finite.vw && finite.BH > finite.vh,
+        '有限墙：沿用 9×10 网格，横竖都留出可拖余量',
+        `P=${finite.P} Q=${finite.Q} BW=${finite.BW} vw=${finite.vw} BH=${finite.BH} vh=${finite.vh}`);
+    check(Math.abs(finite.bottom.x - finite.top.x) > 100,
+        '有限墙：左右能拖（不是死轴），且有硬边界',
+        `x ${finite.top.x} → ${finite.bottom.x}`);
+    check(Math.abs(finite.top.x - finite.expectTop.x) <= 1 && Math.abs(finite.top.y - finite.expectTop.y) <= 1,
+        '有限墙：往左上拖到头就停（第一屏之外没有东西）',
+        `offset=${finite.top.x},${finite.top.y} expect=${finite.expectTop.x},${finite.expectTop.y} railTop=${finite.topBar}`);
+    check(Math.abs(finite.bottom.x - finite.expectBottom.x) <= 1
+        && Math.abs(finite.bottom.y - finite.expectBottom.y) <= 1,
+        '有限墙：往右下拖到底就停（不绕回开头）',
+        `offset=${finite.bottom.x},${finite.bottom.y} expect=${finite.expectBottom.x},${finite.expectBottom.y}`);
+    check(finite.sel0.r === 0 && finite.sel0.c === 0 && finite.selEdge.c === finite.P - 1,
+        '有限墙：方向键到边停住（不循环）', JSON.stringify({ sel0: finite.sel0, selEdge: finite.selEdge, P: finite.P }));
+    check(finite.railShown && finite.railHeight && parseFloat(finite.railHeight) < 100,
+        '有限墙：右侧显示浏览进度条（能看出看了多少）',
+        `shown=${finite.railShown} thumb=${finite.railHeight}`);
+    check(finite.onBtn && !finite.infiniteBtn && finite.stored === 'finite',
+        '切换按钮状态 + 选择被记住（localStorage）', `stored=${finite.stored}`);
+    check(finite.sub.indexOf('有首有尾') > 0, '副标题写明"不循环"', finite.sub);
+
+    // 切回无限：必须恢复 4 份拷贝、回绕、进度条隐藏，并且不再重建（避免来回切抖动）
+    const backToInfinite = await exec(`(async () => {
+        const A = window.App;
+        A.setWallMode('infinite');
+        await new Promise((r) => setTimeout(r, 250));
+        const g = document.getElementById('presetWallGrid');
+        const b = A._wallBounds;
+        A.panWallTo(-b.BW * 2 - 10, -b.BH * 2 - 10);
+        const ox = A._wallOffsetX, oy = A._wallOffsetY;
+        A._wallMode = null;                    // 模拟重启后从 localStorage 读回
+        const restored = A.wallMode();
+        return {
+            tiles: g.querySelectorAll('.pw-tile').length,
+            blocks: g.querySelectorAll('.pw-block').length,
+            railShown: !document.getElementById('pwRail').hidden,
+            wrapped: ox <= 0 && ox > -b.BW && oy <= 0 && oy > -b.BH,
+            stored: localStorage.getItem('qfs_wall_mode'),
+            restored,
+            sub: document.getElementById('pwSub').textContent
+        };
+    })()`);
+    check(backToInfinite.tiles === 360 && backToInfinite.blocks === 4,
+        '切回无限墙：恢复 2×2 份拷贝（360 张）',
+        `tiles=${backToInfinite.tiles} blocks=${backToInfinite.blocks}`);
+    check(backToInfinite.wrapped && !backToInfinite.railShown,
+        '切回无限墙：重新取模回绕、进度条隐藏', `wrapped=${backToInfinite.wrapped} rail=${backToInfinite.railShown}`);
+    check(backToInfinite.stored === 'infinite' && backToInfinite.restored === 'infinite',
+        '浏览方式重启后仍按上次选择恢复', `stored=${backToInfinite.stored} restored=${backToInfinite.restored}`);
+    check(backToInfinite.sub.indexOf('按住拖动浏览') > 0, '无限墙副标题恢复原文案', backToInfinite.sub);
+
     // 2.68 自定义封面：userData/wall-covers/<预设名>.webp 覆盖内置封面，删掉即回落
     wallCovers = { '3D卡片': 'C:/Users/lumos/Pictures/我的封面.webp' };
     const coverOn = await exec(`(async () => {

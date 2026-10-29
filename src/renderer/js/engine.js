@@ -3,6 +3,16 @@
 // ── 工具 ──
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
+// 照片取源：调色过就取烘焙好的离屏画布，否则取原图。
+// 真正的实现在 app-grade.js（window.photoSrcOf），这里留兜底是因为 engine 先于它加载。
+// 烘焙画布被刻意补了 naturalWidth/naturalHeight，所以下游所有按 im.el.naturalWidth
+// 算比例的代码不用改也不会错。
+function photoSrc(im) {
+    if (!im) return null;
+    if (window.photoSrcOf) return window.photoSrcOf(im);
+    return im.el || null;
+}
+
 // parseColor：hex + opacity(0-100) → {r,g,b,a}，与原版 parseColor 一致(空透明度按 100 处理)
 // 记忆化:一帧里它会被调上百次(每个图层/描边/阴影/文字各一次),而输入组合很有限。
 // 返回对象只被读取(调用方一律是 rgba(c) 或读字段,没有任何地方写它),复用安全。
@@ -106,7 +116,7 @@ function renderToCanvas(app, compare) {
 }
 function _renderToCanvasInner(app, compare) {
     const { image, template } = app;
-    const img = image.el;
+    const img = photoSrc(image);
     const cw0 = img.naturalWidth, ch0 = img.naturalHeight;
 
     // 对比原图:只画照片本身,无边??
@@ -204,7 +214,7 @@ function beginCardClip(ctx, template, cw, ch) {
 
 function renderTemplateStyle(app) {
     const { image, template } = app;
-    const img = image.el;
+    const img = photoSrc(image);
     const margin = template.baseMargin || {};
     const cs = computeCanvasSize(img.naturalWidth, img.naturalHeight, template);
     const canvasW = cs[0], canvasH = cs[1];
@@ -878,14 +888,24 @@ function textMeasureCtx() {
 
 // 横排文字宽度（含字距）。letterSpacing 必须是 CSS 长度字符串——
 // 给数字会被静默忽略（同 engine-styles.js:2093 记过这个坑）。
-function textLineAdvance(line, fs) {
+// textOverride 用于多行：同一行样式，只换这一行的文字。
+function textLineAdvance(line, fs, textOverride) {
     const g = textMeasureCtx();
     const ls = textLineSpacing(line);
     g.font = `${line.fontWeight || 400} ${fs}px "${line.fontFamily || 'Microsoft YaHei'}"`;
     if (ls > 0) g.letterSpacing = ls + 'px';
-    const w = g.measureText(String(line.text == null ? '' : line.text)).width;
+    const raw = textOverride == null ? line.text : textOverride;
+    const w = g.measureText(String(raw == null ? '' : raw)).width;
     if (ls > 0) g.letterSpacing = '0px';
     return Math.max(1, w);
+}
+
+// 多行文字：拆行、量最宽一行、算总高。竖排不支持多列，换行直接并成一列
+// （否则每多一行就得多一套列距算法，收益不大）。
+function textLineSegments(line) {
+    const raw = String(line && line.text == null ? '' : line.text).replace(/\r\n?/g, '\n');
+    if (textLineDir(line) === 'v') return [raw.replace(/\n/g, '')];
+    return raw.split('\n');
 }
 
 // 一行文字的几何。返回（全部为画布逻辑像素）：
@@ -905,13 +925,18 @@ function textLineMetrics(line, cw, ch, card, cardY, cardH, scl) {
     const fs = Math.max(1, autoExifTextSize(line, W / S) * S);
     const dir = textLineDir(line);
     const ls = textLineSpacing(line);
-    const text = String(line.text == null ? '' : line.text);
+    const segments = textLineSegments(line);
+    const text = segments.join(dir === 'v' ? '' : '\n');
     const n = text.length;
     const ratio = textLineStepRatio(line);
     // 竖排：一个字一格；字距是「字与字之间」的附加间隙
     const step = fs * ratio + ls;
-    const lw = dir === 'v' ? fs * 1.15 : textLineAdvance(line, fs);
-    const lh = dir === 'v' ? Math.max(fs, n * step) : fs * 1.18;
+    // 横排/侧排多行：行高固定 1.18×字号（与单行时代的框高一致，老预设不变）。
+    const lineH = fs * 1.18;
+    const nLines = Math.max(1, segments.length);
+    const lw = dir === 'v' ? fs * 1.15
+        : Math.max(1, ...segments.map(s => textLineAdvance(line, fs, s)));
+    const lh = dir === 'v' ? Math.max(fs, n * step) : lineH * nLines;
     const a = textLineAnchor(line, W, H, card || false, cardY || 0, cardH || 0);
     let cx = a[0], cy = a[1];
     if (line.align === 'free') {
@@ -923,8 +948,10 @@ function textLineMetrics(line, cw, ch, card, cardY, cardH, scl) {
         const top = line.align === 'top' ? (cy - fs * 0.8) : (cy + fs * 0.2 - lh);
         cy = top + lh / 2;
     } else {
-        // 横排：锚点是基线，框中心在基线上方约 0.21fs
-        cy = cy - fs * 0.8 + lh / 2;
+        // 横排：锚点是基线。多行时底对齐要保证**最后一行**的基线落在锚点上，
+        // 否则多出来的行会整段掉到画布外面；顶对齐则保持第一行基线在锚点。
+        const firstBaseline = (line.align === 'top') ? cy : (cy - (nLines - 1) * lineH);
+        cy = firstBaseline - (fs * 0.8 - lh / 2);
     }
     const rot = (Number(line.rotation) || 0) + (dir === 'side' ? -90 : 0);
     const th = rot * Math.PI / 180;
@@ -932,6 +959,7 @@ function textLineMetrics(line, cw, ch, card, cardY, cardH, scl) {
     const hh = Math.abs(lw / 2 * Math.sin(th)) + Math.abs(lh / 2 * Math.cos(th));
     return {
         dir, fs, ls, step, rot, cx, cy, lw, lh,
+        lines: segments, nLines, lineH, text, scl: S,
         by: fs * 0.8 - lh / 2,
         x: cx - hw, y: cy - hh, w: hw * 2, h: hh * 2,
     };
@@ -994,11 +1022,12 @@ function backdropStats(ctx, x, y, w, h) {
     if (!line || line.text == null || line.text === '') return;
     const m = textLineMetrics(line, cw, ch, card, cardY, cardH, scl);
     const fs = m.fs;
+    const S = m.scl || 1;
     ctx.save();
     ctx.font = `${line.fontWeight || 400} ${fs}px "${line.fontFamily || 'Microsoft YaHei'}"`;
     ctx.textAlign = 'center';
     let fill = rgba(parseColor(line.colorHex, line.opacity));
-    let outline = null;
+    let autoOutline = null;
     // 智能反差(仅显式开启的行,如 EXIF 水印):按文字实际覆盖的区域取色。
     // 取的是度量外框,所以竖排/旋转时采样区也跟着对。
     if (line.autoContrast) {
@@ -1007,18 +1036,49 @@ function backdropStats(ctx, x, y, w, h) {
             const pick = contrastChoice(st.meanY, st.dev);
             const a = clamp((line.opacity == null ? 100 : line.opacity) / 100, 0, 1);
             fill = pick.light ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`;
-            if (pick.outline) outline = pick.light ? `rgba(0,0,0,${a * 0.5})` : `rgba(255,255,255,${a * 0.5})`;
+            if (pick.outline) autoOutline = pick.light ? `rgba(0,0,0,${a * 0.5})` : `rgba(255,255,255,${a * 0.5})`;
         }
     }
     ctx.fillStyle = fill;
+    // 用户可选的描边：与智能反差边线共用同一个落笔函数，描边永远在填充下面。
+    const strokeOn = line.strokeEnable === undefined ? false : Number(line.strokeEnable) === 1;
+    const strokeColor = strokeOn
+        ? rgba(parseColor(line.strokeColorHex || '#000000', line.strokeOpacity == null ? 100 : line.strokeOpacity))
+        : autoOutline;
+    const strokeWidth = strokeOn
+        ? (line.strokeWidth != null
+            ? Math.max(1, Number(line.strokeWidth) * S)
+            : Math.max(1, fs * 0.06))
+        : Math.max(1, Math.round(fs * 0.06));
+    // 阴影：老预设只有 enableShadow 开关、没有 shadowBlur 等字段。这里要求至少有一个
+    // 显式参数才启用，避免把 2 个老预设的观感突然改掉（它们当年就没被引擎实现过）。
+    const shadowOn = Number(line.enableShadow) === 1
+        && (line.shadowBlur != null || line.shadowOffsetX != null || line.shadowOffsetY != null);
+    const shadowColor = rgba(parseColor(line.shadowColorHex || '#000000',
+        line.shadowOpacity == null ? 45 : line.shadowOpacity));
+    const shadowBlur = Math.max(0, (Number(line.shadowBlur) || 0) * S);
+    const shadowX = (Number(line.shadowOffsetX) || 0) * S;
+    const shadowY = (Number(line.shadowOffsetY) || 0) * S;
     const paint = (tx, ty, str) => {
-        if (outline) {
-            ctx.strokeStyle = outline;
-            ctx.lineWidth = Math.max(1, Math.round(fs * 0.06));
+        if (strokeColor) {
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = strokeWidth;
             ctx.lineJoin = 'round';
             ctx.strokeText(str, tx, ty);
         }
+        if (shadowOn) {
+            ctx.shadowColor = shadowColor;
+            ctx.shadowBlur = shadowBlur;
+            ctx.shadowOffsetX = shadowX;
+            ctx.shadowOffsetY = shadowY;
+        }
         ctx.fillText(str, tx, ty);
+        if (shadowOn) {
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+        }
     };
     // 旋转绕「框中心」而不是锚点:命中框、选中框算的都是这个中心,三者才对得上。
     ctx.translate(m.cx, m.cy);
@@ -1026,14 +1086,16 @@ function backdropStats(ctx, x, y, w, h) {
     if (m.dir === 'v') {
         // 竖排:每字占一格、格内居中;格高已经把字距算进去了(见 textLineMetrics.step)
         ctx.textBaseline = 'middle';
-        const t = String(line.text);
+        const t = m.text;
         for (let i = 0; i < t.length; i++) paint(0, -m.lh / 2 + m.step * (i + 0.5), t[i]);
     } else {
         ctx.textBaseline = 'alphabetic';
         // 字距必须是 CSS 长度字符串:给数字会被静默忽略(engine-styles.js:2093 记过同一个坑)。
         // 居中时 Chromium 把末字之后那段也计入 advance,故整体右移 ls/2,让「墨迹」真正居中。
         if (m.ls > 0) ctx.letterSpacing = m.ls + 'px';
-        paint(m.ls / 2, m.by, String(line.text));
+        for (let i = 0; i < m.lines.length; i++) {
+            paint(m.ls / 2, m.by + i * m.lineH, m.lines[i]);
+        }
         if (m.ls > 0) ctx.letterSpacing = '0px';
     }
     ctx.restore();
@@ -1105,17 +1167,25 @@ function drawDecoration(ctx, decor, cw, ch, image, template, stripTop, scl) {
     ].map(String).filter(Boolean);
     const lines = decor.textLines || [];
     const exifLineIdx = exifOn ? lines.findIndex(l => l.text && (l.align === 'bottom' || l.align === 'exif')) : -1;
+    // 画布内编辑时，文字由 textarea 覆盖层显示；这里跳过同一元素，避免两层字形
+    // 因为字体度量/缩放取整差 1px 而出现重影。
+    const app = (typeof window !== 'undefined') ? window.App : null;
+    const editingText = (app && app._textEditor) ? app._textEditor.el : null;
+    // 拖动/旋转/缩放中的元素也要跳过：背景缓存里不能烤进它，否则快速通道
+    // 会在旧字上再画一遍新字，旋转时看起来就是重影 + 拖尾。
+    const skip = app ? app._skipUserEl : null;
 
     for (let i = 0; i < lines.length; i++) {
         const textLine = lines[i];
         if (!textLine.text) continue;
         if (i === exifLineIdx) continue;
+        if (textLine === editingText || textLine === skip) continue;
         drawTextLine(ctx, textLine, cw, ch, false, 0, 0, scl);
     }
     const exifLines = buildExifLines({ decor }, image);
     for (const line of exifLines) drawTextLine(ctx, line, cw, ch, false, 0, 0, scl);
     for (const sticker of (decor.stickers || [])) {
-        if (!sticker.src) continue;
+        if (!sticker.src || sticker === skip) continue;
         const tex = getElementBitmap(sticker.src);
         if (!tex || !tex.complete || !tex.naturalWidth) continue;
         const sw = tex.naturalWidth * (sticker.scale || 1);
@@ -1177,7 +1247,7 @@ function drawExifStrip(ctx, text, stripTop, cw, ch) {
 // ── 卡片样式(原版 renderCardStyle:独立管线,不画图层)──
 function renderCardStyle(app) {
     const { image, template } = app;
-    const img = image.el;
+    const img = photoSrc(image);
     const margin = template.baseMargin || {};
     const originW = img.naturalWidth, originH = img.naturalHeight;
     let canvasW = originW + (margin.marginLeft || 0) + (margin.marginRight || 0);
@@ -1360,9 +1430,14 @@ function drawLogoElements(ctx, elements, cw, ch) {
 /* exported drawUserElements */ function drawUserElements(ctx, template, cw, ch) {
     if (!template) return;
     const decor = template.decorConfig || {};
-    const skip = (typeof window !== 'undefined' && window.App) ? window.App._skipUserEl : null;
+    const app = (typeof window !== 'undefined') ? window.App : null;
+    const skip = app ? app._skipUserEl : null;
+    // 相框风格（engine-styles）走的是这条通道，不是 drawDecoration。
+    // 画布内编辑时也必须跳过同一段文字，否则半透明 textarea 下面还压着画布字形，
+    // 看起来就是打字有重影（用户实测；只在默认模板通道里修过，相框预设没覆盖到）。
+    const editingText = (app && app._textEditor) ? app._textEditor.el : null;
     for (const textLine of (decor.textLines || [])) {
-        if (textLine === skip) continue;
+        if (textLine === skip || textLine === editingText) continue;
         if (textLine.text && textLine.align === 'free') drawTextLine(ctx, textLine, cw, ch, false, 0, 0);
     }
     for (const sticker of (decor.stickers || [])) {
@@ -1700,7 +1775,7 @@ function renderPuzzle(app, compare, noSelection) {
         const sc = slots[i] || {};
         const im = used[i] || null;
         const rx = r[0], ry = r[1], rw = r[2], rh = r[3];
-        if (!im || !im.el) {
+        if (!im || !photoSrc(im)) {
             ctx.fillStyle = 'rgba(224,224,224,1)';
             ctx.fillRect(rx, ry, rw, rh);
             // 空格也画选中框:点它往往是为了把照片放进这一格
@@ -1737,21 +1812,22 @@ function renderPuzzle(app, compare, noSelection) {
         const zoom = sc.zoom != null ? sc.zoom : (pk.zoom != null ? pk.zoom : 100);
         const offX = clamp(sc.offsetX != null ? sc.offsetX : (pk.offsetX || 0), -100, 100);
         const offY = clamp(sc.offsetY != null ? sc.offsetY : (pk.offsetY || 0), -100, 100);
-        const fit = puzzleFit({ x: cx, y: cy, w: cw, h: chh }, im.el.naturalWidth, im.el.naturalHeight, fillMode, zoom, offX, offY);
+        const imSrc = photoSrc(im);
+        const fit = puzzleFit({ x: cx, y: cy, w: cw, h: chh }, imSrc.naturalWidth, imSrc.naturalHeight, fillMode, zoom, offX, offY);
         // 格子内图片旋转(0/90/180/270)
         const rot = ((sc.rotate || 0) % 4 + 4) % 4;
         if (rot === 0) {
-            ctx.drawImage(im.el, fit.dx, fit.dy, fit.dw, fit.dh);
+            ctx.drawImage(imSrc, fit.dx, fit.dy, fit.dw, fit.dh);
         } else {
             ctx.save();
             ctx.translate(cx + cw / 2, cy + chh / 2);
             ctx.rotate(rot * Math.PI / 2);
             const rw = (rot % 2 === 1) ? chh : cw;
             const rh = (rot % 2 === 1) ? cw : chh;
-            const rscale = Math.max(rw / (im.el.naturalWidth || 1), rh / (im.el.naturalHeight || 1));
-            const rdw = (im.el.naturalWidth || 1) * rscale;
-            const rdh = (im.el.naturalHeight || 1) * rscale;
-            ctx.drawImage(im.el, -rdw / 2, -rdh / 2, rdw, rdh);
+            const rscale = Math.max(rw / (imSrc.naturalWidth || 1), rh / (imSrc.naturalHeight || 1));
+            const rdw = (imSrc.naturalWidth || 1) * rscale;
+            const rdh = (imSrc.naturalHeight || 1) * rscale;
+            ctx.drawImage(imSrc, -rdw / 2, -rdh / 2, rdw, rdh);
             ctx.restore();
         }
         ctx.restore();
@@ -1789,14 +1865,15 @@ function renderPuzzle(app, compare, noSelection) {
 
     // 拖拽互换:目标格高亮 + 被抓取图片预览 / 槽外浮空跟手
     const pick = app._puzzlePick;
-    if (pick && pick.el) {
+    if (pick && photoSrc(pick)) {
         ctx.save();
+        const pickSrc = photoSrc(pick);
         if (pick.mode === 'target' && rectPx[pick.target]) {
             const r = rectPx[pick.target];
             const cx = r[0] + gapPx, cy = r[1] + gapPx, cw = Math.max(1, r[2] - gapPx * 2), chh = Math.max(1, r[3] - gapPx * 2);
             const fit = puzzleFit({ x: cx, y: cy, w: cw, h: chh }, pick.iw, pick.ih, pk.slotFill || 'cover', 100, 0, 0);
             ctx.globalAlpha = 0.45;
-            ctx.drawImage(pick.el, fit.dx, fit.dy, fit.dw, fit.dh);
+            ctx.drawImage(pickSrc, fit.dx, fit.dy, fit.dw, fit.dh);
             ctx.globalAlpha = 0.9;
             ctx.strokeStyle = 'rgba(56,201,91,0.95)';
             ctx.lineWidth = Math.max(2, Math.min(cw, chh) * 0.03);
@@ -1810,7 +1887,7 @@ function renderPuzzle(app, compare, noSelection) {
             const w0 = pick.w0 || 1, h0 = pick.h0 || 1;
             const fit = puzzleFit({ x: 0, y: 0, w: w0, h: h0 }, pick.iw, pick.ih, 'cover', 100, 0, 0);
             ctx.globalAlpha = 0.8;
-            ctx.drawImage(pick.el, pick.x - fit.dw / 2, pick.y - fit.dh / 2, fit.dw, fit.dh);
+            ctx.drawImage(pickSrc, pick.x - fit.dw / 2, pick.y - fit.dh / 2, fit.dw, fit.dh);
         }
         ctx.restore();
     }
@@ -1841,7 +1918,7 @@ function renderPuzzle(app, compare, noSelection) {
 
 // 重虚化照片底:多格照片按格子位置无缝铺满再强模糊
 function drawDetailBlurBackground(ctx, used, rawSlots, Wn, Hn) {
-    const avail = used.filter(x => x && x.el);
+    const avail = used.filter(x => x && photoSrc(x));
     if (!avail.length) { ctx.fillStyle = '#eeeeee'; ctx.fillRect(0, 0, Wn, Hn); return; }
     // 用 1/4 输出尺寸的中间画布绘制照片,再以强模糊上采样,得到柔和可辨的模糊照片底
     const tw = Math.max(1, Math.round(Wn / 4));
@@ -1854,10 +1931,11 @@ function drawDetailBlurBackground(ctx, used, rawSlots, Wn, Hn) {
         const im = avail[i % avail.length];
         if (!im) return;
         const dx = r[0] * tw, dy = r[1] * th, dw = r[2] * tw, dh = r[3] * th;
-        const iw = im.el.naturalWidth, ih = im.el.naturalHeight;
+        const imSrc2 = photoSrc(im);
+        const iw = imSrc2.naturalWidth, ih = imSrc2.naturalHeight;
         const scale = Math.max(dw / iw, dh / ih);
         const cw = iw * scale, ch = ih * scale;
-        tctx.drawImage(im.el, dx + (dw - cw) / 2, dy + (dh - ch) / 2, cw, ch);
+        tctx.drawImage(imSrc2, dx + (dw - cw) / 2, dy + (dh - ch) / 2, cw, ch);
     });
     ctx.save();
     ctx.imageSmoothingEnabled = true;

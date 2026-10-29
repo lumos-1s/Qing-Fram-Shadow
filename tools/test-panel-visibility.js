@@ -136,12 +136,16 @@ const SHOW_OK = new Set([
 // 开的,而是**跟着"选中了文字"显隐**(app-elements.syncTextRows),所以冻结基线里不可能有,
 // 一律按新增行记账。
 // rowElTextContent / Font / Size / Color：文字工具的四行（2026-10），跟着"选中了文字"显隐。
+// rowElTextWeight / Stroke / StrokeWidth / Shadow / ShadowBlur / ShadowOffset：2026-10-29
+// 文字样式增强（字重/描边/阴影），同样跟着"选中了文字"显隐，冻结基线里不可能有。
 // rowElSize：缩放行这次才补上 id（原来没有），所以按新增行记账；它的显隐逻辑没变
 // （选中文字时藏起来、让位给「字号」）。
 const NEW_ROWS = new Set(['rowCornerRadius', 'rowGlobalMargin', 'rowImgScale', 'rowAvatarShow',
     'rowCreditMode', 'rowT2iColor', 'rowT2iEffect', 'rowT2iStyle',
     'rowElTextDir', 'rowElTextSpacing',
-    'rowElTextContent', 'rowElTextFont', 'rowElTextSize', 'rowElTextColor', 'rowElSize']);
+    'rowElTextContent', 'rowElTextFont', 'rowElTextSize', 'rowElTextColor', 'rowElSize',
+    'rowElTextWeight', 'rowElTextStroke', 'rowElTextStrokeWidth',
+    'rowElTextShadow', 'rowElTextShadowBlur', 'rowElTextShadowOffset']);
 
 function drawKeys() {
     const src = fs.readFileSync(ENGINE, 'utf8');

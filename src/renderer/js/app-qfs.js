@@ -15,8 +15,12 @@ window.App = Object.assign(window.App || {}, {
 
     // 把照片对象渲染进离屏画布,取 base64(仅导出时调用,限定内存开销)
     imageToQfsBase64(im, mime, quality) {
-        const reuse = this.qfsReusableSource(im);
+        // 工程文件要存调色后的成品：先补出全分辨率烘焙，再拿它当编码源
+        if (window.ensureFullGrade) window.ensureFullGrade(im);
+        const gradedCanvas = (im._grade && !im._grade.neutral && im._grade.canvas) ? im._grade.canvas : null;
+        const reuse = gradedCanvas ? null : this.qfsReusableSource(im);
         if (reuse) return reuse.toDataURL(mime, quality).split(',')[1];
+        const imSrc = gradedCanvas || im.el;
         const c = document.createElement('canvas');
         c.width = im.w; c.height = im.h;
         const cx = c.getContext('2d');
@@ -24,7 +28,7 @@ window.App = Object.assign(window.App || {}, {
             cx.fillStyle = '#ffffff';
             cx.fillRect(0, 0, c.width, c.height);
         }
-        cx.drawImage(im.el, 0, 0);
+        cx.drawImage(imSrc, 0, 0);
         const b64 = c.toDataURL(mime, quality).split(',')[1];
         // 显式释放后备缓冲:一张 24MP 画布约 96MB,不等 GC 能显著压低多图工程的峰值
         c.width = 0; c.height = 0;
