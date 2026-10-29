@@ -29,6 +29,8 @@
     const SH_AMP = 0.42;   // 阴影满档时暗部最大位移
     const HI_AMP = 0.42;   // 高光满档时亮部最大位移
     const T_AMP = 0.10;    // 色温满档时中间调最大位移
+    // 选中蒙版时，这些键改的是蒙版参数；其余键永远是全局
+    const MASK_ROUTE_KEYS = ['exp', 'con', 'sat', 'temp', 'tint', 'hi', 'sh', 'white', 'black'];
     const LOW_EDGE = 1600; // 拖动过程中的降采样长边
     const FULL_EDGE = 0;   // 静止后的成品：0 = 按原图尺寸，不降采样
                            // （降采样会让导出的「原图」档位拿不到真实长边，宁可多占内存）
@@ -253,6 +255,7 @@
         p.cal = null;        // 校准（原色色相/饱和）
         p.det = null;        // 细节（清晰度/纹理/去除薄雾）
         p.mix = null;        // 混色器（8 色相带 HSL）
+        p.masks = [];        // 蒙版（线性/椭圆/画笔/亮度），每个带一套 9 档参数
         return p;
     }
 
@@ -268,6 +271,8 @@
         out.cal = sanitizeGroup(p.cal, defaultCal);
         out.det = sanitizeGroup(p.det, defaultDet);
         out.mix = sanitizeMix(p.mix);
+        out.masks = (window.QfsMask && window.QfsMask.sanitizeMasks)
+            ? window.QfsMask.sanitizeMasks(p.masks) : [];
         return out;
     }
 
@@ -287,6 +292,7 @@
         for (const f of GRADE_FIELDS) if (Number(p[f.k]) || 0) return false;
         const C = window.QfsCurve;
         if (C && C.curveActive(p.curve)) return false;
+        if (window.QfsMask && window.QfsMask.activeMasks(p.masks).length) return false;
         return !calActive(p.cal) && !detActive(p.det) && !mixActive(p.mix);
     }
 
@@ -301,6 +307,9 @@
             const v = p.mix[b.k] || {};
             return (v.h || 0) + '.' + (v.s || 0) + '.' + (v.l || 0);
         }).join(',');
+        // 只把「会改变画面」的蒙版算进来：只画了形状没调参数的蒙版不影响像素
+        const acts = (window.QfsMask && window.QfsMask.activeMasks) ? window.QfsMask.activeMasks(p.masks) : [];
+        if (acts.length) s += '/k' + acts.map((m) => window.QfsMask.maskSignature(m)).join('~');
         return s;
     }
 
@@ -408,7 +417,41 @@
         while (_lru.length > LRU_MAX) {
             const old = _lru.shift();
             if (old && old._grade) { old._grade.canvas = null; old._grade.low = null; }
+            if (old) old._gradeCache = null;
         }
+    }
+
+    // 单层烘焙：把 src 按 params 画成一张指定尺寸的画布（不含蒙版）。
+    function bakeOne(src, params, tw, th) {
+        let drawSrc = src;
+        if (mixActive(params.mix) && window.QfsMix) {
+            drawSrc = window.QfsMix.pass(src, params.mix, tw, th) || src;
+        }
+        const c = document.createElement('canvas');
+        c.width = tw; c.height = th;
+        const g = c.getContext('2d');
+        if (!g) return null;
+        g.imageSmoothingEnabled = true;
+        g.imageSmoothingQuality = 'high';
+        const fs = filterString(params, Math.max(tw, th));
+        if (fs) g.filter = fs;
+        g.drawImage(drawSrc, 0, 0, tw, th);
+        if (fs) g.filter = 'none';
+        return c;
+    }
+
+    let _srcSeq = 0;
+    // 降采样那档的中间结果缓存：拖动某个蒙版时只重烘它那一层，前缀直接复用。
+    // 只缓存低分辨率（全尺寸留给静置/导出，避免几十 MB 的画布叠在内存里）。
+    function cacheSlot(im, tw, th) {
+        if (!im._gradeCache) im._gradeCache = {};
+        const key = tw + 'x' + th;
+        if (!im._gradeCache[key]) {
+            const keys = Object.keys(im._gradeCache);
+            if (keys.length >= 2) delete im._gradeCache[keys[0]];
+            im._gradeCache[key] = { baseKey: '', base: null, chain: [] };
+        }
+        return im._gradeCache[key];
     }
 
     function bake(im, p, maxEdge) {
@@ -424,30 +467,54 @@
             tw = Math.max(1, Math.round(W * k));
             th = Math.max(1, Math.round(H * k));
         }
-        // 混色器（按色相选区，三维操作）走 WebGL 前置级；不可用/未启用时用原图
-        let drawSrc = src;
-        if (mixActive(p.mix) && window.QfsMix) {
-            drawSrc = window.QfsMix.pass(src, p.mix, tw, th) || src;
+        // 源像素换了（裁切/旋转会替换 im.el）也必须失效，否则会拿到旧图烘的缓存
+        if (!src._qfsVer) src._qfsVer = ++_srcSeq;
+
+        const globalOnly = Object.assign({}, p, { masks: [] });
+        const baseKey = signature(globalOnly) + '@' + src._qfsVer + '@' + tw + 'x' + th;
+        const slot = maxEdge > 0 ? cacheSlot(im, tw, th) : { baseKey: '', base: null, chain: [] };
+        if (slot.baseKey !== baseKey || !slot.base) {
+            slot.base = bakeOne(src, p, tw, th);
+            slot.baseKey = baseKey;
+            slot.chain = [];
         }
-        const c = document.createElement('canvas');
-        c.width = tw; c.height = th;
-        const g = c.getContext('2d');
-        if (!g) return null;
-        g.imageSmoothingEnabled = true;
-        g.imageSmoothingQuality = 'high';
-        const fs = filterString(p, Math.max(tw, th));
-        if (fs) g.filter = fs;
-        g.drawImage(drawSrc, 0, 0, tw, th);
-        if (fs) g.filter = 'none';
+        let cur = slot.base;
+        if (!cur) return null;
+
+        // 逐个蒙版：用该蒙版自己的 9 档参数再烘一层，然后按蒙版权重合成。
+        // 前缀缓存：只改第 N 个蒙版时，前 N-1 层直接复用。
+        const acts = (window.QfsMask && window.QfsMask.activeMasks) ? window.QfsMask.activeMasks(p.masks) : [];
+        let prevKey = baseKey;
+        for (let i = 0; i < acts.length; i++) {
+            const m = acts[i];
+            const key = prevKey + '>' + window.QfsMask.maskSignature(m);
+            const hit = slot.chain[i];
+            if (hit && hit.key === key && hit.canvas) {
+                cur = hit.canvas;
+                prevKey = key;
+                continue;
+            }
+            const layer = bakeOne(cur, m.p, tw, th) || cur;
+            // 蒙版权重固定按**原图**算：亮度蒙版若拿已调色层当源，一压暗选区就变大、
+            // 一提亮就变小，调完色再点回蒙版会发现"范围变了"。曲线/校准/混色器同理，
+            // 选区应该只由原画面的亮度决定，与调色参数无关。
+            const alpha = window.QfsMask.render(m, tw, th, im.el);
+            cur = window.QfsMask.composite(cur, layer, alpha);
+            slot.chain[i] = { key, canvas: cur };
+            slot.chain.length = i + 1;
+            prevKey = key;
+        }
+        if (acts.length === 0) slot.chain.length = 0;
+
         // canvas 没有 naturalWidth/naturalHeight，但引擎里到处用它算 fit / 比例 /
         // 自适应字号（autoExifSize = 档位 × clamp(照片宽/1200)）。
         // 必须恒等于原图尺寸，不能报烘焙后的像素尺寸：拖动中用的是 1600px 降采样，
         // 若按实际像素报，相机型号/参数文字会在拖动过程中变小、松手后又跳回原大小。
         // 烘焙画布只是像素密度不同，逻辑尺寸与原图一致，drawImage 仍按目标尺寸缩放绘制。
-        c.naturalWidth = W;
-        c.naturalHeight = H;
-        c.complete = true;
-        return c;
+        cur.naturalWidth = W;
+        cur.naturalHeight = H;
+        cur.complete = true;
+        return cur;
     }
 
     // 渲染取源：优先全分辨率，其次拖动中的降采样，都没有就原图
@@ -492,6 +559,23 @@
         setGrade(patch, opts) {
             const im = this.image;
             if (!im) return false;
+            // 选中某个蒙版时，9 档滑块改的是**该蒙版的参数**（与 LR 一致）；
+            // 曲线/校准/混色器/蒙版列表这类全局项仍然落到 grade 上。
+            const act = this.activeMask ? this.activeMask(im) : null;
+            const keys = Object.keys(patch || {});
+            const onlySlider = keys.length > 0 && keys.every((k) => MASK_ROUTE_KEYS.indexOf(k) >= 0);
+            if (act && onlySlider) {
+                for (const k of keys) {
+                    const v = Number(patch[k]) || 0;
+                    act.p[k] = Math.max(-100, Math.min(100, Math.round(v)));
+                }
+                this.invalidateGrade(im);
+                this.rebuildGrade(opts && opts.full ? 'full' : 'low');
+                this.syncGradeUI();
+                if (this.scheduleRender) this.scheduleRender(true);
+                if (this.scheduleDraft) this.scheduleDraft();
+                return true;
+            }
             const p = normalizeGrade(Object.assign({}, im.grade || {}, patch || {}));
             im.grade = p;
             this.invalidateGrade(im);
@@ -531,6 +615,8 @@
             const im = this.image;
             if (!im) return false;
             im.grade = defaultGrade();
+            this._activeMaskId = null;
+            im._gradeCache = null;
             this.invalidateGrade(im);
             this.syncGradeUI();
             if (this.renderFramedThumb) this.renderFramedThumb(im);
@@ -552,8 +638,9 @@
                 // 浅拷贝会让所有照片共用同一份数据互相串台
                 const cv = p.curve ? JSON.parse(JSON.stringify(p.curve)) : null;
                 const mx = p.mix ? JSON.parse(JSON.stringify(p.mix)) : null;
+                const mk = JSON.parse(JSON.stringify(p.masks || []));
                 it.grade = Object.assign({}, p, {
-                    curve: cv, mix: mx,
+                    curve: cv, mix: mx, masks: mk,
                     cal: p.cal ? Object.assign({}, p.cal) : null,
                     det: p.det ? Object.assign({}, p.det) : null
                 });
@@ -570,9 +657,11 @@
             const d = this._gradeDom;
             if (!d) return;
             const p = this.gradeOf(this.image);
+            const act = this.activeMask ? this.activeMask(this.image) : null;
+            const src = act ? act.p : p;
             for (const f of GRADE_FIELDS) {
                 const inp = d.sliders[f.k];
-                const v = Number(p[f.k]) || 0;
+                const v = Number(src[f.k]) || 0;
                 if (inp) inp.value = String(v);
                 // 标签必须走 updateLabel:它是数字框(.pval-num)的唯一同步入口,
                 // 直接写 textContent 会让切照片/编程设值后数字框停在旧值。
@@ -581,7 +670,11 @@
                 if (typeof this.updateLabel === 'function') this.updateLabel(id, text);
                 else if (d.labels[f.k]) d.labels[f.k].textContent = text;
             }
-            if (d.wrap) d.wrap.classList.toggle('grade-on', !isNeutral(p));
+            if (d.wrap) {
+                d.wrap.classList.toggle('grade-on', !isNeutral(p));
+                d.wrap.classList.toggle('editing-mask', !!act);
+            }
+            if (this.syncMaskUI) this.syncMaskUI();
             if (this.syncCurveUI) this.syncCurveUI();
             if (this.syncGradeExtraUI) this.syncGradeExtraUI(p);
         },
@@ -634,6 +727,7 @@
             if (all) all.addEventListener('click', () => this.applyGradeToAll());
             if (this.initCurve) this.initCurve();
             if (this.initGradeExtra) this.initGradeExtra();
+            if (this.initMasks) this.initMasks();
             this.syncGradeUI();
         }
     });

@@ -846,12 +846,55 @@ input[type=color]::-webkit-color-swatch {
 /* 调色：两个操作按钮并排，不跟 .param-row 的三栏网格抢宽度 */
 .param-row.grade-acts { display: flex; gap: var(--sp-2); padding-top: 2px; }
 .param-row.grade-acts .mini-btn { flex: 1; text-align: center; padding: 6px 4px; }
+/* ═══ 蒙版 ═══ */
+.mask-bar { margin-bottom: var(--sp-1); }
+.mask-list { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 6px; }
+.mask-row {
+    display: flex; align-items: center; gap: 6px;
+    flex: 1 1 100%; min-width: 0;
+    padding: 5px 8px; border-radius: 9px;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text-2); font-size: var(--fs-11); cursor: pointer;
+    transition: all .15s; text-align: left;
+}
+.mask-row:hover { border-color: var(--border-strong); }
+.mask-row.active { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); }
+.mask-row .mask-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mask-row .mask-type { flex: 0 0 auto; opacity: .75; }
+.mask-row .mask-del {
+    flex: 0 0 auto; width: 16px; height: 16px; line-height: 14px; text-align: center;
+    border-radius: 50%; color: var(--text-3);
+}
+.mask-row .mask-del:hover { background: rgba(212,98,122,.18); color: var(--rose); }
+/* 画布上的蒙版编辑层：绝对定位居中，几何由 applyZoomStyle 同步 */
+/* 位置与尺寸由 syncOverlayGeometry 按画布的视觉矩形逐帧写入（left/top/width/height），
+   所以这里不再用 inset:0 + margin:auto 居中，也不跟随 transform。 */
+.mask-overlay {
+    position: absolute; left: 0; top: 0;
+    z-index: 4; pointer-events: none; border-radius: 2px;
+    display: none;
+}
+.mask-overlay.active { display: block; pointer-events: auto; cursor: crosshair; }
+#grpMask.mask-on .pg-title { color: var(--primary); }
+#grpMask.mask-on .pg-title::after {
+    content: '已加'; margin-left: 6px; font-size: var(--fs-10);
+    color: var(--primary); background: var(--primary-soft);
+    border-radius: 6px; padding: 1px 5px; vertical-align: middle;
+}
+
 #grpGrade.grade-on .pg-title { color: var(--primary); }
 #grpGrade.grade-on .pg-title::after {
     content: '已调整'; margin-left: 6px; font-size: var(--fs-10);
     color: var(--primary); background: var(--primary-soft);
     border-radius: 6px; padding: 1px 5px; vertical-align: middle;
 }
+/* 正在编辑蒙版时，调色组标题挂个提示，避免误以为在调整张图 */
+#grpGrade.editing-mask .pg-title::after {
+    content: '编辑蒙版'; margin-left: 6px; font-size: var(--fs-10);
+    color: var(--surface); background: var(--primary);
+    border-radius: 6px; padding: 1px 5px; vertical-align: middle;
+}
+
 /* 细节/校准/混色器组共用同一套「已调整」徽章 */
 #grpDet.grade-on .pg-title, #grpCal.grade-on .pg-title, #grpMix.grade-on .pg-title { color: var(--primary); }
 #grpDet.grade-on .pg-title::after, #grpCal.grade-on .pg-title::after, #grpMix.grade-on .pg-title::after {

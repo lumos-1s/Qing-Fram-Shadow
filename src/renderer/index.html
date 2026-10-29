@@ -190,6 +190,7 @@
             <section id="canvasPane">
                 <div class="stage">
                     <canvas id="previewCanvas" width="800" height="600"></canvas>
+                    <canvas id="maskOverlay" class="mask-overlay" width="1" height="1" aria-label="蒙版编辑层：拖出渐变/椭圆，或按住涂抹"></canvas>
                     <div id="rotHint" class="rot-hint" hidden>↻ 拖动旋转<span>Shift 15°</span></div>
                 </div>
                 <button id="btnImmersive" class="stage-immersive-btn" type="button" title="全屏沉浸展示 (Ctrl+Shift+P)" aria-label="全屏沉浸展示" hidden>
@@ -991,6 +992,51 @@
                     <!-- ══ Tab9 调色（工具） ══ -->
                     <div class="tab-panel" id="panel-grade">
                         <div class="param-empty-note">导入照片后即可调色</div>
+                        <div class="param-group" id="grpMask">
+                            <div class="pg-title collapsible">蒙版</div>
+                            <div class="mask-bar">
+                                <div class="curve-chans" id="maskTypes">
+                                    <button type="button" class="curve-chan" data-mt="linear" title="线性渐变：拖出方向，起点全作用、终点不作用">渐变</button>
+                                    <button type="button" class="curve-chan" data-mt="radial" title="径向椭圆：从中心拖出范围">椭圆</button>
+                                    <button type="button" class="curve-chan" data-mt="brush" title="画笔：在画布上涂抹，Alt/右键擦除">画笔</button>
+                                    <button type="button" class="curve-chan" data-mt="lum" title="按亮度自动选区">亮度</button>
+                                </div>
+                            </div>
+                            <div class="mask-list" id="maskList"></div>
+                            <div id="maskOpts" style="display:none">
+                                <div class="param-row">
+                                    <label>羽化</label>
+                                    <input type="range" id="slMaskFeather" class="ctl-rng" min="0" max="100" step="1" value="50" />
+                                    <span class="pval" id="lblMaskFeather">50</span>
+                                </div>
+                                <div class="param-row">
+                                    <label>浓度</label>
+                                    <input type="range" id="slMaskDensity" class="ctl-rng" min="0" max="100" step="1" value="100" />
+                                    <span class="pval" id="lblMaskDensity">100</span>
+                                </div>
+                                <div class="param-row" id="rowMaskBrush">
+                                    <label>笔刷大小</label>
+                                    <input type="range" id="slMaskBrushSize" class="ctl-rng" min="2" max="80" step="1" value="18" />
+                                    <span class="pval" id="lblMaskBrushSize">18</span>
+                                </div>
+                                <div class="param-row" id="rowMaskLo">
+                                    <label>暗部阈值</label>
+                                    <input type="range" id="slMaskLo" class="ctl-rng" min="0" max="95" step="1" value="0" />
+                                    <span class="pval" id="lblMaskLo">0</span>
+                                </div>
+                                <div class="param-row" id="rowMaskHi">
+                                    <label>亮部阈值</label>
+                                    <input type="range" id="slMaskHi" class="ctl-rng" min="5" max="100" step="1" value="45" />
+                                    <span class="pval" id="lblMaskHi">45</span>
+                                </div>
+                                <div class="param-row chk-row">
+                                    <label>反相</label>
+                                    <input type="checkbox" id="cbMaskInv" class="ctl-chk" />
+                                </div>
+                                <div class="hint-box" id="maskEditTip"></div>
+                            </div>
+                            <div class="hint-box">选中蒙版后，下面 9 档滑块只作用在蒙版范围内；点「全局」回到整图。曲线/校准/混色器始终是全局。</div>
+                        </div>
                         <div class="param-group" id="grpGrade">
                             <div class="pg-title collapsible">调色</div>
                             <div class="param-row" id="rowGradeExp">
@@ -1588,5 +1634,6 @@
     <script src="js/app-grade.js"></script>
     <script src="js/app-curve.js"></script>
     <script src="js/app-mix.js"></script>
+    <script src="js/app-mask.js"></script>
 </body>
 </html>

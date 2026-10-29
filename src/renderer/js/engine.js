@@ -116,6 +116,8 @@ function renderToCanvas(app, compare) {
 }
 function _renderToCanvasInner(app, compare) {
     const { image, template } = app;
+    // 每次渲染先清空:只有默认模板管线能算出照片矩形,卡片/相框管线保持 null(蒙版编辑层会提示切换)
+    app._photoRect = null;
     const img = photoSrc(image);
     const cw0 = img.naturalWidth, ch0 = img.naturalHeight;
 
@@ -169,6 +171,12 @@ function setupCanvas(app, canvasW, canvasH) {
     // 逻辑显示尺寸(CSS 像素),供 applyZoomStyle 使用(与后备缓冲解耦,不会因 DPR 放得更大)
     canvas._logW = Math.max(1, Math.round(canvasW * uiScale));
     canvas._logH = Math.max(1, Math.round(canvasH * uiScale));
+    // 基准坐标(模板/照片矩形都是这套单位) → 逻辑显示坐标的比例。
+    // 大图会被 uiScale 缩到 displayMax,叠加层/指针换算必须乘它,否则蒙版范围会错位成一个小矩形。
+    app._canvasScale = uiScale;
+    // 基准坐标尺寸（模板/照片矩形都用这套单位）:叠加层靠它把基准坐标换算成像素。
+    app._canvasBaseW = canvasW;
+    app._canvasBaseH = canvasH;
     const ctx = canvas.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -240,7 +248,8 @@ function renderTemplateStyle(app) {
     }
 
     // 照片
-    drawOriginImage(ctx, img, margin, canvasW, canvasH, template);
+    // 记录照片在画布里的矩形(逻辑坐标),蒙版叠加层靠它把指针位置换算成照片坐标
+    app._photoRect = drawOriginImage(ctx, img, margin, canvasW, canvasH, template) || null;
 
     // 形状遮罩:仅胶片齿??白色;原版无锯齿撕裂、无暗色圆点)
     applyShapeMask(ctx, template.filmTearConfig, canvasW, canvasH, margin);
@@ -516,6 +525,7 @@ function drawOriginImage(ctx, img, margin, cw, ch, template) {
     const usableH = ch - (margin.marginTop || 0) - (margin.marginBottom || 0);
     const ox = (margin.marginLeft || 0) + (usableW - iw) / 2 + (margin.imgOffsetX || 0);
     const oy = (margin.marginTop || 0) + (usableH - ih) / 2 + (margin.imgOffsetY || 0);
+    const rect = { x: ox, y: oy, w: iw, h: ih };
     const corner = template.cornerConfig || {};
     let rTL = corner.cornerRadiusTL || 0, rTR = corner.cornerRadiusTR || 0;
     let rBL = corner.cornerRadiusBL || 0, rBR = corner.cornerRadiusBR || 0;
@@ -612,6 +622,7 @@ function drawOriginImage(ctx, img, margin, cw, ch, template) {
     } else {
         ctx.drawImage(img, ox, oy, iw, ih);
     }
+    return rect;
 }
 
 // 形状遮罩:仅胶片齿??原版 applyShapeMask)

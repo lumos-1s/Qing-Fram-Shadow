@@ -47,6 +47,13 @@ window.App = Object.assign(window.App || {}, {
         canvas.style.width = Math.max(1, Math.round(lw * z)) + 'px';
         canvas.style.height = Math.max(1, Math.round(lh * z)) + 'px';
         canvas.style.transform = `translate(${Math.round(this.panX)}px, ${Math.round(this.panY)}px)`;
+        // 蒙版编辑层跟着画布的显示尺寸/位移走；有选中蒙版时顺带重画叠加层
+        // （照片矩形 app._photoRect 是渲染时写进来的，缩放后必须重算位置）
+        if (typeof this.syncOverlayGeometry === 'function') this.syncOverlayGeometry();
+        if (typeof this.drawMaskOverlay === 'function'
+            && typeof this.activeMask === 'function' && this.activeMask(this.image)) {
+            this.drawMaskOverlay();
+        }
     },
 
     switchTab(name) {
