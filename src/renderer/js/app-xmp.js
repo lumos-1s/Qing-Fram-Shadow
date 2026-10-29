@@ -234,20 +234,23 @@
     async function importXmpPreset() {
         const app = window.App;
         const api = window.qingframe;
-        if (!api || !api.importXmp) { if (app && app.setStatus) app.setStatus('当前环境不支持导入 XMP'); return; }
+        const say = (msg) => { say(msg); };
+        if (!api || !api.importXmp) { say('当前环境不支持导入 XMP（缺少 preload 桥）'); return; }
         let r;
-        try { r = await api.importXmp(); } catch (e) { r = null; }
-        if (!r || r.canceled) return;
-        if (!r.ok) { if (app && app.setStatus) app.setStatus('导入失败：' + (r.error || '未知错误')); return; }
+        try { r = await api.importXmp(); }
+        catch (e) { say('导入失败：' + (e && e.message ? e.message : String(e))); return; }
+        if (!r) { say('导入失败：主进程没有返回结果'); return; }
+        if (r.canceled) return;
+        if (!r.ok) { say('导入失败：' + (r.error || '未知错误')); return; }
         const { patch, applied, skipped, hasAdjust } = mapXmp(r.text);
         if (!hasAdjust) {
-            if (app && app.setStatus) app.setStatus('「' + r.name + '」里没有可识别的调色参数（请确认是 Lightroom/Camera Raw 导出的 .xmp）');
+            say('「' + r.name + '」里没有可识别的调色参数（请确认是 Lightroom/Camera Raw 导出的 .xmp）');
             return;
         }
         if (app && app.setGrade) app.setGrade(patch, { full: true });
         const msg = '已导入 LR 预设「' + r.name + '」：' + (applied.join('、') || '无')
             + (skipped.length ? '；未导入：' + skipped.join('、') : '');
-        if (app && app.setStatus) app.setStatus(msg);
+        say(msg);
     }
 
     window.AppXmp = { mapXmp, importXmpPreset };
