@@ -944,6 +944,25 @@ const cleanupQfsSession = (id) => {
 const cleanupQfsTmpRoot = () => {
     try { fs.rmSync(qfsTmpRoot(), { recursive: true, force: true }); } catch (e) { /* ignore */ }
 };
+
+// 导入 Lightroom / Camera Raw 的 XMP 调色预设:只读文本回渲染层,解析与映射在渲染端做
+ipcMain.handle('import-xmp', async () => {
+    const st = loadState();
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: '导入 Lightroom 调色预设 (.xmp)',
+        defaultPath: validDir(st.lastOpenDir) ? st.lastOpenDir : undefined,
+        filters: [{ name: 'Lightroom 预设 / XMP', extensions: ['xmp'] }],
+        properties: ['openFile']
+    });
+    if (canceled || !filePaths.length) return { ok: false, canceled: true };
+    try {
+        if (fs.statSync(filePaths[0]).size > 8 * 1024 * 1024) return { ok: false, error: 'XMP 超过 8MB' };
+        const text = fs.readFileSync(filePaths[0], 'utf-8');
+        saveState({ lastOpenDir: path.dirname(filePaths[0]) });
+        return { ok: true, name: path.basename(filePaths[0], '.xmp'), text };
+    } catch (e) { return { ok: false, error: 'XMP 读取失败：' + e.message }; }
+});
+
 ipcMain.handle('qfs-begin-export', async (_e, meta) => {
     if (!isTrustedFrame(_e)) return BLOCKED;
     try {

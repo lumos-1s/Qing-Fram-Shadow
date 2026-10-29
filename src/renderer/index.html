@@ -1035,7 +1035,7 @@
                                 </div>
                                 <div class="hint-box" id="maskEditTip"></div>
                             </div>
-                            <div class="hint-box">选中蒙版后，下面 9 档滑块只作用在蒙版范围内；点「全局」回到整图。曲线/校准/混色器始终是全局。</div>
+<!--                            <div class="hint-box">选中蒙版后，下面 9 档滑块只作用在蒙版范围内；点「全局」回到整图。曲线/校准/混色器始终是全局。</div>-->
                         </div>
                         <div class="param-group" id="grpGrade">
                             <div class="pg-title collapsible">调色</div>
@@ -1088,6 +1088,7 @@
                             <div class="param-row grade-acts">
                                 <button id="btnGradeReset" class="mini-btn" type="button" title="全部归零，回到照片本色">重置</button>
                                 <button id="btnGradeApplyAll" class="mini-btn" type="button" title="把这套参数复制给本次导入的所有照片">应用到全部</button>
+                                <button id="btnGradeImportXmp" class="mini-btn" type="button" title="导入 Lightroom / Camera Raw 的 .xmp 调色预设（曝光/对比度/高光阴影/HSL/曲线/校准等）">导入 LR 预设</button>
                             </div>
                         </div>
 <!--                        <div class="pg-section-title">氛围</div>-->
@@ -1632,6 +1633,7 @@
     <script src="js/app-preset-wall.js"></script>
     <script src="js/app-crop.js"></script>
     <script src="js/app-grade.js"></script>
+    <script src="js/app-xmp.js"></script>
     <script src="js/app-curve.js"></script>
     <script src="js/app-mix.js"></script>
     <script src="js/app-mask.js"></script>
