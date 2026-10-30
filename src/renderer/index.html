@@ -995,6 +995,14 @@
                                 <button type="button" class="curve-chan" data-mm="intersect" title="只保留与上一个蒙版重叠的部分">相交</button>
                             </div>
                             <div class="mask-list" id="maskList"></div>
+                            <!-- 两条最容易误解的规则，直接写在面板上：
+                                 ① 新建蒙版默认零参数，不动滑块画面不会有任何变化（整组会被跳过）；
+                                 ② 蒙版只接管 11 档基础调色，其余档位仍作用于全图。 -->
+                            <div class="pool-note" id="maskRuleNote">
+                                <b>加了蒙版没反应？</b>蒙版默认零参数，拖下面任意一个调色滑块才会生效。<br />
+                                蒙版只接管 <b>曝光 / 对比度 / 饱和度 / 自然饱和度 / 色温 / 色调 / 高光 / 阴影 / 白场 / 黑场 / 中间调</b>；
+                                <b>曲线、黑白、清晰度、镜头校正、色彩平衡</b>这些仍作用于整张照片。
+                            </div>
                             <div id="maskOpts" style="display:none">
                                 <div class="param-row">
                                     <label>羽化</label>

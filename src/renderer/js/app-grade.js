@@ -1134,6 +1134,26 @@
                 if (this.scheduleDraft) this.scheduleDraft();
                 return true;
             }
+            // 选中蒙版却改了「不受蒙版控制」的档位（曲线/黑白/清晰度/镜头校正/色彩平衡/渐变映射…）：
+            // 这些一直是全局的，用户很容易以为"蒙版没生效"。这里直接说清楚它落到整张照片了。
+            if (act && keys.length) {
+                const globals = keys.filter((k) => MASK_ROUTE_KEYS.indexOf(k) < 0);
+                if (globals.length && this.setStatus) {
+                    const names = globals.map((k) => {
+                        const f = GRADE_FIELDS.find((x) => x.k === k);
+                        return f ? f.label : ({ det: '清晰度/纹理', bw: '黑白', lc: '镜头校正', cg: '色彩平衡',
+                            curve: '曲线', mix: '混色器', cal: '校准', gm: '渐变映射' }[k] || k);
+                    });
+                    this.setStatus('「' + names.join('、') + '」是全局档位，不受蒙版影响（已作用于整张照片）');
+                    // 这条提示只解释「刚才那一下」，4 秒后清掉；否则它会一直挂在状态栏，
+                    // 用户接着调蒙版档位时还看见"不受蒙版影响"，反而更糊涂。
+                    clearTimeout(this._maskGlobalTipT);
+                    this._maskGlobalTipT = setTimeout(() => {
+                        const el = this.dom && this.dom.stCanvas;
+                        if (el && String(el.textContent || '').indexOf('不受蒙版影响') >= 0) this.setStatus('');
+                    }, 4000);
+                }
+            }
             // XMP 预设导入用 replace：未写进预设的档位归零，避免上一套参数
             // 残留在新预设里（否则同一张照片连续导入会越叠越不像）。
             const replace = !!(opts && opts.replace);
