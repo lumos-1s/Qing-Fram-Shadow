@@ -1508,6 +1508,12 @@ window.App = Object.assign(window.App || {}, {
     async importLogoPack(filePath) {
         const btn = this.$('btnImportLogoPack');
         const label = btn ? btn.textContent : '';
+        // 改了 src/main 却只刷了页面（F5/Ctrl+R）时：新按钮在、主进程还是旧的。
+        // 这两种情况都别把裸 IPC 错误丢给用户，直说要重启。
+        if (!window.qingframe || typeof window.qingframe.importLogoPack !== 'function') {
+            this.setStatus('这个功能需要重启应用才生效：完全退出后重新打开（刷新页面不够）');
+            return;
+        }
         if (btn) { btn.disabled = true; btn.textContent = '导入中…'; }
         try {
             const r = await window.qingframe.importLogoPack(filePath);
@@ -1527,7 +1533,12 @@ window.App = Object.assign(window.App || {}, {
             if (r.skipped && r.skipped > (r.svgOnly || 0)) parts.push(`另有 ${r.skipped - (r.svgOnly || 0)} 个读不出来`);
             this.setStatus(parts.join('，'));
         } catch (e) {
-            this.setStatus('导入失败：' + (e && e.message || e));
+            const msg = String(e && e.message || e || '');
+            if (/No handler registered|is not a function/i.test(msg)) {
+                this.setStatus('这个功能需要重启应用才生效：完全退出后重新打开（刷新页面不够）');
+            } else {
+                this.setStatus('导入失败：' + msg);
+            }
         } finally {
             if (btn) { btn.disabled = false; btn.textContent = label || '导入 Logo 素材包'; }
         }
