@@ -827,6 +827,19 @@ async function main() {
           && cgUi.high.h === '40' && cgUi.high.s === '80' && cgUi.high.l === '10',
         '颜色分级参数回显：阴影/高光/混合/平衡', JSON.stringify(cgUi));
 
+    // 只调色相、饱和度为 0：颜色分级不能被判成「空」而整组丢掉。
+    // sanitizeCg 曾只检查 s/l，导致拖色相后 cg 变 null、滑块弹回 0（用户反馈「色相滑不动」）。
+    const cgHueOnly = await exec(`(async () => {
+        const A = window.App;
+        A.setGrade({ cg: { shadow: { h: 210, s: 0, l: 0 }, mid: { h: 0, s: 0, l: 0 },
+            high: { h: 0, s: 0, l: 0 }, global: { h: 0, s: 0, l: 0 }, blending: 50, balance: 0 } });
+        await new Promise((r) => setTimeout(r, 200));
+        const cg = (A.gradeOf(A.image) || {}).cg;
+        const hue = document.getElementById('slCgHue');
+        return { kept: !!(cg && cg.shadow && cg.shadow.h === 210), slider: hue ? hue.value : null };
+    })()`);
+    check(cgHueOnly.kept, '只调色相时颜色分级不被判空（色相保留）', JSON.stringify(cgHueOnly));
+
     const cgPix = await exec(`(async () => {
         const A = window.App;
         A.resetGrade();

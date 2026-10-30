@@ -91,7 +91,10 @@
                 s: Number.isFinite(s) ? Math.max(0, Math.min(100, Math.round(s))) : 0,
                 l: Number.isFinite(l) ? Math.max(-100, Math.min(100, Math.round(l))) : 0
             };
-            if (out[z.k].s || out[z.k].l) any = true;
+            // 色相单独存在也要留住：色相本身不产生颜色（还要饱和度），但用户通常
+            // 先定色相再拉饱和度。这里只看 s/l 的话，一拖色相整组就被判空 → cg 变
+            // null → 滑块弹回 0，「色相拉不动」就是这么来的。
+            if (out[z.k].h || out[z.k].s || out[z.k].l) any = true;
         }
         const b = Number(c.blending), ba = Number(c.balance);
         out.blending = Number.isFinite(b) ? Math.max(0, Math.min(100, Math.round(b))) : 50;

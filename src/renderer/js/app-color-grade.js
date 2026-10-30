@@ -559,7 +559,17 @@
                 }
                 this.setGrade({ cg });
             };
-            bind(this._cgExtra.hue, (v) => edit('h', v));
+            bind(this._cgExtra.hue, (v) => {
+                edit('h', v);
+                // 色相只是「往哪个颜色偏」，本身不产生颜色。只拖它而饱和度是 0 时
+                // 画面一定没变化，不解释一句用户会以为滑块坏了（同一个误解反复出现）。
+                const g = this.gradeOf(this.image);
+                const z = g && g.cg && g.cg[this._cgZone || 'shadow'];
+                if (z && !z.s && !z.l && !this._cgHueHinted) {
+                    this._cgHueHinted = true;
+                    this.setStatus('色相已设为 ' + Math.round(v) + '°，再拉一点饱和度才会看到颜色');
+                }
+            });
             bind(this._cgExtra.sat, (v) => edit('s', v));
             bind(this._cgExtra.lum, (v) => edit('l', v));
             bind(this._cgExtra.blend, (v) => edit('blending', v));
