@@ -2104,7 +2104,15 @@ window.App = {
                 }
                 this.buildThumbnails();
                 this.selectImage(start);
-                this.setStatus(`已导入 ${loaded} 张图片${carry ? '，沿用「' + carry.templateName + '」' : ''}${skipped ? '，跳过 ' + skipped + ' 个不支持的文件' : ''}${iccNote}`);
+                // 内存提醒：每张照片的原图位图常驻（实测 24MP 约 70MB/张），
+                // 同时开几十张就会把机器压到换页，表现为「切回来卡住不动」。
+                // 这里只在明显过量时说一句，不阻止导入。
+                const mp = (this.images || []).reduce((a, im) => a + ((im && im.w && im.h) ? im.w * im.h : 0), 0);
+                const estGB = mp * 4 * 1.45 / 1073741824;
+                const memWarn = estGB >= 1.5
+                    ? `｜注意：当前 ${this.images.length} 张共约 ${estGB.toFixed(1)}GB 内存，建议处理完一批先删掉再导下一批`
+                    : '';
+                this.setStatus(`已导入 ${loaded} 张图片${carry ? '，沿用「' + carry.templateName + '」' : ''}${skipped ? '，跳过 ' + skipped + ' 个不支持的文件' : ''}${iccNote}${memWarn}`);
             }
         } finally {
             this.finishImportProgress();
