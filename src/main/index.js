@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { pathToFileURL } = require('url');
+const zlib = require('zlib');
 const { createStateStore } = require('./state');
 const { normalizeMirror, mirrorUrlFor, downloadVerified, releaseAssetUrl } = require('./update-mirror');
 
@@ -165,6 +166,8 @@ if (!app.requestSingleInstanceLock()) {
     const LOGOS_DIR = path.join(__dirname, '..', '..', 'shared', 'brandlogos');
     const TEXTURES_DIR = path.join(__dirname, '..', '..', 'shared', 'textures');
     const MARKS_DIR = path.join(__dirname, '..', '..', 'shared', 'marks');
+    // ACR 实测查找表（Camera Raw 滤镜 763 张 17³ 色格表，zlib 压缩；来源 Compositor，MIT）
+    const ACR_TABLES_PATH = path.join(__dirname, '..', '..', 'shared', 'acr', 'cr-tables.bin');
     const TEMPLATES_DIR = path.join(app.getPath('userData'), 'templates');
     const { loadState, saveState, validDir, freeFilePath } = createStateStore(path.join(app.getPath('userData'), 'state.json'));
 
@@ -492,6 +495,17 @@ app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
 });
 
+ipcMain.handle('load-acr-tables', () => {
+    try {
+        const raw = fs.readFileSync(ACR_TABLES_PATH);
+        if (raw.length < 10 || raw.slice(0, 4).toString('ascii') !== 'CRT4') return null;
+        const planes = zlib.inflateSync(raw.slice(10));
+        return {
+            size: raw.readUInt16LE(4), count: raw.readUInt16LE(6), step: raw.readUInt16LE(8),
+            data: planes.buffer.slice(planes.byteOffset, planes.byteOffset + planes.byteLength)
+        };
+    } catch (_) { return null; }
+});
 ipcMain.handle('list-presets', () => {
     try {
         if (!fs.existsSync(PRESETS_DIR)) return [];

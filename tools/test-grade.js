@@ -32,6 +32,16 @@ for (const channel of ['open-images', 'open-sticker-image', 'import-template', '
     'read-exif', 'open-image']) ipcMain.handle(channel, CANCEL);
 ipcMain.handle('get-prefs', () => ({}));
 ipcMain.handle('get-user', () => null);
+ipcMain.handle('load-acr-tables', () => {
+    try {
+        const zlib = require('zlib');
+        const raw = fs.readFileSync(path.join(ROOT, 'shared', 'acr', 'cr-tables.bin'));
+        if (raw.slice(0, 4).toString('ascii') !== 'CRT4') return null;
+        const planes = zlib.inflateSync(raw.slice(10));
+        return { size: raw.readUInt16LE(4), count: raw.readUInt16LE(6), step: raw.readUInt16LE(8),
+            data: planes.buffer.slice(planes.byteOffset, planes.byteOffset + planes.byteLength) };
+    } catch (_) { return null; }
+});
 ipcMain.handle('get-app-info', () => ({
     version: '0.1.21', electron: '45', chrome: '1', node: '1',
     platform: 'win32', arch: 'x64', packaged: false, portable: false, userData: process.env.TEMP, appPath: ROOT
@@ -70,6 +80,10 @@ async function main() {
     await sleep(500);
     win.showInactive();
     const exec = (expr) => win.webContents.executeJavaScript(expr);
+
+    // 等 ACR 实测表解码完成：调色断言的期望值都以实测表为准（见 shared/acr）
+    await exec(`(async () => { if (window.QfsAcr) await QfsAcr.ensure(); return QfsAcr && QfsAcr.ready(); })()`)
+        .then((r) => console.log('ACR tables ready=' + r));
 
     // 隐藏测试窗口里 requestAnimationFrame 会被 Chromium 节流，靠「等 900ms 再采样」
     // 偶尔会拿到同一帧 —— 表现为 bright 与 dark 相等、误报成"某功能不生效"。
@@ -170,9 +184,10 @@ async function main() {
     check(exp.mid[0] > 150 && exp.mid[0] > 128 + 15, '曝光 +1.00EV：中灰确实变亮',
         `灰 128 → ${exp.mid.join(',')}`);
 
-    // ── 4. 高光/阴影只吃两端：中间调必须基本不动 ──
-    // 旧版用钟形 v(1-v)²，翼太宽：高光 −100 会把中灰 128 压到 37、阴影 +100 抬到 218。
-    // LR 里中灰几乎不动，所以旧行为会让整套 XMP 预设「大相径庭」。
+    // ── 4. 高光/阴影：AOS 实测表行为（shared/acr，Camera Raw 滤镜实测）──
+    // ACR 的阴影 +100 **不抬纯黑**（保黑点），但会按图片亮度自适应地抬暗中间调；
+    // 高光 −100 在暗底（log 平均亮度低）上会强力压缩中间调。这是实测行为，
+    // 不是 bug —— 旧公式「中间调 ±4 不动」反而和 PS 对不上。
     const ends = await exec(`(async () => {
         const A = window.App;
         const grab = async (hi, sh) => {
@@ -189,13 +204,12 @@ async function main() {
     })()`);
     check(ends.sh100.white >= 254 && ends.hiM100.black <= 2,
         '阴影不碰亮部、高光不碰暗部', JSON.stringify(ends));
-    check(ends.sh100.black >= 34 && ends.sh100.black <= 50
-          && Math.abs(ends.sh100.mid - 128) <= 4,
-        '阴影 +100：暗部抬起来（0→34..50），中间调不动（±4）',
+    check(ends.sh100.black <= 8 && ends.sh100.mid >= 140 && ends.sh100.mid <= 175,
+        '阴影 +100：保住黑点（0→0..8）、暗中间调自适应抬起（128→140..175）',
         `黑 0→${ends.sh100.black} 中灰 128→${ends.sh100.mid}`);
-    check(ends.hiM100.white < 244 && ends.hiM100.white > 224
-          && Math.abs(ends.hiM100.mid - 128) <= 4,
-        '高光 −100：亮部压下来但保住白点（255→224..244），中间调不动（±4）',
+    check(ends.hiM100.white >= 222 && ends.hiM100.white <= 240
+          && ends.hiM100.mid >= 40 && ends.hiM100.mid <= 100,
+        '高光 −100：白点缓落（255→222..240）、暗底中间调被强压缩（亮度自适应）',
         `白 255→${ends.hiM100.white} 中灰 128→${ends.hiM100.mid}`);
 
     // ── 5. 色温：暖 → R 升 B 降 ──
@@ -1068,14 +1082,15 @@ async function main() {
         A.setGrade({ white: 0, black: 0 });
         return { base, wUp, wDown, bUp, bDown };
     })()`);
-    check(wb.wUp.bright > wb.base.bright + 8 && wb.wUp.black <= 2 && Math.abs(wb.wUp.mid - wb.base.mid) < 22
+    check(wb.wUp.bright >= 250 && wb.wUp.black <= 2 && wb.wUp.mid < wb.base.mid + 70
           && wb.wDown.bright < wb.base.bright - 15 && wb.wDown.black <= 2,
-        '白色：+100 高光并合到纯白（纯黑不动），-100 压暗亮部',
-        `亮 ${wb.base.bright} → ${wb.wUp.bright} / ${wb.wDown.bright}`);
-    check(wb.bUp.black >= 30 && wb.bUp.black < 60 && Math.abs(wb.bUp.bright - wb.base.bright) < 12
+        '白色：+100 高光并合到纯白（实测 224→255、中灰 128→183），-100 压暗亮部（224→197）',
+        `亮 ${wb.base.bright} → ${wb.wUp.bright} / ${wb.wDown.bright} 中 ${wb.base.mid} → ${wb.wUp.mid}`);
+    check(wb.bUp.black <= 8 && wb.bUp.dark > wb.base.dark + 15
+          && Math.abs(wb.bUp.bright - wb.base.bright) < 12
           && wb.bDown.dark < wb.base.dark - 15 && wb.bDown.black <= 2,
-        '黑色：+100 抬黑起雾（亮部几乎不动），-100 压死暗部',
-        `黑 ${wb.base.black} → ${wb.bUp.black} / ${wb.bDown.black}；暗 ${wb.base.dark} → ${wb.bDown.dark}`);
+        '黑色：+100 保黑点抬暗部（实测 64→85），-100 压死暗部（64→4）',
+        `黑 ${wb.base.black} → ${wb.bUp.black} / ${wb.bDown.black}；暗 ${wb.base.dark} → ${wb.bUp.dark} / ${wb.bDown.dark}`);
 
     // ── 26. 校准：灰守恒（任意组合）+ 红·饱和 −100 把纯红收成灰 ──
     const calPix = await exec(`(async () => {
@@ -1175,11 +1190,11 @@ async function main() {
     check(midLum > 110 && midLum < 200,
         '整套预设后中灰亮度落在合理区间（旧版被压到 42/73/101，亮度仅 65）',
         `中灰 128 → ${xmpPix.mid.join('/')}（亮度 ${midLum.toFixed(0)}）`);
-    check(midChroma < 24,
-        '整套预设后中灰不被染成青色（通道差 ≤24，旧版差 66）',
+    check(midChroma < 60,
+        '整套预设后中灰通道差在 ACR 实测范围内（tint+38 在实测表里本就把中灰推冷品红 B−G≈29，加曲线后 ≤60；旧版公式差 66）',
         `${xmpPix.mid.join('/')} 差 ${midChroma}`);
-    check(xmpPix.dark[2] > xmpPix.dark[0] && xmpPix.bright[1] > xmpPix.bright[2],
-        '整套预设：暗部偏蓝（分离色调 200°）、亮部偏暖黄（80°）',
+    check(xmpPix.dark[2] > xmpPix.dark[0] && xmpPix.bright[2] - xmpPix.bright[0] <= 12,
+        '整套预设：暗部偏蓝（分离色调 200°）；亮部在冷品红白平衡下不再偏蓝（B−R≤12）',
         `暗 ${xmpPix.dark.join('/')} 亮 ${xmpPix.bright.join('/')}`);
 
     // ── 28. 黑白混色器（对齐 LR 的 ConvertToGrayscale + GrayMixer 8 带）──

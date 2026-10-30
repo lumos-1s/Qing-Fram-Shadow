@@ -104,8 +104,8 @@ app.whenReady().then(async () => {
     ok('阴影 -30 → sh=-30', m.patch.sh === -30);
     ok('白色 +23 → white=23', m.patch.white === 23);
     ok('黑色 +26 → black=26', m.patch.black === 26);
-    // 4769K 相对 5500K 的 mired 差 ×0.75 → -21
-    ok('色温 4769K → temp=-21（不再被截成 ±100）', m.patch.temp === -21, 'temp=' + m.patch.temp);
+    // 4769K 相对 4900K 基准的 mired 差 → -4（基准与 PS 对照对齐，见 app-xmp.js kelvinToTemp）
+    ok('色温 4769K → temp=-4', m.patch.temp === -4, 'temp=' + m.patch.temp);
     ok('色调 +38 → tint=38（LR 正向=品红）', m.patch.tint === 38);
 
     // 细节/校准/混色器
@@ -162,10 +162,10 @@ app.whenReady().then(async () => {
     ok('ColorGradeBalance/Blending 保留', mg.patch.cg && mg.patch.cg.balance === 20
         && mg.patch.cg.blending === 50, JSON.stringify(mg.patch.cg));
 
-    // 黑白
+    // 黑白：走真正的黑白混色器（bw.on=1），清掉自然饱和度；sat 保留原值（灰度转换后无意义但无害）
     const mb = R(${JSON.stringify(GRAY_XMP)});
-    ok('ConvertToGrayscale=True → sat=-100 且清掉自然饱和度',
-        mb.patch.sat === -100 && mb.patch.vib === undefined, JSON.stringify(mb.patch));
+    ok('ConvertToGrayscale=True → 黑白混色器生效且清掉自然饱和度',
+        mb.patch.bw && mb.patch.bw.on === 1 && mb.patch.vib === undefined, JSON.stringify(mb.patch));
 
     // 旧 Process Version 字段兜底
     const ml = R(${JSON.stringify(LEGACY_XMP)});

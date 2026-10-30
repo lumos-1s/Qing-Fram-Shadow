@@ -575,6 +575,24 @@
         return s;
     }
 
+    // 256 级实测响应表采样（x ∈ 0..1）
+    function lutAt(arr, x) {
+        const t = x * 255;
+        const i = Math.min(254, Math.max(0, Math.floor(t)));
+        const f = t - i;
+        return arr[i] * (1 - f) + arr[i + 1] * f;
+    }
+    // 自适应档（对比度/高光/阴影）需要的图片亮度测度；按图缓存。
+    function acrBrightness() {
+        const im = window.App && window.App.image;
+        if (!im || !im.el) return { con: 128, hi: 128, sh: 128 };
+        if (!im._acrBright) {
+            im._acrBright = (window.QfsAcr && window.QfsAcr.measureBrightness)
+                ? window.QfsAcr.measureBrightness(im.el) : { con: 128, hi: 128, sh: 128 };
+        }
+        return im._acrBright;
+    }
+
     // 色温/高光/阴影/白点黑点合成每通道一条曲线，再串联用户曲线与薄雾黑场
     function buildTables(p) {
         const sh = (p.sh || 0) / 100, hi = (p.hi || 0) / 100, tp = (p.temp || 0) / 100;
@@ -603,53 +621,72 @@
         }
         const C = window.QfsCurve;
         const cl = (C && C.curveActive(p.curve)) ? C.buildCurveLuts(p.curve) : null;
+        // ACR 实测 stage（QfsAcr）：曝光→白平衡→对比度→高光→阴影→白→黑，
+        // 顺序与 Photoshop Camera Raw 一致。表没加载好时退回手写公式。
+        const ACR = window.QfsAcr;
+        const acrOn = !!(ACR && ACR.ready());
+        const F = acrOn
+            ? ACR.toneStages({
+                exp: Number(p.exp) || 0, temp: Number(p.temp) || 0, tint: Number(p.tint) || 0,
+                con: Number(p.con) || 0, hi: Number(p.hi) || 0, sh: Number(p.sh) || 0,
+                white: Number(p.white) || 0, black: Number(p.black) || 0
+            }, acrBrightness())
+            : null;
+        const gpow = Math.pow(2, -gam * 0.85);
         const r = new Array(LUT_N), g = new Array(LUT_N), b = new Array(LUT_N);
         for (let i = 0; i < LUT_N; i++) {
             const v = i / (LUT_N - 1);
-            // 曝光是线性光量：先在 sRGB 解码后的线性空间乘 2^EV，再编码回
-            // sRGB。直接 brightness(2^EV) 会把中灰 128 翻成 255，LR 只到约 175。
-            let o = v;
-            if (evGain !== 1) {
-                o = linearToSrgb(clamp01(srgbToLinear(v) * evGain));
+            let vr, vg, vb;
+            if (F) {
+                // 实测复合响应：三分量在白平衡处开始分道，各自沿自己的曲线走
+                vr = lutAt(F.r, v); vg = lutAt(F.g, v); vb = lutAt(F.b, v);
+                if (gam) {
+                    vr = Math.pow(clamp01(vr), gpow); vg = Math.pow(clamp01(vg), gpow); vb = Math.pow(clamp01(vb), gpow);
+                }
+            } else {
+                // ── 兜底：手写公式（表未就绪/主进程无表）──
+                // 曝光是线性光量：先在 sRGB 解码后的线性空间乘 2^EV，再编码回
+                // sRGB。直接 brightness(2^EV) 会把中灰 128 翻成 255，LR 只到约 175。
+                let o = v;
+                if (evGain !== 1) {
+                    o = linearToSrgb(clamp01(srgbToLinear(v) * evGain));
+                }
+                // 高光/阴影：只吃两端（窗内为 1、窗外为 0），中间调几乎不动。
+                // 判定用当前亮度 o（曝光之后的实际亮度），避免"先提亮再压高光"错位。
+                if (sh) o += sh * SH_AMP * (1 - smoothstep(0, LO_KNEE, o));
+                // 高光窗在接近纯白处**回落**：LR 的高光恢复不会把白点压灰，
+                // 否则整张照片失去最亮处，看起来"发灰不发亮"（用户对照 PS 时的第一感受）。
+                if (hi) {
+                    const w = smoothstep(HI_KNEE, HI_TOP, o) * (1 - 0.65 * smoothstep(HI_TOP, 1, o));
+                    o += hi * HI_AMP * w;
+                }
+                o = clamp01(o);
+                // 白点：正档把白点往里收（亮部提前并合到纯白），负档整体压暗亮部。
+                // 与高光不同，它**故意允许溢出**——那是「白色」该干的事，所以用端点操作，
+                // 但按 v² 加权，只让高光区吃到，中间调几乎不动。
+                if (wht) {
+                    // 三次方加权：128 只吃 12.5%，224 吃 68%，端点全吃
+                    const gain = 1 / Math.max(0.1, 1 - wht * 0.25);
+                    o = o + (clamp01(o * gain) - o) * o * o * o;
+                }
+                // 黑点：正档抬黑（0 变成 0.22，起雾/褪色），负档压死暗部（低于阈值的直接切黑）。
+                // 按 (1-v)² 加权，只吃暗部。
+                if (blk) {
+                    // LR 的 Blacks +100 大约把纯黑抬到 30～35，0.22 会抬到 56（暗部发灰、不通透）
+                    const op = blk > 0
+                        ? o * (1 - blk * 0.16) + blk * 0.16
+                        : Math.max(0, (o + blk * 0.16) / (1 + blk * 0.16));
+                    o = o + (op - o) * (1 - o) * (1 - o) * (1 - o);
+                }
+                if (gam) o = Math.pow(clamp01(o), gpow);
+                const d = tp * T_AMP * bell(o);
+                const dt = tn * TINT_AMP * bell(o);
+                // 色调：正 = 品红（R/B 升、G 降），负 = 绿（G 升、R/B 降），
+                // 与 Lightroom 的 Tint 正负方向一致；不再是 hue-rotate 的整体转色。
+                vr = clamp01(o + d + dt * 0.5);
+                vg = clamp01(o + d * 0.18 - dt);
+                vb = clamp01(o - d + dt * 0.5);
             }
-            // 高光/阴影：只吃两端（窗内为 1、窗外为 0），中间调几乎不动。
-            // 判定用当前亮度 o（曝光之后的实际亮度），避免"先提亮再压高光"错位。
-            if (sh) o += sh * SH_AMP * (1 - smoothstep(0, LO_KNEE, o));
-            // 高光窗在接近纯白处**回落**：LR 的高光恢复不会把白点压灰，
-            // 否则整张照片失去最亮处，看起来"发灰不发亮"（用户对照 PS 时的第一感受）。
-            if (hi) {
-                const w = smoothstep(HI_KNEE, HI_TOP, o) * (1 - 0.65 * smoothstep(HI_TOP, 1, o));
-                o += hi * HI_AMP * w;
-            }
-            o = clamp01(o);
-            // 白点：正档把白点往里收（亮部提前并合到纯白），负档整体压暗亮部。
-            // 与高光不同，它**故意允许溢出**——那是「白色」该干的事，所以用端点操作，
-            // 但按 v² 加权，只让高光区吃到，中间调几乎不动。
-            if (wht) {
-                // 三次方加权：128 只吃 12.5%，224 吃 68%，端点全吃
-                const gain = 1 / Math.max(0.1, 1 - wht * 0.25);
-                o = o + (clamp01(o * gain) - o) * o * o * o;
-            }
-            // 黑点：正档抬黑（0 变成 0.22，起雾/褪色），负档压死暗部（低于阈值的直接切黑）。
-            // 按 (1-v)² 加权，只吃暗部。
-            if (blk) {
-                // LR 的 Blacks +100 大约把纯黑抬到 30～35，0.22 会抬到 56（暗部发灰、不通透）
-                const op = blk > 0
-                    ? o * (1 - blk * 0.16) + blk * 0.16
-                    : Math.max(0, (o + blk * 0.16) / (1 + blk * 0.16));
-                o = o + (op - o) * (1 - o) * (1 - o) * (1 - o);
-            }
-            // 中间调（色阶 gamma）：只改曲线的弯曲程度，0→0、1→1 天然锚死，
-            // 所以它能在不动黑白场的前提下调整通透度，这是「对比度」做不到的。
-            // +100 → gamma 0.55（中间调提亮），−100 → 1.82（中间调压暗）。
-            if (gam) o = Math.pow(clamp01(o), Math.pow(2, -gam * 0.85));
-            const d = tp * T_AMP * bell(o);
-            const dt = tn * TINT_AMP * bell(o);
-            // 色调：正 = 品红（R/B 升、G 降），负 = 绿（G 升、R/B 降），
-            // 与 Lightroom 的 Tint 正负方向一致；不再是 hue-rotate 的整体转色。
-            let vr = clamp01(o + d + dt * 0.5);
-            let vg = clamp01(o + d * 0.18 - dt);
-            let vb = clamp01(o - d + dt * 0.5);
             // 去除薄雾（简化版）的黑场部分：正档压黑点（通透），负档抬黑点（起雾褪色）
             if (dhz > 0) {
                 const bp = 0.07 * dhz, k = 1 / Math.max(0.05, 1 - bp);
@@ -727,13 +764,16 @@
         // 曝光也在这张表里（线性光乘 2^EV），不再用 brightness()。
         const gamOn = Number(p.gam) || 0;
         if (sh || hi || tp || tn || wht || blk || exp || gamOn || curved || dhz
+            || (Number(p.con) || 0)
             || cbActive(p.cb) || gmActive(p.gm)
             || calActive(p.cal) || detActive(p.det)) {
             writeTables(p);
             parts.push('url(#' + GRADE_FILTER_ID + ')');
         }
+        const acrCon = (window.QfsAcr && window.QfsAcr.ready())
+            && (Number(p.con) || 0);   // 实测表路径下对比度已进 LUT，不再叠 CSS contrast
         const con = (Number(p.con) || 0) / 100;
-        if (con) parts.push('contrast(' + (1 + con * 0.5).toFixed(4) + ')');
+        if (con && !acrCon) parts.push('contrast(' + (1 + con * 0.5).toFixed(4) + ')');
         const sat = (Number(p.sat) || 0) / 100;
         if (sat) parts.push('saturate(' + (1 + sat).toFixed(4) + ')');
         // 薄雾的反差/饱和部分（黑场已在 LUT 里）

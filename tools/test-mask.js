@@ -33,6 +33,16 @@ for (const channel of ['open-images', 'open-sticker-image', 'import-template', '
     'read-exif', 'open-image']) ipcMain.handle(channel, CANCEL);
 ipcMain.handle('get-prefs', () => ({}));
 ipcMain.handle('get-user', () => null);
+ipcMain.handle('load-acr-tables', () => {
+    try {
+        const zlib = require('zlib');
+        const raw = fs.readFileSync(path.join(ROOT, 'shared', 'acr', 'cr-tables.bin'));
+        if (raw.slice(0, 4).toString('ascii') !== 'CRT4') return null;
+        const planes = zlib.inflateSync(raw.slice(10));
+        return { size: raw.readUInt16LE(4), count: raw.readUInt16LE(6), step: raw.readUInt16LE(8),
+            data: planes.buffer.slice(planes.byteOffset, planes.byteOffset + planes.byteLength) };
+    } catch (_) { return null; }
+});
 ipcMain.handle('get-app-info', () => ({
     version: '0.1.21', electron: '45', chrome: '1', node: '1',
     platform: 'win32', arch: 'x64', packaged: false, portable: false, userData: process.env.TEMP, appPath: ROOT

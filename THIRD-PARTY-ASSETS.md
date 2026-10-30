@@ -41,6 +41,18 @@ Copyright (c) 2026 lumos-1s），适用 MIT 许可。
 
 ---
 
+## 3. ACR 实测查找表（`shared/acr/cr-tables.bin`）— MIT
+
+`shared/acr/cr-tables.bin` 是 Photoshop「Camera Raw 滤镜」在各滑块各档位下
+对 17³ 色格的实测输出表（763 张，zlib 重压缩）。原始数据来自开源项目
+**Compositor**（https://github.com/robbietilton/Compositor ，Wonder Assembly LLC），
+依 **MIT License** 发布；本仓库仅做格式转换（LZMA → zlib）与运行时解码
+（`src/renderer/js/app-acr.js`），用于让调色管线与 Photoshop 的实测行为对齐。
+
+依 MIT 许可要求，分发本软件时需保留上述出处与许可声明（见仓库根目录 `LICENSE`）。
+
+---
+
 ## English Summary
 
 - **Code** (`src/`, MIT License): free to use under the terms of `LICENSE`.
@@ -55,6 +67,10 @@ Copyright (c) 2026 lumos-1s），适用 MIT 许可。
   respective owners. Verify the source and licensing of these assets before public
   distribution.
 - **`shared/presets/`**: original parameter descriptions by this project, MIT licensed.
+- **`shared/acr/cr-tables.bin`**: measured Camera Raw color tables from the
+  [Compositor](https://github.com/robbietilton/Compositor) project (MIT License,
+  Copyright (c) 2026 Wonder Assembly LLC), repacked from LZMA to zlib. Used to align
+  the grading pipeline with Photoshop's measured Camera Raw Filter behavior.
 
 ---
 

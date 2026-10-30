@@ -228,6 +228,12 @@
         const sh = amp('ParametricShadows'), dk = amp('ParametricDarks');
         const lt = amp('ParametricLights'), hi = amp('ParametricHighlights');
         if (!sh && !dk && !lt && !hi) return null;
+        // 有 ACR 实测表时用实测对角线（公式换算的 A=0.24 在真实预设上偏强）
+        const ACR = window.QfsAcr;
+        if (ACR && ACR.ready()) {
+            const pts = ACR.parametricDiag(sh * 100, dk * 100, lt * 100, hi * 100);
+            if (pts) return pts;
+        }
         let ss = clamp(NUM(values.ParametricShadowSplit, 25), 0, 100) / 100;
         let ms = clamp(NUM(values.ParametricMidtoneSplit, 50), 0, 100) / 100;
         let hs = clamp(NUM(values.ParametricHighlightSplit, 75), 0, 100) / 100;
@@ -491,6 +497,8 @@
             else console.warn(msg);
         };
         if (!api || !api.importXmp) { say('当前环境不支持导入 XMP（缺少 preload 桥）'); return; }
+        // 等实测表就绪：参数曲线要用实测对角线，避免公式换算的偏差
+        if (window.QfsAcr && QfsAcr.ensure) { try { await QfsAcr.ensure(); } catch (_) {} }
         let r;
         try { r = await api.importXmp(); }
         catch (e) { say('导入失败：' + (e && e.message ? e.message : String(e))); return; }
