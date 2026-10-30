@@ -427,7 +427,7 @@ window.App = Object.assign(window.App || {}, {
         const data = window.PRESET_WALL;
         const n = (data && Array.isArray(data.items) && data.items.length) || 87;
         return this.wallMode() === 'finite'
-            ? n + ' 种预设 · 有首有尾，拖到头即止 · 点击卡片进入编辑'
+            ? n + ' 种预设 · 有限边界 · 点击卡片进入编辑'
             : n + ' 种预设 · 按住拖动浏览 · 点击卡片进入编辑';
     },
 
