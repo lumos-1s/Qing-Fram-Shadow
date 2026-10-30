@@ -147,6 +147,14 @@ async function main() {
         r.menuNoCustom = [...document.querySelectorAll('.ctx-menu button')].map(x => x.textContent);
         A.closeCtx();
 
+        // 菜单点空白处要自己收起，别一直浮着挡卡片
+        A.openWallCoverMenu(back, 300, 300);
+        await new Promise(r => setTimeout(r, 120));
+        const openedBefore = !!document.querySelector('.ctx-menu');
+        document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 120));
+        r.menuDismiss = { opened: openedBefore, closed: !document.querySelector('.ctx-menu') };
+
         // ⑨ 把图片拖到卡片上：整卡高亮提示"松手就换这张"
         const t2 = pickTile();
         const dt = new DataTransfer();
@@ -157,6 +165,31 @@ async function main() {
         A.pickWallCoverFor = oPick; A.enterEditorFromWall = oEnter;
         return r;
     })()`);
+
+    // ⑩ 真实右键：必须过 mousedown → contextmenu 这条链（之前 mousedown 无差别
+    //    preventDefault，把 contextmenu 一起吃掉，右键菜单根本弹不出来）
+    const hit = await win.webContents.executeJavaScript(`(() => {
+        const t = [...document.querySelectorAll('.pw-tile')].find((x) => {
+            const b = x.getBoundingClientRect();
+            return b.left > 80 && b.top > 80 && b.right < innerWidth - 80 && b.bottom < innerHeight - 80;
+        });
+        if (!t) return null;
+        const b = t.getBoundingClientRect();
+        return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) };
+    })()`);
+    if (hit) {
+        win.webContents.sendInputEvent({ type: 'mouseMove', x: hit.x, y: hit.y });
+        await sleep(200);
+        win.webContents.sendInputEvent({ type: 'mouseDown', x: hit.x, y: hit.y, button: 'right', clickCount: 1 });
+        win.webContents.sendInputEvent({ type: 'mouseUp', x: hit.x, y: hit.y, button: 'right', clickCount: 1 });
+        await sleep(500);
+        out.realCtx = await win.webContents.executeJavaScript(`(() => {
+            const m = document.querySelector('.ctx-menu');
+            const items = m ? [...m.querySelectorAll('button')].map((b) => b.textContent) : null;
+            if (window.App && window.App.closeCtx) window.App.closeCtx();
+            return { opened: !!m, items };
+        })()`);
+    }
 
     check(out.tileCount > 0 && out.btnCount === out.tileCount, '每张卡片都有换封面入口', out.btnCount + '/' + out.tileCount);
     check(out.idle.opacity === '0' && out.idle.pe === 'none', '默认隐身且不抢点击', JSON.stringify(out.idle));
@@ -170,10 +203,13 @@ async function main() {
     check(out.afterPick.srcChanged && out.afterPick.isLocal, '卡片立刻指向新封面（带版本号绕开缓存）', out.afterPick.status);
     check(out.afterPick.files.length === 1 && out.afterPick.files[0] === out.name, '按预设名自动落盘，无需手动命名', out.afterPick.files.join(','));
     check(out.menuCustom.includes('更换封面…') && out.menuCustom.includes('恢复默认封面'), '右键菜单：有自定义封面时可恢复默认', out.menuCustom.join(' / '));
+    check(!!(out.realCtx && out.realCtx.opened) && (out.realCtx.items || []).includes('更换封面…'),
+        '真实右键能弹出菜单（mousedown 不能吞掉 contextmenu）', JSON.stringify(out.realCtx));
     check(out.afterModeSwitch.stillLocal && out.afterModeSwitch.marked, '无限/有限切换重建卡片后封面不丢', JSON.stringify(out.afterModeSwitch));
     check(!out.afterClear.marked && out.afterClear.isBuiltin, '恢复默认后回落内置封面', JSON.stringify(out.afterClear));
     check(!out.menuNoCustom.includes('恢复默认封面'), '没有自定义封面时不显示「恢复默认」', out.menuNoCustom.join(' / '));
     check(out.dropOn && out.dropOff, '拖图到卡片有明确高亮，离开即撤', JSON.stringify({ on: out.dropOn, off: out.dropOff }));
+    check(out.menuDismiss.opened && out.menuDismiss.closed, '点空白处菜单自动收起', JSON.stringify(out.menuDismiss));
 
     console.log('\n' + (fail ? 'FAILED ' + fail : 'ALL PASS') + '  (' + pass + ' passed)');
     await win.close();

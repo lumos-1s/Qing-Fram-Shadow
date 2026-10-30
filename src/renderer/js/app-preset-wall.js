@@ -168,6 +168,9 @@ window.App = Object.assign(window.App || {}, {
         // 仍是可编程滚动容器，于是整墙视觉上瞬间"跳"到那张卡，而偏移量一动没动。
         // 只拦 mousedown 的默认聚焦：不影响 click，也不影响拖动。
         el.grid.addEventListener('mousedown', (e) => {
+            // 只拦左键（避免聚焦时整墙跳位）。右键必须放行：preventDefault 会把
+            // 随后的 contextmenu 一起吃掉，右键菜单就永远弹不出来。
+            if (e.button !== 0) return;
             if (e.target instanceof Element && e.target.closest('.pw-tile')) e.preventDefault();
         });
         const endDrag = (e) => {
@@ -895,6 +898,22 @@ window.App = Object.assign(window.App || {}, {
             null,
             ['打开封面文件夹', () => this.openWallCoversFolder(false)]
         ]);
+        // 菜单挂在 body 上，点空白处或按 Esc 该关掉——否则它会一直浮在墙上挡住卡片
+        const off = () => {
+            document.removeEventListener('pointerdown', onDown, true);
+            document.removeEventListener('keydown', onKey, true);
+        };
+        const onDown = (ev) => {
+            if (!this._ctx) { off(); return; }
+            if (ev.target instanceof Node && this._ctx.contains(ev.target)) return;
+            this.closeCtx(); off();
+        };
+        const onKey = (ev) => {
+            if (ev.key !== 'Escape') return;
+            this.closeCtx(); off();
+        };
+        document.addEventListener('pointerdown', onDown, true);
+        document.addEventListener('keydown', onKey, true);
     },
 
     // 选图 → 主进程按预设名落到 userData/wall-covers → 立刻刷新墙上的 4 份拷贝。
