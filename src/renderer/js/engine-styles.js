@@ -4701,7 +4701,7 @@ const w = natW;
                 brandLogoData = hit.dataUrl;
                 let im = (app.logoImgCache && app.logoImgCache[brandLogoData]) || null;
                 if (!im) {
-                    im = new Image();
+                    im = window.qfsImage();
                     im.onload = () => { try { if (app.scheduleRender) app.scheduleRender(true); } catch (e) {} };
                     im.src = brandLogoData;
                     if (app.logoImgCache) app.logoImgCache[brandLogoData] = im;

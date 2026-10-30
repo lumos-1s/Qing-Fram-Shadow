@@ -231,7 +231,7 @@ window.App = Object.assign(window.App || {}, {
             if (window.qingframe && window.qingframe.readExif) {
                 try { exif = (await window.qingframe.readExif(meta.path)) || {}; } catch (e) { exif = {}; }
             }
-            const img = new Image();
+            const img = window.qfsImage();
             const src = this.photoUrl(meta.path);
             await new Promise(r => { img.onload = r; img.onerror = r; img.src = src; });
             if (!img.naturalWidth) return null;

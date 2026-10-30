@@ -295,29 +295,42 @@ const setupMacMenu = () => {
 app.whenReady().then(() => {
     setupMacMenu();
     protocol.handle('qflocal', async (request) => {
+        // 页面是 file://、图片是 qflocal://，两者不同源。渲染端给 <img> 设了
+        // crossOrigin='anonymous'（见 renderer/js/qfs-img.js），请求因此走 CORS 模式，
+        // 这里必须回 Access-Control-Allow-Origin，否则图片加载失败；
+        // 而如果不设 crossOrigin，画布会被污染，getImageData/toBlob 全部 SecurityError
+        // （调色、裁切、导出全崩）。两处必须成对存在。
+        const CORS = {
+            'access-control-allow-origin': '*',
+            'cross-origin-resource-policy': 'cross-origin',
+            'x-content-type-options': 'nosniff'
+        };
         try {
             const u = new URL(request.url);
             const filePath = u.searchParams.get('p');
-            if (!filePath) return new Response('Not Found', { status: 404 });
+            if (!filePath) return new Response('Not Found', { status: 404, headers: CORS });
             let real;
-            try { real = fs.realpathSync.native(filePath); } catch (e) { return new Response('Not Found', { status: 404 }); }
+            try { real = fs.realpathSync.native(filePath); } catch (e) { return new Response('Not Found', { status: 404, headers: CORS }); }
             const ext = path.extname(real).toLowerCase();
-            if (!SERVABLE_IMAGE_EXT.has(ext)) return new Response('Forbidden', { status: 403 });
+            if (!SERVABLE_IMAGE_EXT.has(ext)) return new Response('Forbidden', { status: 403, headers: CORS });
             // 只服务主进程登记过的图片:文件选择、拖放、剪贴板、封面目录、read-exif。
-            if (!servedImagePaths.has(imageKey(real))) return new Response('Forbidden', { status: 403 });
+            if (!servedImagePaths.has(imageKey(real))) return new Response('Forbidden', { status: 403, headers: CORS });
             // HEIC/HEIF:Chromium 无法解码,先转成 JPEG 再返回;其他格式保持零拷贝流式读取。
             if (isHeic(real)) {
                 try {
                     const jpg = await heicFileToJpeg(real);
                     return new Response(jpg, {
-                        headers: { 'content-type': 'image/jpeg', 'x-content-type-options': 'nosniff' }
+                        headers: { ...CORS, 'content-type': 'image/jpeg' }
                     });
                 } catch (e) {
                     console.warn('[heic] 解码失败:', e && e.message);
-                    return new Response('HEIC decode failed', { status: 415 });
+                    return new Response('HEIC decode failed', { status: 415, headers: CORS });
                 }
             }
-            return net.fetch(pathToFileURL(real).href);
+            const res = await net.fetch(pathToFileURL(real).href);
+            const headers = new Headers(res.headers);
+            for (const [k, v] of Object.entries(CORS)) headers.set(k, v);
+            return new Response(res.body, { status: res.status, headers });
         } catch (e) {
             return new Response('Not Found', { status: 404 });
         }

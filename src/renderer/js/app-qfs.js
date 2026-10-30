@@ -157,7 +157,7 @@ window.App = Object.assign(window.App || {}, {
         const metas = bundle.images || [];
         for (const m of metas) {
             if (!m.data) continue;
-            const img = new Image();
+            const img = window.qfsImage();
             const src = String(m.data).indexOf('data:') === 0 ? m.data : 'data:image/jpeg;base64,' + m.data;
             await new Promise(res => { img.onload = res; img.onerror = res; img.src = src; });
             if (!img.naturalWidth) continue;

@@ -641,7 +641,7 @@ window.App = {
         this.fillDefaultSignature(this.template);
         const saved = localStorage.getItem('qfs_user_avatar');
         if (saved) {
-            const img = new Image();
+            const img = window.qfsImage();
             img.onload = () => { window.__qfsAvatarImg = img; this.onSettingChanged(); };
             img.src = saved;
         }
@@ -751,7 +751,7 @@ window.App = {
     saveUserAvatar(dataUrl) {
         // 裁剪结果已是 200×200 JPEG 时直接存,避免二次解码 + 二次压缩;
         // 其他来源(外部调用)仍按 cover 压到 200×200
-        const img = new Image();
+        const img = window.qfsImage();
         img.onload = () => {
             const size = 200;
             let compressed = dataUrl;
@@ -1719,7 +1719,7 @@ window.App = {
             this.updatePersonalVisibility();
             this.refreshBgBlurDefaultUI();
             if (this.template.userAvatar) {
-                const img = new Image();
+                const img = window.qfsImage();
                 img.onload = () => { this.avatarImg = img; window.__qfsAvatarImg = img; this.renderPreview(); };
                 img.src = this.template.userAvatar;
             }
@@ -2004,7 +2004,7 @@ window.App = {
         ctx.translate(H / 2, W / 2);
         ctx.rotate(Math.PI / 2);
         ctx.drawImage(img, -W / 2, -H / 2);
-        const out = new Image();
+        const out = window.qfsImage();
         await new Promise(r => { out.onload = r; out.onerror = r; out.src = canvas.toDataURL('image/jpeg', 0.95); });
         if (!out.naturalWidth) { this.setStatus('旋转失败'); return; }
         // 旋转同样不可撤销，留一份原图供「还原原图」用（app-crop.js）
@@ -2161,7 +2161,7 @@ window.App = {
             default: return null;
         }
         ctx.drawImage(img, -W / 2, -H / 2);
-        const out = new Image();
+        const out = window.qfsImage();
         await new Promise(res => { out.onload = res; out.onerror = res; out.src = canvas.toDataURL('image/jpeg', 0.95); });
         if (!out.naturalWidth) return null;
         return { el: out, w: canvas.width, h: canvas.height };
@@ -2183,7 +2183,7 @@ window.App = {
         if (!res) return null;
         if (res.error) { this.setStatus(res.error); return null; }
         if (!res.path) { this.setStatus('图片加载失败：缺少文件路径'); return null; }
-        const img = new Image();
+        const img = window.qfsImage();
         const src = this.photoUrl(res.path);
         await new Promise(r => { img.onload = r; img.onerror = r; img.src = src; });
         if (!img.naturalWidth) return null;
@@ -2438,7 +2438,7 @@ window.App = {
             this.setStatus('已切到示例照片；导入自己的照片后可以随时删掉它');
             return;
         }
-        const img = new Image();
+        const img = window.qfsImage();
         img.decoding = 'async';
         await new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; img.src = 'assets/samples/sample-photo.webp'; });
         if (!img.naturalWidth) { this.setStatus('示例照片加载失败，请直接导入自己的照片'); return; }

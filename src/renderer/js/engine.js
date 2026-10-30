@@ -404,7 +404,7 @@ function getTexture(name) {
     const app = (typeof window !== 'undefined' && window.App) ? window.App : null;
     const t = app && app.textures ? app.textures.find(x => x.name === name) : null;
     if (!t) return null;
-    const im = new Image();
+    const im = window.qfsImage();
     im.onload = () => { if (window.App) window.App.requestRender(); };
     im.src = t.dataUrl;
     TEXTURE_CACHE[name] = im;
@@ -420,7 +420,7 @@ function getTexture(name) {
     let url = src;
     const tex = app && app.textures ? app.textures.find(x => x.name === src) : null;
     if (tex && tex.dataUrl) url = tex.dataUrl;
-    const im = new Image();
+    const im = window.qfsImage();
     im.onload = () => { if (app) app.requestRender(); };
     im.onerror = () => { TEXTURE_CACHE[src] = null; };
     im.src = url;

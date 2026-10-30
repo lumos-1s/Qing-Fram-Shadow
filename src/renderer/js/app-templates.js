@@ -447,7 +447,7 @@ window.App = Object.assign(window.App || {}, {
         g.strokeStyle = '#ffd166'; g.lineWidth = 6; g.strokeRect(40, 40, 920, 910);
         g.fillStyle = '#fff'; g.font = 'bold 76px "Microsoft YaHei", sans-serif'; g.textAlign = 'center';
         g.fillText('SAMPLE', 500, 620);
-        const im = new Image();
+        const im = window.qfsImage();
         im.src = c.toDataURL('image/jpeg', 0.8);
         return im;
     },

@@ -972,9 +972,9 @@ window.App = Object.assign(window.App || {}, {
         if (this.logoImgCache[src]) return this.logoImgCache[src];
         if (this.textures) {
             const t = this.textures.find(x => x.name === src);
-            if (t) { const im = new Image(); im.src = t.dataUrl; this.logoImgCache[src] = im; return im; }
+            if (t) { const im = window.qfsImage(); im.src = t.dataUrl; this.logoImgCache[src] = im; return im; }
         }
-        const im = new Image(); im.src = src; this.logoImgCache[src] = im; return im;
+        const im = window.qfsImage(); im.src = src; this.logoImgCache[src] = im; return im;
     },
 
     syncSliderFromEl(el) {
@@ -1390,7 +1390,7 @@ window.App = Object.assign(window.App || {}, {
         this.onSettingCommit();
         if (!this.template) return;
         // 预加载图标到缓存,确保渲染时图片已就绪(避免首帧因 Image 未加载完而跳过绘制)
-        const bmp = this.logoImgCache[logo.dataUrl] || new Image();
+        const bmp = this.logoImgCache[logo.dataUrl] || window.qfsImage();
         this.logoImgCache[logo.dataUrl] = bmp;
         if (!bmp.complete || !bmp.naturalWidth) {
             await new Promise(res => { bmp.onload = res; bmp.onerror = res; bmp.src = logo.dataUrl; });
@@ -1489,7 +1489,7 @@ window.App = Object.assign(window.App || {}, {
         const ext = String(res.name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
         const mime = { png: 'image/png', webp: 'image/webp', bmp: 'image/bmp', gif: 'image/gif' }[ext ? ext[1] : ''] || 'image/jpeg';
         const dataUrl = 'data:' + mime + ';base64,' + res.data;
-        const im = new Image();
+        const im = window.qfsImage();
         await new Promise(r => { im.onload = r; im.onerror = r; im.src = dataUrl; });
         if (!im.naturalWidth) { this.setStatus('图片加载失败'); return; }
         const defaultName = String(res.name || '自定义').replace(/\.[a-z0-9]+$/i, '');

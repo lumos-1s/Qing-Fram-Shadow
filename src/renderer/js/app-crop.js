@@ -696,7 +696,7 @@ window.App = Object.assign(window.App || {}, {
         const blob = await new Promise((resolve) => c.toBlob(resolve, 'image/png'));
         if (!blob) { this.setStatus('裁切失败：无法生成图片'); return false; }
         const url = URL.createObjectURL(blob);
-        const out = new Image();
+        const out = window.qfsImage();
         await new Promise((r) => { out.onload = r; out.onerror = r; out.src = url; });
         URL.revokeObjectURL(url);
         if (!out.naturalWidth) { this.setStatus('裁切失败：图片解码出错'); return false; }
