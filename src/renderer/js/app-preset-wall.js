@@ -471,7 +471,9 @@ window.App = Object.assign(window.App || {}, {
         const mode = this.wallMode();
         const base = Math.max(240, Math.min(340, Math.floor((vw - pad * 2 - gap * 2) / 4)));
         const tw = Math.round(base * WALL_CARD_SCALE);
-        const th = Math.round(tw * 1.25);
+        // 卡片只装一张封面（名字叠在图上）。0.88 是折中：再高会把封面左右裁太多，
+        // 再扁卡片会像视频条目，丢掉"相框墙"的感觉。
+        const th = Math.round(tw * 0.88);
         const data = window.PRESET_WALL;
         const n = (data && Array.isArray(data.items) && data.items.length) || 87;
         const P = 9, Q = 10;
@@ -710,8 +712,10 @@ window.App = Object.assign(window.App || {}, {
             const tiles = Array.from(block.querySelectorAll('.pw-tile'));
             for (const t of tiles) {
                 t.style.width = b.tw + 'px';
+                // 封面高度交给 CSS（撑满卡片）。老版本这里按整卡高设了内联 height，
+                // 图片把卡片撑满、名称和标签被 overflow 裁掉——这里顺手清掉历史内联值。
                 const img = t.querySelector('.pw-tile-cover img');
-                if (img) img.style.height = b.th + 'px';
+                if (img && img.style.height) img.style.height = '';
             }
         });
         // 偏移保持当前值（可为任意等价周期位置），拖动时由 pointermove 取模回绕
@@ -1074,20 +1078,28 @@ window.App = Object.assign(window.App || {}, {
             // 异步解码：90 张封面同步解码会卡住第一次绘制（打开墙时那一下顿）
             img.decoding = 'async';
             cover.appendChild(img);
+            // 预设名压在封面底部（一层底部渐变保证任何封面都读得清），不再另占一行：
+            // 卡片里只剩封面，同样大小能放更大的图；名字也永远跟着封面走，不会因为
+            // 卡片被拉伸/裁切而消失（之前 img 高度被设成整卡高，名字直接被裁没了）。
+            const caption = document.createElement('div');
+            caption.className = 'pw-tile-caption';
+            const name = document.createElement('div');
+            name.className = 'pw-tile-name';
+            name.textContent = item.name;
+            // 卡片窄，长预设名会省略号截断——给个原生 tooltip 让用户能看到全名
+            name.title = item.name;
+            caption.appendChild(name);
+            const tag = document.createElement('div');
+            tag.className = 'pw-tile-tag';
+            tag.textContent = item.tag;
+            caption.appendChild(tag);
+            cover.appendChild(caption);
             // 内容包一层：聚焦时 opacity 写在 inner 上，tile 只负责 transform/z-index。
             // 同一元素同时逐帧改 transform + opacity 会让 Chromium 每帧重绘卡片的
             // 560px 封面（165Hz/DPR2 下直接掉一帧）；拆成两层后合成器可以分开处理。
             const inner = document.createElement('div');
             inner.className = 'pw-tile-inner';
             inner.appendChild(cover);
-            const name = document.createElement('div');
-            name.className = 'pw-tile-name';
-            name.textContent = item.name;
-            inner.appendChild(name);
-            const tag = document.createElement('div');
-            tag.className = 'pw-tile-tag';
-            tag.textContent = item.tag;
-            inner.appendChild(tag);
             // 换封面：悬停/聚焦时右上角显形，点了直接弹选图并按预设名自动落盘。
             // tabIndex=-1：tile 本身已是 tab 焦点，360 张卡再各加一个焦点会让人按 Tab 按到崩；
             // 键盘用户用卡片上的 C 键（见 grid 的 keydown）。

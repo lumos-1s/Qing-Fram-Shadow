@@ -127,11 +127,21 @@ async function main() {
     const tiles = await exec(`(() => {
         const g = document.getElementById('presetWallGrid');
         const list = Array.from(g.querySelectorAll('.pw-tile'));
+        // 名称必须真的落在卡片可视区内：曾经 img 被设成整卡高、把名称挤出 overflow，
+        // textContent 仍在、旧断言全绿，但用户一个字都看不到。
+        const clipped = list.filter((t) => {
+            const el = t.querySelector('.pw-tile-name');
+            if (!el || !el.textContent) return true;
+            const tb = t.getBoundingClientRect(), nb = el.getBoundingClientRect();
+            return nb.height < 1 || nb.top < tb.top - 0.5 || nb.bottom > tb.bottom + 0.5;
+        }).length;
         return {
             blocks: g.querySelectorAll('.pw-block').length,
             count: list.length,
             noCover: list.filter(t => !t.querySelector('.pw-tile-cover img')).length,
             noName: list.filter(t => !t.querySelector('.pw-tile-name') || !t.querySelector('.pw-tile-name').textContent).length,
+            clipped,
+            nameFs: list.length ? parseFloat(getComputedStyle(list[0].querySelector('.pw-tile-name')).fontSize) : 0,
             sub: (document.getElementById('pwSub') || {}).textContent || ''
         };
     })()`);
@@ -139,6 +149,8 @@ async function main() {
         `blocks=${tiles.blocks} count=${tiles.count}`);
     check(tiles.noCover === 0, '每张卡片都有封面图', `noCover=${tiles.noCover}`);
     check(tiles.noName === 0, '每张卡片都有名称', `noName=${tiles.noName}`);
+    check(tiles.clipped === 0, '名称落在卡片可视区内（没被封面图挤出 overflow）', `clipped=${tiles.clipped}`);
+    check(tiles.nameFs >= 12, '名称字号可读（≥12px）', `fontSize=${tiles.nameFs}`);
 
     // 2.5 方向键移动选中（上下左右，周期内循环）
     const kb = await exec(`(async () => {
