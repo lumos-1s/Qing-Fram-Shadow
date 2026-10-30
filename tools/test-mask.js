@@ -91,8 +91,8 @@ async function main() {
         return { has: !!window.QfsMask, types: window.QfsMask ? window.QfsMask.TYPES.map((t) => t.k) : [] };
     })()`;
     const s0 = await exec(setup);
-    check(s0.has && s0.types.join(',') === 'linear,radial,brush,lum',
-        '蒙版模块已加载（线性/椭圆/画笔/亮度）', JSON.stringify(s0));
+    check(s0.has && s0.types.join(',') === 'linear,radial,brush,lum,color',
+        '蒙版模块已加载（线性/椭圆/画笔/亮度/颜色）', JSON.stringify(s0));
 
     // ── 1. 面板与列表 ──
     const ui = await exec(`(() => {
@@ -102,8 +102,8 @@ async function main() {
         const optsHidden = document.getElementById('maskOpts').style.display === 'none';
         return { inPanel: !!grp && !!grp.closest('#panel-grade'), btns, rows, optsHidden };
     })()`);
-    check(ui.inPanel && ui.btns.join(',') === 'linear,radial,brush,lum' && ui.rows === 1 && ui.optsHidden,
-        '蒙版组在调色面板顶部：4 个类型按钮 + 列表默认只有「全局」', JSON.stringify(ui));
+    check(ui.inPanel && ui.btns.join(',') === 'linear,radial,brush,lum,color' && ui.rows === 1 && ui.optsHidden,
+        '蒙版组在调色面板顶部：5 个类型按钮 + 列表默认只有「全局」', JSON.stringify(ui));
 
     // ── 2. 线性渐变：权重是 alpha 渐变（上 0 / 下 255），反相/浓度生效 ──
     const linear = await exec(`(async () => {
@@ -194,17 +194,17 @@ async function main() {
         const A = window.App, im = A.image;
         A.addMask('linear');
         await new Promise((r) => setTimeout(r, 120));
-        A.setGrade({ exp: 60, sat: 20 });
+        A.setGrade({ exp: 2.5, sat: 20 });   // 曝光是 EV：2.5 = +2.5 档
         const act = A.activeMask(im);
         const onMask = { exp: act.p.exp, sat: act.p.sat, gExp: im.grade.exp, gSat: im.grade.sat };
         A.setActiveMask('');
         await new Promise((r) => setTimeout(r, 120));
-        A.setGrade({ exp: 30 });
+        A.setGrade({ exp: 1.2 });
         return { onMask, global: { exp: im.grade.exp, maskExp: act.p.exp } };
     })()`);
-    check(route.onMask.exp === 60 && route.onMask.sat === 20 && route.onMask.gExp === 0 && route.onMask.gSat === 0,
+    check(route.onMask.exp === 2.5 && route.onMask.sat === 20 && route.onMask.gExp === 0 && route.onMask.gSat === 0,
         '选中蒙版时 9 档滑块只改蒙版参数，不动全局', JSON.stringify(route.onMask));
-    check(route.global.exp === 30 && route.global.maskExp === 60,
+    check(route.global.exp === 1.2 && route.global.maskExp === 2.5,
         '选中「全局」后 9 档改整图，蒙版参数保持不动', JSON.stringify(route.global));
     // 标题徽章：选中蒙版时显示「编辑蒙版」，避免误以为在调整张图
     const badge = await exec(`(() => {
@@ -554,7 +554,7 @@ async function main() {
         const before = { alpha: alpha(im.el), box: bbox(), px: px(window.photoSrcOf(im)) };
 
         // 选中蒙版状态下压暗（走真实路由：9 档 → mask.p）
-        A.setGrade({ exp: -90 });
+        A.setGrade({ exp: -2.5 });
         A.rebuildGrade('full');
         A.scheduleRender(true);
         await new Promise((r) => setTimeout(r, 900));
@@ -578,7 +578,7 @@ async function main() {
     check(drift.before.alpha.top > 200 && drift.before.alpha.bot < 20,
         '亮度蒙版只选暗部（上 255 / 下 0）', JSON.stringify(ab));
     check(Math.abs(aa.top - ab.top) < 6 && Math.abs(aa.bot - ab.bot) < 6
-          && drift.after.maskExp === -90 && drift.after.globalExp === 0,
+          && drift.after.maskExp === -2.5 && drift.after.globalExp === 0,
         '调完色再点回蒙版：亮度蒙版选区一个像素都不变',
         JSON.stringify({ before: ab, after: aa, legacy: drift.after.legacyAlpha }));
     const bb1 = drift.before.box, bb2 = drift.after.box;
@@ -596,6 +596,158 @@ async function main() {
         '浓度调低不改变叠加层显示的范围（叠层只表示范围，不表示强度）',
         JSON.stringify({ full: bb2 && bb2.n, dens20: bd && bd.n }));
 
+    // ── 9.9 组合模式：添加 / 减去 / 相交 ──
+    // 用户的原话是「想修个边缘只能重画」。这一组测的就是「不用重画」：
+    // 组头压暗整块、成员只改范围，参数归属始终在组首。
+    const combo = await exec(`(async () => {
+        const A = window.App;
+        const im = A.image;
+        const el = await window.__mkGray(600, 400, '#808080');
+        im.el = el; im.w = 600; im.h = 400; im._gradeCache = null;
+        A.template = A.defaultTemplate(); A.setTpl(im, A.template);
+        A.resetGrade();
+        A.scheduleRender(true);
+        await new Promise((r) => setTimeout(r, 600));
+        const flush = async () => {
+            A._renderDirty = true;
+            if (typeof A._drainRenderQueue === 'function') A._drainRenderQueue();
+            await new Promise((r) => setTimeout(r, 260));
+        };
+        const sample = () => {
+            const cv = A.dom.canvas;
+            const s = document.createElement('canvas'); s.width = 120; s.height = 120;
+            const g = s.getContext('2d'); g.drawImage(cv, 0, 0, 120, 120);
+            const at = (x, y) => { const d = g.getImageData(x, y, 1, 1).data; return (d[0] + d[1] + d[2]) / 3; };
+            return {
+                topL: +at(20, 24).toFixed(1), topC: +at(60, 36).toFixed(1), topR: +at(100, 24).toFixed(1),
+                bot: +at(60, 108).toFixed(1)
+            };
+        };
+        await flush();
+        const base = sample();
+
+        // 组头：整幅压暗 -2EV。用亮度蒙版（lo=0/hi=100 → 全幅满权重），
+        // 线性渐变两端是 0/1，无论怎么拉都盖不满整幅，会让下面的断言站不住脚。
+        A.addMask('lum');
+        A.masksOf(im)[0].shape = { lo: 0, hi: 100 };
+        A.masksOf(im)[0].feather = 5;
+        A.setActiveMask(A.masksOf(im)[0].id);
+        A.setGrade({ exp: -2 });
+        await flush();
+        const darkAll = sample();
+
+        // 减去：中心一块椭圆挖掉（参数仍在组首，挖掉处恢复原亮度）
+        A.addMask('radial');
+        A.masksOf(im)[1].mode = 'subtract';
+        A.masksOf(im)[1].shape = { cx: 0.5, cy: 0.3, rx: 0.14, ry: 0.14 };
+        A.masksOf(im)[1].feather = 8;
+        A.commitMaskShape('full');
+        await flush();
+        const withCut = sample();
+
+        // 注意：addMask 会走 setGrade({masks}) → normalizeGrade 重建整个 masks 数组，
+        // 之前抓到的对象引用立刻失效。所以后面每次都要重新从 A.masksOf(im) 取。
+        A.setActiveMask(A.masksOf(im)[1].id);
+        A.setGrade({ exp: -1 });
+        await flush();
+        const routed = {
+            headExp: A.masksOf(im)[0].p.exp,
+            cutExp: A.masksOf(im)[1].p.exp,
+            paramIsHead: A.paramMask(im).id === A.masksOf(im)[0].id
+        };
+
+        // 相交：只保留交集（先把成员改回 add 再测 intersect 与 add 的差别）
+        A.masksOf(im)[1].mode = 'add';
+        A.masksOf(im)[1].shape = { cx: 0.5, cy: 0.3, rx: 0.30, ry: 0.30 };
+        A.commitMaskShape('full');
+        await flush();
+        const added = sample();
+        A.masksOf(im)[1].mode = 'intersect';
+        A.masksOf(im)[1].shape = { cx: 0.5, cy: 0.3, rx: 0.30, ry: 0.30 };
+        A.commitMaskShape('full');
+        await flush();
+        const intersect = sample();
+
+        // 分组结构 + 持久化
+        const groups = window.QfsMask.maskGroups(A.masksOf(im)).map((g) => ({
+            n: g.members.length, modes: g.members.map((m) => m.mode)
+        }));
+        const saved = JSON.parse(JSON.stringify(A.gradeOf(im).masks));
+        const roundTrip = window.QfsMask.sanitizeMasks(saved).map((m) => m.mode);
+        A.resetGrade();
+        return { base, darkAll, withCut, routed, added, intersect, groups, roundTrip };
+    })()`);
+    check(combo.darkAll.topC < combo.base.topC - 30 && combo.darkAll.bot < combo.base.bot - 30,
+        '组合·组头：整幅压暗生效', `${JSON.stringify(combo.base)} → ${JSON.stringify(combo.darkAll)}`);
+    check(combo.withCut.topL < combo.base.topL - 30 && combo.withCut.topC > combo.base.topC - 6
+          && combo.withCut.topR < combo.base.topR - 30,
+        '组合·减去：中心那块恢复原亮度，两侧仍然压暗（不用重画整个蒙版）',
+        JSON.stringify(combo.withCut));
+    check(combo.routed.paramIsHead && combo.routed.headExp === -1 && combo.routed.cutExp === 0,
+        '组合·参数归属：选中「减去」成员时 9 档写的是组首（整组共用一套参数）',
+        JSON.stringify(combo.routed));
+    // 差别在**椭圆外**：组头本来就盖满全幅，
+    // add 让椭圆外也保持压暗（范围并进来），intersect 只留交集中的椭圆内 → 椭圆外恢复原亮度。
+    check(combo.added.topL < combo.base.topL - 30 && combo.intersect.topL > combo.base.topL - 6
+          && combo.intersect.topC < combo.base.topC - 30,
+        '组合·添加 vs 相交：添加让椭圆外仍压暗，相交只在椭圆内生效（外面恢复原亮度）',
+        `add 外${combo.added.topL}/内${combo.added.topC}  intersect 外${combo.intersect.topL}/内${combo.intersect.topC}（原 ${combo.base.topL}）`);
+    check(combo.groups.length === 1 && combo.groups[0].n === 2
+          && combo.roundTrip.join(',') === 'new,intersect',
+        '组合：整组只算一个调整层，组合方式随草稿原样往返',
+        JSON.stringify({ groups: combo.groups, roundTrip: combo.roundTrip }));
+
+    // ── 9.10 颜色蒙版：按色相选区 + 画布点选取色 ──
+    const colorMask = await exec(`(async () => {
+        const A = window.App;
+        const im = A.image;
+        // 上半天蓝、下半天绿
+        const c = document.createElement('canvas'); c.width = 600; c.height = 400;
+        const g = c.getContext('2d');
+        g.fillStyle = '#7fb2e5'; g.fillRect(0, 0, 600, 200);
+        g.fillStyle = '#6aa84f'; g.fillRect(0, 200, 600, 200);
+        const el = new Image();
+        await new Promise((r) => { el.onload = r; el.onerror = r; el.src = c.toDataURL('image/png'); });
+        im.el = el; im.w = 600; im.h = 400; im._gradeCache = null;
+        A.template = A.defaultTemplate(); A.setTpl(im, A.template);
+        A.resetGrade();
+        A.scheduleRender(true);
+        await new Promise((r) => setTimeout(r, 600));
+        A.addMask('color');
+        const m = A.activeMask(im);
+        m.shape = { h: 210, tol: 30, minS: 10 };
+        const alpha = (mm) => {
+            const a = window.QfsMask.render(mm, 60, 40, im.el);
+            const gg = a.getContext('2d');
+            return {
+                sky: gg.getImageData(30, 5, 1, 1).data[3],
+                grass: gg.getImageData(30, 34, 1, 1).data[3]
+            };
+        };
+        const picked = alpha(m);
+        // 点画布上的草地取色 → 目标色相应变成绿色那一带
+        A.pickMaskColor(0.5, 0.85);
+        const afterPick = { h: m.shape.h, minS: m.shape.minS };
+        const pickedGreen = alpha(m);
+        // 灰图：颜色蒙版不该选中任何东西
+        const grayEl = await window.__mkGray(600, 400, '#808080');
+        const grayAlpha = (() => {
+            const a = window.QfsMask.render(m, 60, 40, grayEl);
+            const gg = a.getContext('2d');
+            return gg.getImageData(30, 20, 1, 1).data[3];
+        })();
+        A.resetGrade();
+        return { picked, afterPick, pickedGreen, grayAlpha };
+    })()`);
+    check(colorMask.picked.sky > 200 && colorMask.picked.grass < 20,
+        '颜色蒙版：只选天空的蓝（天空 255 / 草地 0）', JSON.stringify(colorMask.picked));
+    check(colorMask.afterPick.h > 90 && colorMask.afterPick.h < 150
+          && colorMask.pickedGreen.grass > 200 && colorMask.pickedGreen.sky < 40,
+        '画布点选取色：点草地后目标色相变绿，选中的区域整体换过去',
+        JSON.stringify(colorMask.afterPick) + ' ' + JSON.stringify(colorMask.pickedGreen));
+    check(colorMask.grayAlpha === 0,
+        '颜色蒙版不选中中性灰（灰没有色相，不该被任何色带带走）', String(colorMask.grayAlpha));
+
     // ── 10. 持久化 / 中性 / 深拷贝 / 重置 ──
     const persist = await exec(`(async () => {
         const A = window.App, im = A.image;
@@ -603,7 +755,7 @@ async function main() {
         A.resetGrade();
         A.addMask('linear');
         await new Promise((r) => setTimeout(r, 80));
-        A.setGrade({ exp: 40 });
+        A.setGrade({ exp: 2.4 });
         const dirty = !A.isNeutralGrade(im.grade);
         const json = JSON.stringify(im.grade);
         const keeps = json.indexOf('"masks"') >= 0 && json.indexOf('"type":"linear"') >= 0;
@@ -614,8 +766,8 @@ async function main() {
         A.applyGradeToAll();
         const m1 = im.grade.masks[0], m2 = im2.grade.masks && im2.grade.masks[0];
         const deep = !!(m1 && m2) && m1 !== m2;
-        if (m2) m2.p.exp = -99;
-        const isolated = m1.p.exp === 40;
+        if (m2) m2.p.exp = -2.4;
+        const isolated = m1.p.exp === 2.4;
         A.resetGrade();
         const after = A.isNeutralGrade(im.grade) && A.masksOf(im).length === 0;
         A.images = [im]; A.currentIdx = 0;

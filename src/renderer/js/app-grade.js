@@ -13,9 +13,12 @@
  * 3) 一次性「烘焙」到离屏画布，渲染时正常 drawImage 缓存。
  *    渲染热路径因此完全不带滤镜 —— engine.js 里特别强调过「裁剪态下
  *    drawImage 会走慢路径」，叠加滤镜只会更糟。烘焙只在参数变化时发生一次。
- * 4) 色温 / 高光 / 阴影 用 SVG feComponentTransfer 的 256 项 table 表达
- *    （三者合并成每通道一条曲线，一次过）；曝光/对比度/饱和度/色调用原生
- *    函数式滤镜。二者可以混写在同一个 filter 字符串里，已实测生效。
+ * 4) 色温 / 色调 / 高光 / 阴影 用 SVG feComponentTransfer 的 256 项 table
+ *    表达（合并成每通道一条曲线，一次过）；曝光/对比度/饱和度用原生函数式
+ *    滤镜。二者可以混写在同一个 filter 字符串里，已实测生效。
+ * 5) 自然饱和度与颜色分级依赖像素自己的饱和度/亮度，逐通道 LUT 表达不了，
+ *    用 WebGL 后置单 pass（app-color-grade.js）；GL 不可用时退回 Canvas2D
+ *    逐像素兼容路径。
  *
  * 借鉴来源：fabric.js 的 BaseFilter 分组（brightness/contrast/saturation/
  * hueRotation 的取值域与「0 为不变」约定），以及 glfx.js 的 vibrance/tone
@@ -24,29 +27,183 @@
 (function () {
     const GRADE_FILTER_ID = 'qfsGradeLut';
     const LUT_N = 256;
-    // 阴影/高光增益的钟形曲线 v(1-v)^2 峰值 = 4/27，乘 27/4 归一到 1
-    const BELL_K = 27 / 4;
-    const SH_AMP = 0.42;   // 阴影满档时暗部最大位移
-    const HI_AMP = 0.42;   // 高光满档时亮部最大位移
+    // 高光/阴影用**平滑窗**而不是钟形：钟形 v(1-v)² 的翼太宽，
+    // 满档会把中灰 128 压到 37（LR 只到约 122），整张预设看起来"大相径庭"。
+    // 窗只覆盖两端，中间调基本为零位移，这才是 LR「高光/阴影」的语义。
+    const SH_AMP = 0.16;   // 阴影满档时暗部最大位移（0 → +41）
+    const HI_AMP = 0.14;   // 高光满档时亮部最大位移（224 → −36）
+    const HI_KNEE = 0.45;  // 高光窗下沿：低于此亮度完全不受影响
+    const HI_TOP = 0.92;   // 高光窗上沿回落的起点：纯白要保住
+    const LO_KNEE = 0.55;  // 阴影窗上沿：高于此亮度完全不受影响
     const T_AMP = 0.10;    // 色温满档时中间调最大位移
+    const TINT_AMP = 0.075; // 色调满档时中间调最大位移（品红/绿轴）
+    const CB_AMP = 0.11;    // 色彩平衡满档时该通道的位移（约 28 级/255）
     // 选中蒙版时，这些键改的是蒙版参数；其余键永远是全局
-    const MASK_ROUTE_KEYS = ['exp', 'con', 'sat', 'temp', 'tint', 'hi', 'sh', 'white', 'black'];
+    const MASK_ROUTE_KEYS = ['exp', 'con', 'sat', 'vib', 'temp', 'tint', 'hi', 'sh', 'white', 'black', 'gam'];
     const LOW_EDGE = 1600; // 拖动过程中的降采样长边
     const FULL_EDGE = 0;   // 静止后的成品：0 = 按原图尺寸，不降采样
                            // （降采样会让导出的「原图」档位拿不到真实长边，宁可多占内存）
     const LRU_MAX = 4;     // 同时保留的烘焙缓存张数（24MP 一张约 96MB）
 
     const GRADE_FIELDS = [
-        { k: 'exp', label: '曝光', min: -100, max: 100, hint: '整体明暗' },
+        { k: 'exp', label: '曝光', min: -5, max: 5, step: 0.01, hint: 'EV：±5 档，1.00 = 一倍亮度' },
         { k: 'con', label: '对比度', min: -100, max: 100, hint: '明暗反差' },
         { k: 'sat', label: '饱和度', min: -100, max: 100, hint: '-100 为黑白' },
+        { k: 'vib', label: '自然饱和度', min: -100, max: 100, hint: '优先保护已经鲜艳的颜色' },
         { k: 'temp', label: '色温', min: -100, max: 100, hint: '左冷右暖' },
-        { k: 'tint', label: '色调', min: -100, max: 100, hint: '左品红右绿' },
+        { k: 'tint', label: '色调', min: -100, max: 100, hint: '左绿右品红（与 LR 同向）' },
         { k: 'hi', label: '高光', min: -100, max: 100, hint: '只动亮部' },
         { k: 'sh', label: '阴影', min: -100, max: 100, hint: '只动暗部' },
         { k: 'white', label: '白色', min: -100, max: 100, hint: '白点：正档高光并合、负档压暗亮部' },
-        { k: 'black', label: '黑色', min: -100, max: 100, hint: '黑点：正档抬黑起雾、负档压死暗部' }
+        { k: 'black', label: '黑色', min: -100, max: 100, hint: '黑点：正档抬黑起雾、负档压死暗部' },
+        // 色阶的中间调（PS/LR 的 Levels 第二根三角）。与「对比度」不同：
+        // 它只抬/压中间调，两端锚死，所以能在不动黑白场的前提下改通透度。
+        { k: 'gam', label: '中间调', min: -100, max: 100, hint: '只抬/压中间调，两端不动（色阶 gamma）' }
     ];
+
+    // ── 颜色分级（对齐 LR 的 3 向 + 全局） ─────────────────────────
+    // hue 0..360，sat 0..100，lum -100..100；blending 0..100，balance -100..100。
+    const CG_ZONES = [
+        { k: 'shadow', label: '阴影' },
+        { k: 'mid', label: '中间调' },
+        { k: 'high', label: '高光' },
+        { k: 'global', label: '全局' }
+    ];
+    function defaultCgZone() { return { h: 0, s: 0, l: 0 }; }
+    function defaultCg() {
+        return {
+            shadow: defaultCgZone(), mid: defaultCgZone(),
+            high: defaultCgZone(), global: defaultCgZone(),
+            blending: 50, balance: 0
+        };
+    }
+    function sanitizeCg(c) {
+        if (!c || typeof c !== 'object') return null;
+        const out = defaultCg();
+        let any = false;
+        for (const z of CG_ZONES) {
+            const v = c[z.k] || {};
+            const h = Number(v.h), s = Number(v.s), l = Number(v.l);
+            out[z.k] = {
+                h: Number.isFinite(h) ? Math.max(0, Math.min(360, Math.round(h))) : 0,
+                s: Number.isFinite(s) ? Math.max(0, Math.min(100, Math.round(s))) : 0,
+                l: Number.isFinite(l) ? Math.max(-100, Math.min(100, Math.round(l))) : 0
+            };
+            if (out[z.k].s || out[z.k].l) any = true;
+        }
+        const b = Number(c.blending), ba = Number(c.balance);
+        out.blending = Number.isFinite(b) ? Math.max(0, Math.min(100, Math.round(b))) : 50;
+        out.balance = Number.isFinite(ba) ? Math.max(-100, Math.min(100, Math.round(ba))) : 0;
+        return any ? out : null;
+    }
+    function cgActive(c) {
+        if (!c) return false;
+        for (const z of CG_ZONES) {
+            const v = c[z.k];
+            if (v && (Number(v.s) || Number(v.l))) return true;
+        }
+        return false;
+    }
+
+    // ── 色彩平衡（PS 的 Color Balance：三区 × 三轴） ─────────────
+    // 每区 r/g/b ∈ [-100,100]，分别对应「青↔红 / 洋红↔绿 / 黄↔蓝」。
+    // 走同一条 256 项 LUT（不需要 GL），分区权重与颜色分级同一套形态。
+    const CB_ZONES = [
+        { k: 'shadow', label: '阴影' },
+        { k: 'mid', label: '中间调' },
+        { k: 'high', label: '高光' }
+    ];
+    const CB_AXES = [
+        { k: 'r', label: '青 ↔ 红' },
+        { k: 'g', label: '洋红 ↔ 绿' },
+        { k: 'b', label: '黄 ↔ 蓝' }
+    ];
+    function defaultCbZone() { return { r: 0, g: 0, b: 0 }; }
+    function defaultCb() {
+        return { shadow: defaultCbZone(), mid: defaultCbZone(), high: defaultCbZone(), preserve: 1 };
+    }
+    function sanitizeCb(c) {
+        if (!c || typeof c !== 'object') return null;
+        const out = defaultCb();
+        let any = false;
+        for (const z of CB_ZONES) {
+            const v = c[z.k] || {};
+            for (const a of CB_AXES) {
+                const n = Number(v[a.k]);
+                out[z.k][a.k] = Number.isFinite(n) ? Math.max(-100, Math.min(100, Math.round(n))) : 0;
+                if (out[z.k][a.k]) any = true;
+            }
+        }
+        out.preserve = c.preserve === 0 ? 0 : 1;
+        return any ? out : null;
+    }
+    function cbActive(c) {
+        if (!c) return false;
+        for (const z of CB_ZONES) {
+            const v = c[z.k];
+            if (v && (Number(v.r) || Number(v.g) || Number(v.b))) return true;
+        }
+        return false;
+    }
+
+    // ── 渐变映射（PS 的 Gradient Map） ───────────────────────────
+    // 用亮度索引一条两色渐变，再按 amount 与原图混合。比「颜色分级」粗，
+    // 但它是整条亮度标尺统一映射，做单色调/双色分离最快。
+    function defaultGm() { return { on: 1, dark: '#101a33', light: '#ffd9a0', amount: 100 }; }
+    function normHex(v, dft) {
+        const s = String(v || '').trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(s)) return s.toLowerCase();
+        if (/^[0-9a-fA-F]{6}$/.test(s)) return '#' + s.toLowerCase();
+        return dft;
+    }
+    function sanitizeGm(v) {
+        if (!v || typeof v !== 'object') return null;
+        const out = defaultGm();
+        out.dark = normHex(v.dark, out.dark);
+        out.light = normHex(v.light, out.light);
+        const a = Number(v.amount);
+        out.amount = Number.isFinite(a) ? Math.max(0, Math.min(100, Math.round(a))) : 100;
+        out.on = v.on === 0 ? 0 : 1;
+        return (out.on && out.amount > 0) ? out : null;
+    }
+    function gmActive(v) { return !!(v && v.on !== 0 && (Number(v.amount) || 0) > 0); }
+    function hexToRgb(h) {
+        const s = normHex(h, '#000000');
+        return [parseInt(s.slice(1, 3), 16) / 255, parseInt(s.slice(3, 5), 16) / 255, parseInt(s.slice(5, 7), 16) / 255];
+    }
+
+    // ── 镜头校正（目前只做畸变） ─────────────────────────────────
+    // distort>0 校正桶形（把外围往里收），<0 校正枕形。几何重采样只能在
+    // GL pass 里做（Canvas2D 逐像素重采样没有双线性插值，边缘会锯齿）。
+    function defaultLc() { return { distort: 0 }; }
+    function sanitizeLc(v) {
+        if (!v || typeof v !== 'object') return null;
+        const d = Number(v.distort);
+        const out = { distort: Number.isFinite(d) ? Math.max(-100, Math.min(100, Math.round(d))) : 0 };
+        return out.distort ? out : null;
+    }
+    function lcActive(v) { return !!(v && Number(v.distort)); }
+
+    // ── 蒙版组合模式（PS/LR 的 Add / Subtract / Intersect）─────────
+    // 一个「组」= 一个 new 蒙版 + 后续若干 add/subtract/intersect 成员，
+    // 整组共用组首的参数、共用一条烘焙层。这样「修边缘」不用重画整个蒙版。
+    const MASK_MODES = [
+        { k: 'new', label: '新建', title: '独立的调整层（用自己的参数）' },
+        { k: 'add', label: '添加', title: '并进上一个蒙版的生效范围' },
+        { k: 'subtract', label: '减去', title: '从上一个蒙版里挖掉这块' },
+        { k: 'intersect', label: '相交', title: '只保留与上一个蒙版重叠的部分' }
+    ];
+    function maskGroups(masks) {
+        const list = Array.isArray(masks) ? masks : [];
+        const groups = [];
+        for (const m of list) {
+            if (!m) continue;
+            const mode = (m.mode && m.mode !== 'new' && groups.length) ? m.mode : 'new';
+            if (mode === 'new') groups.push({ head: m, members: [m] });
+            else groups[groups.length - 1].members.push(m);
+        }
+        return groups;
+    }
 
     // ── 扩展档位（对齐 LR 的「细节 / 校准 / 混色器」） ──────────────
     const DET_FIELDS = [
@@ -74,8 +231,55 @@
         { k: 'h', label: '色相' }, { k: 's', label: '饱和度' }, { k: 'l', label: '明亮度' }
     ];
 
+    // ── 黑白混色器（对齐 LR / PS 的 Black & White：8 色相带各自调亮调暗）──
+    // 色带中心复用混色器那套（0/30/60/120/180/240/285/320），LR 的 GrayMixer 就是这 8 个。
+    // XMP 里 ConvertToGrayscale + GrayMixerRed…Magenta 以前整组进 skipped，导进来等于没生效。
+    const BW_BANDS = MIX_BANDS;
+    const BW_KEYS = ['r', 'o', 'y', 'g', 'a', 'b', 'p', 'm'];
+    function defaultBw() {
+        const b = { on: 1 };
+        for (const k of BW_KEYS) b[k] = 0;
+        return b;
+    }
+    function sanitizeBw(v) {
+        if (!v || typeof v !== 'object') return null;
+        if (v.on === 0) return null;
+        const out = defaultBw();
+        for (const k of BW_KEYS) {
+            const n = Number(v[k]);
+            out[k] = Number.isFinite(n) ? Math.max(-100, Math.min(100, Math.round(n))) : 0;
+        }
+        // 注意：不能因为「8 个滑块都是 0」就返回 null —— 勾了黑白本身就是一次灰度转换，
+        // 全 0 等于标准灰度（LR 里也是这样），返回 null 会让开关刚勾上就自己弹回去。
+        return out;
+    }
+    function bwActive(v) { return !!(v && v.on !== 0); }
+
     function clamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
     function bell(x) { return 4 * x * (1 - x); }
+    // 三区分权重：阴影/中间调/高光，边界 0.33/0.66、过渡带 0.12（与颜色分级的
+    // 默认形态一致）。返回已归一化的三元组。
+    function cbWeights(y) {
+        const lo = 0.33, hi = 0.66, soft = 0.12;
+        let wS = 1 - smoothstep(lo - soft, lo + soft, y);
+        let wH = smoothstep(hi - soft, hi + soft, y);
+        let wM = Math.max(0, 1 - wS - wH);
+        const sum = wS + wM + wH;
+        if (sum > 1e-6) { wS /= sum; wM /= sum; wH /= sum; }
+        return [wS, wM, wH];
+    }
+    function smoothstep(a, b, x) {
+        if (a === b) return x < a ? 0 : 1;
+        const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+        return t * t * (3 - 2 * t);
+    }
+    // sRGB ↔ 线性光：曝光必须在线上乘，否则 +1EV 会把 sRGB 128 直接推到 255。
+    function srgbToLinear(v) {
+        return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    }
+    function linearToSrgb(v) {
+        return v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+    }
 
     // ── SVG 滤镜（单例，改参数只换属性/重建子节点，不重复建 DOM） ──
     // 链路：feComponentTransfer(色温/高光/阴影/曲线/薄雾黑场) → feColorMatrix(校准)
@@ -117,36 +321,52 @@
     // （纯原色在别的列被配平后会带一点邻色，这是线性 3×3 的数学极限，
     //   典型用法 ±10~30 完全够用。）
     function calMatrixValues(cal) {
-        const D = Math.PI / 180;
+        // ── 绕灰轴旋转（Rodrigues）──
+        // 每个原色轴绕 (1,1,1)/√3 转 θ，这是唯一同时满足两件事的模型：
+        //   ① 行和 = 1  → 灰 (g,g,g) 输入仍是灰，白边/灰背景永不偏色；
+        //   ② 正交矩阵 → 列模长不变，色度不被压缩。
+        // 早期版本把三个轴各自朝 A/B 方向线性插值再归一化：行和是 1.31/1.35，
+        // 灰 128 被推成 (123,166,172)；改成行归一化又把色度压掉约 24%，
+        // 导入预设后整张发灰、黄叶变柠檬色。
+        const K = 1 / Math.sqrt(3);
         const GRAY = 1 / 3;
-        const axis = (deg, P, A, B) => {
-            const c = Math.cos(deg * D), sn = Math.sin(deg * D);
-            const v = [
-                P[0] * c + A[0] * Math.max(sn, 0) + B[0] * Math.max(-sn, 0),
-                P[1] * c + A[1] * Math.max(sn, 0) + B[1] * Math.max(-sn, 0),
-                P[2] * c + A[2] * Math.max(sn, 0) + B[2] * Math.max(-sn, 0)
-            ];
-            const len = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) || 1;
-            return [v[0] / len, v[1] / len, v[2] / len];
+        const rotCol = (deg, i) => {
+            const th = deg * Math.PI / 180;
+            const c = Math.cos(th), sn = Math.sin(th);
+            const e = [i === 0 ? 1 : 0, i === 1 ? 1 : 0, i === 2 ? 1 : 0];
+            // [k]× 的第 i 列（k = 灰轴单位向量）
+            const kv = i === 0 ? [0, K, -K] : (i === 1 ? [-K, 0, K] : [K, -K, 0]);
+            return [0, 1, 2].map((j) => c * e[j] + sn * kv[j] + (1 - c) * GRAY);
         };
         const axes = [
-            axis(cal.rh / 100 * 45, [1, 0, 0], [0, 1, 0], [0, 0, 1]),
-            axis(cal.gh / 100 * 45, [0, 1, 0], [0, 0, 1], [1, 0, 0]),
-            axis(cal.bh / 100 * 45, [0, 0, 1], [0, 1, 0], [1, 0, 0])
+            rotCol(cal.rh / 100 * 45, 0),
+            rotCol(cal.gh / 100 * 45, 1),
+            rotCol(cal.bh / 100 * 45, 2)
         ];
+        // 三个原色轴各转各的角度，Rodrigues 单列旋转**不保行和**
+        // （实测 RedHue+49/GreenHue+46 时行和是 0.746/1.221/1.033）。
+        // 不修就会让灰 (0.5,0.5,0.5) 变成 (0.33,0.5,0.5) —— 整张偏青绿。
+        for (let j = 0; j < 3; j++) {
+            const sum = axes[0][j] + axes[1][j] + axes[2][j];
+            if (Math.abs(sum) > 1e-6) {
+                const k = 1 / sum;
+                for (let i = 0; i < 3; i++) axes[i][j] *= k;
+            }
+        }
         const sats = [cal.rs / 100, cal.gs / 100, cal.bs / 100];
+        // 饱和度：col + s·(col − GRAY)。s=−1 收成灰、s=+1 过冲更艳；
+        // 逐列的偏移量行和为 0，所以不会破坏灰守恒（三个 s 不同时再用下面的配平收口）。
         const cols = [[], [], []];
         let D0 = [0, 0, 0];
         for (let i = 0; i < 3; i++) {
-            const s = Math.max(-1, Math.min(1, sats[i]));
-            // 滑块负档 = 向灰收（col → GRAY），正档 = 过冲更艳
+            const sg = Math.max(-1, Math.min(1, sats[i]));
             for (let j = 0; j < 3; j++) {
-                const d = s * (axes[i][j] - GRAY);
+                const d = sg * (axes[i][j] - GRAY);
                 cols[i][j] = axes[i][j] + d;
                 D0[j] += d;
             }
         }
-        // 均摊配平：每列减去 Σd/3，Σ列 回到 (1,1,1)
+        // 三个 s 不一致时行和会被拉偏，把 Σd 均摊回去（量级很小，不伤饱和度）
         for (let i = 0; i < 3; i++) {
             for (let j = 0; j < 3; j++) cols[i][j] -= D0[j] / 3;
         }
@@ -247,6 +467,16 @@
         }
         return any ? out : null;
     }
+    function gradeField(k) {
+        for (const f of GRADE_FIELDS) if (f.k === k) return f;
+        return null;
+    }
+    function clampGradeValue(k, v) {
+        const f = gradeField(k);
+        const lo = f ? f.min : -100, hi = f ? f.max : 100;
+        const n = Math.max(lo, Math.min(hi, Number(v) || 0));
+        return f && f.step ? Math.round(n / f.step) * f.step : Math.round(n);
+    }
 
     function defaultGrade() {
         const p = {};
@@ -255,7 +485,12 @@
         p.cal = null;        // 校准（原色色相/饱和）
         p.det = null;        // 细节（清晰度/纹理/去除薄雾）
         p.mix = null;        // 混色器（8 色相带 HSL）
-        p.masks = [];        // 蒙版（线性/椭圆/画笔/亮度），每个带一套 9 档参数
+        p.cg = null;         // 颜色分级（阴影/中间调/高光/全局）
+        p.bw = null;         // 黑白混色器（8 色相带各自调亮调暗）
+        p.cb = null;         // 色彩平衡（三区 × 三轴）
+        p.gm = null;         // 渐变映射（两色 + 强度）
+        p.lc = null;         // 镜头校正（畸变）
+        p.masks = [];        // 蒙版（线性/椭圆/画笔/亮度），每个带一套基础参数
         return p;
     }
 
@@ -263,14 +498,28 @@
         const out = defaultGrade();
         if (!p) return out;
         for (const f of GRADE_FIELDS) {
-            const v = Number(p[f.k]);
-            out[f.k] = Number.isFinite(v) ? Math.max(f.min, Math.min(f.max, v)) : 0;
+            let v = Number(p[f.k]);
+            if (!Number.isFinite(v)) { out[f.k] = 0; continue; }
+            // 兼容旧草稿：旧版曝光是 -100..100 的线性滑块，新版是 EV。
+            // 旧档位 >5 时按旧公式反推 EV，保证打开旧草稿不会突然过曝。
+            if (f.k === 'exp' && Math.abs(v) > 5.01) {
+                const old = Math.max(-100, Math.min(100, v));
+                v = Math.log(Math.max(0.01, 1 + old * 0.005)) / Math.LN2;
+            }
+            v = Math.max(f.min, Math.min(f.max, v));
+            out[f.k] = f.step ? Math.round(v / f.step) * f.step : v;
+            if (f.k === 'exp') out[f.k] = Math.round(out[f.k] * 100) / 100;
         }
         const C = window.QfsCurve;
         out.curve = C ? C.sanitizeCurve(p.curve) : null;
         out.cal = sanitizeGroup(p.cal, defaultCal);
         out.det = sanitizeGroup(p.det, defaultDet);
         out.mix = sanitizeMix(p.mix);
+        out.cg = sanitizeCg(p.cg);
+        out.bw = sanitizeBw(p.bw);
+        out.cb = sanitizeCb(p.cb);
+        out.gm = sanitizeGm(p.gm);
+        out.lc = sanitizeLc(p.lc);
         out.masks = (window.QfsMask && window.QfsMask.sanitizeMasks)
             ? window.QfsMask.sanitizeMasks(p.masks) : [];
         return out;
@@ -293,7 +542,9 @@
         const C = window.QfsCurve;
         if (C && C.curveActive(p.curve)) return false;
         if (window.QfsMask && window.QfsMask.activeMasks(p.masks).length) return false;
-        return !calActive(p.cal) && !detActive(p.det) && !mixActive(p.mix);
+        if (bwActive(p.bw)) return false;
+        if (cbActive(p.cb) || gmActive(p.gm) || lcActive(p.lc)) return false;
+        return !calActive(p.cal) && !detActive(p.det) && !mixActive(p.mix) && !cgActive(p.cg);
     }
 
     function signature(p) {
@@ -307,44 +558,98 @@
             const v = p.mix[b.k] || {};
             return (v.h || 0) + '.' + (v.s || 0) + '.' + (v.l || 0);
         }).join(',');
-        // 只把「会改变画面」的蒙版算进来：只画了形状没调参数的蒙版不影响像素
-        const acts = (window.QfsMask && window.QfsMask.activeMasks) ? window.QfsMask.activeMasks(p.masks) : [];
-        if (acts.length) s += '/k' + acts.map((m) => window.QfsMask.maskSignature(m)).join('~');
+        if (bwActive(p.bw)) s += '/bw' + BW_KEYS.map((k) => (Number(p.bw[k]) || 0)).join(',');
+        if (cbActive(p.cb)) s += '/cb' + CB_ZONES.map((z) => CB_AXES.map((a) => Number(p.cb[z.k][a.k]) || 0).join('.')).join(',')
+            + '.' + (p.cb.preserve ? 1 : 0);
+        if (gmActive(p.gm)) s += '/gm' + p.gm.dark + p.gm.light + (p.gm.amount || 0);
+        if (lcActive(p.lc)) s += '/lc' + (p.lc.distort || 0);
+        if (cgActive(p.cg)) s += '/g' + CG_ZONES.map((z) => {
+            const v = p.cg[z.k] || {};
+            return (v.h || 0) + '.' + (v.s || 0) + '.' + (v.l || 0);
+        }).join(',') + '.' + (p.cg.blending || 0) + '.' + (p.cg.balance || 0);
+        // 只把「会改变画面」的组算进来：只画了形状没调参数的蒙版不影响像素。
+        // 组合模式下一个组可能含多个成员（add/subtract/intersect），
+        // 任一成员改形状都要重烘，所以签名取整组。
+        const grps = (window.QfsMask && window.QfsMask.activeGroups) ? window.QfsMask.activeGroups(p.masks) : [];
+        if (grps.length) s += '/k' + grps.map((g) => window.QfsMask.groupSignature(g)).join('~');
         return s;
     }
 
     // 色温/高光/阴影/白点黑点合成每通道一条曲线，再串联用户曲线与薄雾黑场
     function buildTables(p) {
         const sh = (p.sh || 0) / 100, hi = (p.hi || 0) / 100, tp = (p.temp || 0) / 100;
+        const tn = (p.tint || 0) / 100;
         const wht = (p.white || 0) / 100, blk = (p.black || 0) / 100;
         const dhz = ((p.det && p.det.dhz) || 0) / 100;
+        const evGain = Math.pow(2, Number(p.exp) || 0);
+        const gam = (Number(p.gam) || 0) / 100;
+        // 色彩平衡 / 渐变映射：与亮度无关的量先算好，循环里只查权重
+        let cbPrep = null;
+        if (cbActive(p.cb)) {
+            cbPrep = CB_ZONES.map((z) => {
+                const v = p.cb[z.k] || {};
+                return { r: (Number(v.r) || 0) / 100, g: (Number(v.g) || 0) / 100, b: (Number(v.b) || 0) / 100 };
+            });
+            cbPrep.preserve = p.cb.preserve !== 0;
+        }
+        let gmPrep = null;
+        if (gmActive(p.gm)) {
+            const dk = hexToRgb(p.gm.dark), lt = hexToRgb(p.gm.light);
+            gmPrep = {
+                dr: dk[0], dg: dk[1], db: dk[2],
+                lr: lt[0], lg: lt[1], lb: lt[2],
+                amt: Math.max(0, Math.min(100, Number(p.gm.amount) || 0)) / 100
+            };
+        }
         const C = window.QfsCurve;
         const cl = (C && C.curveActive(p.curve)) ? C.buildCurveLuts(p.curve) : null;
         const r = new Array(LUT_N), g = new Array(LUT_N), b = new Array(LUT_N);
         for (let i = 0; i < LUT_N; i++) {
             const v = i / (LUT_N - 1);
+            // 曝光是线性光量：先在 sRGB 解码后的线性空间乘 2^EV，再编码回
+            // sRGB。直接 brightness(2^EV) 会把中灰 128 翻成 255，LR 只到约 175。
             let o = v;
-            // 两端固定、只抬中间：纯黑不灰、纯白不溢，这是「高光/阴影」该有的样子
-            o += sh * SH_AMP * BELL_K * v * (1 - v) * (1 - v);
-            o += hi * HI_AMP * BELL_K * v * v * (1 - v);
+            if (evGain !== 1) {
+                o = linearToSrgb(clamp01(srgbToLinear(v) * evGain));
+            }
+            // 高光/阴影：只吃两端（窗内为 1、窗外为 0），中间调几乎不动。
+            // 判定用当前亮度 o（曝光之后的实际亮度），避免"先提亮再压高光"错位。
+            if (sh) o += sh * SH_AMP * (1 - smoothstep(0, LO_KNEE, o));
+            // 高光窗在接近纯白处**回落**：LR 的高光恢复不会把白点压灰，
+            // 否则整张照片失去最亮处，看起来"发灰不发亮"（用户对照 PS 时的第一感受）。
+            if (hi) {
+                const w = smoothstep(HI_KNEE, HI_TOP, o) * (1 - 0.42 * smoothstep(HI_TOP, 1, o));
+                o += hi * HI_AMP * w;
+            }
             o = clamp01(o);
             // 白点：正档把白点往里收（亮部提前并合到纯白），负档整体压暗亮部。
             // 与高光不同，它**故意允许溢出**——那是「白色」该干的事，所以用端点操作，
             // 但按 v² 加权，只让高光区吃到，中间调几乎不动。
             if (wht) {
+                // 三次方加权：128 只吃 12.5%，224 吃 68%，端点全吃
                 const gain = 1 / Math.max(0.1, 1 - wht * 0.25);
-                o = o + (clamp01(o * gain) - o) * o * o;
+                o = o + (clamp01(o * gain) - o) * o * o * o;
             }
             // 黑点：正档抬黑（0 变成 0.22，起雾/褪色），负档压死暗部（低于阈值的直接切黑）。
             // 按 (1-v)² 加权，只吃暗部。
             if (blk) {
+                // LR 的 Blacks +100 大约把纯黑抬到 30～35，0.22 会抬到 56（暗部发灰、不通透）
                 const op = blk > 0
-                    ? o * (1 - blk * 0.22) + blk * 0.22
-                    : Math.max(0, (o + blk * 0.22) / (1 + blk * 0.22));
-                o = o + (op - o) * (1 - o) * (1 - o);
+                    ? o * (1 - blk * 0.16) + blk * 0.16
+                    : Math.max(0, (o + blk * 0.16) / (1 + blk * 0.16));
+                o = o + (op - o) * (1 - o) * (1 - o) * (1 - o);
             }
+            // 中间调（色阶 gamma）：只改曲线的弯曲程度，0→0、1→1 天然锚死，
+            // 所以它能在不动黑白场的前提下调整通透度，这是「对比度」做不到的。
+            // +100 → gamma 0.55（中间调提亮），−100 → 1.82（中间调压暗）。
+            if (gam) o = Math.pow(clamp01(o), Math.pow(2, -gam * 0.85));
             const d = tp * T_AMP * bell(o);
-            let vr = clamp01(o + d), vg = clamp01(o + d * 0.18), vb = clamp01(o - d);
+            const dt = tn * TINT_AMP * bell(o);
+            // 色调：正 = 品红（R/B 升、G 降），负 = 绿（G 升、R/B 降），
+            // 与 Lightroom 的 Tint 正负方向一致；不再是 hue-rotate 的整体转色。
+            let vr = clamp01(o + d + dt * 0.5);
+            let vg = clamp01(o + d * 0.18 - dt);
+            let vb = clamp01(o - d + dt * 0.5);
             // 去除薄雾（简化版）的黑场部分：正档压黑点（通透），负档抬黑点（起雾褪色）
             if (dhz > 0) {
                 const bp = 0.07 * dhz, k = 1 / Math.max(0.05, 1 - bp);
@@ -358,6 +663,39 @@
                 if (cl.r) vr = C.sampleLut(cl.r, vr);
                 if (cl.g) vg = C.sampleLut(cl.g, vg);
                 if (cl.b) vb = C.sampleLut(cl.b, vb);
+            }
+            // 色彩平衡：按当前亮度分三区，每区在 R/G/B 轴上做加减。
+            // 顺序在曲线之后 —— 与 PS 的调整图层顺序一致（曲线定骨架、色彩平衡着色）。
+            if (cbPrep) {
+                const y0 = 0.299 * vr + 0.587 * vg + 0.114 * vb;
+                const w = cbWeights(y0);
+                // 极暗门控：纯黑不染色（0→0）。否则「暗部加红」会把画面的黑边、
+                // 白边阴影一起染成暗红，看起来像脏了。6% 以上是满权重。
+                const gate = smoothstep(0, 0.06, y0);
+                let dr = 0, dg = 0, db = 0;
+                for (let zi = 0; zi < 3; zi++) {
+                    const z = cbPrep[zi], wz = w[zi] * gate;
+                    if (!wz) continue;
+                    dr += z.r * wz * CB_AMP;
+                    dg += z.g * wz * CB_AMP;
+                    db += z.b * wz * CB_AMP;
+                }
+                vr = clamp01(vr + dr); vg = clamp01(vg + dg); vb = clamp01(vb + db);
+                // 保持明度：把亮度的净变化补回去（PS 的 Preserve Luminosity）。
+                // 直接按比例缩放会把色度一起削掉，用差值补偿更接近 PS 的观感。
+                if (cbPrep.preserve) {
+                    const y1 = 0.299 * vr + 0.587 * vg + 0.114 * vb;
+                    const dl = (y0 - y1) * 0.9;
+                    vr = clamp01(vr + dl); vg = clamp01(vg + dl); vb = clamp01(vb + dl);
+                }
+            }
+            // 渐变映射：拿当前亮度当索引去查那条两色渐变，再按强度混回去。
+            if (gmPrep) {
+                const t = clamp01(0.299 * vr + 0.587 * vg + 0.114 * vb);
+                vr += (gmPrep.dr + (gmPrep.lr - gmPrep.dr) * t - vr) * gmPrep.amt;
+                vg += (gmPrep.dg + (gmPrep.lg - gmPrep.dg) * t - vg) * gmPrep.amt;
+                vb += (gmPrep.db + (gmPrep.lb - gmPrep.db) * t - vb) * gmPrep.amt;
+                vr = clamp01(vr); vg = clamp01(vg); vb = clamp01(vb);
             }
             r[i] = vr.toFixed(5);
             g[i] = vg.toFixed(5);
@@ -378,25 +716,26 @@
         syncChain(p, longPx || 0);
         const parts = [];
         const sh = Number(p.sh) || 0, hi = Number(p.hi) || 0, tp = Number(p.temp) || 0;
+        const tn = Number(p.tint) || 0;
         const wht = Number(p.white) || 0, blk = Number(p.black) || 0;
+        const exp = Number(p.exp) || 0;
         const dhz = ((p.det && p.det.dhz) || 0) / 100;
         const C = window.QfsCurve;
         const curved = !!(C && C.curveActive(p.curve));
         // 只要滤镜进链就写表（写表只有 256 次循环，可忽略）：
-        // 否则只开校准/USM 时会残留上一次烘焙的表值
-        if (sh || hi || tp || wht || blk || curved || dhz
+        // 否则只开校准/USM 时会残留上一次烘焙的表值。
+        // 曝光也在这张表里（线性光乘 2^EV），不再用 brightness()。
+        const gamOn = Number(p.gam) || 0;
+        if (sh || hi || tp || tn || wht || blk || exp || gamOn || curved || dhz
+            || cbActive(p.cb) || gmActive(p.gm)
             || calActive(p.cal) || detActive(p.det)) {
             writeTables(p);
             parts.push('url(#' + GRADE_FILTER_ID + ')');
         }
-        const exp = (Number(p.exp) || 0) / 100;
-        if (exp) parts.push('brightness(' + (1 + exp * 0.5).toFixed(4) + ')');
         const con = (Number(p.con) || 0) / 100;
         if (con) parts.push('contrast(' + (1 + con * 0.5).toFixed(4) + ')');
         const sat = (Number(p.sat) || 0) / 100;
         if (sat) parts.push('saturate(' + (1 + sat).toFixed(4) + ')');
-        const tint = (Number(p.tint) || 0) / 100;
-        if (tint) parts.push('hue-rotate(' + (tint * 24).toFixed(2) + 'deg)');
         // 薄雾的反差/饱和部分（黑场已在 LUT 里）
         if (dhz > 0) {
             parts.push('contrast(' + (1 + 0.28 * dhz).toFixed(4) + ')',
@@ -437,6 +776,15 @@
         if (fs) g.filter = fs;
         g.drawImage(drawSrc, 0, 0, tw, th);
         if (fs) g.filter = 'none';
+        // 自然饱和度 / 颜色分级是「按像素自己的饱和度/亮度」选区，逐通道
+        // LUT 表达不了；放在基础调色和曲线之后做一次后置 pass（LR 的顺序
+        // 也是先基础/曲线、后颜色分级）。
+        // 镜头畸变也走这个后置 pass：它是几何重采样，Canvas2D 的 ctx.filter 做不到。
+        if ((Number(params.vib) || 0) || cgActive(params.cg) || bwActive(params.bw)
+            || lcActive(params.lc)) {
+            const out = window.QfsColor && window.QfsColor.pass(c, params, tw, th);
+            if (out) return out;
+        }
         return c;
     }
 
@@ -481,30 +829,32 @@
         let cur = slot.base;
         if (!cur) return null;
 
-        // 逐个蒙版：用该蒙版自己的 9 档参数再烘一层，然后按蒙版权重合成。
-        // 前缀缓存：只改第 N 个蒙版时，前 N-1 层直接复用。
-        const acts = (window.QfsMask && window.QfsMask.activeMasks) ? window.QfsMask.activeMasks(p.masks) : [];
+        // 逐「组」烘焙：一个组 = 一个 new 蒙版 + 它的 add/subtract/intersect 成员，
+        // 组内共用组首的参数、共用一条烘焙层；权重由 groupAlpha 按组合模式合并。
+        // 这样「修边缘」= 加一个「减去」蒙版，不用重画整个蒙版。
+        // 前缀缓存：只改第 N 组时，前 N-1 层直接复用。
+        const grps = (window.QfsMask && window.QfsMask.activeGroups) ? window.QfsMask.activeGroups(p.masks) : [];
         let prevKey = baseKey;
-        for (let i = 0; i < acts.length; i++) {
-            const m = acts[i];
-            const key = prevKey + '>' + window.QfsMask.maskSignature(m);
+        for (let i = 0; i < grps.length; i++) {
+            const g = grps[i];
+            const key = prevKey + '>' + window.QfsMask.groupSignature(g);
             const hit = slot.chain[i];
             if (hit && hit.key === key && hit.canvas) {
                 cur = hit.canvas;
                 prevKey = key;
                 continue;
             }
-            const layer = bakeOne(cur, m.p, tw, th) || cur;
-            // 蒙版权重固定按**原图**算：亮度蒙版若拿已调色层当源，一压暗选区就变大、
+            const layer = bakeOne(cur, g.head.p, tw, th) || cur;
+            // 蒙版权重固定按**原图**算：亮度/颜色蒙版若拿已调色层当源，一压暗选区就变大、
             // 一提亮就变小，调完色再点回蒙版会发现"范围变了"。曲线/校准/混色器同理，
-            // 选区应该只由原画面的亮度决定，与调色参数无关。
-            const alpha = window.QfsMask.render(m, tw, th, im.el);
+            // 选区应该只由原画面的内容决定，与调色参数无关。
+            const alpha = window.QfsMask.groupAlpha(g, tw, th, im.el);
             cur = window.QfsMask.composite(cur, layer, alpha);
             slot.chain[i] = { key, canvas: cur };
             slot.chain.length = i + 1;
             prevKey = key;
         }
-        if (acts.length === 0) slot.chain.length = 0;
+        if (grps.length === 0) slot.chain.length = 0;
 
         // canvas 没有 naturalWidth/naturalHeight，但引擎里到处用它算 fit / 比例 /
         // 自适应字号（autoExifSize = 档位 × clamp(照片宽/1200)）。
@@ -538,12 +888,165 @@
         if (app && im._grade.canvas) app.__gradeBaked = true;
     };
 
+    // ── 色彩平衡 / 渐变映射 / 镜头校正 的 UI 绑定 ──────────────────
+    // 这三组的共同点：参数不是「单一数字」，所以不走 GRADE_FIELDS 那套通用滑块，
+    // 各自 bind 一次，提交时整体 patch 进 grade。
+    let _cbZone = 'shadow';
+
+    function initToneExtra() {
+        const $ = (id) => document.getElementById(id);
+        const self = this;
+        const commit = (patch) => {
+            if (!self.image) return;
+            self.setGrade(patch);
+        };
+        const bindRange = (inp, apply, settleMs) => {
+            if (!inp) return;
+            let t = 0;
+            inp.addEventListener('input', () => {
+                apply(Number(inp.value) || 0);
+                clearTimeout(t);
+                t = setTimeout(() => self.rebuildGrade('full'), settleMs || 220);
+            });
+            inp.addEventListener('change', () => {
+                clearTimeout(t);
+                apply(Number(inp.value) || 0);
+                self.rebuildGrade('full');
+            });
+        };
+
+        // 色彩平衡：三个区共九个值，当前区由「阴影/中间调/高光」子页决定
+        const zones = $('cbZones');
+        if (zones) {
+            zones.querySelectorAll('[data-cbz]').forEach((b) => {
+                b.addEventListener('click', () => {
+                    _cbZone = b.dataset.cbz;
+                    zones.querySelectorAll('[data-cbz]').forEach((x) => {
+                        x.classList.toggle('active', x === b);
+                    });
+                    if (self.syncToneExtraUI) self.syncToneExtraUI(self.gradeOf(self.image));
+                });
+            });
+        }
+        for (const ax of CB_AXES) {
+            bindRange($('slCb' + ax.k.toUpperCase()), (v) => {
+                const cur = self.gradeOf(self.image).cb || defaultCb();
+                const z = Object.assign({}, cur[_cbZone] || {}, { [ax.k]: v });
+                commit({ cb: Object.assign({}, cur, { [_cbZone]: z }) });
+            });
+        }
+        const pres = $('cbCbPreserve');
+        if (pres) {
+            pres.addEventListener('change', () => {
+                const cur = self.gradeOf(self.image).cb || defaultCb();
+                commit({ cb: Object.assign({}, cur, { preserve: pres.checked ? 1 : 0 }) });
+                self.rebuildGrade('full');
+            });
+        }
+        const cbReset = $('btnCbReset');
+        if (cbReset) {
+            cbReset.addEventListener('click', () => {
+                commit({ cb: null });
+                self.rebuildGrade('full');
+                self.setStatus('色彩平衡已重置');
+            });
+        }
+
+        // 渐变映射
+        const gmOn = $('cbGmOn');
+        if (gmOn) {
+            gmOn.addEventListener('change', () => {
+                const cur = self.gradeOf(self.image).gm || defaultGm();
+                commit({ gm: Object.assign({}, cur, { on: gmOn.checked ? 1 : 0 }) });
+                self.rebuildGrade('full');
+            });
+        }
+        const bindColor = (id, key) => {
+            const el = $(id);
+            if (!el) return;
+            el.addEventListener('input', () => {
+                const cur = self.gradeOf(self.image).gm || defaultGm();
+                commit({ gm: Object.assign({}, cur, { [key]: el.value, on: 1 }) });
+                clearTimeout(el._gmT);
+                el._gmT = setTimeout(() => self.rebuildGrade('full'), 200);
+            });
+            el.addEventListener('change', () => {
+                const cur = self.gradeOf(self.image).gm || defaultGm();
+                commit({ gm: Object.assign({}, cur, { [key]: el.value, on: 1 }) });
+                self.rebuildGrade('full');
+            });
+        };
+        bindColor('clGmDark', 'dark');
+        bindColor('clGmLight', 'light');
+        bindRange($('slGmAmount'), (v) => {
+            const cur = self.gradeOf(self.image).gm || defaultGm();
+            commit({ gm: Object.assign({}, cur, { amount: v, on: 1 }) });
+        });
+
+        // 镜头校正
+        bindRange($('slLcDistort'), (v) => {
+            commit({ lc: v ? { distort: v } : null });
+        });
+    }
+
+    function syncToneExtraUI(p) {
+        const $ = (id) => document.getElementById(id);
+        const app = window.App;
+        const text = (v) => (v === 0 ? '0' : (v > 0 ? '+' + v : String(v)));
+
+        const cb = (p && p.cb) || null;
+        const z = (cb && cb[_cbZone]) || { r: 0, g: 0, b: 0 };
+        for (const ax of CB_AXES) {
+            const id = 'Cb' + ax.k.toUpperCase();
+            const inp = $('sl' + id);
+            const v = Number(z[ax.k]) || 0;
+            if (inp) inp.value = String(v);
+            if (app.updateLabel) app.updateLabel('lbl' + id, text(v));
+            else { const el = $('lbl' + id); if (el) el.textContent = text(v); }
+        }
+        const pres = $('cbCbPreserve');
+        if (pres) pres.checked = !cb || cb.preserve !== 0;
+        const grpCb = $('grpCb');
+        if (grpCb) grpCb.classList.toggle('grade-on', !!cb);
+
+        const gm = (p && p.gm) || null;
+        const gmOn = $('cbGmOn');
+        if (gmOn) gmOn.checked = !!(gm && gm.on !== 0);
+        const dk = $('clGmDark'), lt = $('clGmLight');
+        if (dk) dk.value = (gm && gm.dark) || '#101a33';
+        if (lt) lt.value = (gm && gm.light) || '#ffd9a0';
+        const amt = gm ? gm.amount : 100;
+        const amtInp = $('slGmAmount');
+        if (amtInp) amtInp.value = String(amt);
+        if (app.updateLabel) app.updateLabel('lblGmAmount', String(amt));
+        const grpGm = $('grpGm');
+        if (grpGm) grpGm.classList.toggle('grade-on', !!gm);
+
+        const lc = (p && p.lc) || null;
+        const dv = lc ? (Number(lc.distort) || 0) : 0;
+        const lcInp = $('slLcDistort');
+        if (lcInp) lcInp.value = String(dv);
+        if (app.updateLabel) app.updateLabel('lblLcDistort', text(dv));
+        const grpLc = $('grpLc');
+        if (grpLc) grpLc.classList.toggle('grade-on', !!lc);
+    }
+
     Object.assign(window.App || (window.App = {}), {
         GRADE_FIELDS,
         DET_FIELDS,
         CAL_FIELDS,
         MIX_BANDS,
         MIX_METRICS,
+        CG_ZONES,
+        defaultCg,
+        sanitizeCg,
+        isCgActive: cgActive,
+        BW_BANDS, BW_KEYS, isBwActive: bwActive, defaultBw, sanitizeBw,
+        CB_ZONES, CB_AXES, defaultCb, sanitizeCb, isCbActive: cbActive,
+        defaultGm, sanitizeGm, isGmActive: gmActive, hexToRgb,
+        defaultLc, sanitizeLc, isLcActive: lcActive,
+        MASK_MODES, maskGroups,
+        initToneExtra, syncToneExtraUI,
 
         isNeutralGrade: isNeutral,
         isCalActive: calActive,
@@ -561,14 +1064,12 @@
             if (!im) return false;
             // 选中某个蒙版时，9 档滑块改的是**该蒙版的参数**（与 LR 一致）；
             // 曲线/校准/混色器/蒙版列表这类全局项仍然落到 grade 上。
-            const act = this.activeMask ? this.activeMask(im) : null;
+            // 组合模式：滑块读写「组首」的参数（一组共用一套）
+            const act = this.paramMask ? this.paramMask(im) : (this.activeMask ? this.activeMask(im) : null);
             const keys = Object.keys(patch || {});
             const onlySlider = keys.length > 0 && keys.every((k) => MASK_ROUTE_KEYS.indexOf(k) >= 0);
             if (act && onlySlider) {
-                for (const k of keys) {
-                    const v = Number(patch[k]) || 0;
-                    act.p[k] = Math.max(-100, Math.min(100, Math.round(v)));
-                }
+                for (const k of keys) act.p[k] = clampGradeValue(k, patch[k]);
                 this.invalidateGrade(im);
                 this.rebuildGrade(opts && opts.full ? 'full' : 'low');
                 this.syncGradeUI();
@@ -576,7 +1077,13 @@
                 if (this.scheduleDraft) this.scheduleDraft();
                 return true;
             }
-            const p = normalizeGrade(Object.assign({}, im.grade || {}, patch || {}));
+            // XMP 预设导入用 replace：未写进预设的档位归零，避免上一套参数
+            // 残留在新预设里（否则同一张照片连续导入会越叠越不像）。
+            const replace = !!(opts && opts.replace);
+            const p = normalizeGrade(replace
+                ? Object.assign({}, patch || {})
+                : Object.assign({}, im.grade || {}, patch || {}));
+            if (replace) this._activeMaskId = null;
             im.grade = p;
             this.invalidateGrade(im);
             this.rebuildGrade(opts && opts.full ? 'full' : 'low');
@@ -638,9 +1145,10 @@
                 // 浅拷贝会让所有照片共用同一份数据互相串台
                 const cv = p.curve ? JSON.parse(JSON.stringify(p.curve)) : null;
                 const mx = p.mix ? JSON.parse(JSON.stringify(p.mix)) : null;
+                const cg = p.cg ? JSON.parse(JSON.stringify(p.cg)) : null;
                 const mk = JSON.parse(JSON.stringify(p.masks || []));
                 it.grade = Object.assign({}, p, {
-                    curve: cv, mix: mx, masks: mk,
+                    curve: cv, mix: mx, cg, masks: mk,
                     cal: p.cal ? Object.assign({}, p.cal) : null,
                     det: p.det ? Object.assign({}, p.det) : null
                 });
@@ -657,7 +1165,7 @@
             const d = this._gradeDom;
             if (!d) return;
             const p = this.gradeOf(this.image);
-            const act = this.activeMask ? this.activeMask(this.image) : null;
+            const act = this.paramMask ? this.paramMask(this.image) : (this.activeMask ? this.activeMask(this.image) : null);
             const src = act ? act.p : p;
             for (const f of GRADE_FIELDS) {
                 const inp = d.sliders[f.k];
@@ -677,14 +1185,17 @@
             if (this.syncMaskUI) this.syncMaskUI();
             if (this.syncCurveUI) this.syncCurveUI();
             if (this.syncGradeExtraUI) this.syncGradeExtraUI(p);
+            if (this.syncColorGradeUI) this.syncColorGradeUI(p);
+            if (this.syncBwUI) this.syncBwUI(p);
+            if (this.syncToneExtraUI) this.syncToneExtraUI(p);
         },
 
         initGrade() {
             const $ = (id) => document.getElementById(id);
             const ids = {
-                exp: 'slGradeExp', con: 'slGradeCon', sat: 'slGradeSat', temp: 'slGradeTemp',
-                tint: 'slGradeTint', hi: 'slGradeHi', sh: 'slGradeSh',
-                white: 'slGradeWhite', black: 'slGradeBlack'
+                exp: 'slGradeExp', con: 'slGradeCon', sat: 'slGradeSat', vib: 'slGradeVib',
+                temp: 'slGradeTemp', tint: 'slGradeTint', hi: 'slGradeHi', sh: 'slGradeSh',
+                white: 'slGradeWhite', black: 'slGradeBlack', gam: 'slGradeGam'
             };
             const sliders = {}, labels = {};
             let any = false;
@@ -727,6 +1238,9 @@
             if (all) all.addEventListener('click', () => this.applyGradeToAll());
             if (this.initCurve) this.initCurve();
             if (this.initGradeExtra) this.initGradeExtra();
+            if (this.initColorGrade) this.initColorGrade();
+            if (this.initBw) this.initBw();
+            if (this.initToneExtra) this.initToneExtra();
             if (this.initMasks) this.initMasks();
             this.syncGradeUI();
         }

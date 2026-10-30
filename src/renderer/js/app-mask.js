@@ -19,11 +19,19 @@
         { k: 'linear', label: '渐变' },
         { k: 'radial', label: '椭圆' },
         { k: 'brush', label: '画笔' },
-        { k: 'lum', label: '亮度' }
+        { k: 'lum', label: '亮度' },
+        { k: 'color', label: '颜色' }
     ];
-    const MASK_KEYS = ['exp', 'con', 'sat', 'temp', 'tint', 'hi', 'sh', 'white', 'black'];
+    const MASK_KEYS = ['exp', 'con', 'sat', 'vib', 'temp', 'tint', 'hi', 'sh', 'white', 'black', 'gam'];
+    // 组合模式：new 开一个新的调整层；add/subtract/intersect 并进上一个组。
+    const MODES = ['new', 'add', 'subtract', 'intersect'];
 
     function clamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
+    function smoothstepLocal(a, b, x) {
+        if (a === b) return x < a ? 0 : 1;
+        const t = clamp01((x - a) / (b - a));
+        return t * t * (3 - 2 * t);
+    }
     function num(v, d) { const n = Number(v); return Number.isFinite(n) ? n : d; }
 
     function defaultMaskParams() {
@@ -36,6 +44,7 @@
         if (type === 'linear') return { x1: 0.5, y1: 0.08, x2: 0.5, y2: 0.62 };
         if (type === 'radial') return { cx: 0.5, cy: 0.42, rx: 0.34, ry: 0.28 };
         if (type === 'brush') return { size: 18, strokes: [] };
+        if (type === 'color') return { h: 210, tol: 28, minS: 12, sat: 40 };  // 默认选蓝天那类色相
         return { lo: 0, hi: 45 };   // lum：只选亮度 0~45% 的区域
     }
 
@@ -45,6 +54,7 @@
         return {
             id: 'mk' + Date.now().toString(36) + _seq,
             type: TYPES.some((t) => t.k === type) ? type : 'linear',
+            mode: 'new',        // 新建的蒙版默认是独立调整层（改组合方式见 UI「组合」行）
             on: 1,
             inv: 0,
             feather: type === 'brush' ? 35 : 50,
@@ -54,7 +64,14 @@
         };
     }
 
-    function clampSlide(v) { return Math.max(-100, Math.min(100, Math.round(num(v, 0)))); }
+    function clampSlide(k, v) {
+        const fields = (window.App && window.App.GRADE_FIELDS) || [];
+        const f = fields.find((x) => x.k === k);
+        const lo = f ? f.min : -100, hi = f ? f.max : 100;
+        let n = Math.max(lo, Math.min(hi, num(v, 0)));
+        if (f && f.step) n = Math.round(n / f.step) * f.step;
+        return f && f.step ? Math.round(n * 100) / 100 : Math.round(n);
+    }
 
     function sanitizeMask(m) {
         if (!m || !m.type) return null;
@@ -62,6 +79,7 @@
         const out = {
             id: String(m.id || ('mk' + (++_seq))),
             type,
+            mode: MODES.indexOf(m.mode) >= 0 ? m.mode : 'new',
             on: m.on === 0 ? 0 : 1,
             inv: m.inv ? 1 : 0,
             feather: Math.max(0, Math.min(100, Math.round(num(m.feather, 50)))),
@@ -100,6 +118,11 @@
                     });
                 }
             }
+        } else if (type === 'color') {
+            const s = m.shape || {};
+            out.shape.h = ((Math.round(num(s.h, 210)) % 360) + 360) % 360;
+            out.shape.tol = Math.max(3, Math.min(90, Math.round(num(s.tol, 28))));
+            out.shape.minS = Math.max(0, Math.min(90, Math.round(num(s.minS, 12))));
         } else {
             const s = m.shape || {};
             const lo = Math.max(0, Math.min(90, Math.round(num(s.lo, 0))));
@@ -108,7 +131,7 @@
             out.shape.hi = hi;
         }
         const src = m.p || {};
-        for (const k of MASK_KEYS) out.p[k] = clampSlide(src[k]);
+        for (const k of MASK_KEYS) out.p[k] = clampSlide(k, src[k]);
         return out;
     }
 
@@ -129,19 +152,69 @@
         return false;
     }
 
+    // ── 组合模式：一个「组」= 一个 new 蒙版 + 后续 add/subtract/intersect ──
+    // 同一组共用组首的参数、共用一条烘焙层 —— 这就是「修边缘不用重画」的实现：
+    // 加一个「减去」蒙版只改生效范围，参数的归属不变。
+    function maskGroups(list) {
+        const out = [];
+        for (const m of (Array.isArray(list) ? list : [])) {
+            if (!m) continue;
+            const mode = (m.mode && m.mode !== 'new' && out.length) ? m.mode : 'new';
+            if (mode === 'new') out.push({ head: m, members: [m] });
+            else out[out.length - 1].members.push(m);
+        }
+        return out;
+    }
+
+    // 组合后的权重画布：按 mode 依次合并（add 取并集、subtract 挖掉、intersect 取交集）
+    function groupAlpha(group, w, h, src) {
+        const members = group.members || [group.head];
+        let acc = render(group.head, w, h, src);
+        for (let i = 1; i < members.length; i++) {
+            const m = members[i];
+            if (m.on === 0) continue;
+            const a = render(m, w, h, src);
+            const c = newCanvas(w, h);
+            const g = c.getContext('2d');
+            if (!g) return acc;
+            g.drawImage(acc, 0, 0);
+            // destination-out：α乘(1−srcA) —— 正是「减去」；
+            // destination-in：α乘srcA —— 正是「相交」；
+            // lighter：α 相加（重叠处封顶 1）—— 比 max 更明确，且能保住软边。
+            g.globalCompositeOperation = m.mode === 'subtract' ? 'destination-out'
+                : m.mode === 'intersect' ? 'destination-in' : 'lighter';
+            g.drawImage(a, 0, 0);
+            acc = c;
+        }
+        return acc;
+    }
+
+    // 需要参与烘焙的组：组头本身有非零参数（组内成员只改范围，不产生新调整层）
+    function activeGroups(list) {
+        return maskGroups(list).filter((g) => g.head && g.head.on !== 0 && maskHasParams(g.head));
+    }
+
+    // 组的签名：组头参数 + 每个成员的形状/组合方式。
+    // 组内任何成员改了形状都要触发重烘，所以不能只用 maskSignature(head)。
+    function groupSignature(g) {
+        return g.members.map((m) => maskSignature(m)).join('>');
+    }
+
     function activeMasks(list) {
-        return (list || []).filter((m) => m.on !== 0 && maskHasParams(m));
+        return activeGroups(list).map((g) => g.head);
     }
 
     function maskSignature(m) {
         const s = m.shape || {};
-        const base = [m.type, m.on, m.inv, m.feather, m.density,
+        const base = [m.type, m.mode || 'new', m.on, m.inv, m.feather, m.density,
             MASK_KEYS.map((k) => m.p ? m.p[k] : 0).join(',')];
         if (m.type === 'brush') {
             base.push(s.size, (s.strokes || []).map((st) => (st.erase ? 'e' : 'w') + st.size + ':'
                 + st.pts.map((p) => p[0].toFixed(3) + ',' + p[1].toFixed(3)).join(';')).join('|'));
         } else if (m.type === 'lum') {
             base.push(s.lo, s.hi);
+        } else if (m.type === 'color') {
+            base.push(s.h, s.tol, s.minS);
         } else {
             base.push(s.x1, s.y1, s.x2, s.y2, s.cx, s.cy, s.rx, s.ry);
         }
@@ -278,6 +351,53 @@
         g.drawImage(small, 0, 0, w, h);
     }
 
+    // 颜色蒙版：按「色相 + 最低饱和度」选区（PS/LR 的颜色范围最常用的一半）。
+    // 与亮度蒙版同一条路子：320px 低分辨率算权重再放大，软过渡、成本可控。
+    function fillColor(g, w, h, m, src) {
+        const s = m.shape;
+        const tw = Math.max(32, Math.min(320, Math.round(w / 4)));
+        const th = Math.max(1, Math.round(tw * h / w));
+        const small = newCanvas(tw, th);
+        const sg = small.getContext('2d');
+        try { sg.drawImage(src, 0, 0, tw, th); } catch (_) { /* 源不可用时留空 */ }
+        let data;
+        try { data = sg.getImageData(0, 0, tw, th); } catch (_) { return; }
+        const d = data.data;
+        const target = ((Number(s.h) || 0) % 360 + 360) % 360;
+        const tol = Math.max(3, Number(s.tol) || 28);
+        const minS = Math.max(0, Number(s.minS) || 0) / 100;
+        for (let i = 0; i < d.length; i += 4) {
+            const r = d[i] / 255, gg = d[i + 1] / 255, b = d[i + 2] / 255;
+            const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), dd = mx - mn;
+            let hue = 0;
+            if (dd > 1e-6) {
+                if (mx === r) hue = (((gg - b) / dd) % 6 + 6) % 6;
+                else if (mx === gg) hue = (b - r) / dd + 2;
+                else hue = (r - gg) / dd + 4;
+                hue *= 60;
+            }
+            const sat = mx > 1e-6 ? dd / mx : 0;
+            let dh = Math.abs(hue - target);
+            if (dh > 180) dh = 360 - dh;
+            // 色相：容差内满权重，到容差 1.6 倍处完全归零（软边）
+            let v = 1 - smoothstepLocal(tol * 0.45, tol * 1.6, dh);
+            // 饱和度门槛：灰/近白黑没有色相可言，必须挡掉，否则整片灰底被选中
+            v *= smoothstepLocal(minS * 0.35, Math.max(minS * 0.35 + 0.06, minS * 1.15), sat);
+            // 极暗/极亮也挡一下：那里色相不稳定
+            v *= smoothstepLocal(0.02, 0.10, mx);
+            let a8 = Math.round(clamp01(v) * 255);
+            if (m.inv) a8 = 255 - a8;
+            d[i] = 255; d[i + 1] = 255; d[i + 2] = 255; d[i + 3] = a8;
+        }
+        sg.putImageData(data, 0, 0);
+        g.imageSmoothingEnabled = true;
+        g.imageSmoothingQuality = 'high';
+        const blur = (m.feather / 100) * Math.min(w, h) * 0.02;
+        if (blur > 0.4) g.filter = 'blur(' + blur.toFixed(2) + 'px)';
+        g.drawImage(small, 0, 0, w, h);
+        g.filter = 'none';
+    }
+
     // 生成蒙版 alpha 画布（w×h 与烘焙图层一致）
     function render(m, w, h, src) {
         const out = newCanvas(w, h);
@@ -286,6 +406,7 @@
         if (m.type === 'linear') fillGradient(g, out.width, out.height, m);
         else if (m.type === 'radial') fillRadial(g, out.width, out.height, m);
         else if (m.type === 'brush') fillBrush(g, out.width, out.height, m, out);
+        else if (m.type === 'color') fillColor(g, out.width, out.height, m, src);
         else fillLuma(g, out.width, out.height, m, src);
         // 浓度：整体压权重（100 不动、0 完全无效）
         const dens = Math.max(0, Math.min(100, m.density != null ? m.density : 100)) / 100;
@@ -315,8 +436,9 @@
     }
 
     window.QfsMask = {
-        TYPES, MASK_KEYS, newMask, defaultMaskParams, sanitizeMasks, sanitizeMask,
-        maskHasParams, activeMasks, maskSignature, render, composite
+        TYPES, MODES, MASK_KEYS, newMask, defaultMaskParams, sanitizeMasks, sanitizeMask,
+        maskHasParams, activeMasks, maskSignature, render, composite,
+        maskGroups, groupAlpha, activeGroups, groupSignature
     };
 })();
 
@@ -340,6 +462,43 @@
             if (!this._activeMaskId) return null;
             for (const m of list) if (m.id === this._activeMaskId) return m;
             return null;
+        },
+
+        /* 参数归属：组合模式下一组共用组首的 p，所以滑块要读写组首。
+           选中的可能是 add/subtract/intersect 成员，它的 p 只是占位。 */
+        paramMask(im) {
+            const act = this.activeMask(im);
+            if (!act) return null;
+            for (const g of window.QfsMask.maskGroups(this.masksOf(im))) {
+                if (g.members.indexOf(act) >= 0) return g.head;
+            }
+            return act;
+        },
+
+        /* 当前选中蒙版所在的组（叠加层要显示组合后的范围） */
+        activeGroup(im) {
+            const act = this.activeMask(im);
+            if (!act) return null;
+            for (const g of window.QfsMask.maskGroups(this.masksOf(im))) {
+                if (g.members.indexOf(act) >= 0) return g;
+            }
+            return null;
+        },
+
+        /* 改组合方式：把某个成员设成 new/add/subtract/intersect。
+           设成 new 会把它拆成独立的组（它自己的 p 立刻生效）。 */
+        setMaskMode(id, mode) {
+            const im = this.image;
+            if (!im) return false;
+            const list = this.masksOf(im);
+            const m = list.find((x) => x.id === id);
+            if (!m) return false;
+            if (window.QfsMask.MODES.indexOf(mode) < 0) return false;
+            const idx = list.indexOf(m);
+            m.mode = (idx === 0 && mode !== 'new') ? 'new' : mode;   // 第一个只能是 new
+            this.setGrade({ masks: list });
+            this.setActiveMask(id);
+            return true;
         },
 
         setActiveMask(id) {
@@ -471,7 +630,33 @@
             const TINT = [64, 208, 150];
             const baseA = 0.5;
             const rgba = (a) => 'rgba(' + TINT[0] + ',' + TINT[1] + ',' + TINT[2] + ',' + a.toFixed(3) + ')';
+            const grp = this.activeGroup ? this.activeGroup(this.image) : null;
+            const members = (grp && grp.members) || [m];
+            const paintRaster = (alpha, color) => {
+                const tint = document.createElement('canvas');
+                tint.width = alpha.width; tint.height = alpha.height;
+                const tg = tint.getContext('2d');
+                if (!tg) return;
+                tg.fillStyle = color;
+                tg.fillRect(0, 0, alpha.width, alpha.height);
+                tg.globalCompositeOperation = 'destination-in';
+                tg.drawImage(alpha, 0, 0);
+                g.imageSmoothingEnabled = true;
+                g.drawImage(tint, sx, sy, sw, sh);
+            };
             g.save();
+            if (members.length > 1) {
+                // 组合模式：合并运算（并集 / 挖掉 / 交集）只能在像素上做，
+                // 所以这一组统一走低分辨率光栅 + 放大。绿=最终生效范围，
+                // 红=当前这个「减去」成员挖掉的部分（让用户看得见自己在删哪里）。
+                const pw = Math.max(64, Math.min(400, Math.round(pr.w)));
+                const ph = Math.max(32, Math.round(pw * pr.h / Math.max(1, pr.w)));
+                paintRaster(window.QfsMask.groupAlpha(grp, pw, ph, this.image.el), rgba(1));
+                if (m.mode === 'subtract') {
+                    paintRaster(window.QfsMask.render(m, pw, ph, this.image.el), 'rgba(232,96,86,0.55)');
+                }
+                g.restore();
+            } else {
             g.beginPath();
             if (m.type === 'radial') {
                 g.ellipse(sx + m.shape.cx * sw, sy + m.shape.cy * sh,
@@ -505,23 +690,15 @@
                 grad.addColorStop(1, c1);
                 g.fillStyle = grad;
                 g.fillRect(-1.05, -1.05, 2.1, 2.1);
-            } else if (m.type === 'brush' || m.type === 'lum') {
+            } else if (m.type === 'brush' || m.type === 'lum' || m.type === 'color') {
                 const pw = Math.max(64, Math.min(400, Math.round(pr.w)));
                 const ph = Math.max(32, Math.round(pw * pr.h / Math.max(1, pr.w)));
-                // 源必须是**原图**：亮度蒙版按像素亮度选区，若用调过色的烘焙图，
+                // 源必须是**原图**：亮度/颜色蒙版按像素内容选区，若用调过色的烘焙图，
                 // 一压暗选区就变大、一提亮就变小 —— 用户看到的就是「调完色蒙版范围变了」。
-                const alpha = window.QfsMask.render(m, pw, ph, this.image.el);
-                const tint = document.createElement('canvas');
-                tint.width = pw; tint.height = ph;
-                const tg = tint.getContext('2d');
-                tg.fillStyle = rgba(1);
-                tg.fillRect(0, 0, pw, ph);
-                tg.globalCompositeOperation = 'destination-in';
-                tg.drawImage(alpha, 0, 0);
-                g.imageSmoothingEnabled = true;
-                g.drawImage(tint, sx, sy, sw, sh);
+                paintRaster(window.QfsMask.render(m, pw, ph, this.image.el), rgba(1));
             }
             g.restore();
+            }
 
             // 手柄（线性：两端点；径向：中心 + 四个方向点）
             const P = (x, y) => ({ x: sx + x * sw, y: sy + y * sh });
@@ -600,6 +777,23 @@
             bindNum('slMaskHi', (v, done) => this._patchLum(null, v, done));
             const inv = $('cbMaskInv');
             if (inv) inv.addEventListener('change', () => this._patchMask({ inv: inv.checked ? 1 : 0 }, true));
+            // 组合方式：改的是「当前选中成员」的 mode（第一个只能是新建）
+            const modes = $('maskModes');
+            if (modes) {
+                modes.querySelectorAll('[data-mm]').forEach((b) => {
+                    b.addEventListener('click', () => {
+                        const m = this.activeMask(this.image);
+                        if (!m) { this.setStatus('先选一个蒙版，再选组合方式'); return; }
+                        this.setMaskMode(m.id, b.dataset.mm);
+                        const meta = (window.App.MASK_MODES || []).find((x) => x.k === b.dataset.mm) || {};
+                        this.setStatus('组合方式：' + (meta.label || b.dataset.mm));
+                    });
+                });
+            }
+            // 颜色蒙版：色相 / 容差 / 最低饱和
+            bindNum('slMaskHue', (v, done) => this._patchColor({ h: v }, done));
+            bindNum('slMaskTol', (v, done) => this._patchColor({ tol: v }, done));
+            bindNum('slMaskMinS', (v, done) => this._patchColor({ minS: v }, done));
             this._bindMaskOverlay();
             this.syncMaskUI();
             this.drawMaskOverlay();
@@ -609,6 +803,56 @@
             const m = this.activeMask(this.image);
             if (!m) return;
             Object.assign(m, patch);
+            this.commitMaskShape(done ? 'full' : 'live');
+            this.syncMaskUI();
+        },
+
+        /* 画布点选取色：按归一化照片坐标采样原图色相。
+           缩到 512px 再采样 —— 每次点击都 drawImage 一张 12MP 原图太浪费，
+           而取色只需要大致色相（容差是 3~90 度级别的粗量）。 */
+        pickMaskColor(nx, ny) {
+            const im = this.image;
+            const m = this.activeMask(im);
+            if (!im || !m || m.type !== 'color' || !im.el) return false;
+            const W = Math.max(1, im.el.naturalWidth || im.w || 1);
+            const H = Math.max(1, im.el.naturalHeight || im.h || 1);
+            const scale = Math.min(1, 512 / Math.max(W, H));
+            const tw = Math.max(1, Math.round(W * scale));
+            const th = Math.max(1, Math.round(H * scale));
+            const c = document.createElement('canvas');
+            c.width = tw; c.height = th;
+            const g = c.getContext('2d');
+            if (!g) return false;
+            try { g.drawImage(im.el, 0, 0, tw, th); } catch (_) { return false; }
+            let px;
+            try {
+                const x = Math.max(0, Math.min(tw - 1, Math.round(nx * tw)));
+                const y = Math.max(0, Math.min(th - 1, Math.round(ny * th)));
+                px = g.getImageData(x, y, 1, 1).data;
+            } catch (_) { return false; }
+            const r = px[0] / 255, gg = px[1] / 255, b = px[2] / 255;
+            const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), d = mx - mn;
+            let hue = m.shape.h;
+            if (d > 0.02) {
+                if (mx === r) hue = (((gg - b) / d) % 6 + 6) % 6;
+                else if (mx === gg) hue = (b - r) / d + 2;
+                else hue = (r - gg) / d + 4;
+                hue *= 60;
+            }
+            m.shape.h = Math.round(((hue % 360) + 360) % 360);
+            // 取色点的饱和度太低时把门槛降下来，否则「点了却一片都没选中」
+            const sat = mx > 1e-6 ? d / mx : 0;
+            m.shape.minS = Math.max(4, Math.min(60, Math.round(sat * 55)));
+            this.commitMaskShape('full');
+            this.syncMaskUI();
+            this.setStatus('已取色：色相 ' + m.shape.h + '°');
+            return true;
+        },
+
+        _patchColor(patch, done) {
+            const m = this.activeMask(this.image);
+            if (!m || m.type !== 'color') return;
+            Object.assign(m.shape, patch);
             this.commitMaskShape(done ? 'full' : 'live');
             this.syncMaskUI();
         },
@@ -695,6 +939,10 @@
                         erase: (e.altKey || e.button === 2) ? 1 : 0,
                         pts: [[pt.x, pt.y], [pt.x + 0.0005, pt.y]]
                     });
+                } else if (m.type === 'color') {
+                    // 点一下 = 取这里的颜色作为目标色相（PS 的「颜色范围」最常用的手势）
+                    this.pickMaskColor(pt.x, pt.y);
+                    drag = null;
                 } else {
                     drag = null;
                 }
@@ -772,12 +1020,26 @@
             if (list) {
                 const rows = ['<button class="mask-row' + (act ? '' : ' active') + '" data-mask-id="" type="button">'
                     + '<span class="mask-name">全局</span><span class="mask-type">整张图</span></button>'];
+                // 注意：window.QfsMask.MODES 是**字符串数组**（内部校验用），
+                // 带 label 的元数据在 window.App.MASK_MODES。这里要用后者，
+                // 用错了会渲染出「蒙版 0 · undefined」（踩过）。
+                const modes = (window.App && window.App.MASK_MODES) || [];
+                let groupNo = 0;
                 for (let i = 0; i < masks.length; i++) {
                     const m = masks[i];
                     const t = window.QfsMask.TYPES.find((x) => x.k === m.type) || { label: m.type };
                     const on = act && act.id === m.id;
-                    rows.push('<button class="mask-row' + (on ? ' active' : '') + (m.on === 0 ? ' off' : '') + '" data-mask-id="' + m.id + '" type="button">'
-                        + '<span class="mask-name">蒙版 ' + (i + 1) + '</span>'
+                    const md = modes.find((x) => x.k === (m.mode || 'new')) || modes[0] || { k: 'new', label: '新建' };
+                    if (md.k === 'new') groupNo += 1;
+                    // 组合成员显示「+ 添加 / − 减去 / ∩ 相交」前缀，一眼看出这块是在给谁打补丁
+                    const mark = md.k === 'add' ? '+ '
+                        : md.k === 'subtract' ? '− '
+                            : md.k === 'intersect' ? '∩ ' : '';
+                    const label = md.k === 'new' ? ('蒙版 ' + groupNo)
+                        : ('蒙版 ' + groupNo + ' · ' + md.label);
+                    rows.push('<button class="mask-row' + (on ? ' active' : '') + (m.on === 0 ? ' off' : '')
+                        + (md.k !== 'new' ? ' combo' : '') + '" data-mask-id="' + m.id + '" type="button">'
+                        + '<span class="mask-name">' + mark + label + '</span>'
                         + '<span class="mask-type">' + t.label + '</span>'
                         + '<span class="mask-del" data-mask-del="1" title="删除">×</span></button>');
                 }
@@ -790,6 +1052,23 @@
             const lumLo = $('rowMaskLo'), lumHi = $('rowMaskHi');
             if (lumLo) lumLo.style.display = (act && act.type === 'lum') ? '' : 'none';
             if (lumHi) lumHi.style.display = (act && act.type === 'lum') ? '' : 'none';
+            const isColor = !!(act && act.type === 'color');
+            for (const id of ['rowMaskHue', 'rowMaskTol', 'rowMaskMinS']) {
+                const row = $(id);
+                if (row) row.style.display = isColor ? '' : 'none';
+            }
+            // 组合按钮：高亮当前方式；列表里第一个只能是「新建」
+            const modesBar = $('maskModes');
+            if (modesBar) {
+                const idx = act ? masks.indexOf(act) : -1;
+                const curMode = act ? (act.mode || 'new') : 'new';
+                const first = idx === 0;
+                modesBar.querySelectorAll('[data-mm]').forEach((b) => {
+                    const k = b.dataset.mm;
+                    b.classList.toggle('active', k === curMode);
+                    b.disabled = !act || (first && k !== 'new');
+                });
+            }
             const tip = $('maskEditTip');
             if (tip) {
                 tip.style.display = act ? '' : 'none';
@@ -799,7 +1078,8 @@
                         linear: '拖线身整体移动、拖两端点改过渡；空白处拖一下可重画',
                         radial: '拖椭圆内部移动、拖边缘改大小；外面拖出新椭圆',
                         brush: '按住涂抹；按住 Alt 或右键涂抹 = 擦除',
-                        lum: '按亮度自动选区，调下面的暗部/亮部阈值'
+                        lum: '按亮度自动选区，调下面的暗部/亮部阈值',
+                        color: '在画布上点一下取色，再调色相/容差；灰和近白黑不会被选中'
                     })[act.type] : '当前样式下无法在画布上编辑蒙版（切回默认模板样式即可）';
                 }
             }
@@ -818,6 +1098,11 @@
                 setV('slMaskDensity', act.density);
                 if (act.type === 'brush') setV('slMaskBrushSize', act.shape.size);
                 if (act.type === 'lum') { setV('slMaskLo', act.shape.lo); setV('slMaskHi', act.shape.hi); }
+                if (act.type === 'color') {
+                    setV('slMaskHue', act.shape.h);
+                    setV('slMaskTol', act.shape.tol);
+                    setV('slMaskMinS', act.shape.minS);
+                }
                 const inv = $('cbMaskInv');
                 if (inv) inv.checked = act.inv === 1;
             }

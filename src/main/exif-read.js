@@ -88,4 +88,66 @@ async function readExif(filePath) {
     } catch (e) { return {}; }
 }
 
-module.exports = { readExif, exifSegmentState, readHead, EXIF_HEAD_BYTES };
+// ── ICC 色彩空间 ─────────────────────────────────────────────
+// 相机可以选择把 JPEG 存成 Adobe RGB（色域比 sRGB 大）。浏览器（Chromium）加载时会读这段
+// profile 并**转换成 sRGB** 再交给 canvas —— 也就是说渲染层拿到的数值已经不是文件里的数值了。
+// PS 若按嵌入配置文件（Adobe RGB）工作，两边从第一步就不同，这不是调色算法能追平的。
+// 这里只读出描述名，导入时告诉用户，避免把色彩空间差异误当成算法不准。
+function iccDescFromProfile(seg) {
+    if (!seg || seg.length < 132) return '';
+    const count = seg.readUInt32BE(128);
+    if (!(count > 0) || count > 64) return '';
+    for (let i = 0; i < count; i++) {
+        const off = 132 + i * 12;
+        if (off + 12 > seg.length) break;
+        if (seg.slice(off, off + 4).toString('latin1') !== 'desc') continue;
+        const toff = seg.readUInt32BE(off + 4);
+        if (toff + 12 > seg.length) continue;
+        const type = seg.slice(toff, toff + 4).toString('latin1');
+        if (type === 'desc') {
+            const n = seg.readUInt32BE(toff + 8);
+            const end = Math.min(seg.length, toff + 12 + Math.max(0, n - 1));
+            return seg.slice(toff + 12, end).toString('latin1').replace(/\0+$/, '').trim();
+        }
+        if (type === 'mluc') {
+            const cnt = seg.readUInt32BE(toff + 16);
+            if (!(cnt > 0)) continue;
+            const rec = toff + 20;
+            if (rec + 12 > seg.length) continue;
+            const len = seg.readUInt32BE(rec + 4);
+            const o = seg.readUInt32BE(rec + 8);
+            const s0 = Math.min(seg.length, toff + o);
+            const buf = seg.slice(s0, Math.min(seg.length, s0 + len));
+            let out = '';
+            for (let k = 0; k + 1 < buf.length; k += 2) out += String.fromCharCode(buf.readUInt16BE(k));
+            return out.replace(/\0+$/, '').trim();
+        }
+    }
+    return '';
+}
+
+// 读 JPEG 的 APP2/ICC_PROFILE 段（可在 256KB 头部窗口内完成）
+async function readIccName(filePath) {
+    const ext = path.extname(String(filePath || '')).toLowerCase();
+    if (ext !== '.jpg' && ext !== '.jpeg') return '';
+    try {
+        const buf = await readHead(filePath, EXIF_HEAD_BYTES);
+        let off = 2;
+        while (off + 4 <= buf.byteLength) {
+            if (buf[off] !== 0xFF) { off++; continue; }
+            const m = buf[off + 1];
+            if (m === 0xD8 || m === 0xD9) { off += 2; continue; }
+            if (m === 0xDA) break;
+            const len = buf.readUInt16BE(off + 2);
+            if (len < 2) break;
+            if (m === 0xE2 && off + 4 + 12 <= buf.byteLength
+                && buf.slice(off + 4, off + 16).toString('latin1') === 'ICC_PROFILE\0') {
+                return iccDescFromProfile(buf.slice(off + 18, off + 2 + len));
+            }
+            off += 2 + len;
+        }
+    } catch (_) { /* 读不到就当没有 */ }
+    return '';
+}
+
+module.exports = { readExif, exifSegmentState, readHead, EXIF_HEAD_BYTES, readIccName, iccDescFromProfile };

@@ -861,6 +861,42 @@ input[type=color]::-webkit-color-swatch {
 .param-row.grade-acts { display: flex; gap: var(--sp-2); padding-top: 2px; }
 .param-row.grade-acts .mini-btn { flex: 1; text-align: center; padding: 6px 4px; }
 /* ═══ 蒙版 ═══ */
+/* 蒙版「组合」行：新建 / 添加 / 减去 / 相交。
+   和类型按钮分开一行，因为它改的是「这一块跟上一块怎么合」，不是蒙版形状。 */
+.mask-modes {
+    display: flex; align-items: center; gap: 4px;
+    margin: 2px 0 6px;
+}
+.mask-modes-label {
+    flex: 0 0 auto; font-size: var(--fs-10); color: var(--text-3);
+    margin-right: 2px;
+}
+.mask-modes .curve-chan { padding: 3px 0; font-size: var(--fs-10); }
+.mask-modes .curve-chan:disabled { opacity: .38; cursor: default; }
+/* 组合成员（添加/减去/相交）在列表里往右缩一格，视觉上挂在组头下面 */
+.mask-row.combo { padding-left: 18px; }
+.mask-row.combo .mask-name { color: var(--text-2); }
+/* 颜色蒙版：色相滑轨按全色环画渐变，拖到哪就是选哪个色相。
+   选择器带 #grpMask 前缀是为了压过基础规则 input[type=range]::…-track
+   （同权重时后者在文件里更晚出现会赢，混色器当初也是这么处理的）。 */
+#grpMask .ctl-hue::-webkit-slider-runnable-track {
+    background: linear-gradient(90deg,
+        #ff3b30 0%, #ffd60a 17%, #32d74b 33%, #64d2ff 50%,
+        #0a84ff 67%, #bf5af2 83%, #ff375f 100%);
+}
+/* 色彩平衡：三根轴各自的双色轨道（青↔红 / 洋红↔绿 / 黄↔蓝），
+   中间是中性灰 —— 拖到中间就是「这条轴不动」。 */
+#grpCb .rng-cb-r::-webkit-slider-runnable-track { background: linear-gradient(90deg, #22d3ee, #d4d4d8 50%, #ef4444); }
+#grpCb .rng-cb-g::-webkit-slider-runnable-track { background: linear-gradient(90deg, #d946ef, #d4d4d8 50%, #22c55e); }
+#grpCb .rng-cb-b::-webkit-slider-runnable-track { background: linear-gradient(90deg, #facc15, #d4d4d8 50%, #3b82f6); }
+.ctl-color {
+    width: 46px; height: 22px; padding: 0; border-radius: 6px;
+    border: 1px solid var(--border); background: transparent; cursor: pointer;
+    flex: 0 0 auto; margin-left: auto;   /* 和数值列一样靠右，别贴着标签 */
+}
+.ctl-color::-webkit-color-swatch-wrapper { padding: 2px; }
+.ctl-color::-webkit-color-swatch { border: none; border-radius: 4px; }
+
 .mask-bar { margin-bottom: var(--sp-1); }
 .mask-list { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 6px; }
 .mask-row {
@@ -909,12 +945,21 @@ input[type=color]::-webkit-color-swatch {
     border-radius: 6px; padding: 1px 5px; vertical-align: middle;
 }
 
-/* 细节/校准/混色器组共用同一套「已调整」徽章 */
-#grpDet.grade-on .pg-title, #grpCal.grade-on .pg-title, #grpMix.grade-on .pg-title { color: var(--primary); }
-#grpDet.grade-on .pg-title::after, #grpCal.grade-on .pg-title::after, #grpMix.grade-on .pg-title::after {
+/* 细节/校准/混色器/颜色分级组共用同一套「已调整」徽章 */
+#grpDet.grade-on .pg-title, #grpCal.grade-on .pg-title,
+#grpMix.grade-on .pg-title, #grpColorGrade.grade-on .pg-title { color: var(--primary); }
+#grpDet.grade-on .pg-title::after, #grpCal.grade-on .pg-title::after,
+#grpMix.grade-on .pg-title::after, #grpColorGrade.grade-on .pg-title::after {
     content: '已调整'; margin-left: 6px; font-size: var(--fs-10);
     color: var(--primary); background: var(--primary-soft);
     border-radius: 6px; padding: 1px 5px; vertical-align: middle;
+}
+/* 颜色分级：四个区域页签前的小色点 */
+.cg-zones .curve-chan { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.cg-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto;
+    background: var(--cg-color, transparent);
+    box-shadow: 0 0 0 1px var(--border);
 }
 
 /* 混色器：色相/饱和度/明亮度三个子页，只显示当前页的 8 条 */

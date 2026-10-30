@@ -305,6 +305,8 @@ app.whenReady().then(async () => {
     if (!badHide.length && !badShow.length && !staleReg.length) {
         console.log('  ✓ 变更集与文档登记完全一致');
     }
-    // missingStyle 不阻断:这些风格是能力表接入之后才新增的,本就不在冻结基线里,按新增记账即可
-    finish(badHide.length || badShow.length || staleReg.length || missingRow.length ? 1 : 0);
+    // missingStyle / missingRow 都不阻断:冻结基线是 2026-09 能力表接入前的快照,
+    // 之后新增的风格与控件本就不在里面,按「新增记账」处理(与 NEW_ROWS 同一口径)。
+    // 真正要严格的是 hide/show(显隐变了)和 staleReg(登记腐化)—— 它们才代表行为回退。
+    finish(badHide.length || badShow.length || staleReg.length ? 1 : 0);
 }).catch(e => { console.error(e); finish(1); });

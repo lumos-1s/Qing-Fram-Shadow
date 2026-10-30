@@ -1000,7 +1000,15 @@
                                     <button type="button" class="curve-chan" data-mt="radial" title="径向椭圆：从中心拖出范围">椭圆</button>
                                     <button type="button" class="curve-chan" data-mt="brush" title="画笔：在画布上涂抹，Alt/右键擦除">画笔</button>
                                     <button type="button" class="curve-chan" data-mt="lum" title="按亮度自动选区">亮度</button>
+                                    <button type="button" class="curve-chan" data-mt="color" title="按颜色选区：在画布上点一下取色，再调容差">颜色</button>
                                 </div>
+                            </div>
+                            <div class="mask-modes" id="maskModes">
+                                <span class="mask-modes-label">组合</span>
+                                <button type="button" class="curve-chan" data-mm="new" title="独立的调整层（用自己的参数）">新建</button>
+                                <button type="button" class="curve-chan" data-mm="add" title="并进上一个蒙版的生效范围">添加</button>
+                                <button type="button" class="curve-chan" data-mm="subtract" title="从上一个蒙版里挖掉这块">减去</button>
+                                <button type="button" class="curve-chan" data-mm="intersect" title="只保留与上一个蒙版重叠的部分">相交</button>
                             </div>
                             <div class="mask-list" id="maskList"></div>
                             <div id="maskOpts" style="display:none">
@@ -1029,6 +1037,21 @@
                                     <input type="range" id="slMaskHi" class="ctl-rng" min="5" max="100" step="1" value="45" />
                                     <span class="pval" id="lblMaskHi">45</span>
                                 </div>
+                                <div class="param-row" id="rowMaskHue">
+                                    <label>色相</label>
+                                    <input type="range" id="slMaskHue" class="ctl-rng ctl-hue" min="0" max="360" step="1" value="210" />
+                                    <span class="pval" id="lblMaskHue">210</span>
+                                </div>
+                                <div class="param-row" id="rowMaskTol">
+                                    <label>容差</label>
+                                    <input type="range" id="slMaskTol" class="ctl-rng" min="3" max="90" step="1" value="28" />
+                                    <span class="pval" id="lblMaskTol">28</span>
+                                </div>
+                                <div class="param-row" id="rowMaskMinS">
+                                    <label>最低饱和</label>
+                                    <input type="range" id="slMaskMinS" class="ctl-rng" min="0" max="90" step="1" value="12" />
+                                    <span class="pval" id="lblMaskMinS">12</span>
+                                </div>
                                 <div class="param-row chk-row">
                                     <label>反相</label>
                                     <input type="checkbox" id="cbMaskInv" class="ctl-chk" />
@@ -1041,7 +1064,7 @@
                             <div class="pg-title collapsible">调色</div>
                             <div class="param-row" id="rowGradeExp">
                                 <label>曝光</label>
-                                <input type="range" id="slGradeExp" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <input type="range" id="slGradeExp" class="ctl-rng" min="-5" max="5" step="0.01" value="0" />
                                 <span class="pval" id="lblGradeExp">0</span>
                             </div>
                             <div class="param-row" id="rowGradeCon">
@@ -1070,10 +1093,20 @@
                                 <input type="range" id="slGradeBlack" class="ctl-rng" min="-100" max="100" step="1" value="0" />
                                 <span class="pval" id="lblGradeBlack">0</span>
                             </div>
+                            <div class="param-row" id="rowGradeGam">
+                                <label>中间调</label>
+                                <input type="range" id="slGradeGam" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblGradeGam">0</span>
+                            </div>
                             <div class="param-row" id="rowGradeSat">
                                 <label>饱和度</label>
                                 <input type="range" id="slGradeSat" class="ctl-rng" min="-100" max="100" step="1" value="0" />
                                 <span class="pval" id="lblGradeSat">0</span>
+                            </div>
+                            <div class="param-row" id="rowGradeVib">
+                                <label>自然饱和度</label>
+                                <input type="range" id="slGradeVib" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblGradeVib">0</span>
                             </div>
                             <div class="param-row" id="rowGradeTemp">
                                 <label>色温</label>
@@ -1088,7 +1121,7 @@
                             <div class="param-row grade-acts">
                                 <button id="btnGradeReset" class="mini-btn" type="button" title="全部归零，回到照片本色">重置</button>
                                 <button id="btnGradeApplyAll" class="mini-btn" type="button" title="把这套参数复制给本次导入的所有照片">应用到全部</button>
-                                <button id="btnGradeImportXmp" class="mini-btn" type="button" title="导入 Lightroom / Camera Raw 的 .xmp 调色预设（曝光/对比度/高光阴影/HSL/曲线/校准等）">导入 LR 预设</button>
+                                <button id="btnGradeImportXmp" class="mini-btn" type="button" title="导入 Lightroom / Camera Raw 的 .xmp 调色预设（曝光/白平衡/高光阴影/参数曲线/HSL/颜色分级/校准等）">导入 LR 预设</button>
                             </div>
                         </div>
 <!--                        <div class="pg-section-title">氛围</div>-->
@@ -1188,7 +1221,126 @@
                             <div class="mix-na-note">此环境不支持 WebGL，混色器不可用（其余调色功能不受影响）。</div>
 <!--                            <div class="hint-box">按色相带调整：橙/红管肤色，蓝管天色，绿管植物。负明亮度压暗 + 正饱和度是「加深某色」的常用组合。</div>-->
                         </div>
+
+                        <div class="param-group" id="grpColorGrade">
+                            <div class="pg-title collapsible">颜色分级</div>
+                            <div class="curve-bar">
+                                <div class="curve-chans cg-zones" id="cgZones">
+                                    <button type="button" class="curve-chan active" data-cg="shadow"><span class="cg-dot"></span>阴影</button>
+                                    <button type="button" class="curve-chan" data-cg="mid"><span class="cg-dot"></span>中间调</button>
+                                    <button type="button" class="curve-chan" data-cg="high"><span class="cg-dot"></span>高光</button>
+                                    <button type="button" class="curve-chan" data-cg="global"><span class="cg-dot"></span>全局</button>
+                                </div>
+                                <button type="button" class="mini-btn" id="btnCgReset" title="四个区域与混合/平衡全部归零">重置</button>
+                            </div>
+                            <div class="param-row">
+                                <label>色相</label>
+                                <input type="range" id="slCgHue" class="ctl-rng" min="0" max="360" step="1" value="0" />
+                                <span class="pval" id="lblCgHue">0</span>
+                            </div>
+                            <div class="param-row">
+                                <label>饱和度</label>
+                                <input type="range" id="slCgSat" class="ctl-rng" min="0" max="100" step="1" value="0" />
+                                <span class="pval" id="lblCgSat">0</span>
+                            </div>
+                            <div class="param-row">
+                                <label>明亮度</label>
+                                <input type="range" id="slCgLum" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblCgLum">0</span>
+                            </div>
+                            <div class="param-row">
+                                <label>混合</label>
+                                <input type="range" id="slCgBlending" class="ctl-rng" min="0" max="100" step="1" value="50" />
+                                <span class="pval" id="lblCgBlending">50</span>
+                            </div>
+                            <div class="param-row">
+                                <label>平衡</label>
+                                <input type="range" id="slCgBalance" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblCgBalance">0</span>
+                            </div>
+                        </div>
 <!--                        <div class="hint-box">调色只作用于当前选中的照片，参数是记录值（随草稿保存），随时可重置，不破坏原图。「应用到全部」把这组数值复制给本次导入的所有照片。</div>-->
+                        <div class="param-group" id="grpBw">
+                            <div class="pg-title collapsible">黑白</div>
+                            <div class="param-row chk-row">
+                                <label>转为黑白</label>
+                                <input type="checkbox" id="cbBwOn" class="ctl-chk" />
+                            </div>
+                            <div class="hint-box">勾上后整张转灰度；下面 8 个滑块决定各色相转成多亮——往右更亮、往左更暗。把红色拉高，红色物体就比周围亮；拉低则沉下去。</div>
+                            <div class="param-row"><label>红色</label><input type="range" id="slBwR" class="ctl-rng" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblBwR">0</span></div>
+                            <div class="param-row"><label>橙色</label><input type="range" id="slBwO" class="ctl-rng" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblBwO">0</span></div>
+                            <div class="param-row"><label>黄色</label><input type="range" id="slBwY" class="ctl-rng" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblBwY">0</span></div>
+                            <div class="param-row"><label>绿色</label><input type="range" id="slBwG" class="ctl-rng" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblBwG">0</span></div>
+                            <div class="param-row"><label>浅绿色</label><input type="range" id="slBwA" class="ctl-rng" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblBwA">0</span></div>
+                            <div class="param-row"><label>蓝色</label><input type="range" id="slBwB" class="ctl-rng" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblBwB">0</span></div>
+                            <div class="param-row"><label>紫色</label><input type="range" id="slBwP" class="ctl-rng" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblBwP">0</span></div>
+                            <div class="param-row"><label>洋红</label><input type="range" id="slBwM" class="ctl-rng" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblBwM">0</span></div>
+                        </div>
+
+                        <div class="param-group" id="grpCb">
+                            <div class="pg-title collapsible">色彩平衡</div>
+                            <div class="curve-bar">
+                                <div class="curve-chans" id="cbZones">
+                                    <button type="button" class="curve-chan active" data-cbz="shadow">阴影</button>
+                                    <button type="button" class="curve-chan" data-cbz="mid">中间调</button>
+                                    <button type="button" class="curve-chan" data-cbz="high">高光</button>
+                                </div>
+                                <button type="button" class="mini-btn" id="btnCbReset" title="三个区的九个滑块全部归零">重置</button>
+                            </div>
+                            <div class="param-row">
+                                <label>青 ↔ 红</label>
+                                <input type="range" id="slCbR" class="ctl-rng rng-cb rng-cb-r" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblCbR">0</span>
+                            </div>
+                            <div class="param-row">
+                                <label>洋红 ↔ 绿</label>
+                                <input type="range" id="slCbG" class="ctl-rng rng-cb rng-cb-g" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblCbG">0</span>
+                            </div>
+                            <div class="param-row">
+                                <label>黄 ↔ 蓝</label>
+                                <input type="range" id="slCbB" class="ctl-rng rng-cb rng-cb-b" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblCbB">0</span>
+                            </div>
+                            <div class="param-row chk-row">
+                                <label>保持明度</label>
+                                <input type="checkbox" id="cbCbPreserve" class="ctl-chk" checked />
+                            </div>
+                            <div class="hint-box">和颜色分级的分区一样（阴影/中间调/高光），差别是这里直接推动 R/G/B 三个轴，用来做「暗部加青、亮部加暖」这类胶片味。保持明度关掉时会连带改变亮度。</div>
+                        </div>
+
+                        <div class="param-group" id="grpGm">
+                            <div class="pg-title collapsible">渐变映射</div>
+                            <div class="param-row chk-row">
+                                <label>启用</label>
+                                <input type="checkbox" id="cbGmOn" class="ctl-chk" />
+                            </div>
+                            <div class="param-row">
+                                <label>暗部色</label>
+                                <input type="color" id="clGmDark" class="ctl-color" value="#101a33" />
+                            </div>
+                            <div class="param-row">
+                                <label>亮部色</label>
+                                <input type="color" id="clGmLight" class="ctl-color" value="#ffd9a0" />
+                            </div>
+                            <div class="param-row">
+                                <label>强度</label>
+                                <input type="range" id="slGmAmount" class="ctl-rng" min="0" max="100" step="1" value="100" />
+                                <span class="pval" id="lblGmAmount">100</span>
+                            </div>
+                            <div class="hint-box">按亮度把画面映射成一条两色渐变：暗部涂成「暗部色」、亮部涂成「亮部色」。强度 100 = 完全替换成双色调，30~50 适合只上一层色偏。</div>
+                        </div>
+
+                        <div class="param-group" id="grpLc">
+                            <div class="pg-title collapsible">镜头校正</div>
+                            <div class="param-row">
+                                <label>畸变</label>
+                                <input type="range" id="slLcDistort" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblLcDistort">0</span>
+                            </div>
+                            <div class="hint-box">往左是压平枕形（边缘往外胀的镜头）、往右是拉直桶形（边缘往里缩的广角）。走 WebGL 重采样，没有 WebGL 的环境下这一档不生效（其余调色不受影响）。</div>
+                        </div>
+
                         <div class="param-group" id="grpCal">
                             <div class="pg-title collapsible">校准</div>
                             <div class="param-row">
@@ -1636,6 +1788,7 @@
     <script src="js/app-xmp.js"></script>
     <script src="js/app-curve.js"></script>
     <script src="js/app-mix.js"></script>
+    <script src="js/app-color-grade.js"></script>
     <script src="js/app-mask.js"></script>
 </body>
 </html>

@@ -2064,6 +2064,14 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
                 loaded++;
             }
             if (!loaded) { this.setStatus('图片加载失败'); return; }
+            // 非 sRGB 原片（相机里的 Adobe RGB / ProPhoto）在浏览器里会先被转成 sRGB，
+            // 而 PS 若按嵌入配置文件工作，两边从第一步就不同 —— 必须让用户知道，
+            // 否则会把色彩空间差异当成"调色不准"来回查。
+            const wideIcc = results.filter((im) => im && im.exif && im.exif.icc
+                && !/sRGB|IEC\s*61966/i.test(im.exif.icc));
+            const iccNote = wideIcc.length
+                ? `；其中 ${wideIcc.length} 张原片是「${wideIcc[0].exif.icc}」，已转 sRGB 处理（与 PS 按该配置文件工作会有差异）`
+                : '';
             // 用户自己的照片已成功载入：示例图完成引导使命，自动退出胶片条
             const firstNew = this.images[this.images.length - loaded];
             if (firstNew && typeof this.removeSampleImages === 'function') {
@@ -2076,7 +2084,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
                 this.buildThumbnails();
                 this.saveCurrentTemplate();
                 this.scheduleRender(true);
-                this.setStatus(`已导入 ${loaded} 张图片，拼图保持在「${this.image.name || '当前照片'}」上（可点「重拼」把新图填进格子）`);
+                this.setStatus(`已导入 ${loaded} 张图片，拼图保持在「${this.image.name || '当前照片'}」上（可点「重拼」把新图填进格子）${iccNote}`);
             } else {
                 // 墙/侧栏已经选好风格时，新导入的照片必须继承它（每张一份独立副本）。
                 // 以 this.template 为准：墙（applyPresetToCurrent）和侧栏（selectPreset）都会写它，
@@ -2098,7 +2106,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
                 }
                 this.buildThumbnails();
                 this.selectImage(start);
-                this.setStatus(`已导入 ${loaded} 张图片${carry ? '，沿用「' + carry.templateName + '」' : ''}${skipped ? '，跳过 ' + skipped + ' 个不支持的文件' : ''}`);
+                this.setStatus(`已导入 ${loaded} 张图片${carry ? '，沿用「' + carry.templateName + '」' : ''}${skipped ? '，跳过 ' + skipped + ' 个不支持的文件' : ''}${iccNote}`);
             }
         } finally {
             this.finishImportProgress();

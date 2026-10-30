@@ -19,7 +19,7 @@ if (app.isPackaged) {
 
 // EXIF 解析:独立模块(src/main/exif-read.js)。只读文件头部而不整读照片,
 // 拆出来是为了能用纯 node 直接验证"头部解析 == 整文件解析"。
-const { readExif } = require('./exif-read');
+const { readExif, readIccName } = require('./exif-read');
 // EXIF 写回:导出 JPEG 时把原图 EXIF 移植进成品(默认剥 GPS),任何失败静默回退。
 const exifWrite = require('./exif-write');
 // HEIC/HEIF 解码:Chromium 不支持 HEIC,主进程转 JPEG 后经 qflocal:// 交给渲染进程。
@@ -136,7 +136,14 @@ async function readPhotoExif(filePath) {
         if (exif && Object.keys(exif).length) return exif;
         return {};
     }
-    return readExif(filePath);
+    const exif = readExif(filePath);
+    // 顺带带上 ICC 描述：非 sRGB 的原片（例如相机的 Adobe RGB）浏览器会先转成 sRGB，
+    // 与 PS 按嵌入配置文件工作的结果从第一步就不同 —— 导入时要能提示用户。
+    try {
+        const icc = await readIccName(filePath);
+        if (icc) exif.icc = icc;
+    } catch (_) { /* 读不到就算了 */ }
+    return exif;
 }
 
 if (!app.requestSingleInstanceLock()) {
