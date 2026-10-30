@@ -33,6 +33,8 @@
         'uniform float uHw[8];',
         'uniform float uAspect;',
         'uniform float uDistort;',
+        'uniform vec3 uHaze;',
+        'uniform float uDehaze;',
         'vec3 rgb2hsv(vec3 c){',
         '  vec4 K=vec4(0.0,-1.0/3.0,2.0/3.0,-1.0);',
         '  vec4 p=mix(vec4(c.bg,K.wz),vec4(c.gb,K.xy),step(c.b,c.g));',
@@ -108,6 +110,23 @@
         '    c=applyZone(c,uCg[3],uCg[4],uCg[5],wM,y);',
         '    c=applyZone(c,uCg[6],uCg[7],uCg[8],wH,y);',
         '    c=applyZone(c,uCg[9],uCg[10],uCg[11],1.0,y);',
+        '  }',
+        // 去除薄雾：Camera Raw 的做法（移植自 Compositor 的 effects_dehaze，
+        // 实测对齐 PS）。雾色取全图最亮 1% 的平均色；正档按「最暗通道相对雾色
+        // 的比例」估计透射率再反演，负档直接朝雾色蒙一层。
+        // 旧实现是 contrast+saturate 叠加 + LUT 里拉黑场，那是「假通透」，
+        // 与 ACR 差得远；真实反演才会保住亮部不发灰、暗部不糊。
+        '  if(abs(uDehaze)>0.001){',
+        '    float d=uDehaze;',
+        '    if(d<0.0){',
+        '      float veil=0.3*pow(-d,1.3);',
+        '      c=c*(1.0-veil)+uHaze*veil;',
+        '    } else {',
+        '      vec3 hz=max(uHaze,vec3(0.001));',
+        '      float dark=min(min(c.r/hz.r,c.g/hz.g),c.b/hz.b);',
+        '      float trans=max(0.5,1.0-0.7*d*dark);',
+        '      c=(c-uHaze)/trans+uHaze;',
+        '    }',
         '  }',
         // 黑白混色器：按色相带加权决定「这个颜色转灰后有多亮」。
         // 灰/近灰不参与（没有色相可言），否则整片灰底会被某个带误伤。
@@ -199,7 +218,9 @@
                 distort: gl.getUniformLocation(prog, 'uDistort'),
                 lutOn: gl.getUniformLocation(prog, 'uLutOn'),
                 grid: gl.getUniformLocation(prog, 'uGrid'),
-                lut: gl.getUniformLocation(prog, 'uLut')
+                lut: gl.getUniformLocation(prog, 'uLut'),
+                haze: gl.getUniformLocation(prog, 'uHaze'),
+                dehaze: gl.getUniformLocation(prog, 'uDehaze')
             };
             gl.uniform1i(gl.getUniformLocation(prog, 'uT'), 0);
             gl.uniform1i(uni.lut, 1);
@@ -224,7 +245,7 @@
         return out;
     }
 
-    function passGL(src, p, w, h, lut) {
+    function passGL(src, p, w, h, lut, haze) {
         if (!initGL()) return null;
         try {
             if (glc.width !== w || glc.height !== h) { glc.width = w; glc.height = h; }
@@ -274,6 +295,10 @@
             gl.uniform1f(uni.aspect, w / Math.max(1, h));
             // 0.28：满档时边缘位移约 28%（大约相当于 ±15 的镜头畸变值）
             gl.uniform1f(uni.distort, lc ? (Number(lc.distort) || 0) / 100 * 0.28 : 0);
+            const dhz = (Number(p.det && p.det.dhz) || 0) / 100;
+            const hz = haze || [1, 1, 1];
+            gl.uniform3f(uni.haze, hz[0], hz[1], hz[2]);
+            gl.uniform1f(uni.dehaze, dhz);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             return glc;
         } catch (_) {
@@ -314,7 +339,7 @@
 
     // 注意：2D 兜底**不做**镜头畸变（逐像素重采样无插值，边缘必然锯齿）。
     // 调用方在 GL 不可用时会提示「镜头校正需要 WebGL」，颜色部分照常生效。
-    function pass2d(src, p, w, h) {
+    function pass2d(src, p, w, h, haze) {
         const c = document.createElement('canvas');
         c.width = w; c.height = h;
         const g = c.getContext('2d');
@@ -341,6 +366,7 @@
         const soft = 0.035 + (0.22 - 0.035) * blend;
         const lo = 0.34 + bal, hi = 0.66 + bal;
         const vibN = (Number(p.vib) || 0) / 100;
+        const dhz2 = (Number(p.det && p.det.dhz) || 0) / 100;
         const bwOn = !!(p.bw && p.bw.on !== 0);
         const bwBands = (window.App && window.App.BW_BANDS) || [];
         for (let i = 0; i < d.length; i += 4) {
@@ -372,6 +398,23 @@
                     r *= f; gg *= f; b *= f;
                 }
             }
+            if (dhz2) {
+                // 与 GL 路径同一套：Camera Raw 的去薄雾反演
+                const hz = haze || [1, 1, 1];
+                if (dhz2 < 0) {
+                    const veil = 0.3 * Math.pow(-dhz2, 1.3);
+                    r = r * (1 - veil) + hz[0] * veil;
+                    gg = gg * (1 - veil) + hz[1] * veil;
+                    b = b * (1 - veil) + hz[2] * veil;
+                } else {
+                    const hr = Math.max(1e-3, hz[0]), hg = Math.max(1e-3, hz[1]), hb = Math.max(1e-3, hz[2]);
+                    const dark = Math.min(r / hr, gg / hg, b / hb);
+                    const trans = Math.max(0.5, 1 - 0.7 * dhz2 * dark);
+                    r = (r - hz[0]) / trans + hz[0];
+                    gg = (gg - hz[1]) / trans + hz[1];
+                    b = (b - hz[2]) / trans + hz[2];
+                }
+            }
             if (bwOn) {
                 // 与 GL 路径同一套：按色相带加权决定该颜色转灰后的亮度
                 const h2 = rgb2hsv(clamp01(r), clamp01(gg), clamp01(b));
@@ -399,9 +442,9 @@
     }
 
     window.QfsColor = {
-        pass(src, p, w, h, lut) {
-            const out = passGL(src, p, w, h, lut);
-            return out || pass2d(src, p, w, h);
+        pass(src, p, w, h, lut, haze) {
+            const out = passGL(src, p, w, h, lut, haze);
+            return out || pass2d(src, p, w, h, haze);
         },
         available() { return true; },
         usingGL() { return initGL(); }

@@ -27,6 +27,8 @@
 (function () {
     const GRADE_FILTER_ID = 'qfsGradeLut';
     const LUT_N = 256;
+    // 三维表走小网格的尺寸上限：预览（含拖动时的降采样）在此之下用 25³
+    const GRID_PREVIEW_MAX = 1700;
     // 高光/阴影用**平滑窗**而不是钟形：钟形 v(1-v)² 的翼太宽，
     // 满档会把中灰 128 压到 37（LR 只到约 122），整张预设看起来"大相径庭"。
     // 窗只覆盖两端，中间调基本为零位移，这才是 LR「高光/阴影」的语义。
@@ -209,7 +211,7 @@
     const DET_FIELDS = [
         { k: 'clar', label: '清晰度', hint: '中间调立体感' },
         { k: 'tex', label: '纹理', hint: '表面细节' },
-        { k: 'dhz', label: '去除薄雾', hint: '通透度（简化版）' }
+        { k: 'dhz', label: '去除薄雾', hint: '通透度：按 Camera Raw 的雾色反演，正档去雾、负档加雾' }
     ];
     const CAL_FIELDS = [
         { k: 'rh', label: '红·色相' }, { k: 'rs', label: '红·饱和' },
@@ -594,12 +596,23 @@
         return im._acrBright;
     }
 
+    // 去薄雾的雾色：全图最亮 1% 的平均色。按图缓存——它只取决于原图，
+    // 与当前调色参数无关，所以拖滑块时不会再算。
+    function acrHaze() {
+        const im = window.App && window.App.image;
+        if (!im || !im.el) return null;
+        if (im._acrHaze === undefined) {
+            im._acrHaze = (window.QfsAcr && window.QfsAcr.dehazeHaze)
+                ? window.QfsAcr.dehazeHaze(im.el) : null;
+        }
+        return im._acrHaze;
+    }
+
     // 色温/高光/阴影/白点黑点合成每通道一条曲线，再串联用户曲线与薄雾黑场
     function buildTables(p) {
         const sh = (p.sh || 0) / 100, hi = (p.hi || 0) / 100, tp = (p.temp || 0) / 100;
         const tn = (p.tint || 0) / 100;
         const wht = (p.white || 0) / 100, blk = (p.black || 0) / 100;
-        const dhz = ((p.det && p.det.dhz) || 0) / 100;
         const evGain = Math.pow(2, Number(p.exp) || 0);
         const gam = (Number(p.gam) || 0) / 100;
         // 色彩平衡 / 渐变映射：与亮度无关的量先算好，循环里只查权重
@@ -688,14 +701,8 @@
                 vg = clamp01(o + d * 0.18 - dt);
                 vb = clamp01(o - d + dt * 0.5);
             }
-            // 去除薄雾（简化版）的黑场部分：正档压黑点（通透），负档抬黑点（起雾褪色）
-            if (dhz > 0) {
-                const bp = 0.07 * dhz, k = 1 / Math.max(0.05, 1 - bp);
-                vr = clamp01((vr - bp) * k); vg = clamp01((vg - bp) * k); vb = clamp01((vb - bp) * k);
-            } else if (dhz < 0) {
-                const f = -dhz, lift = 0.09 * f, gain = 1 - 0.12 * f;
-                vr = clamp01(vr * gain + lift); vg = clamp01(vg * gain + lift); vb = clamp01(vb * gain + lift);
-            }
+            // 去除薄雾不再在这里拉黑场：ACR 的反演已经包含通透度的变化，
+            // 再叠一次黑场拉伸会让暗部发死（旧实现就是这么糊掉的）。
             // 曲线串在最后：先色温/高光/阴影，再用户曲线（与 PS 的复合顺序一致）
             if (cl) {
                 if (cl.r) vr = C.sampleLut(cl.r, vr);
@@ -759,7 +766,6 @@
         const tn = Number(p.tint) || 0;
         const wht = Number(p.white) || 0, blk = Number(p.black) || 0;
         const exp = Number(p.exp) || 0;
-        const dhz = ((p.det && p.det.dhz) || 0) / 100;
         const C = window.QfsCurve;
         const curved = !!(C && C.curveActive(p.curve));
         const calOn = calActive(p.cal) && !lutOn;
@@ -767,7 +773,7 @@
         // 否则只开校准/USM 时会残留上一次烘焙的表值。
         // 曝光也在这张表里（线性光乘 2^EV），不再用 brightness()。
         const gamOn = Number(p.gam) || 0;
-        if (sh || hi || tp || tn || wht || blk || exp || gamOn || curved || dhz
+        if (sh || hi || tp || tn || wht || blk || exp || gamOn || curved
             || (Number(p.con) || 0)
             || cbActive(p.cb) || gmActive(p.gm)
             || calOn || detActive(p.det)) {
@@ -780,14 +786,8 @@
         if (con && !acrCon) parts.push('contrast(' + (1 + con * 0.5).toFixed(4) + ')');
         const sat = (Number(p.sat) || 0) / 100;
         if (sat && !lutOn) parts.push('saturate(' + (1 + sat).toFixed(4) + ')');
-        // 薄雾的反差/饱和部分（黑场已在 LUT 里）
-        if (dhz > 0) {
-            parts.push('contrast(' + (1 + 0.28 * dhz).toFixed(4) + ')',
-                'saturate(' + (1 + 0.4 * dhz).toFixed(4) + ')');
-        } else if (dhz < 0) {
-            parts.push('contrast(' + (1 + 0.18 * dhz).toFixed(4) + ')',
-                'saturate(' + (1 + 0.45 * dhz).toFixed(4) + ')');
-        }
+        // 去除薄雾不再走 contrast/saturate 叠加：那是「假通透」，与 ACR 差得远。
+        // 真实做法（雾色 + 暗通道反演）已在后置 pass 里，见 QfsColor。
         return parts.join(' ');
     }
 
@@ -812,7 +812,10 @@
     // 功能不缺失，只是精度回到公式。
     function bakeOne(src, params, tw, th) {
         let drawSrc = src;
-        let lut = (window.QfsAcr && window.QfsAcr.ready()) ? window.QfsAcr.colorLut(params) : null;
+        // 预览用小网格、定稿用大网格：33³ 合成约 6ms，25³ 约 3ms，而两者逐点
+        // 平均只差 0.3/255 级（肉眼不可见）。拖动时省下的 3ms 更值钱。
+        const lutGrid = Math.max(tw, th) <= GRID_PREVIEW_MAX ? 25 : 33;
+        let lut = (window.QfsAcr && window.QfsAcr.ready()) ? window.QfsAcr.colorLut(params, lutGrid) : null;
         const useLut = !!lut && !!(window.QfsColor && window.QfsColor.usingGL());
         if (!useLut) lut = null;
         // 混色器已并进三维表，就不再需要前置的 GL 混色 pass
@@ -833,8 +836,10 @@
         // 最后黑白（PS 的黑白混色器没有实测表，仍走公式）。
         // 旧路径下 vib / cg 也在这里（按像素自己的饱和度/亮度选区，LUT 表达不了）。
         if (useLut || bwActive(params.bw) || lcActive(params.lc)
-            || (!useLut && ((Number(params.vib) || 0) || cgActive(params.cg)))) {
-            const out = window.QfsColor && window.QfsColor.pass(c, params, tw, th, lut);
+            || (!useLut && ((Number(params.vib) || 0) || cgActive(params.cg)))
+            || (Number(params.det && params.det.dhz) || 0)) {
+            const haze = (Number(params.det && params.det.dhz) || 0) ? acrHaze() : null;
+            const out = window.QfsColor && window.QfsColor.pass(c, params, tw, th, lut, haze);
             if (out) return out;
         }
         return c;

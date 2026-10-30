@@ -385,8 +385,11 @@
 
     // ── 对外：颜色侧三维 LUT（校准 → 饱和度 → 自然饱和度 → 混色器 → 颜色分级）──
     // 返回 { grid, rgba }；没有可测档位时返回 null（调用方退回原路径）。
-    let _lutKey = '', _lut = null, _lutSeq = 0;
-    function colorLut(p) {
+    // 两个常用网格各留一份缓存：预览用小网格（快），静置/导出用大网格（精）。
+    // 只留一份会在「拖动→静置」来回时反复重算。
+    const _lutCache = {};
+    let _lutSeq = 0;
+    function colorLut(p, grid) {
         if (!T || !p) return null;
         const parts = [];
         if (p.cal) parts.push.apply(parts, calStages(p.cal));
@@ -398,12 +401,13 @@
         if (p.cg) parts.push.apply(parts, gradingStages(p.cg));
         if (!parts.length) return null;
         const key = parts.map((q) => q.map((x) => x.off + ':' + x.w.toFixed(4)).join(' ')).join('|');
-        if (key === _lutKey && _lut) return _lut;
-        const out = compose3d(parts, GRID);
+        const g = grid || GRID;
+        const slot = _lutCache[g];
+        if (slot && slot.key === key && slot.lut) return slot.lut;
+        const out = compose3d(parts, g);
         out.token = ++_lutSeq;   // 纹理上传的变更凭据
-        _lut = out;
-        _lutKey = key;
-        return _lut;
+        _lutCache[g] = { key, lut: out };
+        return out;
     }
 
     // 图片亮度测度（与 Swift 的 Brightness 一致）：最亮通道均值的线性光均值、
@@ -436,6 +440,40 @@
         } catch (_) { return fallback; }
     }
 
+    // Camera Raw 去薄雾用的「雾色」：全图最亮 1% 像素的平均色（按亮度阈值取）。
+    // 移植自 Compositor 的 dehaze_haze()，同样在缩略图上算——最亮 1% 的均值
+    // 对分辨率不敏感，而全图扫两遍在拖动时太贵。
+    function dehazeHaze(src) {
+        if (!src || !src.naturalWidth) return null;
+        try {
+            const w = 192, h = Math.max(1, Math.round(192 * src.naturalHeight / src.naturalWidth));
+            const c = document.createElement('canvas'); c.width = w; c.height = h;
+            const g = c.getContext('2d', { willReadFrequently: true });
+            g.drawImage(src, 0, 0, w, h);
+            const d = g.getImageData(0, 0, w, h).data;
+            const hist = new Float64Array(256);
+            const n = w * h;
+            for (let i = 0, p = 0; i < n; i++, p += 4) {
+                const level = Math.round(255 * (0.2126 * d[p] + 0.7152 * d[p + 1] + 0.0722 * d[p + 2]) / 255);
+                hist[level < 0 ? 0 : (level > 255 ? 255 : level)]++;
+            }
+            let total = 0;
+            for (let i = 0; i < 256; i++) total += hist[i];
+            if (!total) return null;
+            let threshold = 255;
+            for (let above = 0; threshold > 0 && above + hist[threshold] < total * 0.01; --threshold) above += hist[threshold];
+            // 阈值之上一个像素都没有时（纯色图），把阈值降到底：整幅都是雾，ACR 也是不动它
+            let sumR = 0, sumG = 0, sumB = 0, weight = 0;
+            for (let i = 0, p = 0; i < n; i++, p += 4) {
+                const level = Math.round(255 * (0.2126 * d[p] + 0.7152 * d[p + 1] + 0.0722 * d[p + 2]) / 255);
+                if (level < threshold) continue;
+                sumR += d[p]; sumG += d[p + 1]; sumB += d[p + 2]; weight++;
+            }
+            if (!weight) return null;
+            return [sumR / weight / 255, sumG / weight / 255, sumB / weight / 255];
+        } catch (_) { return null; }
+    }
+
     window.QfsAcr = {
         ensure,
         ready: () => !!T,
@@ -444,6 +482,7 @@
         colorLut,
         parametricDiag,
         measureBrightness,
+        dehazeHaze,
         diag256: (stage) => T ? { r: toLut256(stage.r), g: toLut256(stage.g), b: toLut256(stage.b) } : null
     };
 

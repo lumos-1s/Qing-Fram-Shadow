@@ -662,7 +662,9 @@ async function main() {
         '清晰度 +100：边缘反差变大、平坦灰基本不动',
         `边 ${clarity.before.edgeL}/${clarity.before.edgeR} → ${clarity.after.edgeL}/${clarity.after.edgeR} 平坦=${clarity.after.flat}`);
 
-    // ── 20. 去除薄雾：正档压黑提通透，负档起雾抬黑 ──
+    // ── 20. 去除薄雾：走 Camera Raw 的真实反演（雾色 + 暗通道透射率）──
+    // 不再用 contrast/saturate 叠加 + LUT 拉黑场那套「假通透」：那套会让
+    // 纯黑也被压、亮部发灰。真实反演下纯黑恒为 0（它不含雾）。
     const dhz = await exec(`(async () => {
         const A = window.App;
         // 暗灰 64 做敏感探针：纯黑只会被负档抬动，正档压不动
