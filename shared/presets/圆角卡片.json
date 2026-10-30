@@ -129,9 +129,6 @@
     "outerRound": 1
   },
   "filmTearConfig": {
-    "tearEnable": 0,
-    "tearStrength": 10,
-    "tearDensity": 50,
     "filmPerforationEnable": 0,
     "filmPerforationType": "round",
     "filmPerforationSize": 15,

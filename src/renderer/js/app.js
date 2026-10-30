@@ -1315,7 +1315,9 @@ window.App = {
                 cornerRadiusBL: 0, cornerRadiusBR: 0,
             },
             filmTearConfig: {
-                tearEnable: 0, tearStrength: 50, tearDensity: 8,
+                // tearEnable / tearStrength / tearDensity 已删除：撕边从未实现
+                // （engine 的 applyShapeMask 只读 filmPerforationEnable），两个滑块
+                // 拖动画面零变化。齿孔是真实现，保留（预设驱动，无 UI）。
                 filmPerforationEnable: 0, filmPerforationType: 'square', filmPerforationSize: 20, filmPerforationSpacing: 20,
                 // dustScratch* / yellowing* 已删除：做旧（灰尘划痕 / 泛黄）没有实现，
                 // 引擎从未读取这四个字段，也无 UI，属死字段。
@@ -1350,7 +1352,6 @@ window.App = {
         const stroke = layer.strokeConfig || (layer.strokeConfig = {});
         const sg = layer.shadowGlowConfig || (layer.shadowGlowConfig = {});
         const cc = this.template.cornerConfig || (this.template.cornerConfig = {});
-        const ft = this.template.filmTearConfig || (this.template.filmTearConfig = {});
         const le = this.template.lightEffect || (this.template.lightEffect = {});
         const decor = this.template.decorConfig || (this.template.decorConfig = {});
 
@@ -1419,11 +1420,6 @@ window.App = {
         sg.glowOpacity = glOp;
         sg.glowEnable = glOp > 0 ? 1 : 0;
 
-        // 撕边同样改常开型：强度 0 即关闭（老预设几乎全是 enable:0）
-        const tearV = $('slTearStrength') ? parseInt($('slTearStrength').value, 10) : 50;
-        ft.tearStrength = tearV;
-        ft.tearEnable = tearV > 0 ? 1 : 0;
-        ft.tearDensity = $('slTearDensity') ? parseInt($('slTearDensity').value, 10) : 8;
 
         // 暗角/漏光/颗粒统一为「滑块常开型」:没有独立开关,强度 0 即关闭。
         // enable 标志仍然要写(引擎只认它):老预设里大量存在
@@ -1783,13 +1779,6 @@ window.App = {
             if ($('slGlowOpacity')) $('slGlowOpacity').value = glOn ? (sg.glowOpacity != null ? sg.glowOpacity : 60) : 0;
             this.updateLabel('lblGlowOpacity', (glOn ? (sg.glowOpacity != null ? sg.glowOpacity : 60) : 0) + '%');
 
-            const ft = this.template.filmTearConfig || {};
-            const tearOn = (ft.tearEnable || 0) === 1;
-            const tearV = tearOn ? (ft.tearStrength || 0) : 0;
-            if ($('slTearStrength')) $('slTearStrength').value = tearV;
-            if ($('slTearDensity')) $('slTearDensity').value = ft.tearDensity || 8;
-            this.updateLabel('lblTearStrength', tearV);
-            this.updateLabel('lblTearDensity', ft.tearDensity || 8);
 
             const le = this.template.lightEffect || {};
             // 常开滑块:显示值以 enable 为准。老预设普遍存着 enable:0 + 强度:35,
@@ -1848,9 +1837,7 @@ window.App = {
         const q = (sel) => Array.prototype.slice.call(document.querySelectorAll(sel));
         q('.ctl-grp-layers').forEach(el => { el.style.display = showLayers ? '' : 'none'; });
         q('.ctl-grp-light').forEach(el => { el.style.display = showLight ? '' : 'none'; });
-        // 撕边(胶片齿孔掩膜)只在默认图层管线读 filmTearConfig;相框样式 / 卡片(模糊底)渲染不走该管线,整组隐藏
-        const torn = document.getElementById('pbTornFilm');
-        if (torn) torn.style.display = showLayers ? '' : 'none';
+        // 齿孔掩膜只在默认图层管线读 filmTearConfig;相框样式 / 卡片(模糊底)渲染不走该管线(整组隐藏)
         // 「氛围」三组（暗角/漏光/颗粒）已并入调色页签，不再整页签隐藏：
         // 相框样式管线不支持它们时只隐藏这三组，调色的其余档位照常可用。
         // 当前样式条:把"现在走哪条渲染管线"显性化,解释为何部分控件消失
@@ -2723,7 +2710,7 @@ window.App = {
             'slGlobalMargin', 'slImgScale', 'slCornerTL', 'slCornerTR', 'slCornerBL', 'slCornerBR', 'slCornerRadius',
             'slParamFontSize', 'slBrandSize', 'slParamScale', 'slFillOpacity', 'slGradientAngle', 'slTextureScale', 'slStrokeWidth', 'slStrokeOpacity',
             'slShadowX', 'slShadowY', 'slShadowBlur', 'slShadowOpacity', 'slGlowBlur', 'slGlowOpacity',
-            'slTearStrength', 'slTearDensity', 'slVignetteStrength', 'slVignetteFeather', 'slLeakOpacity', 'slLeakAngle', 'slFilmGrain',
+            'slVignetteStrength', 'slVignetteFeather', 'slLeakOpacity', 'slLeakAngle', 'slFilmGrain',
             'slCornerDecorSize', 'slActiveIconOpacity', 'slElementRotation', 'slPuzzleGap', 'slPuzzleCorner',
             'slCapSize1', 'slCapSize2', 'slCapSpacing', 'slSlotOffsetX', 'slSlotOffsetY', 'slSlotZoom',
             'slLayerCornerTL', 'slLayerCornerTR', 'slLayerCornerBL', 'slLayerCornerBR', 'slLayerCornerRadius',
@@ -3544,7 +3531,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
             slStrokeWidth: ['lblStrokeWidth', v], slStrokeOpacity: ['lblStrokeOpacity', v + '%'],
             slShadowBlur: ['lblShadowBlur', v], slShadowOpacity: ['lblShadowOpacity', v + '%'],
             slGlowBlur: ['lblGlowBlur', v], slGlowOpacity: ['lblGlowOpacity', v + '%'],
-            slTearStrength: ['lblTearStrength', v], slTearDensity: ['lblTearDensity', v],
+
             slVignetteStrength: ['lblVignetteStrength', v + '%'], slVignetteFeather: ['lblVignetteFeather', v],
             slBrandSize: ['lblBrandSize', v + '%'], slParamScale: ['lblParamScale', v + '%'],
             slLeakOpacity: ['lblLeakOpacity', v + '%'], slLeakAngle: ['lblLeakAngle', v + '°'],

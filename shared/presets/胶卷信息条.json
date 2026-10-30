@@ -77,9 +77,6 @@
     "cornerRadiusBR": 0
   },
   "filmTearConfig": {
-    "tearEnable": 0,
-    "tearStrength": 10,
-    "tearDensity": 50,
     "filmPerforationEnable": 1,
     "filmPerforationType": "round",
     "filmPerforationSize": 12,
