@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://github.com/lumos-1s/Qing-Fram-Shadow/stargazers"><img src="https://img.shields.io/github/stars/lumos-1s/Qing-Fram-Shadow?style=flat-square&color=blue" alt="GitHub stars"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/github/license/lumos-1s/Qing-Fram-Shadow?style=flat-square&color=green" alt="MIT License"></a>
-  <a href="https://github.com/lumos-1s/Qing-Fram-Shadow/releases"><img src="https://img.shields.io/badge/version-0.1.21-orange?style=flat-square" alt="Version 0.1.21"></a>
+  <a href="https://github.com/lumos-1s/Qing-Fram-Shadow/releases"><img src="https://img.shields.io/badge/version-0.1.22-orange?style=flat-square" alt="Version 0.1.22"></a>
   <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-45-47848F?style=flat-square" alt="Electron 45"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4?style=flat-square" alt="Windows 10/11">
 </p>
@@ -62,14 +62,16 @@
 <a id="whats-new"></a>
 ## 最近更新 · What's New
 
-### v0.1.21
+### v0.1.22
 
-- **沉浸展示支持滚轮切换** — 鼠标滚轮上下滚动即可切换上一张/下一张；触控板惯性按一次手势处理，不会一划跳过很多张。
-- **背景模糊默认开关** — 可选择「跟随预设 / 默认开 / 默认关」，切预设和重启后仍记住选择；默认开时模糊程度调节正常显示。
-- **预设视觉更新** — 重做 NOMO 复古相机，预设墙同步多张自定义封面。
-- **预设墙体验优化** — 外圈聚焦隔帧刷新，拖动前撤掉悬停倾斜，浏览更稳。
+- **新增裁切照片** — 自由裁切或按常用比例裁切，支持旋转、翻转，随时可以还原原图。
+- **预设墙分为「有限」和「无限」两种模式** — 有限模式有首有尾、拖到头即止；无限模式循环浏览，按自己的习惯切换。
+- **新增基础调色** — 曝光、白平衡、对比度、高光、阴影、白场、黑场、饱和度逐档可调，拖动即时预览。
+- **新增添加文字** — 画布上想加什么字就加什么字，字体、字号、颜色、效果可调，直接拖拽定位与缩放。
+- **Logo 支持自己导入** — 「Logo」页签新增「导入 Logo 素材包」，一键导入 Eagle 素材包（.eaglepack）里的整包品牌 Logo，素材名即品牌名，导入后按照片 EXIF 自动匹配。
+- **其他优化** — 调色效果进一步对齐 Camera Raw（实测色表 + 真实去薄雾反演）；「继续上次会话」显示恢复进度条；边框面板删掉从未生效的控件与死字段，投影/发光/角饰改为归零即关闭；界面字号与配色统一。
 
-> **English** — v0.1.21 adds mouse-wheel navigation in immersive view, a remembered background-blur default, a reworked NOMO preset and refreshed preset-wall covers.
+> **English** — v0.1.22 adds photo cropping, finite/infinite preset-wall modes, basic colour grading, a text tool, one-click import of Eagle logo packs, plus Camera Raw–aligned colour, a restore-progress bar and a trimmed border panel.
 
 完整变更与安装包见 [GitHub Releases](https://github.com/lumos-1s/Qing-Fram-Shadow/releases)。
 

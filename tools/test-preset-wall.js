@@ -349,7 +349,9 @@ async function main() {
         `shown=${finite.railShown} thumb=${finite.railHeight}`);
     check(finite.onBtn && !finite.infiniteBtn && finite.stored === 'finite',
         '切换按钮状态 + 选择被记住（localStorage）', `stored=${finite.stored}`);
-    check(finite.sub.indexOf('有首有尾') > 0, '副标题写明"不循环"', finite.sub);
+    // 副标题要让人看出「到头就停，不会绕回开头」。文案会改（"有首有尾"→"有限边界"），
+    // 断言语义而不是某一句原文，否则改个措辞就把用例打红。
+    check(/有限边界|有首有尾|不循环|拖到头即止/.test(finite.sub), '副标题写明"不循环"', finite.sub);
 
     // 切回无限：必须恢复 4 份拷贝、回绕、进度条隐藏，并且不再重建（避免来回切抖动）
     const backToInfinite = await exec(`(async () => {
