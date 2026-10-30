@@ -162,6 +162,7 @@
             <div class="ub-progress" id="updateProgressWrap" style="display:none"><div class="ub-bar" id="updateProgressBar" style="width:0%"></div></div>
             <button id="btnUpdateAction" class="ub-btn primary">更新</button>
             <button id="btnUpdateNotes" class="ub-btn ghost" style="display:none" title="查看本次更新内容">详情</button>
+            <button id="btnUpdateSlow" class="ub-btn ghost" style="display:none" title="下载慢时可改用第三方镜像加速；清单与 sha512 仍来自 GitHub，校验不过的文件会被丢弃">下载慢？</button>
             <button id="btnUpdateClose" class="ub-btn ghost" title="关闭">×</button>
         </div>
 
@@ -1512,10 +1513,15 @@
                 <div class="about-mirror">
                     <label for="tfUpdateMirror" class="about-mirror-label" title="留空=GitHub 直连。可填镜像前缀（如 https://ghproxy.net/{url}）或自建反代地址；下载完仍按 GitHub 清单里的 sha512 校验">更新下载源</label>
                     <input id="tfUpdateMirror" class="about-mirror-input" type="text" spellcheck="false" autocomplete="off"
-                           placeholder="留空 = GitHub 直连；可填 https://ghproxy.net/{url}" />
+                           placeholder="留空 = GitHub 直连；例：https://ghproxy.net/{url}" />
                     <button id="btnSaveUpdateMirror" class="mini-btn" type="button">保存</button>
                 </div>
                 <div id="aboutMirrorHint" class="about-status about-mirror-hint" role="status" aria-live="polite"></div>
+                <div class="about-status about-mirror-hint" style="opacity:.75">
+                    常见公共镜像（第三方，速度与可用性随网络变化，可随时清空回直连）：
+                    <code>https://ghproxy.net/{url}</code> · <code>https://gh-proxy.com/{url}</code> · <code>https://ghfast.top/{url}</code><br />
+                    也可以填自建反代的前缀；留空则直连 GitHub。下载完一律按 GitHub 清单里的 sha512 校验，对不上会丢弃重下。
+                </div>
 
                 <details class="about-details">
                     <summary>快捷键</summary>

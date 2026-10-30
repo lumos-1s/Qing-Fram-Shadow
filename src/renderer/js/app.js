@@ -2922,6 +2922,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         const introModal = $('introModal');
         if (introModal) introModal.addEventListener('click', (e) => { if (e.target === introModal) this.closeIntro(); });
         bindBtn('btnUpdateAction', () => this.updateAction());
+        bindBtn('btnUpdateSlow', () => this.openAboutMirror());
         bindBtn('btnUpdateClose', () => this.hideUpdateBanner());
         this.initUpdater();
         this.initDiag();
@@ -3771,7 +3772,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
     },
 
     // 打开"关于"弹窗并填充版本/系统信息
-    async openAbout() {
+    async openAbout(opts) {
         this._aboutReturnFocus = document.activeElement;
         const api = window.qingframe;
         let info = {};
@@ -3794,7 +3795,20 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         this.syncUpdateMirrorField();
         const m = this.$('aboutModal');
         if (m) m.style.display = 'flex';
-        setTimeout(() => { const c = this.$('aboutClose'); if (c) c.focus({ preventScroll: true }); }, 0);
+        // 默认聚焦关闭按钮；从「下载慢？」进来时改聚焦下载源输入框（并全选，方便直接覆盖）
+        const focusId = (opts && opts.focus) || 'aboutClose';
+        setTimeout(() => {
+            const el = this.$(focusId);
+            if (!el) return;
+            if (opts && opts.focus) { try { el.scrollIntoView({ block: 'center' }); } catch (e) { /* 忽略 */ } }
+            el.focus({ preventScroll: !!(opts && opts.focus) });
+            if (opts && opts.select && el.select) el.select();
+        }, 0);
+    },
+    // 从更新横幅「下载慢？」直接跳到下载源设置:打开关于弹窗并把光标放进输入框,
+    // 省得用户自己去关于页找(这个输入框原本藏得很深)。
+    async openAboutMirror() {
+        await this.openAbout({ focus: 'tfUpdateMirror', select: true });
     },
     // 把 Tab 焦点限制在弹窗内;关闭后由 closeAbout 还给触发按钮。
     trapFocus(container, e) {

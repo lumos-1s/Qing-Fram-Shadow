@@ -794,6 +794,9 @@ window.App = Object.assign(window.App || {}, {
         const b = $('updateBanner'), t = $('updateBannerText');
         if (!b || !t) return;
         const bar = $('updateProgressBar'), barWrap = $('updateProgressWrap'), act = $('btnUpdateAction');
+        // 「下载慢？」只在还没下完时有用：available / progress / error 三态显示
+        const slow = document.getElementById('btnUpdateSlow');
+        const showSlow = (on) => { if (slow) slow.style.display = on ? '' : 'none'; };
         if (ev.type === 'available') {
             this._updateInfo = { version: ev.version, releaseNotes: ev.releaseNotes };
             t.textContent = '发现新版本 v' + (ev.version || '') + '，点击更新';
@@ -801,29 +804,35 @@ window.App = Object.assign(window.App || {}, {
             if (act) { act.textContent = '立即更新'; act.disabled = false; }
             const nb = document.getElementById('btnUpdateNotes');
             if (nb) nb.style.display = '';
+            showSlow(true);
             b.style.display = 'flex';
         } else if (ev.type === 'not-available') {
             if (this._checking) { this.setStatus('已是最新版本'); this._checking = false; }
+            showSlow(false);
         } else if (ev.type === 'progress') {
             const p = Math.max(0, Math.min(100, Math.round((ev.percent || 0) * 10) / 10));
             if (barWrap) barWrap.style.display = '';
             if (bar) bar.style.width = p + '%';
             t.textContent = '正在下载更新 ' + p + '%';
             if (act) { act.textContent = '下载中…'; act.disabled = true; }
+            showSlow(true);
             b.style.display = 'flex';
         } else if (ev.type === 'downloaded') {
             t.textContent = '更新已下载完成，重启即可生效';
             if (barWrap) barWrap.style.display = 'none';
             if (act) { act.textContent = '立即重启'; act.disabled = false; }
+            showSlow(false);
             b.style.display = 'flex';
         } else if (ev.type === 'error') {
             t.textContent = '检查更新失败：' + (ev.message || '网络异常');
             if (barWrap) barWrap.style.display = 'none';
             if (act) { act.textContent = '重试'; act.disabled = false; }
+            showSlow(true);
             b.style.display = 'flex';
         } else {
             const nb = document.getElementById('btnUpdateNotes');
             if (nb) nb.style.display = 'none';
+            showSlow(false);
         }
     },
     async checkUpdates(silent) {
