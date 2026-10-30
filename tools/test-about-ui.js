@@ -44,7 +44,14 @@ ipcMain.handle('get-app-info', () => ({
 }));
 ipcMain.handle('open-external', () => ({ ok: true }));
 ipcMain.handle('open-data-dir', () => ({ ok: true }));
-ipcMain.handle('copy-text', (_e, text) => { clipboard.writeText(String(text || '')); return { ok: true }; });
+// 无头环境可能没有剪贴板后端：writeText 静默失败、readText 读回旧内容。
+// 真正要验的是「渲染端把诊断日志整段交给了主进程」，所以记下收到的文本再断言。
+let lastCopiedText = '';
+ipcMain.handle('copy-text', (_e, text) => {
+    lastCopiedText = String(text || '');
+    try { clipboard.writeText(lastCopiedText); } catch (_) { /* 环境无剪贴板 */ }
+    return { ok: true };
+});
 ipcMain.handle('save-diagnostics', () => ({ ok: true, path: path.join(process.env.TEMP || '.', 'qf-diag.txt') }));
 ipcMain.handle('check-for-updates', () => ({ ok: true }));
 ipcMain.handle('start-update-download', () => ({ ok: true }));
@@ -168,7 +175,8 @@ app.whenReady().then(async () => {
     await exec(`window.App.copyDiagnostics()`);
     await new Promise(r => setTimeout(r, 400));
     const diag = await exec(`document.getElementById('aboutDiagStatus').textContent`);
-    check(clipboard.readText().includes('清框影 诊断日志'), '复制诊断信息写入剪贴板');
+    check(lastCopiedText.includes('清框影 诊断日志'), '复制诊断信息交给主进程（内容含标题）',
+        (lastCopiedText || '').slice(0, 40));
     check(diag.includes('已复制'), '复制诊断信息内联反馈', diag);
     await exec(`window.App.openDataDir()`);
     await new Promise(r => setTimeout(r, 250));
