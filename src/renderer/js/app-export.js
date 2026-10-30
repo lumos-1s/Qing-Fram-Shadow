@@ -867,6 +867,24 @@ window.App = Object.assign(window.App || {}, {
         };
         window.addEventListener('error', (e) => { this.diagLog && this.diagLog('[异常] ' + (e && e.message)); });
         window.addEventListener('unhandledrejection', (e) => { this.diagLog && this.diagLog('[Promise异常] ' + ((e && e.reason && e.reason.message) || e.reason)); });
+        // 「放后台久了回来卡死」类问题：日志里要能看出卡在哪一步。
+        // ① 可见性切换——判断是切回来才开始卡的，还是后台期间就积累的；
+        // ② 长任务——主线程被阻塞超过 800ms 就记一笔（渲染/烘焙/解码都会留下痕迹）。
+        document.addEventListener('visibilitychange', () => {
+            this.diagLog && this.diagLog('[可见性] ' + (document.hidden ? 'hidden' : 'visible'));
+        });
+        try {
+            if (typeof PerformanceObserver === 'function') {
+                const po = new PerformanceObserver((list) => {
+                    for (const e of list.getEntries()) {
+                        if (e && e.duration >= 800 && this.diagLog) {
+                            this.diagLog('[长任务] ' + Math.round(e.duration) + 'ms');
+                        }
+                    }
+                });
+                po.observe({ entryTypes: ['longtask'] });
+            }
+        } catch (_) { /* 不支持 longtask 就当没有 */ }
         const bd = document.getElementById('btnExportDiag');
         if (bd) bd.addEventListener('click', () => this.exportDiagnostics());
         const bc = document.getElementById('btnCopyDiag');

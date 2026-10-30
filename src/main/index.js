@@ -205,7 +205,12 @@ const createWindow = () => {
             nodeIntegration: false,
             // preload 只用 contextBridge/ipcRenderer/webUtils,不需要 Node 全权限。
             // 开沙箱后即使渲染层被注入,也拿不到 fs/child_process 这类底层能力。
-            sandbox: true
+            sandbox: true,
+            // 关掉后台节流：默认值下窗口最小化/被遮挡时，Chromium 把定时器压到 1s
+            // 一次、rAF 直接停，攒下的任务在恢复瞬间一起跑，表现为"放后台久了回来就卡死"。
+            // 本应用空闲时没有常驻动画（预设墙的惯性滚动是一次性的、帧率测量只跑 3 帧），
+            // 关掉节流的代价只有后台仍保持正常调度。
+            backgroundThrottling: false
         }
     });
     win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
