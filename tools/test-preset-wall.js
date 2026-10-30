@@ -142,6 +142,9 @@ async function main() {
             noName: list.filter(t => !t.querySelector('.pw-tile-name') || !t.querySelector('.pw-tile-name').textContent).length,
             clipped,
             nameFs: list.length ? parseFloat(getComputedStyle(list[0].querySelector('.pw-tile-name')).fontSize) : 0,
+            // 封面是「照片+边框」的合成图，object-fit 必须是 contain：
+            // 改 cover 会切掉边框和主体，用户一眼就能看出"图没显示全"
+            objectFit: list.length ? getComputedStyle(list[0].querySelector('.pw-tile-cover img')).objectFit : '',
             sub: (document.getElementById('pwSub') || {}).textContent || ''
         };
     })()`);
@@ -151,6 +154,7 @@ async function main() {
     check(tiles.noName === 0, '每张卡片都有名称', `noName=${tiles.noName}`);
     check(tiles.clipped === 0, '名称落在卡片可视区内（没被封面图挤出 overflow）', `clipped=${tiles.clipped}`);
     check(tiles.nameFs >= 12, '名称字号可读（≥12px）', `fontSize=${tiles.nameFs}`);
+    check(tiles.objectFit === 'contain', '封面完整显示（不许裁切）', `object-fit=${tiles.objectFit}`);
 
     // 2.5 方向键移动选中（上下左右，周期内循环）
     const kb = await exec(`(async () => {

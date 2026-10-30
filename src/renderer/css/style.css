@@ -2199,8 +2199,9 @@ body.editing #canvasPane { flex: 1 1 auto; }
     border-radius: inherit; overflow: hidden;
     background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09);
     transition: border-color .3s ease, background .3s ease;
-    /* 卡片在网格里被行高拉伸，内容要跟着撑满，否则封面只到图片自然高度 */
+    /* 卡片在网格里被行高拉伸；图片占满除名称条以外的全部高度 */
     height: 100%; position: relative;
+    display: flex; flex-direction: column;
 }
 /* 拖动与惯性期间禁用过渡：JS 每帧写 transform，过渡会把每一帧再拖出 180ms 的尾巴（越拖越糊） */
 .pw-grid.pw-dragging .pw-tile,
@@ -2234,7 +2235,7 @@ body.editing #canvasPane { flex: 1 1 auto; }
     outline: 2px solid rgba(220,186,121,.85); outline-offset: 2px;
 }
 .pw-tile-cover {
-    width: 100%; height: 100%; overflow: hidden;
+    width: 100%; flex: 1 1 auto; min-height: 0; overflow: hidden;
     background:
         radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,.035), transparent 55%),
         #1a2226;
@@ -2246,14 +2247,16 @@ body.editing #canvasPane { flex: 1 1 auto; }
     background: radial-gradient(300px circle at var(--pw-hx, 50%) var(--pw-hy, 50%), rgba(255,255,255,.13), transparent 55%);
 }
 .pw-tile[data-tilting] .pw-tile-cover::after { opacity: 1; }
-/* cover 而不是 contain：封面素材比例不一（1.29~1.41），统一框里裁掉少量边缘，
-   换来整墙没有参差的黑边。裁切幅度按当前 4:3.1 的框算不到 6%。 */
+/* 封面必须完整显示（contain）：封面本身是「照片+边框」的合成图，
+   裁一刀就切掉边框或主体，用户一眼就看出来。卡片比例按素材 1.29~1.41 取 1/0.76，
+   宽图上下只留 3~4px、窄图左右留不到 1%，等于没有黑边。 */
 .pw-tile-cover img {
-    width: 100%; height: 100%; object-fit: cover; display: block;
+    width: 100%; height: 100%; object-fit: contain; display: block;
     transition: transform .5s cubic-bezier(.22,.61,.36,1);
 }
-.pw-tile:hover .pw-tile-cover img { transform: scale(1.08); }
-.pw-tile.selected .pw-tile-cover img { transform: scale(1.05); }
+/* 悬停只做很轻的放大：封面用 contain 完整显示，放大 8% 会立刻切掉四边，看着像"显示不全" */
+.pw-tile:hover .pw-tile-cover img { transform: scale(1.03); }
+.pw-tile.selected .pw-tile-cover img { transform: scale(1.02); }
 /* 卡片右上角「换封面」：平时隐身，悬停/选中/卡片获焦时显形。
    pointer-events 一起切：隐身时绝不抢点击（否则点卡片会误触换封面）。 */
 .pw-tile-coverbtn {
@@ -2288,28 +2291,24 @@ body.editing #canvasPane { flex: 1 1 auto; }
     border-color: rgba(220,186,121,.85);
     box-shadow: inset 0 0 0 999px rgba(220,186,121,.12);
 }
-/* 名称叠在封面底部：底部渐变做衬底，浅色/花哨的封面上白字也读得清。
-   pointer-events:none —— 整块文字区不能抢卡片点击。 */
+/* 名称条：坐在封面下方，不遮画面，所以不需要渐变压暗 */
 .pw-tile-caption {
-    position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+    flex: 0 0 auto;
     display: flex; align-items: baseline; gap: 7px;
-    padding: 20px 10px 7px;
-    background: linear-gradient(to top,
-        rgba(6,9,12,.86) 0%, rgba(6,9,12,.34) 58%, rgba(6,9,12,0) 100%);
+    padding: 6px 10px 8px;
+    border-top: 1px solid rgba(255,255,255,.055);
     pointer-events: none;
 }
 .pw-tile-name {
     flex: 0 1 auto; min-width: 0;
-    font-size: var(--fs-13); font-weight: 600; color: #f2f5f8;
+    font-size: var(--fs-13); font-weight: 600; color: #eef2f6;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    text-shadow: 0 1px 2px rgba(0,0,0,.65);
     transition: color .34s ease;
 }
 .pw-tile:hover .pw-tile-name { color: var(--brand-gold-text); }
 .pw-tile-tag {
     flex: 0 0 auto;
-    font-size: var(--fs-10); color: rgba(240,244,248,.58);
+    font-size: var(--fs-10); color: rgba(232,236,241,.42);
     white-space: nowrap; letter-spacing: .02em;
-    text-shadow: 0 1px 2px rgba(0,0,0,.6);
 }
 .pw-hint { flex: 0 0 auto; text-align: center; padding: 8px 0 14px; font-size: var(--fs-11); color: rgba(232,236,241,.34); letter-spacing: .04em; }

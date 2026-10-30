@@ -471,9 +471,10 @@ window.App = Object.assign(window.App || {}, {
         const mode = this.wallMode();
         const base = Math.max(240, Math.min(340, Math.floor((vw - pad * 2 - gap * 2) / 4)));
         const tw = Math.round(base * WALL_CARD_SCALE);
-        // 卡片只装一张封面（名字叠在图上）。0.88 是折中：再高会把封面左右裁太多，
-        // 再扁卡片会像视频条目，丢掉"相框墙"的感觉。
-        const th = Math.round(tw * 0.88);
+        // 卡片 = 封面（按素材最宽比例 1.407 完整显示）+ 底部一条名称。
+        // 图片区高度由 tw 推出来，所以 contain 之后四边几乎不留黑边；
+        // 名称单独占一条，不会压住封面（封面是「照片+边框」的合成图，压上去就挡内容）。
+        const th = Math.round(tw / 1.407) + 36;
         const data = window.PRESET_WALL;
         const n = (data && Array.isArray(data.items) && data.items.length) || 87;
         const P = 9, Q = 10;
@@ -1078,9 +1079,14 @@ window.App = Object.assign(window.App || {}, {
             // 异步解码：90 张封面同步解码会卡住第一次绘制（打开墙时那一下顿）
             img.decoding = 'async';
             cover.appendChild(img);
-            // 预设名压在封面底部（一层底部渐变保证任何封面都读得清），不再另占一行：
-            // 卡片里只剩封面，同样大小能放更大的图；名字也永远跟着封面走，不会因为
-            // 卡片被拉伸/裁切而消失（之前 img 高度被设成整卡高，名字直接被裁没了）。
+            // 内容包一层：聚焦时 opacity 写在 inner 上，tile 只负责 transform/z-index。
+            // 同一元素同时逐帧改 transform + opacity 会让 Chromium 每帧重绘卡片的
+            // 560px 封面（165Hz/DPR2 下直接掉一帧）；拆成两层后合成器可以分开处理。
+            const inner = document.createElement('div');
+            inner.className = 'pw-tile-inner';
+            inner.appendChild(cover);
+            // 名称放在封面**下方**的一条里：封面是「照片+边框」的合成图，
+            // 压在图上会挡掉边框和主体；单独一条既不遮图，也不用渐变把画面压暗。
             const caption = document.createElement('div');
             caption.className = 'pw-tile-caption';
             const name = document.createElement('div');
@@ -1093,13 +1099,7 @@ window.App = Object.assign(window.App || {}, {
             tag.className = 'pw-tile-tag';
             tag.textContent = item.tag;
             caption.appendChild(tag);
-            cover.appendChild(caption);
-            // 内容包一层：聚焦时 opacity 写在 inner 上，tile 只负责 transform/z-index。
-            // 同一元素同时逐帧改 transform + opacity 会让 Chromium 每帧重绘卡片的
-            // 560px 封面（165Hz/DPR2 下直接掉一帧）；拆成两层后合成器可以分开处理。
-            const inner = document.createElement('div');
-            inner.className = 'pw-tile-inner';
-            inner.appendChild(cover);
+            inner.appendChild(caption);
             // 换封面：悬停/聚焦时右上角显形，点了直接弹选图并按预设名自动落盘。
             // tabIndex=-1：tile 本身已是 tab 焦点，360 张卡再各加一个焦点会让人按 Tab 按到崩；
             // 键盘用户用卡片上的 C 键（见 grid 的 keydown）。
