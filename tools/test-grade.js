@@ -81,7 +81,18 @@ async function main() {
     win.showInactive();
     const exec = (expr) => win.webContents.executeJavaScript(expr);
 
-    // 等 ACR 实测表解码完成：调色断言的期望值都以实测表为准（见 shared/acr）
+    // ① 色表必须「自己」加载：产品路径只在启动空闲时 ensure，不该依赖导入 XMP。
+    //    这里先等 3 秒不给任何提示，等不到才算失败 —— 之前测试开头就手动 ensure，
+    //    把「真实用户根本没有表」这个 bug 盖住了（混色器/校准/拖了没反应）。
+    const autoReady = await exec(`(async () => {
+        for (let i = 0; i < 30; i++) {
+            if (window.QfsAcr && QfsAcr.ready()) return true;
+            await new Promise((r) => setTimeout(r, 100));
+        }
+        return false;
+    })()`);
+    check(autoReady, 'ACR 色表启动后自动加载（不依赖导入 XMP）', String(autoReady));
+    // ② 兜底：老版本/异常路径下仍然手动确保一次，后面的断言才有意义
     await exec(`(async () => { if (window.QfsAcr) await QfsAcr.ensure(); return QfsAcr && QfsAcr.ready(); })()`)
         .then((r) => console.log('ACR tables ready=' + r));
 

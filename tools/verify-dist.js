@@ -26,6 +26,9 @@ const EXPECTED = [
     { label: '主进程入口', match: /src[\\/]main[\\/]index\.js$/ },
     { label: '渲染引擎', match: /src[\\/]renderer[\\/]js[\\/]engine\.js$/ },
     { label: '预设目录', match: /shared[\\/]presets$/ },
+    // 调色色表：混色器/校准/饱和度/颜色分级全靠它。漏打进包的话这些档位在用户端
+    // 会静默失效（拖了没反应），而且测试里因为手动 ensure 过，一样是绿的。
+    { label: 'ACR 调色色表', match: /shared[\\/]acr[\\/]cr-tables\.bin$/ },
 ];
 
 // 期望的预设/纹理数量从源码目录实测,不再硬编码。

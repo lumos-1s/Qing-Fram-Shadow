@@ -1320,6 +1320,38 @@
             if (this.initToneExtra) this.initToneExtra();
             if (this.initMasks) this.initMasks();
             this.syncGradeUI();
+            // ACR 实测色表必须在启动时就加载。此前只有「导入 XMP 预设」会调 ensure()，
+            // 普通用户永远拿不到表：toneStages 退回兜底公式（还能看出变化），
+            // 而混色器 / 校准 / 饱和度 / 自然饱和度 / 颜色分级走的是 colorLut，
+            // 表没就绪直接返回 null —— 表现就是「这些档位拖了完全没反应」。
+            this.ensureAcrTables();
+        },
+
+        // 空闲时加载色表（1.8MB，不阻塞启动）；加载完把当前图按真实表重烘一遍，
+        // 否则之前用兜底公式算出来的结果会一直挂到下次参数变化才更新。
+        ensureAcrTables() {
+            const A = window.QfsAcr;
+            if (!A || typeof A.ensure !== 'function') return;
+            const load = () => {
+                A.ensure().then((ok) => {
+                    if (!ok) {
+                        this.setStatus('调色色表未加载：混色器/校准/饱和度等档位会按简化公式计算');
+                        return;
+                    }
+                    // GL 不可用时三维表用不上（bakeOne 里 useLut 依赖 usingGL），
+                    // 校准与饱和度会退回简化算法 —— 机器上看着就是"拖了没反应"，
+                    // 说清楚比让用户以为坏了好。
+                    const glOk = !!(window.QfsColor && window.QfsColor.usingGL && window.QfsColor.usingGL());
+                    if (!glOk) this.setStatus('当前环境未启用 WebGL：校准、饱和度等档位会降级计算');
+                    if (this.image && this.invalidateGrade && this.rebuildGrade) {
+                        this.invalidateGrade(this.image);
+                        this.rebuildGrade('full');
+                        if (this.scheduleRender) this.scheduleRender(true);
+                    }
+                }).catch(() => { /* 色表缺失不阻塞使用 */ });
+            };
+            if (typeof requestIdleCallback === 'function') requestIdleCallback(load, { timeout: 2000 });
+            else setTimeout(load, 800);
         }
     });
 })();
