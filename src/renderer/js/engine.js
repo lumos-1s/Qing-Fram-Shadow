@@ -125,10 +125,16 @@ function _renderToCanvasInner(app, compare) {
     if (compare) {
         const canvas = app.dom.canvas;
         canvas.width = cw0; canvas.height = ch0;
+        // 逻辑尺寸必须一起改：applyZoomStyle 用 _logW/_logH 算显示尺寸，
+        // 只改 backing 尺寸会让画布按上一帧的逻辑尺寸显示 —— 原图 6000px 被塞进
+        // 1200px 的框里，看起来就是"对比时莫名其妙缩到 15%"。
+        canvas._logW = cw0; canvas._logH = ch0;
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, cw0, ch0);
         ctx.drawImage(img, 0, 0, cw0, ch0);
-        app.applyZoomStyle();
+        // 画布尺寸变了，缩放必须重算（否则显示尺寸还按旧画布算）
+        if (typeof app.fitZoom === 'function') app.fitZoom();
+        else app.applyZoomStyle();
         return;
     }
 
