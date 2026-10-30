@@ -53,26 +53,19 @@
         "strokeColorHex": "#c39c6a",
         "strokeOpacity": 68,
         "strokeDashArray": [],
-        "strokeDashOffset": 0,
-        "strokeFillType": "solid",
-        "strokeGradientType": "linear",
-        "strokeGradientAngle": 0,
-        "strokeGradientStops": []
+        "strokeDashOffset": 0
       },
       "shadowGlowConfig": {
         "shadowEnable": 0,
         "shadowOffsetX": 0,
         "shadowOffsetY": 0,
         "shadowBlur": 0,
-        "shadowSpread": 0,
         "shadowColorHex": "#000000",
         "shadowOpacity": 0,
         "glowEnable": 0,
         "glowColorHex": "#ffffff",
         "glowBlur": 0,
-        "glowSpread": 0,
-        "glowOpacity": 0,
-        "glowType": "outer"
+        "glowOpacity": 0
       },
       "cornerConfig": {
         "cornerLock": 1,
@@ -80,9 +73,7 @@
         "cornerRadiusTL": 20,
         "cornerRadiusTR": 20,
         "cornerRadiusBL": 20,
-        "cornerRadiusBR": 20,
-        "shapeType": "round",
-        "customShapeSvg": ""
+        "cornerRadiusBR": 20
       }
     },
     {
@@ -121,26 +112,19 @@
         "strokeColorHex": "#ffffff",
         "strokeOpacity": 0,
         "strokeDashArray": [],
-        "strokeDashOffset": 0,
-        "strokeFillType": "solid",
-        "strokeGradientType": "linear",
-        "strokeGradientAngle": 0,
-        "strokeGradientStops": []
+        "strokeDashOffset": 0
       },
       "shadowGlowConfig": {
         "shadowEnable": 0,
         "shadowOffsetX": 0,
         "shadowOffsetY": 0,
         "shadowBlur": 0,
-        "shadowSpread": 0,
         "shadowColorHex": "#000000",
         "shadowOpacity": 0,
         "glowEnable": 0,
         "glowColorHex": "#ffffff",
         "glowBlur": 0,
-        "glowSpread": 0,
-        "glowOpacity": 0,
-        "glowType": "outer"
+        "glowOpacity": 0
       },
       "cornerConfig": {
         "cornerLock": 1,
@@ -148,9 +132,7 @@
         "cornerRadiusTL": 30,
         "cornerRadiusTR": 30,
         "cornerRadiusBL": 30,
-        "cornerRadiusBR": 30,
-        "shapeType": "round",
-        "customShapeSvg": ""
+        "cornerRadiusBR": 30
       }
     },
     {
@@ -193,26 +175,19 @@
         "strokeColorHex": "#ffffff",
         "strokeOpacity": 0,
         "strokeDashArray": [],
-        "strokeDashOffset": 0,
-        "strokeFillType": "solid",
-        "strokeGradientType": "linear",
-        "strokeGradientAngle": 0,
-        "strokeGradientStops": []
+        "strokeDashOffset": 0
       },
       "shadowGlowConfig": {
         "shadowEnable": 0,
         "shadowOffsetX": 0,
         "shadowOffsetY": 0,
         "shadowBlur": 0,
-        "shadowSpread": 0,
         "shadowColorHex": "#000000",
         "shadowOpacity": 0,
         "glowEnable": 0,
         "glowColorHex": "#ffffff",
         "glowBlur": 0,
-        "glowSpread": 0,
-        "glowOpacity": 0,
-        "glowType": "outer"
+        "glowOpacity": 0
       },
       "cornerConfig": {
         "cornerLock": 1,
@@ -220,9 +195,7 @@
         "cornerRadiusTL": 24,
         "cornerRadiusTR": 24,
         "cornerRadiusBL": 24,
-        "cornerRadiusBR": 24,
-        "shapeType": "round",
-        "customShapeSvg": ""
+        "cornerRadiusBR": 24
       }
     },
     {
@@ -265,26 +238,19 @@
         "strokeColorHex": "#ffffff",
         "strokeOpacity": 0,
         "strokeDashArray": [],
-        "strokeDashOffset": 0,
-        "strokeFillType": "solid",
-        "strokeGradientType": "linear",
-        "strokeGradientAngle": 0,
-        "strokeGradientStops": []
+        "strokeDashOffset": 0
       },
       "shadowGlowConfig": {
         "shadowEnable": 1,
         "shadowOffsetX": 0,
         "shadowOffsetY": 10,
         "shadowBlur": 40,
-        "shadowSpread": 0,
         "shadowColorHex": "#b08968",
         "shadowOpacity": 22,
         "glowEnable": 0,
         "glowColorHex": "#ffffff",
         "glowBlur": 0,
-        "glowSpread": 0,
-        "glowOpacity": 0,
-        "glowType": "outer"
+        "glowOpacity": 0
       },
       "cornerConfig": {
         "cornerLock": 1,
@@ -292,9 +258,7 @@
         "cornerRadiusTL": 30,
         "cornerRadiusTR": 30,
         "cornerRadiusBL": 30,
-        "cornerRadiusBR": 30,
-        "shapeType": "round",
-        "customShapeSvg": ""
+        "cornerRadiusBR": 30
       }
     }
   ],
@@ -304,9 +268,7 @@
     "cornerRadiusTL": 20,
     "cornerRadiusTR": 20,
     "cornerRadiusBL": 20,
-    "cornerRadiusBR": 20,
-    "shapeType": "round",
-    "customShapeSvg": ""
+    "cornerRadiusBR": 20
   },
   "filmTearConfig": {
     "tearEnable": 0,
@@ -315,11 +277,7 @@
     "filmPerforationEnable": 0,
     "filmPerforationType": "round",
     "filmPerforationSize": 15,
-    "filmPerforationSpacing": 30,
-    "dustScratchEnable": 0,
-    "dustScratchIntensity": 20,
-    "yellowingEnable": 0,
-    "yellowingStrength": 15
+    "filmPerforationSpacing": 30
   },
   "lightEffect": {
     "vignetteEnable": 0,

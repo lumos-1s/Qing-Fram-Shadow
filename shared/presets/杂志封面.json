@@ -23,9 +23,7 @@
     "cornerRadiusTL": 0,
     "cornerRadiusTR": 0,
     "cornerRadiusBL": 0,
-    "cornerRadiusBR": 0,
-    "shapeType": "rect",
-    "customShapeSvg": ""
+    "cornerRadiusBR": 0
   },
   "filmTearConfig": {
     "tearEnable": 0,
@@ -34,11 +32,7 @@
     "filmPerforationEnable": 0,
     "filmPerforationType": "round",
     "filmPerforationSize": 15,
-    "filmPerforationSpacing": 30,
-    "dustScratchEnable": 0,
-    "dustScratchIntensity": 20,
-    "yellowingEnable": 0,
-    "yellowingStrength": 15
+    "filmPerforationSpacing": 30
   },
   "lightEffect": {
     "vignetteEnable": 0,

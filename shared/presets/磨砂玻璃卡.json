@@ -31,11 +31,11 @@
         "gradientAngle": 0,
         "gradientStops": [
           {
-            "position": 0.0,
+            "position": 0,
             "color": "#ffffff"
           },
           {
-            "position": 1.0,
+            "position": 1,
             "color": "#cccccc"
           }
         ],
@@ -53,26 +53,19 @@
         "strokeColorHex": "#ffffff",
         "strokeOpacity": 70,
         "strokeDashArray": [],
-        "strokeDashOffset": 0,
-        "strokeFillType": "solid",
-        "strokeGradientType": "linear",
-        "strokeGradientAngle": 0,
-        "strokeGradientStops": []
+        "strokeDashOffset": 0
       },
       "shadowGlowConfig": {
         "shadowEnable": 1,
         "shadowOffsetX": 3,
         "shadowOffsetY": 3,
         "shadowBlur": 24,
-        "shadowSpread": 0,
         "shadowColorHex": "#000000",
         "shadowOpacity": 30,
         "glowEnable": 0,
         "glowColorHex": "#ffffff",
         "glowBlur": 15,
-        "glowSpread": 0,
-        "glowOpacity": 60,
-        "glowType": "outer"
+        "glowOpacity": 60
       }
     }
   ],
@@ -82,9 +75,7 @@
     "cornerRadiusTL": 28,
     "cornerRadiusTR": 28,
     "cornerRadiusBL": 28,
-    "cornerRadiusBR": 28,
-    "shapeType": "round",
-    "customShapeSvg": ""
+    "cornerRadiusBR": 28
   },
   "filmTearConfig": {
     "tearEnable": 0,
@@ -93,11 +84,7 @@
     "filmPerforationEnable": 0,
     "filmPerforationType": "round",
     "filmPerforationSize": 15,
-    "filmPerforationSpacing": 30,
-    "dustScratchEnable": 0,
-    "dustScratchIntensity": 20,
-    "yellowingEnable": 0,
-    "yellowingStrength": 15
+    "filmPerforationSpacing": 30
   },
   "lightEffect": {
     "vignetteEnable": 0,

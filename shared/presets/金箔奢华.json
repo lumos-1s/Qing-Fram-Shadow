@@ -29,12 +29,18 @@
         "gradientType": "linear",
         "gradientAngle": 0,
         "gradientStops": [
-          {"position": 0.0, "color": "#ffffff"},
-          {"position": 1.0, "color": "#cccccc"}
+          {
+            "position": 0,
+            "color": "#ffffff"
+          },
+          {
+            "position": 1,
+            "color": "#cccccc"
+          }
         ],
         "gradientOpacity": 100,
         "textureSrc": "",
-        "textureScale": 1.0,
+        "textureScale": 1,
         "textureOffsetX": 0,
         "textureOffsetY": 0,
         "textureOpacity": 100,
@@ -46,26 +52,19 @@
         "strokeColorHex": "#f5e7a3",
         "strokeOpacity": 100,
         "strokeDashArray": [],
-        "strokeDashOffset": 0,
-        "strokeFillType": "solid",
-        "strokeGradientType": "linear",
-        "strokeGradientAngle": 0,
-        "strokeGradientStops": []
+        "strokeDashOffset": 0
       },
       "shadowGlowConfig": {
         "shadowEnable": 0,
         "shadowOffsetX": 3,
         "shadowOffsetY": 3,
         "shadowBlur": 10,
-        "shadowSpread": 0,
         "shadowColorHex": "#000000",
         "shadowOpacity": 40,
         "glowEnable": 1,
         "glowColorHex": "#f5e7a3",
         "glowBlur": 45,
-        "glowSpread": 0,
-        "glowOpacity": 40,
-        "glowType": "outer"
+        "glowOpacity": 40
       }
     },
     {
@@ -81,13 +80,22 @@
         "gradientType": "linear",
         "gradientAngle": 135,
         "gradientStops": [
-          {"position": 0.0, "color": "#b8860b"},
-          {"position": 0.5, "color": "#f9e7a6"},
-          {"position": 1.0, "color": "#d4af37"}
+          {
+            "position": 0,
+            "color": "#b8860b"
+          },
+          {
+            "position": 0.5,
+            "color": "#f9e7a6"
+          },
+          {
+            "position": 1,
+            "color": "#d4af37"
+          }
         ],
         "gradientOpacity": 100,
         "textureSrc": "",
-        "textureScale": 1.0,
+        "textureScale": 1,
         "textureOffsetX": 0,
         "textureOffsetY": 0,
         "textureOpacity": 100,
@@ -99,26 +107,19 @@
         "strokeColorHex": "#ffffff",
         "strokeOpacity": 100,
         "strokeDashArray": [],
-        "strokeDashOffset": 0,
-        "strokeFillType": "solid",
-        "strokeGradientType": "linear",
-        "strokeGradientAngle": 0,
-        "strokeGradientStops": []
+        "strokeDashOffset": 0
       },
       "shadowGlowConfig": {
         "shadowEnable": 0,
         "shadowOffsetX": 3,
         "shadowOffsetY": 3,
         "shadowBlur": 10,
-        "shadowSpread": 0,
         "shadowColorHex": "#000000",
         "shadowOpacity": 40,
         "glowEnable": 0,
         "glowColorHex": "#ffffff",
         "glowBlur": 15,
-        "glowSpread": 0,
-        "glowOpacity": 60,
-        "glowType": "outer"
+        "glowOpacity": 60
       }
     }
   ],
@@ -128,9 +129,7 @@
     "cornerRadiusTL": 20,
     "cornerRadiusTR": 20,
     "cornerRadiusBL": 20,
-    "cornerRadiusBR": 20,
-    "shapeType": "rect",
-    "customShapeSvg": ""
+    "cornerRadiusBR": 20
   },
   "filmTearConfig": {
     "tearEnable": 0,
@@ -139,11 +138,7 @@
     "filmPerforationEnable": 0,
     "filmPerforationType": "round",
     "filmPerforationSize": 15,
-    "filmPerforationSpacing": 30,
-    "dustScratchEnable": 0,
-    "dustScratchIntensity": 20,
-    "yellowingEnable": 0,
-    "yellowingStrength": 15
+    "filmPerforationSpacing": 30
   },
   "lightEffect": {
     "vignetteEnable": 1,

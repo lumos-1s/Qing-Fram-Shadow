@@ -1303,17 +1303,22 @@ window.App = {
                 shadowGlowConfig: {
                     shadowEnable: 0, shadowOffsetX: 0, shadowOffsetY: 8, shadowBlur: 20,
                     shadowColorHex: '000000', shadowOpacity: 35,
-                    glowEnable: 0, glowColorHex: 'ffffff', glowBlur: 30, glowSpread: 0, glowOpacity: 60, glowType: 'center',
+                    // glowSpread / glowType 已删除：Canvas 2D 的 shadowBlur 没有 spread 概念，
+                    // 也没有内/外发光之分，这两个字段既无 UI 也无渲染读取，属死字段。
+                    glowEnable: 0, glowColorHex: 'ffffff', glowBlur: 30, glowOpacity: 60,
                 },
             }],
             cornerConfig: {
                 cornerLock: 0, cornerRadiusAll: 0, cornerRadiusTL: 0, cornerRadiusTR: 0,
-                cornerRadiusBL: 0, cornerRadiusBR: 0, shapeType: 'rounded', customShapeSvg: '',
+                // shapeType / customShapeSvg 已删除：引擎只认四个 cornerRadius*，
+                // 形状类型与自定义 SVG 从未被读取，也无 UI，属死字段。
+                cornerRadiusBL: 0, cornerRadiusBR: 0,
             },
             filmTearConfig: {
                 tearEnable: 0, tearStrength: 50, tearDensity: 8,
                 filmPerforationEnable: 0, filmPerforationType: 'square', filmPerforationSize: 20, filmPerforationSpacing: 20,
-                dustScratchEnable: 0, dustScratchIntensity: 0, yellowingEnable: 0, yellowingStrength: 0,
+                // dustScratch* / yellowing* 已删除：做旧（灰尘划痕 / 泛黄）没有实现，
+                // 引擎从未读取这四个字段，也无 UI，属死字段。
             },
             lightEffect: {
                 vignetteEnable: 0, vignetteStrength: 0, vignetteFeather: 50,

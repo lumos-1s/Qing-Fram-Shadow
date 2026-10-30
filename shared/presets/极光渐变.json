@@ -52,26 +52,19 @@
         "strokeColorHex": "#ffffff",
         "strokeOpacity": 100,
         "strokeDashArray": [],
-        "strokeDashOffset": 0,
-        "strokeFillType": "solid",
-        "strokeGradientType": "linear",
-        "strokeGradientAngle": 0,
-        "strokeGradientStops": []
+        "strokeDashOffset": 0
       },
       "shadowGlowConfig": {
         "shadowEnable": 0,
         "shadowOffsetX": 3,
         "shadowOffsetY": 3,
         "shadowBlur": 10,
-        "shadowSpread": 0,
         "shadowColorHex": "#000000",
         "shadowOpacity": 40,
         "glowEnable": 1,
         "glowColorHex": "#a855f7",
         "glowBlur": 50,
-        "glowSpread": 0,
-        "glowOpacity": 50,
-        "glowType": "outer"
+        "glowOpacity": 50
       }
     },
     {
@@ -114,26 +107,19 @@
         "strokeColorHex": "#ffffff",
         "strokeOpacity": 100,
         "strokeDashArray": [],
-        "strokeDashOffset": 0,
-        "strokeFillType": "solid",
-        "strokeGradientType": "linear",
-        "strokeGradientAngle": 0,
-        "strokeGradientStops": []
+        "strokeDashOffset": 0
       },
       "shadowGlowConfig": {
         "shadowEnable": 0,
         "shadowOffsetX": 3,
         "shadowOffsetY": 3,
         "shadowBlur": 10,
-        "shadowSpread": 0,
         "shadowColorHex": "#000000",
         "shadowOpacity": 40,
         "glowEnable": 0,
         "glowColorHex": "#ffffff",
         "glowBlur": 15,
-        "glowSpread": 0,
-        "glowOpacity": 60,
-        "glowType": "outer"
+        "glowOpacity": 60
       }
     }
   ],
@@ -143,9 +129,7 @@
     "cornerRadiusTL": 30,
     "cornerRadiusTR": 30,
     "cornerRadiusBL": 30,
-    "cornerRadiusBR": 30,
-    "shapeType": "rect",
-    "customShapeSvg": ""
+    "cornerRadiusBR": 30
   },
   "filmTearConfig": {
     "tearEnable": 0,
@@ -154,11 +138,7 @@
     "filmPerforationEnable": 0,
     "filmPerforationType": "round",
     "filmPerforationSize": 15,
-    "filmPerforationSpacing": 30,
-    "dustScratchEnable": 0,
-    "dustScratchIntensity": 20,
-    "yellowingEnable": 0,
-    "yellowingStrength": 15
+    "filmPerforationSpacing": 30
   },
   "lightEffect": {
     "vignetteEnable": 1,
