@@ -151,25 +151,48 @@ window.App = Object.assign(window.App || {}, {
             const raw = localStorage.getItem(this._draftKey);
             if (raw) draft = JSON.parse(raw);
         } catch (e) { return; }
+        if (this._restoringDraft) return; // 连点保护:恢复是异步的,重复进入会并发重建 images
         if (!draft || !Array.isArray(draft.images) || !draft.images.length) return;
         if (this.images && this.images.length) return; // 已有手动会话则不覆盖
-        // 草稿里的 qfasset: 引用还原成 data:,老版本草稿没有引用时原样返回
-        if (window.qingframe && typeof window.qingframe.hydrateDraft === 'function') {
-            try {
-                const hr = await window.qingframe.hydrateDraft(draft);
-                if (hr && hr.ok && hr.draft) draft = hr.draft;
-            } catch (e) { /* 附件缺失时继续用剩余数据恢复 */ }
-        }
+        this._restoringDraft = true;
+        const restoreBtn = document.getElementById('btnRestoreDraft');
+        const restoreLabel = restoreBtn ? restoreBtn.textContent : '';
+        if (restoreBtn) { restoreBtn.disabled = true; restoreBtn.textContent = '恢复中…'; }
+        // 进度条:1 步读附件 + N 张照片。大图会话每张都要 EXIF + 解码 + 可能的方向重绘,
+        // 全程静默的话按钮点了像坏了,所以按张数给反馈。
+        const metas = (draft.images || []).filter(m => m && m.path);
+        const total = metas.length + 1;
+        // 让出一个宏任务,让进度条有机会重绘(解码/方向重绘是同步的,不让出会跳帧)。
+        // 只在窗口可见时让出:隐藏窗口下 rAF / timer 会被节流到约 1 次/秒,
+        // 每张都等会把恢复拖慢几十倍(实测 3 张从 0.2s 变成 3s)。
+        const yieldPaint = () => new Promise(r => {
+            if (document.visibilityState && document.visibilityState !== 'visible') { r(); return; }
+            setTimeout(r, 0);
+        });
         try {
+            this.showImportProgress(total, '正在恢复');
+            this.setImportProgress(0, total, '读取草稿');
+            // 草稿里的 qfasset: 引用还原成 data:,老版本草稿没有引用时原样返回
+            if (window.qingframe && typeof window.qingframe.hydrateDraft === 'function') {
+                try {
+                    const hr = await window.qingframe.hydrateDraft(draft);
+                    if (hr && hr.ok && hr.draft) draft = hr.draft;
+                } catch (e) { /* 附件缺失时继续用剩余数据恢复 */ }
+            }
+            this.setImportProgress(1, total, null);
+            await yieldPaint();
             const tplByPath = new Map();
             (draft.imageTemplates || []).forEach(entry => { if (entry && entry.path) tplByPath.set(entry.path, entry.tpl); });
             const restored = [];
-            for (const meta of draft.images) {
-                if (!meta.path) continue;
+            for (let i = 0; i < metas.length; i++) {
+                const meta = metas[i];
                 const im = await this.imageFromMeta(meta, tplByPath.get(meta.path));
                 if (im) restored.push(im);
+                this.setImportProgress(i + 2, total, meta.name || String(meta.path).split(/[\\/]/).pop());
+                // 让出一帧:解码/方向重绘是同步的,不插空档进度条不会重绘
+                await yieldPaint();
             }
-            if (!restored.length) return;
+            if (!restored.length) { this.finishImportProgress('没有可恢复的照片'); return; }
             this.images = restored;
             this.selectedIdx = [];
             this.batchSel = [];
@@ -187,8 +210,16 @@ window.App = Object.assign(window.App || {}, {
             const btn = document.getElementById('btnRestoreDraft');
             if (btn) btn.style.display = 'none';
             this.scheduleDraft();
+            this.finishImportProgress('恢复完成');
             this.setStatus('已恢复上次会话草稿（' + restored.length + ' 张照片）');
-        } catch (e) { /* 恢复失败不阻塞启动 */ }
+        } catch (e) {
+            this.finishImportProgress('恢复未完成');
+            /* 恢复失败不阻塞启动 */
+        } finally {
+            this._restoringDraft = false;
+            const btn = document.getElementById('btnRestoreDraft');
+            if (btn) { btn.disabled = false; btn.textContent = restoreLabel || '继续上次会话'; }
+        }
     },
 
     // 按草稿元数据重新构建一张照片对象(含每图模板还原)

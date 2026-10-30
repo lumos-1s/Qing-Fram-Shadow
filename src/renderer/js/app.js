@@ -2111,12 +2111,14 @@ window.App = {
         }
     },
 
-    // 导入进度条:total>0 显示;set 更新百分比/文案;finish 置满后淡出
-    showImportProgress(total) {
+    // 导入进度条:total>0 显示;set 更新百分比/文案;finish 置满后淡出。
+    // verb 让「继续上次会话」复用同一组件(默认是"正在导入",恢复时传"正在恢复")。
+    showImportProgress(total, verb) {
         const prog = this.dom.importProgress;
         if (!prog) return;
         this._importTotal = total;
         this._importDone = 0;
+        this._importVerb = verb || '正在导入';
         prog.style.display = 'flex';
         this.setImportProgress(0, total, null);
     },
@@ -2125,13 +2127,15 @@ window.App = {
         if (!prog) return;
         const pct = Math.max(0, Math.min(100, Math.round(done / Math.max(1, total || 1) * 100)));
         if (this.dom.importProgressFill) this.dom.importProgressFill.style.width = pct + '%';
-        if (this.dom.importProgressText) this.dom.importProgressText.textContent = `正在导入 ${done}/${total}${name ? ' · ' + name : ''}`;
+        if (this.dom.importProgressText) {
+            this.dom.importProgressText.textContent = `${this._importVerb || '正在导入'} ${done}/${total}${name ? ' · ' + name : ''}`;
+        }
     },
-    finishImportProgress() {
+    finishImportProgress(doneText) {
         const prog = this.dom.importProgress;
         if (!prog) return;
         if (this.dom.importProgressFill) this.dom.importProgressFill.style.width = '100%';
-        if (this.dom.importProgressText) this.dom.importProgressText.textContent = '导入完成';
+        if (this.dom.importProgressText) this.dom.importProgressText.textContent = doneText || '导入完成';
         setTimeout(() => { prog.style.display = 'none'; }, 420);
     },
 
