@@ -604,6 +604,86 @@ ipcMain.handle('open-wall-covers-dir', async () => {
         return err ? { ok: false, message: err, path: dir } : { ok: true, path: dir };
     } catch (e) { return { ok: false, message: e && e.message }; }
 });
+
+// 点卡片换封面：弹选图 → 自动按预设名落盘。
+// 老流程要用户自己在文件夹里新建「预设名.jpg」，中文名 + 括号 + 空格，几乎没人能一次对上；
+// 现在文件名由预设名直接给出，用户只需要选图。
+const WALL_COVER_EXT = ['.webp', '.jpg', '.jpeg', '.png'];
+const WALL_COVER_MAX_BYTES = 40 * 1024 * 1024;
+// 只挡路径分隔符与控制字符，中文/空格/括号原样保留 —— 这个名字要和 list-wall-covers 的键一致。
+// 用 \p{Cc}（控制字符类）而不是 \x00-\x1f 字面量：后者会触发 no-control-regex。
+const wallCoverBase = (name) => String(name || '').replace(/[\\/:*?"<>|\p{Cc}]/gu, '').trim().slice(0, 80);
+
+// 删掉一张封面文件。封面可能正被渲染进程显示（Chromium 还攥着句柄），
+// unlink 会 EPERM；这时退一步改成「改名藏起来」——list-wall-covers 只认图片扩展名，
+// 改名后这张图在应用里就等于没了，不耽误用户「恢复默认」。
+const removeWallCoverFile = async (full) => {
+    try { await fs.promises.unlink(full); return true; }
+    catch (_) {
+        if (full.endsWith('.off')) return false;   // 已经是藏起来的残骸，别再叠后缀
+        try { await fs.promises.rename(full, full + '.off'); return true; } catch (_) { return false; }
+    }
+};
+
+ipcMain.handle('pick-wall-cover', async (e, name, filePath) => {
+    if (!isTrustedFrame(e)) return BLOCKED;
+    const base = wallCoverBase(name);
+    if (!base) return { ok: false, message: '预设名无效' };
+    try {
+        let src = filePath ? String(filePath) : '';
+        if (!src) {
+            const win = BrowserWindow.fromWebContents(e.sender);
+            const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+                title: '给「' + base + '」选一张封面',
+                filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+                properties: ['openFile']
+            });
+            if (canceled || !filePaths.length) return { ok: false, canceled: true };
+            src = filePaths[0];
+        }
+        const st = await fs.promises.stat(src);
+        if (!st.isFile()) return { ok: false, message: '不是文件' };
+        if (st.size > WALL_COVER_MAX_BYTES) return { ok: false, message: '图片超过 40MB，换一张小点的' };
+        // 扩展名可以骗人：真能解码才算图片，否则墙上一格永远空白
+        if (nativeImage.createFromPath(src).isEmpty()) return { ok: false, message: '这张图读不出来，换一张试试' };
+        const ext = path.extname(src).toLowerCase();
+        const dir = wallCoversDir();
+        await fs.promises.mkdir(dir, { recursive: true });
+        // 先删同名旧封面（含改名藏起来的 .off 残留）：一个预设只留一张，
+        // 否则两张都叫「圆角卡片」，list-wall-covers 的键会互相覆盖，用户看到哪张全凭 readdir 顺序。
+        // 用 startsWith(base + '.') 而不是比对 basename：「圆角卡片」不会误伤「圆角卡片（浅）」。
+        const olds = await fs.promises.readdir(dir).catch(() => []);
+        for (const n of olds) {
+            if (!n.startsWith(base + '.')) continue;
+            await removeWallCoverFile(path.join(dir, n));
+        }
+        const dest = path.join(dir, base + ext);
+        await fs.promises.copyFile(src, dest);
+        allowImagePath(dest);
+        return { ok: true, path: dest, name: base };
+    } catch (err) { return { ok: false, message: err && err.message }; }
+});
+
+ipcMain.handle('clear-wall-cover', async (e, name) => {
+    if (!isTrustedFrame(e)) return BLOCKED;
+    const base = wallCoverBase(name);
+    if (!base) return { ok: false, message: '预设名无效' };
+    try {
+        const dir = wallCoversDir();
+        let removed = 0;
+        const names = await fs.promises.readdir(dir).catch(() => []);
+        for (const n of names) {
+            // 先只认图片；`.off` 是改名藏起来的旧封面，也一并清掉
+            const oe = path.extname(n).toLowerCase();
+            const isPic = WALL_COVER_EXT.includes(oe);
+            const isHidden = n.endsWith('.off');
+            if (!isPic && !isHidden) continue;
+            if (!n.startsWith(base + '.')) continue;
+            if (await removeWallCoverFile(path.join(dir, n))) { if (isPic) removed++; }
+        }
+        return { ok: true, removed };
+    } catch (err) { return { ok: false, message: err && err.message }; }
+});
 // 导出完成后在资源管理器中显示文件/目录(不再只显示一串路径文本)
 ipcMain.handle('show-item-in-folder', (_e, p) => {
     if (!isTrustedFrame(_e)) return BLOCKED;

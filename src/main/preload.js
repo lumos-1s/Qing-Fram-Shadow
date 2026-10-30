@@ -67,6 +67,8 @@ contextBridge.exposeInMainWorld('qingframe', {
     openDataDir: () => ipcRenderer.invoke('open-data-dir'),
     listWallCovers: () => ipcRenderer.invoke('list-wall-covers'),
     openWallCoversDir: () => ipcRenderer.invoke('open-wall-covers-dir'),
+    pickWallCover: (name, filePath) => ipcRenderer.invoke('pick-wall-cover', name, filePath),
+    clearWallCover: (name) => ipcRenderer.invoke('clear-wall-cover', name),
     copyText: (text) => ipcRenderer.invoke('copy-text', text),
     copyImage: (dataUrl) => ipcRenderer.invoke('copy-image', dataUrl),
     saveDiagnosticsFile: (text) => ipcRenderer.invoke('save-diagnostics', text),

@@ -31,7 +31,9 @@ contextBridge.exposeInMainWorld('qingframe', {
     loadAcrTables: () => ipcRenderer.invoke('load-acr-tables'),
     openStickerImage: () => ipcRenderer.invoke('open-sticker-image'),
     listWallCovers: () => ipcRenderer.invoke('list-wall-covers'),
-    openWallCoversDir: () => ipcRenderer.invoke('open-wall-covers-dir')
+    openWallCoversDir: () => ipcRenderer.invoke('open-wall-covers-dir'),
+    pickWallCover: (name, filePath) => ipcRenderer.invoke('pick-wall-cover', name, filePath),
+    clearWallCover: (name) => ipcRenderer.invoke('clear-wall-cover', name)
 });
 
 // 测试标记：page 主世界可读。app.js 据此跳过「启动即开预设墙」——

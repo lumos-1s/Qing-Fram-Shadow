@@ -58,37 +58,11 @@ window.App = Object.assign(window.App || {}, {
         if (!el.overlay) return;
 
         if (el.skip) el.skip.addEventListener('click', () => this.closePresetWall(true));
-        // 换封面：打开 userData/wall-covers，放好图回到窗口时自动刷新（focus 监听在下面）
+        // 换封面：一键进入"封面编辑模式"——所有卡片的「换封面」按钮直接摆出来，
+        // 点任意卡片选图即可，不用记文件名，也不用靠悬停去猜入口。
+        // 想批量替换整个文件夹的仍走右键菜单里的「打开封面文件夹」。
         const coversBtn = $('pwCovers');
-        if (coversBtn) coversBtn.addEventListener('click', async () => {
-            const q = window.qingframe || {};
-            const toast = window.__showErrToast;
-            const say = (msg, bad) => {
-                if (typeof this.setStatus === 'function') this.setStatus(msg);
-                if (typeof toast === 'function') toast(msg, !!bad);
-            };
-            // 主进程可能是旧代码（只重载了渲染进程）：preload 有这个方法、主进程却没注册 handler，
-            // 直接 invoke 会抛 "No handler registered"，以前会糊一个红色异常给用户。
-            if (typeof q.openWallCoversDir !== 'function') {
-                say('换封面需要完全退出并重新启动应用（主进程还是旧版本）', true);
-                return;
-            }
-            let r = null;
-            try {
-                r = await q.openWallCoversDir();
-            } catch (e) {
-                // 优雅降级：老主进程没有这个 IPC → 退回打开数据目录，并说清下一步
-                if (typeof q.openDataDir === 'function') { try { await q.openDataDir(); } catch (_) { /* 忽略 */ } }
-                say('主进程还是旧版本：已打开数据目录，在里面新建 wall-covers 文件夹放封面；完全重启应用后「换封面」可一键直达', false);
-                return;
-            }
-            if (r && r.ok) {
-                try { localStorage.setItem('qfs_wall_covers_on', '1'); } catch (_) { /* 忽略 */ }
-                say('把图片放进封面文件夹，文件名用预设名（如「圆角卡片.webp」）；关掉文件夹回到窗口即自动刷新', false);
-            } else if (r && r.message) {
-                say('打不开封面目录：' + r.message, true);
-            }
-        });
+        if (coversBtn) coversBtn.addEventListener('click', () => this.toggleWallCoverMode());
         if (el.back) el.back.addEventListener('click', () => this.openPresetWall());
         // 无限 / 有限 切换：一个委托监听，按钮状态由 syncWallModeUI 统一回写
         if (el.mode) {
@@ -120,6 +94,16 @@ window.App = Object.assign(window.App || {}, {
         el.grid.addEventListener('keydown', (e) => {
             const dir = { ArrowRight: [0, 1], ArrowLeft: [0, -1], ArrowUp: [-1, 0], ArrowDown: [1, 0] }[e.key];
             if (dir) { e.preventDefault(); this.moveWallSelection(dir[0], dir[1]); return; }
+            // C：给当前焦点卡片换封面（鼠标走卡片右上角按钮，键盘走这里）
+            if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                const t = e.target instanceof Element ? e.target.closest('.pw-tile') : null;
+                if (!t) return;
+                e.preventDefault();
+                this.pickWallCoverFor(t);
+                return;
+            }
+            // Esc：退出封面编辑模式
+            if (e.key === 'Escape' && this._coverMode) { e.preventDefault(); this.toggleWallCoverMode(false); return; }
             if (e.key !== 'Enter' && e.key !== ' ') return;
             const tile = e.target.closest('.pw-tile');
             if (!tile) return;
@@ -204,7 +188,11 @@ window.App = Object.assign(window.App || {}, {
                 this._wallSwallowClick = true;
                 const hit = document.elementFromPoint(e.clientX, e.clientY);
                 const tile = (hit && hit.closest) ? hit.closest('.pw-tile') : null;
-                if (tile) this.enterEditorFromWall(tile.dataset.idx);
+                if (tile) {
+                    // 卡片右上角的「换封面」按钮命中就换封面；封面模式下整张卡都算入口
+                    if (hit.closest('.pw-tile-coverbtn') || this._coverMode) this.pickWallCoverFor(tile);
+                    else this.enterEditorFromWall(tile.dataset.idx);
+                }
                 return;
             }
             this._wallSwallowClick = false;
@@ -223,6 +211,46 @@ window.App = Object.assign(window.App || {}, {
         window.addEventListener('pointerup', endOutside);
         window.addEventListener('pointercancel', endOutside);
         window.addEventListener('blur', () => this.stopWallMotion());
+        // 右键卡片：更换封面 / 恢复默认 / 打开封面文件夹。
+        // 不做原生菜单（主进程要额外一套），HTML 菜单够用，且和拼图槽位那套样式一致。
+        el.grid.addEventListener('contextmenu', (e) => {
+            const tile = e.target instanceof Element ? e.target.closest('.pw-tile') : null;
+            if (!tile) return;
+            e.preventDefault();
+            this.openWallCoverMenu(tile, e.clientX, e.clientY);
+        });
+        // 把图片从资源管理器拖到某张卡上 = 换这张的封面。
+        // 预设墙没有别的拖放行为（导入照片的拖放只绑在编辑区画布上），不会打架。
+        let dropTile = null;
+        const clearDrop = () => {
+            if (dropTile) { dropTile.classList.remove('pw-drop-target'); dropTile = null; }
+        };
+        el.grid.addEventListener('dragover', (e) => {
+            const tile = e.target instanceof Element ? e.target.closest('.pw-tile') : null;
+            if (!tile) return;
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+            if (dropTile !== tile) { clearDrop(); dropTile = tile; tile.classList.add('pw-drop-target'); }
+        });
+        el.grid.addEventListener('dragleave', (e) => {
+            const tile = e.target instanceof Element ? e.target.closest('.pw-tile') : null;
+            if (!tile || tile !== dropTile) return;
+            const to = e.relatedTarget;
+            if (to instanceof Node && tile.contains(to)) return;   // 在卡片内部移动，不算离开
+            clearDrop();
+        });
+        el.grid.addEventListener('drop', (e) => {
+            const tile = e.target instanceof Element ? e.target.closest('.pw-tile') : null;
+            if (!tile) return;
+            e.preventDefault();
+            clearDrop();
+            const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
+            if (!files.length) return;
+            const p = (window.qingframe && typeof window.qingframe.getPathForFile === 'function')
+                ? window.qingframe.getPathForFile(files[0]) : null;
+            if (!p) { this.setStatus('读不出这张图的路径，换用卡片右上角的「换封面」试试'); return; }
+            this.pickWallCoverFor(tile, p);
+        });
 
         // folia 式卡片倾斜：指针下的卡片朝指针方向 3D 倾斜，封面高光跟随指针
         // （机制同 folia exploreTilt；旋转角度并入 focusWall 的 transform，高光变量写 CSS）
@@ -819,6 +847,131 @@ window.App = Object.assign(window.App || {}, {
         }
     },
 
+    // ── 卡片级换封面 ──
+    // 封面编辑模式：顶部「换封面」一键进入，所有卡片右上角的按钮常显，
+    // 模式内点卡片任意位置都算「换这张的封面」（点击区更大，不用瞄准小按钮）。
+    // 再点一次（此时按钮是「完成」）或按 Esc 退出。
+    toggleWallCoverMode(on) {
+        const el = this._wallDom;
+        if (!el || !el.grid) return;
+        const next = typeof on === 'boolean' ? on : !this._coverMode;
+        this._coverMode = next;
+        el.grid.classList.toggle('pw-cover-mode', next);
+        const btn = document.getElementById('pwCovers');
+        if (btn) {
+            btn.textContent = next ? '完成' : '换封面';
+            btn.setAttribute('aria-pressed', next ? 'true' : 'false');
+            btn.title = next
+                ? '退出封面编辑'
+                : '给预设换封面：点这里，再点任意卡片选图（也可以直接把鼠标移到卡片上点「换封面」）';
+        }
+        if (el.sub) el.sub.textContent = next
+            ? '点任意卡片更换封面 · 右键可恢复默认 · 再点一次「完成」退出'
+            : this.wallSubText();
+        // 进模式时强制扫一次：按钮描金依赖"这预设有没有自定义封面"，用户可能刚在文件管理器里放过图
+        if (next) this.refreshWallCovers(true);
+        if (!next && typeof this.closeCtx === 'function') this.closeCtx();
+    },
+
+    // 从卡片取预设名：卡片只带 index，名字从 PRESET_WALL.items 查，
+    // 这样 4 份拷贝指向同一预设时行为一致（也避免被 ellipsis 显示的文本骗到）。
+    wallTileName(tile) {
+        const idx = String((tile && tile.dataset ? tile.dataset.idx : '') || '');
+        const data = window.PRESET_WALL;
+        if (!idx || !data || !Array.isArray(data.items)) return '';
+        // dataset.idx 存的是 item.i 而不是数组下标；当前两者恰好一致，但别依赖生成器的这个巧合
+        const item = data.items.find((it) => it && String(it.i) === idx);
+        return item && item.name ? String(item.name) : '';
+    },
+
+    // 右键/按钮共用的菜单：更换、恢复默认（仅当有自定义封面）、打开文件夹
+    openWallCoverMenu(tile, x, y) {
+        const name = this.wallTileName(tile);
+        if (!name || typeof this.openCtx !== 'function') return;
+        const has = !!(this._wallCovers && this._wallCovers[name]);
+        this.openCtx(x, y, [
+            ['更换封面…', () => this.pickWallCoverFor(tile)],
+            has ? ['恢复默认封面', () => this.clearWallCoverFor(tile)] : null,
+            null,
+            ['打开封面文件夹', () => this.openWallCoversFolder(false)]
+        ]);
+    },
+
+    // 选图 → 主进程按预设名落到 userData/wall-covers → 立刻刷新墙上的 4 份拷贝。
+    // filePath 只给测试/未来拖放用；UI 里不传，由主进程弹选图框。
+    async pickWallCoverFor(tile, filePath) {
+        const name = this.wallTileName(tile);
+        if (!name) return;
+        const q = window.qingframe || {};
+        if (typeof q.pickWallCover !== 'function') {
+            this.setStatus('换封面需要完全退出并重启应用（主进程还是旧版本）');
+            return;
+        }
+        let r = null;
+        try { r = await q.pickWallCover(name, filePath); }
+        catch (e) { r = { ok: false, message: (e && e.message) || '调用失败' }; }
+        if (r && r.canceled) return;   // 用户自己取消，不打扰
+        if (!r || !r.ok) {
+            this.setStatus('换封面失败：' + ((r && r.message) || '未知原因'));
+            return;
+        }
+        // 记住"用过换封面"，下次开墙才会自动扫描自定义封面
+        try { localStorage.setItem('qfs_wall_covers_on', '1'); } catch (_) { /* 忽略 */ }
+        this._wallCovers = Object.assign({}, this._wallCovers, { [name]: r.path });
+        await this.refreshWallCovers(true);
+        this.setStatus('已更换「' + name + '」的封面 · 右键卡片可恢复默认');
+    },
+
+    async clearWallCoverFor(tile) {
+        const name = this.wallTileName(tile);
+        if (!name) return;
+        const q = window.qingframe || {};
+        if (typeof q.clearWallCover !== 'function') {
+            this.setStatus('恢复默认封面需要完全退出并重启应用（主进程还是旧版本）');
+            return;
+        }
+        let r = null;
+        try { r = await q.clearWallCover(name); }
+        catch (e) { r = { ok: false, message: (e && e.message) || '调用失败' }; }
+        if (!r || !r.ok) {
+            this.setStatus('恢复默认封面失败：' + ((r && r.message) || '未知原因'));
+            return;
+        }
+        await this.refreshWallCovers(true);
+        this.setStatus(r.removed ? ('已恢复「' + name + '」的默认封面') : ('「' + name + '」用的本来就是默认封面'));
+    },
+
+    // 批量用法（也兼容旧版主进程）：打开封面文件夹让用户自己放图
+    async openWallCoversFolder(showHint) {
+        const q = window.qingframe || {};
+        const toast = window.__showErrToast;
+        const say = (msg, bad) => {
+            if (typeof this.setStatus === 'function') this.setStatus(msg);
+            if (typeof toast === 'function') toast(msg, !!bad);
+        };
+        // 主进程可能是旧代码（只重载了渲染进程）：preload 有这个方法、主进程却没注册 handler，
+        // 直接 invoke 会抛 "No handler registered"，以前会糊一个红色异常给用户。
+        if (typeof q.openWallCoversDir !== 'function') {
+            say('换封面需要完全退出并重新启动应用（主进程还是旧版本）', true);
+            return;
+        }
+        let r = null;
+        try {
+            r = await q.openWallCoversDir();
+        } catch (e) {
+            // 优雅降级：老主进程没有这个 IPC → 退回打开数据目录，并说清下一步
+            if (typeof q.openDataDir === 'function') { try { await q.openDataDir(); } catch (_) { /* 忽略 */ } }
+            say('主进程还是旧版本：已打开数据目录，在里面新建 wall-covers 文件夹放封面；完全重启应用后「换封面」可一键直达', false);
+            return;
+        }
+        if (r && r.ok) {
+            try { localStorage.setItem('qfs_wall_covers_on', '1'); } catch (_) { /* 忽略 */ }
+            if (showHint) say('已打开封面文件夹（批量替换用）；只想换一张的话，把鼠标移到卡片上点右上角「换封面」，不用改文件名', false);
+        } else if (r && r.message) {
+            say('打不开封面目录：' + r.message, true);
+        }
+    },
+
     // 用户自备封面：userData/wall-covers/<预设名>.webp|jpg|png
     // 每次开墙扫一次（只是 readdir + 360 次 src 比对），删掉文件就自动回落内置封面。
     // force=true 时无视「用户用过换封面」的标记（用例用）。
@@ -834,6 +987,7 @@ window.App = Object.assign(window.App || {}, {
         // 同名文件可能被用户直接替换:版本号变化会让 <img src> 换 URL，绕开旧缓存。
         // 用时间戳而不是会话内自增，避免重启后再次生成相同 URL 又命中磁盘缓存。
         this._coverVersion = Math.max(Date.now(), (this._coverVersion || 0) + 1);
+        this._wallCovers = covers;   // 供右键菜单判断"能否恢复默认"
         let applied = 0;
         for (const tile of el.grid.querySelectorAll('.pw-tile')) {
             const img = tile.querySelector('.pw-tile-cover img');
@@ -841,6 +995,9 @@ window.App = Object.assign(window.App || {}, {
             const nameEl = tile.querySelector('.pw-tile-name');
             const name = nameEl ? nameEl.textContent : '';
             const custom = covers[name];
+            // 有自定义封面时给卡片打标：右上角按钮换成金色，一眼看出哪些是自己换过的
+            if (custom) tile.dataset.customCover = '1';
+            else delete tile.dataset.customCover;
             const want = custom && typeof this.coverUrl === 'function' ? this.coverUrl(custom) : (tile.dataset.cover || '');
             if (!want || img.getAttribute('src') === want) continue;
             img.src = want;
@@ -912,6 +1069,16 @@ window.App = Object.assign(window.App || {}, {
             tag.className = 'pw-tile-tag';
             tag.textContent = item.tag;
             inner.appendChild(tag);
+            // 换封面：悬停/聚焦时右上角显形，点了直接弹选图并按预设名自动落盘。
+            // tabIndex=-1：tile 本身已是 tab 焦点，360 张卡再各加一个焦点会让人按 Tab 按到崩；
+            // 键盘用户用卡片上的 C 键（见 grid 的 keydown）。
+            const coverBtn = document.createElement('button');
+            coverBtn.type = 'button';
+            coverBtn.className = 'pw-tile-coverbtn';
+            coverBtn.tabIndex = -1;
+            coverBtn.textContent = '换封面';
+            coverBtn.title = '给「' + item.name + '」换一张封面图（不用手动改名）';
+            inner.appendChild(coverBtn);
             tile.appendChild(inner);
             tile.__inner = inner;
             return tile;
@@ -959,6 +1126,9 @@ window.App = Object.assign(window.App || {}, {
         // 墙整体淡入（卡片自身不做动画，transform 由 JS 接管）；降级动效时直接出现
         if (!this.wallReducedMotion()) wall.style.animation = 'pwWallIn .55s ease-out both';
         if (el.sub) el.sub.textContent = this.wallSubText();
+        // 重建后每个 tile 的 img 又回到内置封面：把用户自备的封面重新贴回来，
+        // 否则「无限/有限」切一下，换过的封面就变回原样（要等下次开墙才回来）。
+        this.refreshWallCovers();
     },
 
     // 方向键在磁贴墙中移动选中卡片：上下左右 ±1（周期内循环），选中卡片自动滚到视口中心
@@ -1099,6 +1269,8 @@ window.App = Object.assign(window.App || {}, {
         const el = this._wallDom;
         if (!el || !el.overlay) return;
         this._wallActive = false;
+        // 下次开墙不该还停在"封面编辑模式"：按钮文案与副标题都要复原
+        if (this._coverMode) this.toggleWallCoverMode(false);
         el.overlay.hidden = true;
         // 关墙时惯性可能还在跑，留着会在下次打开时突然自己滑一下
         this.stopWallMotion();
