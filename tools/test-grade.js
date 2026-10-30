@@ -729,8 +729,13 @@ async function main() {
             return ${sampleQuads};
         })()`);
         const r = mixSat.red;
-        check(Math.abs(r[0] - r[1]) <= 6 && Math.abs(r[1] - r[2]) <= 6 && mixSat.green[1] > 200,
-            '混色器红·饱和 -100：红色带变灰，其它带不动', JSON.stringify(mixSat));
+        // ACR 实测：混色器饱和 −100 不把颜色压成纯灰，红大约剩 3 成饱和
+        // （255,0,0 → 186,132,132）；其他带与灰不动。
+        check((r[0] - r[1]) <= 90 && (r[0] - r[1]) > 30
+              && mixSat.green[1] > 200 && mixSat.blue[2] > 200
+              && Math.abs(mixSat.gray[0] - 128) <= 4,
+            '混色器红·饱和 -100：红带大幅去饱和（红−绿 255→≤90），其它带与灰不动',
+            JSON.stringify(mixSat));
         const mixLum = await exec(`(async () => {
             const A = window.App;
             A.setGrade({ mix: { r: { h: 0, s: 0, l: -80 } } }, { full: true });
@@ -1124,11 +1129,11 @@ async function main() {
           && Math.abs(calPix.preset.gray[0] - 128) <= 3,
         '校准（真实预设那组）：中性灰恒不变（行和被归一，灰/白边不偏色）',
         calPix.preset.gray.join('/'));
-    // 灰守恒（行和=1）约束下，3×3 矩阵无法把纯红压成纯灰 —— LR 也做不到。
-    // 能保证的是「饱和度大幅下降」：红−蓝 从 255 收到 90 以内，且灰依旧不动。
-    check(calPix.desat.red[0] - calPix.desat.red[2] < 95
+    // 灰守恒（行和=1）约束下，纯红压不成纯灰 —— ACR 实测表也是这样
+    // （255,0,0 → 231,132,132，红−蓝 ≈ 99）。能保证的是「饱和度大幅下降」且灰不动。
+    check(calPix.desat.red[0] - calPix.desat.red[2] < 112
           && calPix.desat.red[0] - calPix.desat.red[2] > 40,
-        '校准·红饱和 −100：纯红显著去饱和（红−蓝 从 255 收到 40..95）',
+        '校准·红饱和 −100：纯红显著去饱和（红−蓝 从 255 收到 40..112，ACR 实测 ≈99）',
         calPix.desat.red.join('/'));
 
     // ── 27. 真实 LR 预设（001-滨田英明）的端到端数值 ──

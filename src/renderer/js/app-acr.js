@@ -16,7 +16,14 @@
     // 表区起点（与 Compositor 的 CameraRawTables.swift 布局一致）
     const WB_START = 0, EXPO_START = 81, WHITES_START = 102, BLACKS_START = 111,
         SAT_START = 120, VIB_START = 129, CON_START = 138, HI_START = 187,
-        SH_START = 236, MIXER_START = 285, CAL_START = 405, PARAM_START = 435;
+        SH_START = 236, MIXER_START = 285, CAL_START = 405, PARAM_START = 435,
+        GRAD_START = 455, GRAD_LUM_START = 743;
+
+    // 三维合成网格：Compositor 用 33（比 17 的表更细，合成本身几乎不增加模糊）。
+    // 实测绘：33³ × 24~30 级合成在 JS 里约 23~27ms，够交互式拖动。
+    const GRID = 33;
+    // 混色器 8 带的顺序必须与 Compositor 一致（red, orange, yellow, green, aqua, blue, purple, magenta）
+    const MIX_KEYS = ['r', 'o', 'y', 'g', 'a', 'b', 'p', 'm'];
 
     let T = null;        // { size, count, step, data, entries }
     let loading = null;  // Promise
@@ -94,7 +101,7 @@
     function whiteBalance(temp, tint) {
         const [row, down] = span(temp, -100, 25, 9);
         const [col, across] = span(tint, -100, 25, 9);
-        const b = row * 9 + col;
+        const b = WB_START + row * 9 + col;
         return [
             { off: b, w: (1 - down) * (1 - across) }, { off: b + 1, w: (1 - down) * across },
             { off: b + 9, w: down * (1 - across) }, { off: b + 10, w: down * across }
@@ -204,6 +211,201 @@
         return pts;
     }
 
+    // ── 三维合成：混色器 / 校准 / 饱和度 / 自然饱和度 / 颜色分级 ─────
+    // 这些档位是**跨通道**的（同一个滑块对红黄蓝的作用完全不同），灰轴对角线
+    // 提取不出来，必须整格合成。Compositor 正是把这些 stage 合成到 33³ 再查表。
+    const _blend = new Float32Array(17 * 17 * 17 * 3);
+    // 「不变」的那张表：颜色分级在饱和度落到 0 档时 Compositor 放的是 nil，
+    // 权重缺口必须补成恒等（否则权重和不为 1，绝对输出会被按缺口比例压暗 ——
+    // 实测整套预设会整整暗 4 倍）。
+    let IDENT = null;
+    function buildIdent() {
+        const size = T.size, cells = size * size * size;
+        const level = [];
+        for (let i = 0; i < size; i++) level.push(Math.round(i * 255 / (size - 1)));
+        const out = new Float32Array(cells * 3);
+        for (let cell = 0; cell < cells; cell++) {
+            out[cell * 3] = level[(cell / (size * size)) | 0];
+            out[cell * 3 + 1] = level[((cell / size) | 0) % size];
+            out[cell * 3 + 2] = level[cell % size];
+        }
+        return out;
+    }
+
+    // 把一个 stage（最多 8 张表 + 权重）混成一张 17³ 表。用 Float32 中间量，
+    // 免得每级都量化一次（8 级串下来会攒出可见误差）。
+    function blendInto(parts) {
+        const entries = T.entries, data = T.data;
+        if (!IDENT) IDENT = buildIdent();
+        _blend.fill(0);
+        let wsum = 0;
+        for (let k = 0; k < parts.length; k++) {
+            const p = parts[k];
+            if (!p || p.w === 0 || p.off < 0 || p.off >= T.count) continue;
+            const base = p.off * entries, w = p.w;
+            wsum += w;
+            for (let i = 0; i < entries; i++) _blend[i] += w * data[base + i];
+        }
+        const miss = 1 - wsum;
+        if (miss > 1e-6 || miss < -1e-6) {
+            for (let i = 0; i < entries; i++) _blend[i] += miss * IDENT[i];
+        }
+    }
+
+    // 把一组 stage 依次作用到 grid³ 网格上：每级一次三线性采样。
+    // 表存的是**绝对输出色**（level + 累计增量），所以合成就是 f_n(…f_1(c))。
+    function compose3d(partsList, grid) {
+        const n = grid * grid * grid;
+        const cur = new Float32Array(n * 3);
+        const lv = new Float32Array(grid);
+        for (let i = 0; i < grid; i++) lv[i] = i * 255 / (grid - 1);
+        let q = 0;
+        for (let bi = 0; bi < grid; bi++) {
+            for (let gi = 0; gi < grid; gi++) {
+                for (let ri = 0; ri < grid; ri++, q += 3) {
+                    cur[q] = lv[ri]; cur[q + 1] = lv[gi]; cur[q + 2] = lv[bi];
+                }
+            }
+        }
+        const SZ = T.size, S = SZ - 1, P2 = SZ * SZ, P3 = P2 * 3, R3 = SZ * 3;
+        for (let s = 0; s < partsList.length; s++) {
+            blendInto(partsList[s]);
+            let p3 = 0;
+            for (let i = 0; i < n; i++, p3 += 3) {
+                const x = cur[p3] * (S / 255), y = cur[p3 + 1] * (S / 255), z = cur[p3 + 2] * (S / 255);
+                let i0 = x | 0; if (i0 > S - 1) i0 = S - 1;
+                let j0 = y | 0; if (j0 > S - 1) j0 = S - 1;
+                let k0 = z | 0; if (k0 > S - 1) k0 = S - 1;
+                const fx = x - i0, fy = y - j0, fz = z - k0;
+                // 格子里 r 最慢、b 最快，每格 3 字节：r 邻 +P3、g 邻 +R3、b 邻 +3
+                const o = (i0 * P2 + j0 * SZ + k0) * 3;
+                const oi = o + P3, oj = o + R3, oij = oi + R3;
+                const ok = o + 3, oik = oi + 3, ojk = oj + 3, oijk = oij + 3;
+                const w0 = 1 - fx;
+                for (let ch = 0; ch < 3; ch++) {
+                    const v00 = _blend[o + ch] * w0 + _blend[oi + ch] * fx;
+                    const v10 = _blend[oj + ch] * w0 + _blend[oij + ch] * fx;
+                    const v01 = _blend[ok + ch] * w0 + _blend[oik + ch] * fx;
+                    const v11 = _blend[ojk + ch] * w0 + _blend[oijk + ch] * fx;
+                    const v0 = v00 + (v10 - v00) * fy, v1 = v01 + (v11 - v01) * fy;
+                    cur[p3 + ch] = v0 + (v1 - v0) * fz;
+                }
+            }
+        }
+        // RGBA：行字节数天然 4 对齐，上传纹理不用改 UNPACK_ALIGNMENT。
+        // 纹理是 grid 张 grid×grid 切片横排（宽 grid*grid、高 grid）：
+        // 纹素 (x=bi*grid+ri, y=gi)，所以这里要按**纹素序**落盘，不能直接用节点序。
+        const rgba = new Uint8Array(n * 4);
+        for (let gi = 0; gi < grid; gi++) {
+            for (let bi = 0; bi < grid; bi++) {
+                for (let ri = 0; ri < grid; ri++) {
+                    const s3 = (bi * grid * grid + gi * grid + ri) * 3;
+                    const d4 = (gi * grid * grid + bi * grid + ri) * 4;
+                    for (let ch = 0; ch < 3; ch++) {
+                        const v = Math.round(cur[s3 + ch]);
+                        rgba[d4 + ch] = v < 0 ? 0 : (v > 255 ? 255 : v);
+                    }
+                    rgba[d4 + 3] = 255;
+                }
+            }
+        }
+        return { grid, rgba };
+    }
+
+    // 校准：红/绿/蓝 各自的色相与饱和，顺序与 Swift 一致
+    function calStages(cal) {
+        const out = [];
+        const vals = [cal.rh, cal.rs, cal.gh, cal.gs, cal.bh, cal.bs];
+        for (let i = 0; i < 6; i++) {
+            const v = Number(vals[i]) || 0;
+            if (v) out.push(fifty(CAL_START + i * 5, v));
+        }
+        return out;
+    }
+
+    // 混色器：明亮度 → 饱和度 → 色相（Compositor 实测出「这个顺序合成才像 PS」）
+    function mixerStages(mix) {
+        const out = [];
+        const kinds = ['l', 's', 'h'];
+        for (let kind = 0; kind < 3; kind++) {
+            for (let c = 0; c < 8; c++) {
+                const band = mix[MIX_KEYS[c]];
+                const v = band ? (Number(band[kinds[kind]]) || 0) : 0;
+                if (v) out.push(fifty(MIXER_START + (kind * 8 + c) * 5, v));
+            }
+        }
+        return out;
+    }
+
+    // 颜色分级：先四个亮度滑块，再 全局 → 中间调 → 高光 → 阴影（Compositor 的顺序）
+    function gradingStages(cg) {
+        const out = [];
+        const zones = ['shadow', 'mid', 'high', 'global'];   // 亮度表下标 0..3
+        for (let i = 0; i < 4; i++) {
+            const z = cg[zones[i]] || {};
+            const l = Number(z.l) || 0;
+            if (l) out.push(fifty(GRAD_LUM_START + i * 5, l));
+        }
+        const bal = (Number(cg.balance) || 0) / 100;
+        const hiShare = Math.max(0, bal < 0 ? 1 + 1.4 * bal : 1 + 2 * bal);
+        const shShare = Math.max(0, bal < 0 ? 1 - 1.2 * bal : 1 - 1.4 * bal);
+        const bl = Number.isFinite(Number(cg.blending)) ? Number(cg.blending) : 50;
+        const [blendLow, blendUp] = betweenPts(bl, [0, 50, 100]);
+        // [轮下标, 我们的分区键, 平衡占比, 是否随 Blending 插值]
+        const wheels = [[3, 'global', 1, false], [2, 'mid', 1, false],
+            [1, 'high', hiShare, true], [0, 'shadow', shShare, true]];
+        for (const w of wheels) {
+            const wheel = w[0], z = cg[w[1]] || {}, s = (Number(z.s) || 0) * w[2];
+            if (!(s > 0)) continue;
+            const h = ((Number(z.h) || 0) % 360 + 360) % 360;
+            const pos = h / 30;
+            const first = Math.floor(pos) % 12, second = (first + 1) % 12;
+            const around = pos - Math.floor(pos);
+            const [level, up] = betweenPts(s, [0, 25, 50, 100]);
+            const parts = [];
+            const blendings = w[3] ? [[blendLow, 1 - blendUp], [blendLow + 1, blendUp]] : [[1, 1]];
+            for (let bi = 0; bi < blendings.length; bi++) {
+                const bIdx = blendings[bi][0], bW = blendings[bi][1];
+                const base = bIdx === 0 ? GRAD_START + wheel * 36
+                    : (bIdx === 1 ? GRAD_START + 72 + wheel * 36 : GRAD_START + 216 + wheel * 36);
+                const hues = [[first, 1 - around], [second, around]];
+                const sats = [[level, 1 - up], [level + 1, up]];
+                for (let hi2 = 0; hi2 < 2; hi2++) {
+                    for (let si = 0; si < 2; si++) {
+                        const sat = sats[si][0];
+                        if (sat === 0) continue;   // 没有「饱和 0」这张表，等于不变
+                        parts.push({ off: base + hues[hi2][0] * 3 + sat - 1, w: bW * hues[hi2][1] * sats[si][1] });
+                    }
+                }
+            }
+            if (parts.length) out.push(parts.slice(0, 8));
+        }
+        return out;
+    }
+
+    // ── 对外：颜色侧三维 LUT（校准 → 饱和度 → 自然饱和度 → 混色器 → 颜色分级）──
+    // 返回 { grid, rgba }；没有可测档位时返回 null（调用方退回原路径）。
+    let _lutKey = '', _lut = null, _lutSeq = 0;
+    function colorLut(p) {
+        if (!T || !p) return null;
+        const parts = [];
+        if (p.cal) parts.push.apply(parts, calStages(p.cal));
+        const sat = Number(p.sat) || 0;
+        if (sat) parts.push(plain(SAT_START, sat));
+        const vib = Number(p.vib) || 0;
+        if (vib) parts.push(plain(VIB_START, vib));
+        if (p.mix) parts.push.apply(parts, mixerStages(p.mix));
+        if (p.cg) parts.push.apply(parts, gradingStages(p.cg));
+        if (!parts.length) return null;
+        const key = parts.map((q) => q.map((x) => x.off + ':' + x.w.toFixed(4)).join(' ')).join('|');
+        if (key === _lutKey && _lut) return _lut;
+        const out = compose3d(parts, GRID);
+        out.token = ++_lutSeq;   // 纹理上传的变更凭据
+        _lut = out;
+        _lutKey = key;
+        return _lut;
+    }
+
     // 图片亮度测度（与 Swift 的 Brightness 一致）：最亮通道均值的线性光均值、
     // 最亮通道的对数平均、平均亮度，都编码回 sRGB 级（0..255）。
     function measureBrightness(src) {
@@ -237,7 +439,9 @@
     window.QfsAcr = {
         ensure,
         ready: () => !!T,
+        grid: GRID,
         toneStages,
+        colorLut,
         parametricDiag,
         measureBrightness,
         diag256: (stage) => T ? { r: toLut256(stage.r), g: toLut256(stage.g), b: toLut256(stage.b) } : null

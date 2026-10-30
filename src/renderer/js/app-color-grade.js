@@ -11,9 +11,18 @@
 (function () {
     const VS = 'attribute vec2 aP;varying vec2 vUV;void main(){vUV=aP*0.5+0.5;gl_Position=vec4(aP,0.0,1.0);}';
     const FS = [
+        // 三维 LUT 的切片纹理宽 33×33=1089，mediump 的小数精度（约 1/2048）不够
+        // 定位到 1/1089 的纹素中心，会出现整片偏色；有 highp 就用 highp。
+        '#ifdef GL_FRAGMENT_PRECISION_HIGH',
+        'precision highp float;',
+        '#else',
         'precision mediump float;',
+        '#endif',
         'varying vec2 vUV;',
         'uniform sampler2D uT;',
+        'uniform sampler2D uLut;',
+        'uniform float uLutOn;',
+        'uniform float uGrid;',
         'uniform float uVib;',
         'uniform float uCg[12];',
         'uniform float uCgBlend;',
@@ -48,10 +57,26 @@
         '  if(abs(lum)>0.0001) c*=1.0+lum*0.5*w;',
         '  return c;',
         '}',
+        // 三维 LUT：33 张切片横向排成 1089×33 的条带（WebGL1 没有 TEXTURE_3D）。
+        // 蓝当下标选切片、红在切片内横向、绿纵向，三线性里的两次双线性手工做。
+        // 采样点内缩半纹素（+0.5），这样 LINEAR 不会跨切片渗色。
+        'vec3 lutLookup(vec3 c){',
+        '  float g=uGrid;',
+        '  float z=clamp(c.b,0.0,1.0)*(g-1.0);',
+        '  float b0=floor(z);',
+        '  float fb=z-b0;',
+        '  b0=min(b0,g-2.0);',
+        '  float rx=(clamp(c.r,0.0,1.0)*(g-1.0)+0.5)/g;',
+        '  float gy=(clamp(c.g,0.0,1.0)*(g-1.0)+0.5)/g;',
+        '  vec3 s0=texture2D(uLut,vec2((b0+rx)/g,gy)).rgb;',
+        '  vec3 s1=texture2D(uLut,vec2((b0+1.0+rx)/g,gy)).rgb;',
+        '  return mix(s0,s1,fb);',
+        '}',
         'void main(){',
         // 镜头畸变：径向重采样（uDistort>0 拉直桶形、<0 拉直枕形）。
         // 必须在这里做而不是 Canvas2D —— 2D 逐像素重采样没有双线性插值，
         // 边缘会出现锯齿；GL 的 LINEAR 采样天然带插值。
+        // 几何在校色之前：Compositor 也是先 geometry 再上颜色表。
         '  vec2 uv=vUV;',
         '  if(abs(uDistort)>0.0001){',
         '    vec2 pp=(uv-0.5)*vec2(uAspect,1.0);',
@@ -60,32 +85,39 @@
         '    uv=clamp(0.5+pp/vec2(uAspect,1.0),vec2(0.0),vec2(1.0));',
         '  }',
         '  vec3 c=texture2D(uT,uv).rgb;',
-        '  vec3 hsv=rgb2hsv(c);',
-        '  float vib=uVib*(1.0-hsv.y);',
-        '  hsv.y=clamp(hsv.y*(1.0+vib*1.2),0.0,1.0);',
-        '  c=hsv2rgb(hsv);',
-        '  float y=dot(c,LUMA);',
-        '  float bal=uCgBalance*0.15;',
-        '  float lo=0.34+bal;',
-        '  float hi=0.66+bal;',
-        '  float soft=mix(0.035,0.22,uCgBlend);',
-        '  float wS=1.0-smoothstep(lo-soft,lo+soft,y);',
-        '  float wH=smoothstep(hi-soft,hi+soft,y);',
-        '  float wM=clamp(1.0-wS-wH,0.0,1.0);',
-        '  float ws=wS+wM+wH;',
-        '  if(ws>0.0001){wS/=ws;wM/=ws;wH/=ws;}',
-        '  c=applyZone(c,uCg[0],uCg[1],uCg[2],wS,y);',
-        '  c=applyZone(c,uCg[3],uCg[4],uCg[5],wM,y);',
-        '  c=applyZone(c,uCg[6],uCg[7],uCg[8],wH,y);',
-        '  c=applyZone(c,uCg[9],uCg[10],uCg[11],1.0,y);',
+        '  if(uLutOn>0.5){',
+        // 实测表路径：校准 / 饱和度 / 自然饱和度 / 混色器 / 颜色分级 全在这一张
+        // 三维表里（它们都是跨通道操作，逐通道 LUT 和手写公式都学不像）。
+        '    c=lutLookup(c);',
+        '  } else {',
+        '    vec3 hsv=rgb2hsv(c);',
+        '    float vib=uVib*(1.0-hsv.y);',
+        '    hsv.y=clamp(hsv.y*(1.0+vib*1.2),0.0,1.0);',
+        '    c=hsv2rgb(hsv);',
+        '    float y=dot(c,LUMA);',
+        '    float bal=uCgBalance*0.15;',
+        '    float lo=0.34+bal;',
+        '    float hi=0.66+bal;',
+        '    float soft=mix(0.035,0.22,uCgBlend);',
+        '    float wS=1.0-smoothstep(lo-soft,lo+soft,y);',
+        '    float wH=smoothstep(hi-soft,hi+soft,y);',
+        '    float wM=clamp(1.0-wS-wH,0.0,1.0);',
+        '    float ws=wS+wM+wH;',
+        '    if(ws>0.0001){wS/=ws;wM/=ws;wH/=ws;}',
+        '    c=applyZone(c,uCg[0],uCg[1],uCg[2],wS,y);',
+        '    c=applyZone(c,uCg[3],uCg[4],uCg[5],wM,y);',
+        '    c=applyZone(c,uCg[6],uCg[7],uCg[8],wH,y);',
+        '    c=applyZone(c,uCg[9],uCg[10],uCg[11],1.0,y);',
+        '  }',
         // 黑白混色器：按色相带加权决定「这个颜色转灰后有多亮」。
         // 灰/近灰不参与（没有色相可言），否则整片灰底会被某个带误伤。
         '  if(uBwOn>0.5){',
         '    float y0=dot(c,LUMA);',
-        '    float gate=smoothstep(0.0,0.08,hsv.y);',
+        '    vec3 bh=rgb2hsv(clamp(c,0.0,1.0));',
+        '    float gate=smoothstep(0.0,0.08,bh.y);',
         '    float wsum=0.0,adj=0.0;',
         '    for(int i=0;i<8;i++){',
-        '      float d=abs(hsv.x*360.0-uHc[i]);',
+        '      float d=abs(bh.x*360.0-uHc[i]);',
         '      d=min(d,360.0-d);',
         '      float w=clamp(1.0-d/uHw[i],0.0,1.0);',
         '      w=w*w*(3.0-2.0*w);',
@@ -102,6 +134,7 @@
     ].join('\n');
 
     let gl = null, glc = null, prog = null, uni = null, quad = null, tex = null;
+    let lutTex = null, lutKey = '';
 
     function initGL() {
         if (gl && prog) return true;
@@ -144,6 +177,15 @@
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
             gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+            // 三维 LUT 的条带纹理（33 张 33×33 切片横排），LINEAR 用于切片内插值
+            lutTex = gl.createTexture();
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, lutTex);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.activeTexture(gl.TEXTURE0);
             uni = {
                 cg: gl.getUniformLocation(prog, 'uCg[0]'),
                 blend: gl.getUniformLocation(prog, 'uCgBlend'),
@@ -154,12 +196,17 @@
                 hc: gl.getUniformLocation(prog, 'uHc[0]'),
                 hw: gl.getUniformLocation(prog, 'uHw[0]'),
                 aspect: gl.getUniformLocation(prog, 'uAspect'),
-                distort: gl.getUniformLocation(prog, 'uDistort')
+                distort: gl.getUniformLocation(prog, 'uDistort'),
+                lutOn: gl.getUniformLocation(prog, 'uLutOn'),
+                grid: gl.getUniformLocation(prog, 'uGrid'),
+                lut: gl.getUniformLocation(prog, 'uLut')
             };
             gl.uniform1i(gl.getUniformLocation(prog, 'uT'), 0);
+            gl.uniform1i(uni.lut, 1);
+            lutKey = '';
             return true;
         } catch (_) {
-            gl = null; prog = null; uni = null; tex = null;
+            gl = null; prog = null; uni = null; tex = null; lutTex = null;
             return false;
         }
     }
@@ -177,16 +224,37 @@
         return out;
     }
 
-    function passGL(src, p, w, h) {
+    function passGL(src, p, w, h, lut) {
         if (!initGL()) return null;
         try {
             if (glc.width !== w || glc.height !== h) { glc.width = w; glc.height = h; }
             gl.viewport(0, 0, w, h);
+            gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, tex);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
-            gl.uniform1f(uni.vib, (Number(p.vib) || 0) / 100);
+            // 实测三维表：校准 / 饱和度 / 自然饱和度 / 混色器 / 颜色分级 都在这里，
+            // 于是这几项的手写公式必须让位（否则会叠加两次）。
+            const lutOn = !!(lut && lut.rgba && lut.grid > 1);
+            gl.uniform1f(uni.lutOn, lutOn ? 1 : 0);
+            if (lutOn) {
+                const key = lut.grid + '#' + lut.rgba.length + '#' + lut.token;
+                if (key !== lutKey) {
+                    gl.activeTexture(gl.TEXTURE1);
+                    gl.bindTexture(gl.TEXTURE_2D, lutTex);
+                    // UNPACK_FLIP_Y 是上下文级别的：源图上传需要翻转（画布 y 向下、
+                    // 纹理 t 向上），但 LUT 条带一翻就把绿轴上下颠倒，必须临时关掉。
+                    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, lut.grid * lut.grid, lut.grid, 0,
+                        gl.RGBA, gl.UNSIGNED_BYTE, lut.rgba);
+                    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+                    gl.activeTexture(gl.TEXTURE0);
+                    lutKey = key;
+                }
+                gl.uniform1f(uni.grid, lut.grid);
+            }
+            gl.uniform1f(uni.vib, lutOn ? 0 : (Number(p.vib) || 0) / 100);
             const cg = p.cg || {};
-            gl.uniform1fv(uni.cg, new Float32Array(cgValues(p)));
+            gl.uniform1fv(uni.cg, new Float32Array(lutOn ? new Array(12).fill(0) : cgValues(p)));
             gl.uniform1f(uni.blend, Number.isFinite(Number(cg.blending)) ? Number(cg.blending) / 100 : 0.5);
             gl.uniform1f(uni.balance, (Number(cg.balance) || 0) / 100);
             const bw = p.bw || null;
@@ -331,8 +399,8 @@
     }
 
     window.QfsColor = {
-        pass(src, p, w, h) {
-            const out = passGL(src, p, w, h);
+        pass(src, p, w, h, lut) {
+            const out = passGL(src, p, w, h, lut);
             return out || pass2d(src, p, w, h);
         },
         available() { return true; },

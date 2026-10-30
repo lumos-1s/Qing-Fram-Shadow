@@ -399,9 +399,10 @@
     }
 
     // 按「校准/纹理/清晰度是否启用 + 烘焙分辨率」重建子节点（分辨率变了模糊半径要跟着变）
-    function syncChain(p, longPx) {
+    function syncChain(p, longPx, lutOn) {
         const f = ensureFilter();
-        const cal = calActive(p.cal);
+        // 校准已并入三维表时这里不再叠矩阵
+        const cal = calActive(p.cal) && !lutOn;
         const det = p.det || {};
         const clar = det.clar | 0, tex = det.tex | 0;
         // 注意别用全参数的 signature():对纯 cal 对象它算出的是常量串,
@@ -749,8 +750,10 @@
         _ctEl.b.setAttribute('tableValues', t.b.join(' '));
     }
 
-    function filterString(p, longPx) {
-        syncChain(p, longPx || 0);
+    // lutOn：跨通道那几档已并入 ACR 三维表时，这里就不要再叠一遍
+    // （校准矩阵 / CSS saturate），否则同一个滑块会生效两次。
+    function filterString(p, longPx, lutOn) {
+        syncChain(p, longPx || 0, !!lutOn);
         const parts = [];
         const sh = Number(p.sh) || 0, hi = Number(p.hi) || 0, tp = Number(p.temp) || 0;
         const tn = Number(p.tint) || 0;
@@ -759,6 +762,7 @@
         const dhz = ((p.det && p.det.dhz) || 0) / 100;
         const C = window.QfsCurve;
         const curved = !!(C && C.curveActive(p.curve));
+        const calOn = calActive(p.cal) && !lutOn;
         // 只要滤镜进链就写表（写表只有 256 次循环，可忽略）：
         // 否则只开校准/USM 时会残留上一次烘焙的表值。
         // 曝光也在这张表里（线性光乘 2^EV），不再用 brightness()。
@@ -766,7 +770,7 @@
         if (sh || hi || tp || tn || wht || blk || exp || gamOn || curved || dhz
             || (Number(p.con) || 0)
             || cbActive(p.cb) || gmActive(p.gm)
-            || calActive(p.cal) || detActive(p.det)) {
+            || calOn || detActive(p.det)) {
             writeTables(p);
             parts.push('url(#' + GRADE_FILTER_ID + ')');
         }
@@ -775,7 +779,7 @@
         const con = (Number(p.con) || 0) / 100;
         if (con && !acrCon) parts.push('contrast(' + (1 + con * 0.5).toFixed(4) + ')');
         const sat = (Number(p.sat) || 0) / 100;
-        if (sat) parts.push('saturate(' + (1 + sat).toFixed(4) + ')');
+        if (sat && !lutOn) parts.push('saturate(' + (1 + sat).toFixed(4) + ')');
         // 薄雾的反差/饱和部分（黑场已在 LUT 里）
         if (dhz > 0) {
             parts.push('contrast(' + (1 + 0.28 * dhz).toFixed(4) + ')',
@@ -801,9 +805,18 @@
     }
 
     // 单层烘焙：把 src 按 params 画成一张指定尺寸的画布（不含蒙版）。
+    //
+    // 跨通道的那几档（校准 / 饱和度 / 自然饱和度 / 混色器 / 颜色分级）走 ACR 实测
+    // 三维表：它们对红黄蓝的作用各不相同，逐通道 LUT 和手写公式都学不像 PS。
+    // 表/WebGL 任一不可用时整段退回旧路径（QfsMix + shader 里的 vib/cg），
+    // 功能不缺失，只是精度回到公式。
     function bakeOne(src, params, tw, th) {
         let drawSrc = src;
-        if (mixActive(params.mix) && window.QfsMix) {
+        let lut = (window.QfsAcr && window.QfsAcr.ready()) ? window.QfsAcr.colorLut(params) : null;
+        const useLut = !!lut && !!(window.QfsColor && window.QfsColor.usingGL());
+        if (!useLut) lut = null;
+        // 混色器已并进三维表，就不再需要前置的 GL 混色 pass
+        if (!useLut && mixActive(params.mix) && window.QfsMix) {
             drawSrc = window.QfsMix.pass(src, params.mix, tw, th) || src;
         }
         const c = document.createElement('canvas');
@@ -812,17 +825,16 @@
         if (!g) return null;
         g.imageSmoothingEnabled = true;
         g.imageSmoothingQuality = 'high';
-        const fs = filterString(params, Math.max(tw, th));
+        const fs = filterString(params, Math.max(tw, th), useLut);
         if (fs) g.filter = fs;
         g.drawImage(drawSrc, 0, 0, tw, th);
         if (fs) g.filter = 'none';
-        // 自然饱和度 / 颜色分级是「按像素自己的饱和度/亮度」选区，逐通道
-        // LUT 表达不了；放在基础调色和曲线之后做一次后置 pass（LR 的顺序
-        // 也是先基础/曲线、后颜色分级）。
-        // 镜头畸变也走这个后置 pass：它是几何重采样，Canvas2D 的 ctx.filter 做不到。
-        if ((Number(params.vib) || 0) || cgActive(params.cg) || bwActive(params.bw)
-            || lcActive(params.lc)) {
-            const out = window.QfsColor && window.QfsColor.pass(c, params, tw, th);
+        // 后置 pass 的顺序（对齐 Compositor）：先几何（畸变重采样），再上三维颜色表，
+        // 最后黑白（PS 的黑白混色器没有实测表，仍走公式）。
+        // 旧路径下 vib / cg 也在这里（按像素自己的饱和度/亮度选区，LUT 表达不了）。
+        if (useLut || bwActive(params.bw) || lcActive(params.lc)
+            || (!useLut && ((Number(params.vib) || 0) || cgActive(params.cg)))) {
+            const out = window.QfsColor && window.QfsColor.pass(c, params, tw, th, lut);
             if (out) return out;
         }
         return c;
