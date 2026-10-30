@@ -7,6 +7,7 @@ const { pathToFileURL } = require('url');
 const zlib = require('zlib');
 const { createStateStore } = require('./state');
 const { normalizeMirror, mirrorUrlFor, downloadVerified, releaseAssetUrl } = require('./update-mirror');
+const { importLogoPack } = require('./logo-pack');
 
 // 仓库改名后统一从这里取,避免菜单 / 更新源 / 下载兜底 / 外链白名单各写一份。
 const REPO_URL = 'https://github.com/lumos-1s/Qing-Fram-Shadow';
@@ -164,6 +165,9 @@ if (!app.requestSingleInstanceLock()) {
 } else {
     const PRESETS_DIR = path.join(__dirname, '..', '..', 'shared', 'presets');
     const LOGOS_DIR = path.join(__dirname, '..', '..', 'shared', 'brandlogos');
+    // 用户自己导入的品牌 Logo（Eagle 素材包等）。必须落在 userData：
+    // 打包后 shared/ 在 app.asar 里是只读的，写进去既失败也不该改安装目录。
+    const USER_LOGOS_DIR = path.join(app.getPath('userData'), 'brandlogos');
     const TEXTURES_DIR = path.join(__dirname, '..', '..', 'shared', 'textures');
     const MARKS_DIR = path.join(__dirname, '..', '..', 'shared', 'marks');
     // ACR 实测查找表（Camera Raw 滤镜 763 张 17³ 色格表，zlib 压缩；来源 Compositor，MIT）
@@ -690,7 +694,44 @@ const cachedImages = (key, dir, exts) => {
     _staticCache.set(key, { sig, data });
     return data;
 };
-ipcMain.handle('list-logos', () => cachedImages('logos', LOGOS_DIR, ['.png', '.jpg', '.jpeg']));
+const LOGO_EXTS = ['.png', '.jpg', '.jpeg', '.webp'];
+ipcMain.handle('list-logos', () => {
+    const builtin = cachedImages('logos', LOGOS_DIR, LOGO_EXTS);
+    let user = [];
+    try { user = cachedImages('logos-user', USER_LOGOS_DIR, LOGO_EXTS); } catch (_) { user = []; }
+    if (!user.length) return builtin;
+    // 用户目录优先：同名（不含扩展名）时用用户导入的那张。
+    // 导入的 Logo 不标 custom —— 品牌池与 EXIF 品牌匹配都按内置素材那套规则走。
+    const byName = new Map();
+    for (const l of builtin) byName.set(String(l.name || '').toLowerCase(), l);
+    for (const l of user) byName.set(String(l.name || '').toLowerCase(), l);
+    return Array.from(byName.values());
+});
+
+// 导入 Eagle 素材包（.eaglepack / .zip）：解出里面的位图写到 userData/brandlogos，
+// 文件名直接用素材名（Canon_White.png / Xiaomi.png），品牌匹配靠文件名，无需额外品牌表。
+ipcMain.handle('import-logo-pack', async (e, filePath) => {
+    let target = filePath;
+    if (!target) {
+        const win = BrowserWindow.fromWebContents(e.sender);
+        const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+            title: '导入 Logo 素材包',
+            filters: [{ name: 'Eagle 素材包', extensions: ['eaglepack', 'zip'] }],
+            properties: ['openFile']
+        });
+        if (canceled || !filePaths.length) return { ok: false, canceled: true };
+        target = filePaths[0];
+    }
+    const r = importLogoPack(target, USER_LOGOS_DIR, LOGOS_DIR);
+    try { _staticCache.delete('logos-user'); } catch (_) { /* 忽略 */ }
+    return r;
+});
+
+ipcMain.handle('open-logo-dir', async () => {
+    try { fs.mkdirSync(USER_LOGOS_DIR, { recursive: true }); } catch (_) { /* 忽略 */ }
+    const err = await shell.openPath(USER_LOGOS_DIR);
+    return err ? { ok: false, error: err } : { ok: true };
+});
 
 // 内置自定义图标库。种子 shared/custom-icons.json 只读,实际读写走 userData 下的副本 ——
 // 打包后种子在 app.asar 里是只读的,就地改必然失败(见 custom-icons.js 顶部注释)。

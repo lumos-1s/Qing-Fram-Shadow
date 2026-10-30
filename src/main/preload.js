@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('qingframe', {
     pickExportLocation: (payload) => ipcRenderer.invoke('pick-export-location', payload),
     writeExportFiles: (payload) => ipcRenderer.invoke('write-export-files', payload),
     listLogos: () => ipcRenderer.invoke('list-logos'),
+    importLogoPack: (filePath) => ipcRenderer.invoke('import-logo-pack', filePath),
+    openLogoDir: () => ipcRenderer.invoke('open-logo-dir'),
     listCustomIcons: () => ipcRenderer.invoke('list-custom-icons'),
     deleteCustomIcon: (dataUrl) => ipcRenderer.invoke('delete-custom-icon', dataUrl),
     renameCustomIcon: (dataUrl, name) => ipcRenderer.invoke('rename-custom-icon', dataUrl, name),

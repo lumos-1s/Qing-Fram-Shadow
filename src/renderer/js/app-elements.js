@@ -1502,6 +1502,37 @@ window.App = Object.assign(window.App || {}, {
         this.renderLogoPools();
     },
 
+    // 批量导入 Eagle 素材包（.eaglepack）。主进程负责解包与落盘（userData/brandlogos），
+    // 这里只做按钮态、重扫 logo 池和结果反馈。
+    // filePath 可选：不传则弹系统文件框（UI 按钮走这条路）；传了就直接导（探针/拖拽用）。
+    async importLogoPack(filePath) {
+        const btn = this.$('btnImportLogoPack');
+        const label = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = '导入中…'; }
+        try {
+            const r = await window.qingframe.importLogoPack(filePath);
+            if (!r || r.canceled) { this.setStatus('已取消导入'); return; }
+            if (r.error) { this.setStatus('导入失败：' + r.error); return; }
+            const n = (r.added || 0) + (r.replaced || 0);
+            // 重新扫池子:主进程把文件写进了 userData/brandlogos
+            await this.loadLogos();
+            this.renderLogoPools();
+            const parts = [];
+            if (r.added && r.replaced) parts.push(`已导入 ${r.added} 个，更新 ${r.replaced} 个同名`);
+            else if (r.replaced) parts.push(`已更新 ${r.replaced} 个同名品牌 Logo`);
+            else parts.push(`已导入 ${n} 个品牌 Logo`);
+            // 与内置同名时池子数量不会变，不说明会以为没生效
+            if (r.shadowed) parts.push(`其中 ${r.shadowed} 个与内置同名，已用导入版`);
+            if (r.svgOnly) parts.push(`跳过 ${r.svgOnly} 个只有 SVG 的（这版只收位图）`);
+            if (r.skipped && r.skipped > (r.svgOnly || 0)) parts.push(`另有 ${r.skipped - (r.svgOnly || 0)} 个读不出来`);
+            this.setStatus(parts.join('，'));
+        } catch (e) {
+            this.setStatus('导入失败：' + (e && e.message || e));
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = label || '导入 Logo 素材包'; }
+        }
+    },
+
     refreshElList() {
         const $ = this.$;
         const list = $('elList'), status = $('elStatus');

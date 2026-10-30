@@ -712,7 +712,9 @@
                                 所以这里是空的 —— 是有意为之，不是坏了。<br />
                                 <b>①</b> 到品牌官网下载官方 PNG（相机说明书、包装上的图也可以）；<br />
                                 <b>②</b> 点下方「+ 添加自定义图标」导入，或直接把图片文件拖进来；<br />
-                                <b>③</b> 用品牌名给文件命名，之后软件会按照片 EXIF 自动匹配对应图标。
+                                <b>③</b> 用品牌名给文件命名，之后软件会按照片 EXIF 自动匹配对应图标。<br />
+                                <b>批量导入</b>：手上有 Eagle 素材包（.eaglepack）的话，点「导入 Logo 素材包」一次性导入整包，
+                                素材名就是品牌名（如 <b>Canon_White</b>），无需手动改名。
                             </div>
                             <!-- 常驻的命名提示:池子非空时才是它最有用的时刻(用户正要导入或已导入) -->
                             <div class="pool-note" id="logoNameTip">
@@ -722,6 +724,7 @@
                             </div>
                             <div class="btn-row">
                                 <button class="mini-btn" id="btnAddCustomIcon">+ 添加自定义图标</button>
+                                <button class="mini-btn" id="btnImportLogoPack" title="导入 Eagle 素材包(.eaglepack)，自动按素材名识别品牌，之后按 EXIF 自动匹配">导入 Logo 素材包</button>
                                 <button class="mini-btn" id="btnTextToImage" title="把输入的文字渲染成透明PNG,像Logo一样可拖拽/缩放/旋转">文字转图片</button>
                             </div>
                             <div class="param-row">

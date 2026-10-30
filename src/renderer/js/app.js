@@ -2805,6 +2805,7 @@ window.App = {
         bindBtn('btnBuiltinTexture', () => this.pickBuiltinTexture());
         bindBtn('btnSelectTexture', () => this.pickTexture());
         bindBtn('btnAddCustomIcon', () => this.addCustomIcon());
+        bindBtn('btnImportLogoPack', () => this.importLogoPack());
         bindBtn('btnTextToImage', () => this.textToImage());
         const t2iInp = $('tfTextToImage');
         if (t2iInp) t2iInp.addEventListener('input', () => {
