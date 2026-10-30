@@ -536,7 +536,9 @@ async function main() {
         const atRelease = App._wallPan.x;
         // 轮询到"朝预期方向确实滑起来了"：慢帧下固定采样会误判，而残留的旧 rAF
         // 也可能先把 pan 推别的方向，所以判据必须是"比松手时更负"，不能只看"变了"。
-        for (let i = 0; i < 30; i++) {
+        // 上限给到 2s：软件渲染（swiftshader）下首帧可能几百毫秒，卡片放大后更容易超时；
+        // 正常环境第一轮就 break，不会拖慢用例。
+        for (let i = 0; i < 100; i++) {
             await new Promise((x) => setTimeout(x, 20));
             if (App._wallPan.x < atRelease - 5) break;
         }
@@ -557,20 +559,27 @@ async function main() {
         g.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, deltaMode: 0, bubbles: true, cancelable: true }));
         // 轮询等它动起来：固定 60ms 采样会被偶发的长帧挤掉，之前出现过 mid=0 的假红
         let mid = 0;
-        for (let i = 0; i < 25; i++) {
+        for (let i = 0; i < 100; i++) {
             await new Promise((x) => setTimeout(x, 20));
             mid = App._wallPan.y;
             if (mid < -40) break;
         }
-        // 一格 100px 在 τ=80ms 下约 240ms 走完 95%，尾巴到 0.5px 要 500ms 量级
-        await new Promise((x) => setTimeout(x, 700));
-        const end = App._wallPan.y;
-        const settled = !App._wallWheelFrame && !App._wallWheelPending;
+        // 等逐帧追到停（settled）而不是干等固定时长：τ=80ms 理论 500ms 量级就走完，
+        // 但软件渲染下一次 rAF 可能几百毫秒，固定 700ms 会假红。settled 就立刻跳出。
+        let end = App._wallPan.y, settled = false;
+        for (let i = 0; i < 150; i++) {
+            await new Promise((x) => setTimeout(x, 20));
+            end = App._wallPan.y;
+            settled = !App._wallWheelFrame && !App._wallWheelPending;
+            if (settled) break;
+        }
         App._wallReduceOverride = null;
         return { mid, end, settled };
     })()`);
     check(wheel.mid < -20, '滚轮能推墙（不再被 preventDefault 吞掉）', `mid=${Math.round(wheel.mid)}`);
-    check(wheel.end < wheel.mid - 10 && wheel.settled, '滚轮位移逐帧收敛并停住',
+    // 一格 100px 应当走满并停住。不再用「end 比 mid 再走 10px」——快帧下第一帧就到位，
+    // mid 已经是 -100，那条反而会假红。
+    check(wheel.end <= -95 && wheel.settled, '滚轮位移逐帧收敛并停住（走满一格后停住）',
         `${Math.round(wheel.mid)} → ${Math.round(wheel.end)} settled=${wheel.settled}`);
 
     // 2.9 降级动效（prefers-reduced-motion）：惯性/滚轮/入场全部退化，但功能仍可用
