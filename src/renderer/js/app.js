@@ -582,16 +582,9 @@ window.App = {
             this.template.paramColor = cbPC.value;
             this.onSettingChanged();
         });
-        // 角饰:关着时下面两项禁用;打开时若类型是「无」自动切到「直角」,否则勾了也不出效果。
-        // 这个监听要早于 bindInteractive 里的通用 change,先把 select 值改对再走提交。
-        const cbDecor = document.getElementById('cbCornerDecor');
-        if (cbDecor) {
-            cbDecor.addEventListener('change', () => {
-                const sel = document.getElementById('cbCornerDecorType');
-                if (cbDecor.checked && sel && sel.value === 'none') sel.value = 'line';
-                this.syncCornerDecorState();
-            });
-        }
+        // 角饰没有独立开关了:样式选「无」即关闭,此时「大小」调了也不画,直接禁用。
+        const selDecor = document.getElementById('cbCornerDecorType');
+        if (selDecor) selDecor.addEventListener('change', () => this.syncCornerDecorState());
         // 头像上传(存全局)
         const btnAv = document.getElementById('btnUploadAvatar'), fileAv = document.getElementById('fileAvatar');
         if (btnAv && fileAv) {
@@ -1308,7 +1301,7 @@ window.App = {
                     cornerRadiusBL: 0, cornerRadiusBR: 0,
                 },
                 shadowGlowConfig: {
-                    shadowEnable: 0, shadowOffsetX: 0, shadowOffsetY: 8, shadowBlur: 20, shadowSpread: 0,
+                    shadowEnable: 0, shadowOffsetX: 0, shadowOffsetY: 8, shadowBlur: 20,
                     shadowColorHex: '000000', shadowOpacity: 35,
                     glowEnable: 0, glowColorHex: 'ffffff', glowBlur: 30, glowSpread: 0, glowOpacity: 60, glowType: 'center',
                 },
@@ -1405,20 +1398,26 @@ window.App = {
         lcc.cornerRadiusBL = num($('slLayerCornerBL'), lr);
         lcc.cornerRadiusBR = num($('slLayerCornerBR'), lr);
 
-        sg.shadowEnable = ($('cbShadow') && $('cbShadow').checked) ? 1 : 0;
+        // 投影/发光改为「滑块常开型」：没有独立开关，透明度 0 即关闭。
+        // enable 标志照旧要写（引擎只认它）：老预设里存着 enable:0 + 透明度:35
+        // 这种从未生效过的默认值，只看透明度会把整库预设的阴影全打开。
         sg.shadowOffsetX = $('slShadowX') ? parseInt($('slShadowX').value, 10) : 0;
         sg.shadowOffsetY = $('slShadowY') ? parseInt($('slShadowY').value, 10) : 8;
         sg.shadowBlur = $('slShadowBlur') ? parseInt($('slShadowBlur').value, 10) : 20;
-        sg.shadowSpread = $('slShadowSpread') ? parseInt($('slShadowSpread').value, 10) : 0;
         sg.shadowColorHex = $('cpShadowColor') ? $('cpShadowColor').value.replace('#', '') : '000000';
-        sg.shadowOpacity = $('slShadowOpacity') ? parseInt($('slShadowOpacity').value, 10) : 35;
-        sg.glowEnable = ($('cbGlow') && $('cbGlow').checked) ? 1 : 0;
+        const shOp = $('slShadowOpacity') ? parseInt($('slShadowOpacity').value, 10) : 35;
+        sg.shadowOpacity = shOp;
+        sg.shadowEnable = shOp > 0 ? 1 : 0;
         sg.glowColorHex = $('cpGlowColor') ? $('cpGlowColor').value.replace('#', '') : 'ffffff';
         sg.glowBlur = $('slGlowBlur') ? parseInt($('slGlowBlur').value, 10) : 30;
-        sg.glowOpacity = $('slGlowOpacity') ? parseInt($('slGlowOpacity').value, 10) : 60;
+        const glOp = $('slGlowOpacity') ? parseInt($('slGlowOpacity').value, 10) : 60;
+        sg.glowOpacity = glOp;
+        sg.glowEnable = glOp > 0 ? 1 : 0;
 
-        ft.tearEnable = ($('cbTearEnable') && $('cbTearEnable').checked) ? 1 : 0;
-        ft.tearStrength = $('slTearStrength') ? parseInt($('slTearStrength').value, 10) : 50;
+        // 撕边同样改常开型：强度 0 即关闭（老预设几乎全是 enable:0）
+        const tearV = $('slTearStrength') ? parseInt($('slTearStrength').value, 10) : 50;
+        ft.tearStrength = tearV;
+        ft.tearEnable = tearV > 0 ? 1 : 0;
         ft.tearDensity = $('slTearDensity') ? parseInt($('slTearDensity').value, 10) : 8;
 
         // 暗角/漏光/颗粒统一为「滑块常开型」:没有独立开关,强度 0 即关闭。
@@ -1447,8 +1446,10 @@ window.App = {
         if ($('cbFocalEq')) this.template.focalEq = $('cbFocalEq').checked ? 1 : 0;
         this.updateFocalEqHint();
         this.updateExifTextHint();
-        decor.cornerDecorEnable = ($('cbCornerDecor') && $('cbCornerDecor').checked) ? 1 : 0;
-        decor.cornerDecorType = $('cbCornerDecorType') ? $('cbCornerDecorType').value : 'line';
+        // 角饰：样式里有「无」，它就是关闭状态，不需要再配一个开关
+        const decType = $('cbCornerDecorType') ? $('cbCornerDecorType').value : 'line';
+        decor.cornerDecorType = decType;
+        decor.cornerDecorEnable = decType && decType !== 'none' ? 1 : 0;
         decor.cornerDecorSize = $('slCornerDecorSize') ? parseInt($('slCornerDecorSize').value, 10) : 30;
 
         this.syncPuzzleFromUI();
@@ -1638,11 +1639,12 @@ window.App = {
         }
     },
 
-    // 角饰关着时,下面的「样式/大小」调了也不会画:直接禁用,避免"滑了没反应"。
+    // 角饰样式为「无」时,「大小」调了也不会画:直接禁用,避免"滑了没反应"。
+    // 样式下拉本身不禁用 —— 禁了就没法再选回来了。
     syncCornerDecorState() {
-        const cb = document.getElementById('cbCornerDecor');
-        const on = !!(cb && cb.checked);
-        ['cbCornerDecorType', 'slCornerDecorSize'].forEach(id => {
+        const sel = document.getElementById('cbCornerDecorType');
+        const on = !!(sel && sel.value && sel.value !== 'none');
+        ['slCornerDecorSize'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.disabled = !on;
             const row = el && el.closest('.param-row');
@@ -1766,16 +1768,22 @@ window.App = {
             this.updateLabel('lblLayerCornerBL', lcc.cornerRadiusBL || 0); this.updateLabel('lblLayerCornerBR', lcc.cornerRadiusBR || 0);
             this.updateLabel('lblLayerCornerRadius', lr);
 
-if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
+            // 常开滑块：显示值以 enable 为准（老预设普遍是 enable:0 + 透明度:35）
+            const shOn = (sg.shadowEnable || 0) === 1;
+            if ($('slShadowOpacity')) $('slShadowOpacity').value = shOn ? (sg.shadowOpacity != null ? sg.shadowOpacity : 35) : 0;
+            this.updateLabel('lblShadowOpacity', (shOn ? (sg.shadowOpacity != null ? sg.shadowOpacity : 35) : 0) + '%');
             this.syncShadowL();
 
-            if ($('cbGlow')) $('cbGlow').checked = (sg.glowEnable || 0) === 1;
+            const glOn = (sg.glowEnable || 0) === 1;
+            if ($('slGlowOpacity')) $('slGlowOpacity').value = glOn ? (sg.glowOpacity != null ? sg.glowOpacity : 60) : 0;
+            this.updateLabel('lblGlowOpacity', (glOn ? (sg.glowOpacity != null ? sg.glowOpacity : 60) : 0) + '%');
 
             const ft = this.template.filmTearConfig || {};
-            if ($('cbTearEnable')) $('cbTearEnable').checked = (ft.tearEnable || 0) === 1;
-            if ($('slTearStrength')) $('slTearStrength').value = ft.tearStrength || 0;
+            const tearOn = (ft.tearEnable || 0) === 1;
+            const tearV = tearOn ? (ft.tearStrength || 0) : 0;
+            if ($('slTearStrength')) $('slTearStrength').value = tearV;
             if ($('slTearDensity')) $('slTearDensity').value = ft.tearDensity || 8;
-            this.updateLabel('lblTearStrength', ft.tearStrength || 0);
+            this.updateLabel('lblTearStrength', tearV);
             this.updateLabel('lblTearDensity', ft.tearDensity || 8);
 
             const le = this.template.lightEffect || {};
@@ -1803,7 +1811,6 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             if ($('slFilmGrain')) $('slFilmGrain').value = fgVal;
             this.updateLabel('lblFilmGrain', fgVal + '%');
 
-            if ($('cbCornerDecor')) $('cbCornerDecor').checked = (decor.cornerDecorEnable || 0) === 1;
             if ($('cbCornerDecorType')) $('cbCornerDecorType').value = decor.cornerDecorType || 'line';
             if ($('slCornerDecorSize')) $('slCornerDecorSize').value = decor.cornerDecorSize || 30;
             this.updateLabel('lblCornerDecorSize', decor.cornerDecorSize || 30);
@@ -1872,7 +1879,6 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
             ['slShadowX', 'slShadowXL', 'lblShadowX', 'lblShadowXL', 'shadowOffsetX'],
             ['slShadowY', 'slShadowYL', 'lblShadowY', 'lblShadowYL', 'shadowOffsetY'],
             ['slShadowBlur', 'slShadowBlurL', 'lblShadowBlur', 'lblShadowBlurL', 'shadowBlur'],
-            ['slShadowSpread', 'slShadowSpreadL', 'lblShadowSpread', 'lblShadowSpreadL', 'shadowSpread'],
         ];
         map.forEach(([a, b, la, lb, key]) => {
             const v = sg[key] != null ? sg[key] : 0;
@@ -2711,7 +2717,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         this.bindRanges([
             'slGlobalMargin', 'slImgScale', 'slCornerTL', 'slCornerTR', 'slCornerBL', 'slCornerBR', 'slCornerRadius',
             'slParamFontSize', 'slBrandSize', 'slParamScale', 'slFillOpacity', 'slGradientAngle', 'slTextureScale', 'slStrokeWidth', 'slStrokeOpacity',
-            'slShadowX', 'slShadowY', 'slShadowBlur', 'slShadowSpread', 'slShadowOpacity', 'slGlowBlur', 'slGlowOpacity',
+            'slShadowX', 'slShadowY', 'slShadowBlur', 'slShadowOpacity', 'slGlowBlur', 'slGlowOpacity',
             'slTearStrength', 'slTearDensity', 'slVignetteStrength', 'slVignetteFeather', 'slLeakOpacity', 'slLeakAngle', 'slFilmGrain',
             'slCornerDecorSize', 'slActiveIconOpacity', 'slElementRotation', 'slPuzzleGap', 'slPuzzleCorner',
             'slCapSize1', 'slCapSize2', 'slCapSpacing', 'slSlotOffsetX', 'slSlotOffsetY', 'slSlotZoom',
@@ -2747,8 +2753,7 @@ if ($('cbShadow')) $('cbShadow').checked = (sg.shadowEnable || 0) === 1;
         }
 
         // 复选框 -> onSettingCommit
-        const chks = ['cbCornerLock', 'cbShadow', 'cbGlow', 'cbTearEnable',
-            'cbCornerDecor', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq'];
+        const chks = ['cbCornerLock', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq'];
         chks.forEach(id => {
             const el = $(id);
             if (el) el.addEventListener('change', () => this.onSettingCommit());
@@ -3532,7 +3537,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         const map = {
             slFillOpacity: ['lblFillOpacity', v + '%'], slGradientAngle: ['lblGradientAngle', v], slTextureScale: ['lblTextureScale', v + '%'],
             slStrokeWidth: ['lblStrokeWidth', v], slStrokeOpacity: ['lblStrokeOpacity', v + '%'],
-            slShadowBlur: ['lblShadowBlur', v], slShadowSpread: ['lblShadowSpread', v], slShadowOpacity: ['lblShadowOpacity', v + '%'],
+            slShadowBlur: ['lblShadowBlur', v], slShadowOpacity: ['lblShadowOpacity', v + '%'],
             slGlowBlur: ['lblGlowBlur', v], slGlowOpacity: ['lblGlowOpacity', v + '%'],
             slTearStrength: ['lblTearStrength', v], slTearDensity: ['lblTearDensity', v],
             slVignetteStrength: ['lblVignetteStrength', v + '%'], slVignetteFeather: ['lblVignetteFeather', v],
