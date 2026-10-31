@@ -843,7 +843,19 @@
             || (Number(params.det && params.det.dhz) || 0)) {
             const haze = (Number(params.det && params.det.dhz) || 0) ? acrHaze() : null;
             const out = window.QfsColor && window.QfsColor.pass(c, params, tw, th, lut, haze);
-            if (out) return out;
+            if (out) {
+                // GL 通道返回的是 app-color-grade.js 里的**模块级共享画布**(glc)。
+                // 直接把它当成 im._grade.canvas，所有照片的烘焙结果就会指向同一张画布：
+                // 后烘的图覆盖先烘的，切回上一张时 selectImage 看到 canvas 有值就不再重烘，
+                // 画布于是显示另一张照片的像素 —— 也就是「两张照片串了」。
+                // 自己新建的 2D 画布(c)可以直接用；共享画布必须落回自有画布，保证每张图各持一张。
+                // 落回时复用 c（尺寸一致），不再额外分配一张全分辨率画布。
+                if (out === c) return out;
+                g.setTransform(1, 0, 0, 1, 0, 0);
+                g.clearRect(0, 0, tw, th);
+                g.drawImage(out, 0, 0);
+                return c;
+            }
         }
         return c;
     }
