@@ -421,8 +421,18 @@ function getTexture(name) {
 /* exported getElementBitmap */ function getElementBitmap(src) {
     if (!src) return null;
     if (TEXTURE_CACHE[src] && TEXTURE_CACHE[src].complete && TEXTURE_CACHE[src].naturalWidth > 0) return TEXTURE_CACHE[src];
-    if (TEXTURE_CACHE[src]) return null; // 加载中
+    // 复用 App 已经加载好的 Logo 位图:addLogoElement 把图标预加载进 logoImgCache 后再入列,
+    // 但引擎原本只会从自己的 TEXTURE_CACHE 读 —— 两者是不同 Image 对象,导致引擎首帧看不到图、
+    // 要等 TEXTURE_CACHE 那张自己加载完再 onload→requestRender 补一帧。这一帧若被合并/丢弃,
+    // 就会出现「拖上去了但 logo 不显示,得再动一下鼠标才出来」的间歇现象。
+    // 这里优先用已就绪的 logoImgCache 图,首帧即绘制,彻底去掉这层时序依赖。
     const app = (typeof window !== 'undefined' && window.App) ? window.App : null;
+    if (app && app.logoImgCache && app.logoImgCache[src]
+        && app.logoImgCache[src].complete && app.logoImgCache[src].naturalWidth > 0) {
+        TEXTURE_CACHE[src] = app.logoImgCache[src];
+        return TEXTURE_CACHE[src];
+    }
+    if (TEXTURE_CACHE[src]) return null; // 加载中
     let url = src;
     const tex = app && app.textures ? app.textures.find(x => x.name === src) : null;
     if (tex && tex.dataUrl) url = tex.dataUrl;

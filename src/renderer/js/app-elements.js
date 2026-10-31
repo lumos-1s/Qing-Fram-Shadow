@@ -1395,6 +1395,11 @@ window.App = Object.assign(window.App || {}, {
         if (!bmp.complete || !bmp.naturalWidth) {
             await new Promise(res => { bmp.onload = res; bmp.onerror = res; bmp.src = logo.dataUrl; });
         }
+        // 图片已就绪:顺手把引擎的位图缓存(TEXTURE_CACHE)也指向这张已加载的图,
+        // 这样首帧渲染就能直接画出来,不依赖「引擎自己再加载一遍 + onload 补帧」这条会偶发丢失的链路。
+        if (typeof window.getElementBitmap === 'function' && bmp.complete && bmp.naturalWidth) {
+            window.getElementBitmap(logo.dataUrl);
+        }
         if (!this.template.logoElements) this.template.logoElements = [];
         const cw = this.dom.canvas.width, ch = this.dom.canvas.height;
         // 默认按画布宽度取比例(原为写死的 500px):固定值在 800px 画布上占 62%,在 3600px 上只占 14%,

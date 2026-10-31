@@ -3699,6 +3699,12 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
                 c.className = 'icon-cell';
                 c.title = l.custom ? (l.name + '(点×删除)') : l.name;
                 const img = document.createElement('img');
+                // 关键:图标本身是 <img>,浏览器默认可拖拽。若不关掉,按下拖动时浏览器会发起
+                // 原生图片拖放,从而吞掉我们挂在 window 上的 mousemove/mouseup —— 自研拖拽的
+                // onUp 拿不到「已拖动」状态,addLogoElement 永不触发,表现为「拖了但画布上没出现」。
+                // 该现象只在部分浏览器/拖拽时机下发生,所以是间歇性的。
+                img.draggable = false;
+                img.addEventListener('dragstart', (e) => e.preventDefault());
                 img.src = l.dataUrl;
                 c.appendChild(img);
                 // 池子图标:拖拽放置。单击(未拖动)不添加,避免误触;拖到画布松手才放到该位置。
