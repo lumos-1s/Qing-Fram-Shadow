@@ -92,7 +92,7 @@ window.App = Object.assign(window.App || {}, {
     // 尺寸/方向适配:把按源图调好的绝对边距换算到目标图尺寸。
     //   · 四边各自按同轴比例缩放(top/bottom×ky,left/right×kx):横→竖时竖直留白相对变厚、
     //     水平留白相对变薄,视觉比例与源图一致;参数条等"贴照片下沿"的内容方向不变,不交换轴;
-    //   · refTop/refBottom/refLeft/refRight(统一边距的基准值)同比例换算,globalMargin 保持不变;
+    //   · refTop/refBottom/refLeft/refRight(边距大小的基准值)同比例换算,globalMargin 保持不变;
     //   · 圆角按几何均值 √(kx·ky) 缩放(圆角同时受两个方向约束,取折中);
     //   · 显式 paramFontSize(>0,绝对 px)同样按几何均值缩放;0(自适应)不动,引擎会按目标图重算。
     _adaptTplToSize(tpl, sw, sh, tw, th) {

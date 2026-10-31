@@ -53,7 +53,7 @@ const STYLE_NAMES = engineDrawKeys();
 if (!STYLE_NAMES.length) throw new Error('从引擎 draw 表里没提取到任何风格名');
 
 // 能力维度(全风格覆盖)与品牌 logo 名单都取自 style-caps.js —— 单一事实来源,不要在本文件另抄一份。
-// 五个滑块(paramFontSize / 圆角 / 统一边距 / 图片缩放 / 背景模糊程度)在面板上对所有风格可见,
+// 五个滑块(paramFontSize / 圆角 / 边距大小 / 图片缩放 / 背景模糊程度)在面板上对所有风格可见,
 // 所以每个风格 × 每个维度都取两个极值:指纹与该风格 __base 相同 = 该风格不读这个参数。
 // 这份数据同时是 gen-style-caps.js 生成能力表的输入。
 const StyleCaps = require('../src/renderer/js/style-caps.js');

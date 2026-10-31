@@ -31,7 +31,7 @@
     const DIMS = [
         { key: 'pf', label: '参数字号', row: 'rowParamFontSize', slider: 'slParamFontSize', field: 'paramFontSize', probe: [16, 160] },
         { key: 'cr', label: '图片圆角', row: 'rowCornerRadius', slider: 'slCornerRadius', field: 'cornerConfig.cornerRadiusAll', probe: [0, 200] },
-        { key: 'gm', label: '统一边距', row: 'rowGlobalMargin', slider: 'slGlobalMargin', field: 'baseMargin.globalMargin', probe: [0.4, 2.0] },
+        { key: 'gm', label: '边距大小', row: 'rowGlobalMargin', slider: 'slGlobalMargin', field: 'baseMargin.globalMargin', probe: [0.4, 2.0] },
         { key: 'isc', label: '图片缩放', row: 'rowImgScale', slider: 'slImgScale', field: 'baseMargin.imgScale', probe: [0.6, 1.4] },
         { key: 'bi', label: '背景模糊程度', row: 'rowBgBlurInt', slider: 'slBgBlurInt', field: 'blurIntensity', probe: [10, 100] }
     ];
