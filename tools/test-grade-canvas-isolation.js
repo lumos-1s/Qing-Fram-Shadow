@@ -145,7 +145,9 @@ async function main() {
         const { a, b } = await window.__mkPair();
         const pass = window.QfsColor.pass;
         const shared = document.createElement('canvas');
-        // 桩：行为与 app-color-grade.js 的 passGL 一致 —— 同一张画布反复复用
+        // 桩：行为与 app-color-grade.js 的 passGL 一致 —— 同一张画布反复复用，
+        // 并且像 glc 一样打上 __qfsShared 标记（bakeOne 靠它判断"必须拷走"）
+        shared.__qfsShared = true;
         window.QfsColor.pass = function (src, p, w, h) {
             if (shared.width !== w || shared.height !== h) { shared.width = w; shared.height = h; }
             const g = shared.getContext('2d');

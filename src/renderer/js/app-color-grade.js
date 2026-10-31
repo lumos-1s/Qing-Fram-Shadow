@@ -160,6 +160,10 @@
         if (!gl) {
             try {
                 glc = document.createElement('canvas');
+                // 这画布是**全模块复用**的 GL 输出缓冲：passGL 每次都画回同一张再返回。
+                // 调用方要长期持有结果时必须自己拷走（见 app-grade.js bakeOne），
+                // 否则两张照片的烘焙结果会指向同一张画布，画面互相覆盖。
+                glc.__qfsShared = true;
                 gl = glc.getContext('webgl', { preserveDrawingBuffer: true, antialias: false })
                     || glc.getContext('experimental-webgl', { preserveDrawingBuffer: true, antialias: false });
             } catch (_) { gl = null; }
