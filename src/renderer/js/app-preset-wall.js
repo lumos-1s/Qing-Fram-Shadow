@@ -14,9 +14,12 @@ const _pwWrap = (v, span) => {
 //   按下即 capture 会把 click 的 target 改写成容器，是"点一下就跳走"那批 bug 的根源。
 // - 松手惯性：framer「inertia」，v*power 就是这一甩的行程，τ 决定尾巴多长。
 // - 滚轮：鼠标滚轮按格累加后逐帧追（τ=80ms），触控板增量直接跟手。
-// 卡片尺寸系数：1 = 原来的 340px 档（一屏约 3×3），0.85 = 缩 15%（一屏约 4×2.5）。
-// 改这一个数就能调密度；调大到盖不住视口之前请确认周期块仍然大于视口（wallWrapSpan 会兜住，但会失去无限感）。
-const WALL_CARD_SCALE = 0.85;
+// 卡片尺寸系数：1 = 原来的 340px 档（一屏约 3×3）。默认 0.85（一屏约 5 列）。
+// 用户在首页顶部可以自己拖（0.55~1.3），选择存在 localStorage，下次开墙照用。
+// 上限别再往上加：卡片大到周期块盖不住视口时，wallWrapSpan 虽然会兜住，但会失去无限感。
+const WALL_CARD_SCALE_DEFAULT = 0.85;
+const WALL_CARD_SCALE_MIN = 0.55;
+const WALL_CARD_SCALE_MAX = 1.3;
 // 聚焦缩放的更新节奏：中心格每帧；外圈 8 格按“边/角”分两帧更新，相当于每帧只动 5–7 张卡。
 // 外圈单张卡仍有 82Hz，165Hz 屏上肉眼仍是连续缩放，但逐帧 scale 写入少一半。
 // 保留开关便于回归对比：false = 原来的 9 格全部每帧。
@@ -25,6 +28,7 @@ const WALL_FOCUS_STAGGER = true;
 // 'finite' = 同一批预设只铺一份、偏移夹在首尾之间（拖到头就停，右侧有进度条）。
 // 用户可在墙头切换，选择写 localStorage —— 抱怨"不知道划没划过"的人下次开机还是有限墙。
 const WALL_MODE_KEY = 'qfs_wall_mode';
+const WALL_CARD_SCALE_KEY = 'qfs_wall_card_scale';
 const _pwPanCfg = {
     dragThresholdPx: 7,
     // 点选容差：按下到抬起位移不超过它、且时间够短，就算一次点击（哪怕中途已经越过拖动阈值）。
@@ -72,6 +76,7 @@ window.App = Object.assign(window.App || {}, {
                 this.setWallMode(btn.dataset.wallMode);
             });
         }
+        this.bindWallZoom();
         // 165Hz 屏才启用“外圈隔帧”；60Hz 屏每帧都更新，否则外圈只有 30Hz，会看出阶梯。
         // 用 3 个 rAF 间隔取中位数，窗口被节流/高负载时测出大间隔就退回全量更新。
         this._wallHighRefresh = false;
@@ -403,6 +408,27 @@ window.App = Object.assign(window.App || {}, {
         try { return localStorage.getItem('qfs_wall_covers_on') === '1'; } catch (_) { return false; }
     },
 
+    // 卡片大小（0.55~1.3，1 = 最早那版 340px 档）。首页顶部有滑块让用户自己拖，
+    // 选完存 localStorage，下次开墙照用。缓存到 _wallCardScale，别每帧读 localStorage。
+    wallCardScale() {
+        if (typeof this._wallCardScale === 'number' && isFinite(this._wallCardScale)) return this._wallCardScale;
+        let v = NaN;
+        try { v = parseFloat(localStorage.getItem(WALL_CARD_SCALE_KEY)); } catch (_) { /* 隐私模式：按默认 */ }
+        if (!isFinite(v)) v = WALL_CARD_SCALE_DEFAULT;
+        this._wallCardScale = Math.min(WALL_CARD_SCALE_MAX, Math.max(WALL_CARD_SCALE_MIN, v));
+        return this._wallCardScale;
+    },
+
+    setWallCardScale(v) {
+        const s = Math.min(WALL_CARD_SCALE_MAX, Math.max(WALL_CARD_SCALE_MIN, Math.round(v * 100) / 100));
+        this._wallCardScale = s;
+        try { localStorage.setItem(WALL_CARD_SCALE_KEY, String(s)); } catch (_) { /* 存不了也照样生效 */ }
+        // 只改尺寸不用重建卡片节点：layoutWallTiles 会重写宽高和周期块偏移，
+        // 位移取模回绕照旧（卡片变大了，看的那块墙还是那块）。
+        if (this._wallDom && this._wallDom.grid) this.layoutWallTiles();
+        return s;
+    },
+
     // 当前浏览方式：'infinite' | 'finite'。缓存到 _wallMode，避免每帧读 localStorage。
     // 默认无限（老行为不变）；用户切过一次之后按他选的来，重启也记得。
     wallMode() {
@@ -450,7 +476,44 @@ window.App = Object.assign(window.App || {}, {
         const sub = (this._wallDom && this._wallDom.sub) || document.getElementById('pwSub');
         if (sub) sub.textContent = this.wallSubText();
         this.updateWallRail();
+        this.syncWallZoomUI();
         return mode;
+    },
+
+    // 卡片大小滑块：拖动 → 整墙按新尺寸重排。input 事件在快拖时一帧能来好几个，
+    // 每个都去重排 360 张卡会掉帧，所以用 rAF 合并成「一帧最多排一次」。
+    syncWallZoomUI() {
+        const range = document.getElementById('pwZoomRange');
+        if (!range) return;
+        const pct = Math.round(this.wallCardScale() * 100);
+        range.value = String(pct);
+        const label = '卡片大小 ' + pct + '%';
+        range.title = label;
+        range.setAttribute('aria-valuetext', pct + '%');
+        const box = document.getElementById('pwZoom');
+        if (box) box.title = label + '（拖动调节）';
+    },
+
+    bindWallZoom() {
+        const range = document.getElementById('pwZoomRange');
+        if (!range || range.dataset.bound === '1') return;
+        range.dataset.bound = '1';
+        this.syncWallZoomUI();
+        range.addEventListener('input', () => {
+            const pct = parseInt(range.value, 10);
+            if (!isFinite(pct)) return;
+            if (this._wallZoomRaf) return;
+            this._wallZoomRaf = requestAnimationFrame(() => {
+                this._wallZoomRaf = 0;
+                this.setWallCardScale(pct / 100);
+                this.syncWallZoomUI();
+                if (typeof this.setStatus === 'function') this.setStatus('卡片大小 ' + pct + '%');
+            });
+        });
+        // 键盘也能调（方向键 / PageUp·Down）：range 原生支持，只是要同步状态栏
+        range.addEventListener('change', () => {
+            if (typeof this.setStatus === 'function') this.setStatus('卡片大小 ' + range.value + '%');
+        });
     },
 
     // 副标题：有限墙把"不循环"直接写在脸上，比任何图标都省解释
@@ -470,7 +533,7 @@ window.App = Object.assign(window.App || {}, {
         const pad = 28, gap = 24;
         const mode = this.wallMode();
         const base = Math.max(240, Math.min(340, Math.floor((vw - pad * 2 - gap * 2) / 4)));
-        const tw = Math.round(base * WALL_CARD_SCALE);
+        const tw = Math.round(base * this.wallCardScale());
         // 卡片 = 封面（按素材最宽比例 1.407 完整显示）+ 底部一条名称。
         // 图片区高度由 tw 推出来，所以 contain 之后四边几乎不留黑边；
         // 名称单独占一条，不会压住封面（封面是「照片+边框」的合成图，压上去就挡内容）。

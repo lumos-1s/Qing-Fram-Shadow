@@ -1750,6 +1750,11 @@
                 <button class="pw-mode-btn" type="button" data-wall-mode="finite"
                         aria-pressed="false" title="有限墙：有首有尾，拖到头就停，右侧进度条显示看到哪儿了">有限</button>
             </div>
+            <div id="pwZoom" class="pw-zoom" role="group" aria-label="卡片大小">
+                <svg class="pw-zoom-ico" width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.1" aria-hidden="true"><rect x="1" y="1" width="9" height="9" rx="1.5"/></svg>
+                <input id="pwZoomRange" class="pw-zoom-range" type="range" min="55" max="130" step="5" value="85" aria-label="卡片大小（百分比）">
+                <svg class="pw-zoom-ico" width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.1" aria-hidden="true"><rect x="0.6" y="0.6" width="11.8" height="11.8" rx="1.8"/></svg>
+            </div>
             <button id="pwCovers" class="pw-skip" type="button" title="批量换封面：打开封面文件夹。只换一张的话，把鼠标移到卡片上点右上角「换封面」，或右键卡片">换封面</button>
             <button id="pwSkip" class="pw-skip" type="button" title="跳过，直接进入工作台">进入工作台</button>
             <!-- 首页是覆盖整个窗口的全屏层，自绘标题栏的窗口按钮被盖住了，这里补一组 -->

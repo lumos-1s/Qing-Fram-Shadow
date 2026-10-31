@@ -2179,6 +2179,30 @@ body.platform-darwin .pw-winbtns { display: none; }
 .pw-mode-btn:hover { color: #e8ecf1; }
 .pw-mode-btn.is-on { background: rgba(220,186,121,.2); color: var(--brand-gold-ink); }
 .pw-mode-btn:focus-visible { outline: 2px solid rgba(220,186,121,.8); outline-offset: 1px; }
+/* 卡片大小滑块：跟「无限/有限」同一套外框，拖一下整墙实时重排 */
+.pw-zoom {
+    -webkit-app-region: no-drag;
+    display: flex; align-items: center; gap: 7px; flex: 0 0 auto;
+    padding: 2px 10px;
+    border: 1px solid rgba(255,255,255,.14); border-radius: 8px;
+    background: rgba(255,255,255,.05);
+}
+.pw-zoom-ico { flex: 0 0 auto; color: rgba(232,236,241,.5); }
+.pw-zoom-range {
+    -webkit-app-region: no-drag;
+    -webkit-appearance: none; appearance: none;
+    width: 84px; height: 14px; margin: 0; background: transparent; cursor: pointer;
+}
+.pw-zoom-range::-webkit-slider-runnable-track {
+    height: 3px; border-radius: 2px; background: rgba(255,255,255,.2);
+}
+.pw-zoom-range::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 11px; height: 11px; margin-top: -4px; border: 0; border-radius: 50%;
+    background: var(--brand-gold-ink); transition: background .15s ease;
+}
+.pw-zoom-range:hover::-webkit-slider-thumb { background: #f2ddab; }
+.pw-zoom-range:focus-visible { outline: 2px solid rgba(220,186,121,.8); outline-offset: 3px; border-radius: 4px; }
 /* 有限墙的浏览进度条：相对 .preset-wall（fixed）定位，宽度 3px 不挡卡片 */
 .pw-rail {
     position: absolute; right: 10px; top: 88px; bottom: 22px; width: 3px;
