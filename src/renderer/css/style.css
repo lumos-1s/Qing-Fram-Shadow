@@ -1126,7 +1126,6 @@ html.dark .mini-btn.primary { color: #0c1914; }
 .btn-row .mini-btn { flex: 1; }
 .btn-row.btn-2 .mini-btn { flex: 0 1 48%; }
 .btn-row.btn-3 .mini-btn { flex: 1; }
-.btn-row.btn-4 .mini-btn { flex: 1; }
 .btn-row.btn-12 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-1-5); }
 .btn-row.btn-12 .mini-btn { flex: none; }
 /* 拼图布局 12 个按钮:4 列时每列至少要 ~68px(4 字标签 + 内边距),
