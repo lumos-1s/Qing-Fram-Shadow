@@ -115,18 +115,28 @@ async function main() {
         const m2 = Q.sanitizeMask(Object.assign({}, m0, {
             shape: Object.assign({}, m0.shape, { rot: 999 })
         }));
+        const m3 = Q.sanitizeMask(Object.assign({}, m0, {
+            shape: Object.assign({}, m0.shape, { rot: -30 })
+        }));
+        const m4 = Q.sanitizeMask(Object.assign({}, m0, {
+            shape: Object.assign({}, m0.shape, { rot: 180 })
+        }));
         const sig0 = Q.maskSignature(m0);
         const sig1 = Q.maskSignature(m1);
         return {
             defaultRot: m0.shape.rot,
             keptRot: m1.shape.rot,
-            clampedRot: m2.shape.rot,
+            wrappedRot: m2.shape.rot,
+            negRot: m3.shape.rot,
+            maxRot: m4.shape.rot,
             sigChanged: sig0 !== sig1
         };
     })()`);
     check(sA.defaultRot === 0, '数据模型:新建椭圆默认方向 0°', 'rot=' + sA.defaultRot);
     check(sA.keptRot === 37, '数据模型:草稿/导入清洗保留方向', 'rot=' + sA.keptRot);
-    check(sA.clampedRot === 180, '数据模型:方向夹取到 0~180', 'rot=' + sA.clampedRot);
+    check(sA.wrappedRot === 99, '数据模型:超范围角度按椭圆 180° 周期归一(999°→99°)', 'rot=' + sA.wrappedRot);
+    check(sA.negRot === 150, '数据模型:负角度归一(-30°→150°)', 'rot=' + sA.negRot);
+    check(sA.maxRot === 180, '数据模型:180° 端点保留', 'rot=' + sA.maxRot);
     check(sA.sigChanged, '数据模型:maskSignature 随方向变化(否则缓存不失效，画面按旧朝向)',
         'sigChanged=' + sA.sigChanged);
 

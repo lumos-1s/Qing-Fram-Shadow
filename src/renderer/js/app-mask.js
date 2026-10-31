@@ -95,8 +95,13 @@
             if (type === 'radial') {
                 out.shape.rx = Math.max(0.02, Math.min(1, num(s.rx, out.shape.rx)));
                 out.shape.ry = Math.max(0.02, Math.min(1, num(s.ry, out.shape.ry)));
-                // 旧草稿没有 rot 字段，缺省 0°（保持原来的水平椭圆）
-                out.shape.rot = Math.max(0, Math.min(180, Math.round(num(s.rot, 0))));
+                // 旧草稿没有 rot 字段，缺省 0°（保持原来的水平椭圆）。
+                // 椭圆以 180° 为周期：270° 等价 90°、-30° 等价 150°，
+                // 不能直接夹到 0~180（会把 270 夹成 180，方向就错了）。
+                let r = num(s.rot, 0) % 360;
+                if (r < 0) r += 360;
+                if (r > 180) r -= 180;
+                out.shape.rot = Math.min(180, Math.round(r));
             }
             if (type === 'linear' && Math.abs(out.shape.x2 - out.shape.x1) < 1e-4
                 && Math.abs(out.shape.y2 - out.shape.y1) < 1e-4) {
