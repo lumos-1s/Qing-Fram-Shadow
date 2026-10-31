@@ -848,15 +848,23 @@
         return c;
     }
 
+    // 全分辨率蒙版链最多留几层（每层 ≈96MB，见 bake 里的说明）
+    const FULL_CHAIN_KEEP = 3;
     let _srcSeq = 0;
-    // 降采样那档的中间结果缓存：拖动某个蒙版时只重烘它那一层，前缀直接复用。
-    // 只缓存低分辨率（全尺寸留给静置/导出，避免几十 MB 的画布叠在内存里）。
+    // 中间结果缓存：拖动某个蒙版时只重烘它那一层，前缀直接复用。
+    // 两档分别缓存：low（1600px）拖动时用；full（原图尺寸）导出/静置时用。
+    //
+    // 以前 full 档用的是临时对象，前缀缓存完全失效 —— 改最后一个蒙版要把前面
+    // 所有组从头烘一遍，每组产出 1 张全尺寸画布，峰值内存能到十几张 96MB。
+    // 现在 full 档也走缓存，但**只留最近一档**：全尺寸画布太大，
+    // 同时缓存两档等于同时驻留两套蒙版链，内存翻倍。
     function cacheSlot(im, tw, th) {
         if (!im._gradeCache) im._gradeCache = {};
         const key = tw + 'x' + th;
         if (!im._gradeCache[key]) {
             const keys = Object.keys(im._gradeCache);
-            if (keys.length >= 2) delete im._gradeCache[keys[0]];
+            // 只留两档（low + full），超出的先丢（丢的是最老的一档）
+            while (keys.length >= 2) { delete im._gradeCache[keys.shift()]; }
             im._gradeCache[key] = { baseKey: '', base: null, chain: [] };
         }
         return im._gradeCache[key];
@@ -880,7 +888,8 @@
 
         const globalOnly = Object.assign({}, p, { masks: [] });
         const baseKey = signature(globalOnly) + '@' + src._qfsVer + '@' + tw + 'x' + th;
-        const slot = maxEdge > 0 ? cacheSlot(im, tw, th) : { baseKey: '', base: null, chain: [] };
+        // 两档都走 slot 缓存：全分辨率档以前是临时对象，前缀缓存等于没有
+        const slot = cacheSlot(im, tw, th);
         if (slot.baseKey !== baseKey || !slot.base) {
             slot.base = bakeOne(src, p, tw, th);
             slot.baseKey = baseKey;
@@ -899,7 +908,7 @@
             const g = grps[i];
             const key = prevKey + '>' + window.QfsMask.groupSignature(g);
             const hit = slot.chain[i];
-            if (hit && hit.key === key && hit.canvas) {
+            if (hit && hit.key === key && hit.canvas) {   // canvas 可能被内存上限置空
                 cur = hit.canvas;
                 prevKey = key;
                 continue;
@@ -912,6 +921,19 @@
             cur = window.QfsMask.composite(cur, layer, alpha);
             slot.chain[i] = { key, canvas: cur };
             slot.chain.length = i + 1;
+            // 全分辨率档的链不能无限长：每一层都是一张原图尺寸的画布（24MP ≈ 96MB），
+            // 12 个蒙版就能把内存顶到 1GB 以上。低分辨率档无所谓（1600px 才几 MB），
+            // 全分辨率只留最近 3 层 —— 改最后一个蒙版是常见操作，前缀复用已经够；
+            // 再往前的层留着基本没人用得到，内存却实打实占着。
+            //
+            // 注意只能把旧层的**画布**丢掉，不能动数组下标：chain[i] 对应第 i 组，
+            // 一旦 splice 移位，下标与组的对应关系就错位了，缓存会命中错误的层
+            // （症状是改了第 5 组，画面却按第 3 组的中间结果合成）。
+            if (maxEdge <= 0 && slot.chain.length > FULL_CHAIN_KEEP) {
+                for (let k = 0; k < slot.chain.length - FULL_CHAIN_KEEP; k++) {
+                    if (slot.chain[k]) slot.chain[k].canvas = null;
+                }
+            }
             prevKey = key;
         }
         if (grps.length === 0) slot.chain.length = 0;
@@ -1165,7 +1187,9 @@
                 : Object.assign({}, im.grade || {}, patch || {}));
             if (replace) this._activeMaskId = null;
             im.grade = p;
-            this.invalidateGrade(im);
+            // 只作废全分辨率画布：拖动参数时 low 那张 1600px 降采样图若 key 还对得上
+            // 可以直接复用（rebuildGrade 会判断），不必每动一格就重新烘一张。
+            this.invalidateFullGrade(im);
             this.rebuildGrade(opts && opts.full ? 'full' : 'low');
             this.syncGradeUI();
             if (this.scheduleRender) this.scheduleRender(true);
@@ -1173,17 +1197,36 @@
             return true;
         },
 
+        // 只作废全分辨率烘焙，保留 low 缓存。
+        // 参数变了之后 full 画布一定过期（它对应旧参数），但 low 那张 1600px 的
+        // 降采样图是否还能用，要看 key —— rebuildGrade 自己会判断。
+        // 以前 invalidateGrade 把两者一起清，等于每次拖一下滑块就丢掉一张
+        // 已经烘好的 24MP 画布（≈96MB），还让 rebuildGrade 里的 key 判断成了死代码。
+        invalidateFullGrade(im) {
+            const t = im || this.image;
+            if (!t || !t._grade) return;
+            t._grade.canvas = null;
+            t._grade.fullKey = '';
+            // neutral 必须跟着参数更新：参数全零时整条烘焙链可以跳过。
+            // （以前 neutral 只在 invalidateGrade 里算，而 setGrade 走的是本方法，
+            //   结果调完色 neutral 还是 true → 渲染以为「没调色」直接用原图。）
+            t._grade.neutral = isNeutral(t.grade);
+        },
+
         invalidateGrade(im) {
             const t = im || this.image;
             if (!t) return;
             const neutral = isNeutral(t.grade);
-            t._grade = { neutral, canvas: null, low: null, key: '' };
+            const keepLow = t._grade && !neutral ? t._grade.low : null;
+            const keepLowKey = t._grade && !neutral ? t._grade.lowKey : '';
+            // low 缓存保留：它的 key 还对得上时可以直接复用（见 rebuildGrade）
+            t._grade = { neutral, canvas: null, low: keepLow, lowKey: keepLowKey, fullKey: '' };
             // 按图缓存的测度必须跟源图一起作废：裁切/旋转/还原换了底图之后，
             // ACR 的对比度/高光/阴影仍按旧直方图选行，「去薄雾」也还在用旧图
             // 最亮 1% 当雾色 —— 换图之后这些参数等于作用在错误的图像上。
             delete t._acrBright;
             delete t._acrHaze;
-            if (neutral) { t._grade.key = ''; return; }
+            if (neutral) { t._grade.lowKey = ''; t._grade.fullKey = ''; return; }
             lruTouch(t);
         },
 
@@ -1192,14 +1235,18 @@
             if (!im || !im._grade || im._grade.neutral) return false;
             const key = signature(im.grade);
             if (level === 'full') {
-                if (im._grade.canvas && im._grade.key === key) return true;
+                // full / low 各记各的 key：以前共用一个字段，
+                // 「full 烘好了」会把 low 的 key 覆盖掉，之后 low 要么被误判为
+                // 命中（其实对不上）要么被白清一次。两张画布的生命周期本来就不同，
+                // 分开记最省心。
+                if (im._grade.canvas && im._grade.fullKey === key) return true;
                 const c = bake(im, im.grade, FULL_EDGE);
-                if (c) { im._grade.canvas = c; im._grade.key = key; im._grade.low = null; lruTouch(im); }
+                if (c) { im._grade.canvas = c; im._grade.fullKey = key; lruTouch(im); }
                 return !!c;
             }
-            if (im._grade.low && im._grade.key === key) return true;
+            if (im._grade.low && im._grade.lowKey === key) return true;
             const c = bake(im, im.grade, LOW_EDGE);
-            if (c) { im._grade.low = c; im._grade.key = key; lruTouch(im); }
+            if (c) { im._grade.low = c; im._grade.lowKey = key; lruTouch(im); }
             return !!c;
         },
 
@@ -1237,7 +1284,7 @@
                     cal: p.cal ? Object.assign({}, p.cal) : null,
                     det: p.det ? Object.assign({}, p.det) : null
                 });
-                it._grade = { neutral: isNeutral(p), canvas: null, low: null, key: '' };
+                it._grade = { neutral: isNeutral(p), canvas: null, low: null, lowKey: '', fullKey: '' };
                 n++;
             }
             if (this.buildThumbnails) this.buildThumbnails();

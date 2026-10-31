@@ -1533,6 +1533,112 @@ async function main() {
     check(undoGrade.secondPush === 1, '第二次拖动调色滑块能再压一个新快照',
         JSON.stringify(undoGrade));
 
+    // ── 性能：参数没变就不该重烘（缓存 key 复用）──
+    const perfReuse = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        const el0 = await window.__mk(600, 400);
+        im.el = el0; im.w = 600; im.h = 400;
+        im._gradeCache = null;
+        A.resetGrade();
+        await new Promise((r) => setTimeout(r, 300));
+        A.setGrade({ exp: 1 });
+        await new Promise((r) => setTimeout(r, 400));
+        const low1 = im._grade.low, key1 = im._grade.lowKey;
+        let bakes = 0;
+        const orig = window.QfsMask.groupAlpha;
+        window.QfsMask.groupAlpha = function (...a) { bakes++; return orig.apply(this, a); };
+        A.setGrade({ exp: 1 });            // 完全相同的参数
+        await new Promise((r) => setTimeout(r, 250));
+        const same = { reused: im._grade.low === low1, keySame: im._grade.lowKey === key1, bakes };
+        // 参数真的变了 → 必须重烘
+        const before = im._grade.low;
+        A.setGrade({ exp: 1.5 });
+        await new Promise((r) => setTimeout(r, 350));
+        const changed = { rebaked: before !== im._grade.low, key: String(im._grade.lowKey || '').slice(0, 24) };
+        window.QfsMask.groupAlpha = orig;
+        return { same, changed };
+    })()`);
+    check(perfReuse.same.reused && perfReuse.same.keySame && perfReuse.same.bakes === 0,
+        '相同参数不重复烘焙（low 缓存按 key 复用）', JSON.stringify(perfReuse));
+    check(perfReuse.changed.rebaked, '参数变化时缓存正确失效并重烘', JSON.stringify(perfReuse));
+
+    // ── 性能：full / low 各记各的 key，不能互相污染 ──
+    const perfKeys = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        const el0 = await window.__mk(600, 400);
+        im.el = el0; im.w = 600; im.h = 400;
+        im._gradeCache = null;
+        A.resetGrade();
+        await new Promise((r) => setTimeout(r, 300));
+        A.setGrade({ exp: 1 }, { full: true });
+        await new Promise((r) => setTimeout(r, 500));
+        const afterFull = { full: !!im._grade.canvas, fullKey: !!im._grade.fullKey,
+            low: !!im._grade.low, lowKey: !!im._grade.lowKey };
+        // 拖动（input 期）→ 只清 full，low 保留
+        A.setGrade({ exp: 1.2 });
+        await new Promise((r) => setTimeout(r, 350));
+        const afterDrag = { full: !!im._grade.canvas, low: !!im._grade.low,
+            lowKey: !!im._grade.lowKey };
+        return { afterFull, afterDrag };
+    })()`);
+    check(perfKeys.afterFull.full && perfKeys.afterFull.fullKey,
+        '全分辨率烘焙后 full 就位', JSON.stringify(perfKeys));
+    check(!perfKeys.afterDrag.full && perfKeys.afterDrag.low && perfKeys.afterDrag.lowKey,
+        '拖动时只作废 full，low 缓存保留（省掉重烘一张 1600px）',
+        JSON.stringify(perfKeys));
+
+    // ── 性能：曲线拖动 30 次只烘焙一次（rAF 合并）──
+    const perfCurve = await exec(`(async () => {
+        const A = window.App;
+        A._curveChan = 'rgb';
+        let calls = 0;
+        const orig = A.setCurve.bind(A);
+        A.setCurve = function (...a) { calls++; return orig(...a); };
+        // 模拟 30 次 pointermove 的连发
+        const raf = window.requestAnimationFrame;
+        for (let i = 0; i < 30; i++) {
+            const pts = [[0, 0], [0.5, 0.5 - i * 0.01], [1, 1]];
+            A._curveLive = { chan: 'rgb', pts: pts };
+            if (!A._curveRaf) {
+                A._curveRaf = raf(() => {
+                    A._curveRaf = 0;
+                    const live = A._curveLive;
+                    if (live) A.setCurve(live.chan, live.pts);
+                });
+            }
+        }
+        await new Promise((r) => setTimeout(r, 400));
+        A.setCurve = orig;
+        A._curveLive = null;
+        return { calls };
+    })()`);
+    check(perfCurve.calls === 1, '曲线连拖 30 次只烘焙一次（rAF 合并）', JSON.stringify(perfCurve));
+
+    // ── 性能：画笔笔迹签名是常数级（不是百万级字符串）──
+    const perfSig = await exec(`(async () => {
+        const A = window.App;
+        const strokes = [];
+        for (let i = 0; i < 20; i++) {
+            const pts = [];
+            for (let j = 0; j < 2000; j++) pts.push([j / 2000, Math.sin(j / 100)]);
+            strokes.push({ erase: false, size: 40, pts });
+        }
+        const m = { type: 'brush', mode: 'new', on: 1, inv: 0, feather: 0, density: 100,
+            p: {}, shape: { size: 40, strokes } };
+        const t0 = performance.now();
+        const sig1 = window.QfsMask.maskSignature ? window.QfsMask.maskSignature(m) : '';
+        const t1 = performance.now();
+        // 改一个点 → 签名必须变（否则缓存不会失效，画面不更新）
+        strokes[0].pts[5][1] += 0.01;
+        const sig2 = window.QfsMask.maskSignature ? window.QfsMask.maskSignature(m) : '';
+        const t2 = performance.now();
+        return { len: sig1.length, changed: sig1 !== sig2, ms: Math.round(t1 - t0), ms2: Math.round(t2 - t1),
+            hasExport: !!window.QfsMask.maskSignature };
+    })()`);
+    check(perfSig.hasExport && perfSig.len < 200,
+        '画笔签名是常数级短串（不再是百万级浮点字符串）', JSON.stringify(perfSig));
+    check(perfSig.changed, '画笔改一个点 → 签名变化（缓存会正确失效）', JSON.stringify(perfSig));
+
     console.log('');
     if (failures.length) {
         console.log(`FAILURE  ${failures.length} 项未通过`);

@@ -186,7 +186,16 @@
             return (g && g.curve) || null;
         },
 
+        // 拖动中的即时曲线数据。放在 _curveLive 而不是 im.grade.curve 里：
+        // 烘焙被 rAF 节流后（见 _bindCurvePointer），im.grade 里还是上一次的值，
+        // 而 curvePoints 被 pointerdown 用来算「刚加的点现在排第几」——
+        // 读到旧数据就会算错索引（症状：加点后拖动时抓错控制点）。
+        // 数据立即更新、只推迟重烘焙：手感与正确性都不受影响。
         curvePoints(chan) {
+            const live = this._curveLive;
+            if (live && live.chan === chan) {
+                return live.pts.map((p) => [p[0], p[1]]);
+            }
             const cv = this.curveOf(this.image);
             const pts = cv && cv[chan];
             return pts ? pts.map((p) => [p[0], p[1]]) : [[0, 0], [1, 1]];
@@ -344,6 +353,8 @@
                     const nx = Math.max(0.01, Math.min(0.99, p.x));
                     pts.push([nx, p.y]);
                     pts.sort((a, b) => a[0] - b[0]);
+                    // 加点是离散操作，立刻生效（不等 rAF）
+                    self._curveLive = null;
                     self.setCurve(self._curveChan, pts);
                     // 写回后按 x 重新定位索引（sanitize 可能微调过坐标）
                     const after = self.curvePoints(self._curveChan);
@@ -373,11 +384,33 @@
                     x = Math.max(lo, Math.min(hi, x));
                 }
                 pts[drag] = [x, y];
-                self.setCurve(self._curveChan, pts);
+                // pts 是 curvePoints 返回的**副本**（它做了 map 拷贝），
+                // 直接改它不会更新 _curveLive —— 必须重新写一份回去。
+                // 数据立即落地（curvePoints 读它），重烘焙合并到下一帧：
+                // 高回报率鼠标每秒能发上百次 pointermove，每次都走
+                // setCurve → setGrade → 全链烘焙（1600px + 25³ 三维表合成），
+                // 一帧内多次移动合并成一次就够，画面跟手且不空转。
+                self._curveLive = { chan: self._curveChan, pts: pts.map((p) => [p[0], p[1]]) };
+                if (!self._curveRaf) {
+                    self._curveRaf = requestAnimationFrame(() => {
+                        self._curveRaf = 0;
+                        const live = self._curveLive;
+                        if (live) self.setCurve(live.chan, live.pts);
+                    });
+                }
             });
             const up = () => {
                 if (drag < 0) return;
                 drag = -1;
+                // 停手时把还没跑的那帧立刻烘掉（rAF 可能还没到），
+                // 否则最后一次移动会晚一帧才生效
+                if (self._curveRaf) {
+                    cancelAnimationFrame(self._curveRaf);
+                    self._curveRaf = 0;
+                    const live = self._curveLive;
+                    if (live) self.setCurve(live.chan, live.pts);
+                }
+                self._curveLive = null;
                 // 停手后补全分辨率 + 重画缩略图（与滑块的静置逻辑一致）
                 const im = self.image;
                 if (im) {

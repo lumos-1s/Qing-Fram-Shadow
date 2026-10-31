@@ -266,9 +266,13 @@ async function main() {
         const done = { low: !!im._grade.low, full: !!im._grade.canvas };
         return { live, done };
     })()`);
+    // 注意 done.low 期望为 true：full 烘好后**保留** low 那张 1600px 的图。
+    // 以前 rebuildGrade('full') 会把 low 清掉，但 low 才 7MB（full 是 96MB），
+    // 留着它下次拖动滑块能立刻复用，不用重新烘一张。full/low 各记各的 key，
+    // 不会串味（见 app-grade.js 的 fullKey / lowKey）。
     check(bakeLevel.live.low && !bakeLevel.live.full
-          && bakeLevel.done.full && !bakeLevel.done.low,
-        '蒙版滑块 input 期低分辨率预览、松手补全分辨率',
+          && bakeLevel.done.full && bakeLevel.done.low,
+        '蒙版滑块 input 期低分辨率预览、松手补全分辨率（low 保留供下次复用）',
         JSON.stringify(bakeLevel));
 
     // ── 6. 参数分流：选中蒙版时 9 档改蒙版，点「全局」改整图 ──

@@ -204,13 +204,42 @@
         return activeGroups(list).map((g) => g.head);
     }
 
+    // 画笔笔迹的紧凑指纹：把每个点折成一个整数再滚进 32 位哈希。
+    // 以前是把每个点 toFixed(3) 拼成字符串（400 描边 × 4000 点 = 160 万个
+    // 浮点字符串），每次 input 都要构造并比较 MB 级字符串 —— 成本比它保护的
+    // 那次烘焙还高。改成哈希后无论多少点都是常数级。
+    //
+    // 精度取 1/1000（与原 toFixed(3) 一致），所以「同一笔迹 → 同一指纹」不变，
+    // 缓存失效的时机与以前完全相同。
+    function brushFingerprint(strokes) {
+        let h = 0x811c9dc5 >>> 0;
+        let pts = 0;
+        const mix = (n) => {
+            h ^= (n >>> 0) & 0xffffffff;
+            h = Math.imul(h, 0x01000193) >>> 0;
+        };
+        for (const st of strokes || []) {
+            mix(st.erase ? 1 : 2);
+            mix(Math.round(st.size * 1000));
+            const p = st.pts || [];
+            pts += p.length;
+            for (let i = 0; i < p.length; i++) {
+                // 定点化到 1/1000：和 toFixed(3) 同一个量化口径
+                mix(Math.round(p[i][0] * 1000));
+                mix(Math.round(p[i][1] * 1000));
+            }
+            mix(0xffff);   // 一笔结束的分隔，避免相邻两笔的点串味
+        }
+        // 带上点数：哈希撞了也不会误判「没变」（点数变了必然要重烘）
+        return h.toString(36) + ':' + ((strokes || []).length) + ':' + pts;
+    }
+
     function maskSignature(m) {
         const s = m.shape || {};
         const base = [m.type, m.mode || 'new', m.on, m.inv, m.feather, m.density,
             MASK_KEYS.map((k) => m.p ? m.p[k] : 0).join(',')];
         if (m.type === 'brush') {
-            base.push(s.size, (s.strokes || []).map((st) => (st.erase ? 'e' : 'w') + st.size + ':'
-                + st.pts.map((p) => p[0].toFixed(3) + ',' + p[1].toFixed(3)).join(';')).join('|'));
+            base.push(s.size, brushFingerprint(s.strokes));
         } else if (m.type === 'lum') {
             base.push(s.lo, s.hi);
         } else if (m.type === 'color') {
