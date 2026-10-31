@@ -521,6 +521,7 @@
 
     Object.assign(window.App || (window.App = {}), {
         _activeMaskId: null,
+        _maskRotHover: false,   // 指针是否停在旋转手柄上（叠加层画高亮用）
 
         masksOf(im) {
             const g = (im || this.image || {}).grade;
@@ -729,7 +730,9 @@
             g.setTransform(1, 0, 0, 1, 0, 0);
             g.clearRect(0, 0, ov.width, ov.height);
             const m = this.activeMask(this.image);
-            if (!m || !this.image) { ov.classList.remove('active'); return; }
+            if (!m || !this.image) { ov.classList.remove('active'); this._maskRotHover = false; return; }
+            // 只有椭圆有旋转手柄；切到别的类型时清掉悬停态，避免切回来时残留高亮
+            if (m.type !== 'radial') this._maskRotHover = false;
             const pr = this._photoRect;
             if (!pr) { ov.classList.remove('active'); return; }
             ov.classList.add('active');
@@ -894,22 +897,31 @@
                 const rh = this.maskRotHandle(m.shape);
                 if (rh) {
                     const hp = P(rh.x, rh.y);
+                    const hot = !!this._maskRotHover;
+                    // 连接线：悬停时一起提亮
                     g.beginPath();
                     g.moveTo(tip.x, tip.y);
                     g.lineTo(hp.x, hp.y);
-                    g.lineWidth = 1 * dpr;
-                    g.strokeStyle = 'rgba(255,255,255,.5)';
+                    g.lineWidth = (hot ? 1.5 : 1) * dpr;
+                    g.strokeStyle = hot ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.5)';
                     g.stroke();
+                    // 悬停反馈：外圈光晕 + 放大 + 绿色实心，明确「这个点能拖」
+                    if (hot) {
+                        g.beginPath();
+                        g.arc(hp.x, hp.y, 12 * dpr, 0, Math.PI * 2);
+                        g.fillStyle = 'rgba(64,208,150,.26)';
+                        g.fill();
+                    }
                     g.beginPath();
-                    g.arc(hp.x, hp.y, 6 * dpr, 0, Math.PI * 2);
-                    g.fillStyle = 'rgba(255,255,255,.95)';
+                    g.arc(hp.x, hp.y, (hot ? 8 : 6) * dpr, 0, Math.PI * 2);
+                    g.fillStyle = hot ? 'rgba(64,208,150,.95)' : 'rgba(255,255,255,.95)';
                     g.fill();
-                    g.lineWidth = 1.5 * dpr;
-                    g.strokeStyle = 'rgba(0,0,0,.6)';
+                    g.lineWidth = (hot ? 2 : 1.5) * dpr;
+                    g.strokeStyle = hot ? 'rgba(255,255,255,.95)' : 'rgba(0,0,0,.6)';
                     g.stroke();
                     g.beginPath();
-                    g.arc(hp.x, hp.y, 2.2 * dpr, 0, Math.PI * 2);
-                    g.fillStyle = 'rgba(64,208,150,1)';
+                    g.arc(hp.x, hp.y, (hot ? 2.8 : 2.2) * dpr, 0, Math.PI * 2);
+                    g.fillStyle = hot ? 'rgba(12,48,36,.9)' : 'rgba(64,208,150,1)';
                     g.fill();
                 }
                 dot(c, 5);
@@ -1178,11 +1190,12 @@
                 if (!drag && !pending) {
                     // 悬停光标：旋转手柄 grab / 内部 move / 边缘可缩放 / 空白 crosshair
                     let cur = '';
+                    let overRot = false;
                     if (m.type === 'radial') {
                         const pt0 = this._maskPoint(e);
                         if (pt0) {
                             const rh = this.maskRotHandle(m.shape);
-                            if (rh && hit(pt0, rh, 10)) cur = 'grab';
+                            if (rh && hit(pt0, rh, 10)) { cur = 'grab'; overRot = true; }
                             else {
                                 const rr = radialRR(pt0, m.shape);
                                 cur = rr < 0.95 ? 'move' : (rr < 1.35 ? 'nwse-resize' : 'crosshair');
@@ -1190,6 +1203,11 @@
                         }
                     }
                     if (ov.style.cursor !== cur) ov.style.cursor = cur;
+                    // 手柄悬停高亮：只在状态变化时重画，避免每次 pointermove 都重绘叠加层
+                    if (overRot !== !!this._maskRotHover) {
+                        this._maskRotHover = overRot;
+                        this.drawMaskOverlay();
+                    }
                     return;
                 }
                 const pt = this._maskPoint(e);
@@ -1271,6 +1289,13 @@
                 const wasRotate = drag.kind === 'rotate';
                 drag = null;
                 try { if (ov.hasPointerCapture(e.pointerId)) ov.releasePointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+                if (wasRotate) {
+                    // 松手时按指针实际位置重算悬停态：拖到内侧松手时不该还亮着
+                    const ptEnd = this._maskPoint(e);
+                    const mEnd = this.activeMask(this.image);
+                    const rhEnd = (ptEnd && mEnd) ? this.maskRotHandle(mEnd.shape) : null;
+                    this._maskRotHover = !!(ptEnd && rhEnd && hit(ptEnd, rhEnd, 10));
+                }
                 // 松手烘一次全分辨率：拖动期只画叠加层，保证跟手
                 this.commitMaskShape('full');
                 // 旋转/画笔要回写面板（方向滑块、笔刷大小）；拖动/改大小面板本来就不用变
@@ -1278,6 +1303,12 @@
             };
             ov.addEventListener('pointerup', end);
             ov.addEventListener('pointercancel', end);
+            // 指针离开叠加层：清掉悬停高亮与光标（拖动中不清，否则拖到边缘会闪）
+            ov.addEventListener('pointerleave', () => {
+                if (drag || pending) return;
+                if (this._maskRotHover) { this._maskRotHover = false; this.drawMaskOverlay(); }
+                if (ov.style.cursor) ov.style.cursor = '';
+            });
             ov.addEventListener('contextmenu', (e) => { if (this.activeMask(this.image)) e.preventDefault(); });
         },
 

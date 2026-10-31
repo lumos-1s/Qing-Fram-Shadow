@@ -284,6 +284,74 @@ async function main() {
         && sD.after.cx === sD.before.cx && sD.after.cy === sD.before.cy,
         '旋转不改变椭圆位置/大小', JSON.stringify({ before: sD.before, after: sD.after }));
 
+    // ── 场景 E：悬停在旋转手柄上要有反馈（光标 + 视觉高亮） ──
+    // 高亮的实现是手柄外圈光晕（半径 12 CSS px，非悬停时圆点只有 6px）：
+    // 在「手柄中心垂直方向 10px」取样，悬停前透明、悬停后应读到光晕的 alpha。
+    const sE = await exec(`(async () => {
+        const A = window.App;
+        const im = A.image;
+        const m = A.activeMask(im);
+        if (!m) return { error: 'no active mask' };
+        m.shape.cx = 0.5; m.shape.cy = 0.5;
+        m.shape.rx = 0.4; m.shape.ry = 0.2;
+        m.shape.rot = 0;
+        A._maskRotHover = false;
+        A.syncMaskUI();
+        A.drawMaskOverlay();
+        await new Promise((r) => setTimeout(r, 80));
+
+        const ov = document.getElementById('maskOverlay');
+        const base = A._baseSize();
+        const pr = A._photoRect;
+        if (!ov || !pr) return { error: 'overlay/photoRect not ready' };
+        const r = ov.getBoundingClientRect();
+        const toClient = (nx, ny) => ({
+            x: r.left + (pr.x + nx * pr.w) / Math.max(1, base.w) * r.width,
+            y: r.top + (pr.y + ny * pr.h) / Math.max(1, base.h) * r.height
+        });
+        const ev = (t, x, y) => ov.dispatchEvent(new PointerEvent(t, {
+            clientX: x, clientY: y, bubbles: true, pointerId: 1, button: 0
+        }));
+        const rh = A.maskRotHandle(m.shape);
+        if (!rh) return { error: 'no rotate handle' };
+        const hp = toClient(rh.x, rh.y);
+
+        // 取样点：手柄中心向下 10 CSS px（避开长轴连接线；非悬停时圆点半径 6px）
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const k = ov.width / Math.max(1, base.w);
+        const hxPx = Math.round((pr.x + rh.x * pr.w) * k);
+        const hyPx = Math.round((pr.y + rh.y * pr.h) * k);
+        const alphaAt10 = () => ov.getContext('2d')
+            .getImageData(hxPx, Math.round(hyPx + 10 * dpr), 1, 1).data[3];
+
+        const aBefore = alphaAt10();
+
+        // 悬停到手柄
+        ev('pointermove', hp.x, hp.y);
+        const hoverOn = A._maskRotHover;
+        const cursorOn = ov.style.cursor;
+        const aHover = alphaAt10();
+
+        // 移到空白处 → 高亮应撤销
+        const far = toClient(0.15, 0.15);
+        ev('pointermove', far.x, far.y);
+        const hoverOff = A._maskRotHover;
+        const aAfter = alphaAt10();
+
+        return { aBefore, aHover, hoverOn, hoverOff, cursorOn, aAfter, handle: rh };
+    })()`);
+    check(!sE.error, '悬停前置:旋转手柄位置可计算', JSON.stringify(sE.error || ''));
+    check(sE.hoverOn === true && sE.hoverOff === false,
+        '悬停旋转手柄:状态位正确切换(进入=高亮 / 离开=撤销)',
+        `on=${sE.hoverOn}, off=${sE.hoverOff}`);
+    check(sE.cursorOn === 'grab',
+        '悬停旋转手柄:光标变为 grab', 'cursor=' + sE.cursorOn);
+    check(sE.aBefore < 10 && sE.aHover > 30,
+        '悬停旋转手柄:外圈光晕真的画出来了(取样 alpha 由透明变绿)',
+        `before=${sE.aBefore}, hover=${sE.aHover}`);
+    check(sE.aAfter < 10,
+        '移出旋转手柄:高亮撤销(取样点恢复透明)', 'after=' + sE.aAfter);
+
     await win.close();
     app.exit(failures.length ? 1 : 0);
 }
