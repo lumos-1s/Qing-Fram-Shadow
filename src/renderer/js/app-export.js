@@ -269,7 +269,6 @@ window.App = Object.assign(window.App || {}, {
                 ? `已取消导出：完成 ${okCount}${failCount ? `，失败 ${failCount}` : ''}`
                 : `导出完成：成功 ${okCount}${failCount ? `，失败 ${failCount}` : ''}${useBaseCount ? `（${useBaseCount} 张沿用当前设计）` : ''}`;
             this.setStatus(m);
-            this.revealExport(loc, okCount, aborted);
         } finally {
             if (btnCancel) btnCancel.style.display = 'none';
             delete this.uiDprOverride;
@@ -1094,16 +1093,6 @@ window.App = Object.assign(window.App || {}, {
         else wrap.style.display = 'none';
     },
     // 导出完成后在资源管理器中定位产物:单文件选中该文件,目录模式打开目录
-    revealExport(loc, okCount, aborted) {
-        const api = window.qingframe;
-        if (!api || !api.showItemInFolder) return;
-        if (aborted || !okCount) return;
-        const p = loc && (loc.mode === 'dir' ? loc.dir : (loc.filePath || loc.path));
-        if (!p) return;
-        api.showItemInFolder(p).then(r => {
-            if (!(r && r.ok)) this.diagLog && this.diagLog('[提示] 打开导出位置失败: ' + ((r && r.message) || '路径不可用'));
-        }).catch(() => {});
-    },
     // 更新内容 markdown 轻渲染(先转义防注入,再处理标题/列表/加粗/代码)
     mdToHtml(text) {
         const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
