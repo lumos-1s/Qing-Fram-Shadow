@@ -42,7 +42,8 @@
 
     function defaultShape(type) {
         if (type === 'linear') return { x1: 0.5, y1: 0.08, x2: 0.5, y2: 0.62 };
-        // rot：椭圆自身轴的方向（度）。椭圆中心对称，0~180° 已覆盖所有朝向。
+        // rot：椭圆自身轴的方向（度，0~360）。椭圆虽然 180° 对称，
+        // 但直接拖手柄旋转时要把角度存满一圈，否则转过 180° 手柄会瞬移到对角。
         if (type === 'radial') return { cx: 0.5, cy: 0.42, rx: 0.34, ry: 0.28, rot: 0 };
         if (type === 'brush') return { size: 18, strokes: [] };
         if (type === 'color') return { h: 210, tol: 28, minS: 12, sat: 40 };  // 默认选蓝天那类色相
@@ -96,12 +97,11 @@
                 out.shape.rx = Math.max(0.02, Math.min(1, num(s.rx, out.shape.rx)));
                 out.shape.ry = Math.max(0.02, Math.min(1, num(s.ry, out.shape.ry)));
                 // 旧草稿没有 rot 字段，缺省 0°（保持原来的水平椭圆）。
-                // 椭圆以 180° 为周期：270° 等价 90°、-30° 等价 150°，
-                // 不能直接夹到 0~180（会把 270 夹成 180，方向就错了）。
+                // 存满 0~360：负角/超范围按整圈归一（-30°→330°、999°→279°）。
+                // 虽然椭圆 180° 对称，但手柄方向依赖完整角度，不能只留 0~180。
                 let r = num(s.rot, 0) % 360;
                 if (r < 0) r += 360;
-                if (r > 180) r -= 180;
-                out.shape.rot = Math.min(180, Math.round(r));
+                out.shape.rot = Math.round(r) % 360;
             }
             if (type === 'linear' && Math.abs(out.shape.x2 - out.shape.x1) < 1e-4
                 && Math.abs(out.shape.y2 - out.shape.y1) < 1e-4) {
@@ -686,6 +686,39 @@
             return { x: clamp01((x - pr.x) / Math.max(1, pr.w)), y: clamp01((y - pr.y) / Math.max(1, pr.h)) };
         },
 
+        /* 椭圆旋转手柄的位置（照片归一化坐标）：长轴端点再往外推 ~16 CSS px。
+           角度在基准空间算（与绘制同一套），再换回归一化坐标；绘制与命中判定共用，
+           保证「画在哪就能抓在哪」。 */
+        maskRotHandle(shape) {
+            const pr = this._photoRect;
+            if (!pr || !shape) return null;
+            const rot = (Number(shape.rot) || 0) * Math.PI / 180;
+            const Rx = Math.max(0.01, shape.rx) * Math.max(1, pr.w);
+            const Ry = Math.max(0.01, shape.ry) * Math.max(1, pr.h);
+            // 手柄放在「屏幕上更长的那根轴」上（与长轴指示线一致；rx/ry 是比例，必须换成像素再比）
+            const majorX = Rx >= Ry;
+            const M = majorX ? Rx : Ry;
+            const cos = Math.cos(rot), sin = Math.sin(rot);
+            const ux = majorX ? cos : -sin;
+            const uy = majorX ? sin : cos;
+            // 1 CSS px = 多少基准单位：缩放/窗口变化后手柄与圆点的视觉间距保持不变
+            const ov = overlayEl();
+            const ovr = ov ? ov.getBoundingClientRect() : null;
+            const base = this._baseSize();
+            const perCss = (ovr && ovr.width > 1) ? (Math.max(1, base.w) / ovr.width) : 1;
+            // 16px 外推 + 10px 命中半径：端点(0px 偏移)仍属于「改大小」，
+            // 只有明确点到外侧圆点才旋转 —— 与既有手感/回归测试兼容。
+            const dist = M + 16 * perCss;
+            const cxB = pr.x + shape.cx * pr.w, cyB = pr.y + shape.cy * pr.h;
+            let hx = (cxB + ux * dist - pr.x) / Math.max(1, pr.w);
+            let hy = (cyB + uy * dist - pr.y) / Math.max(1, pr.h);
+            // _maskPoint 会把指针 clamp 到照片内：大椭圆的手柄若跑到照片外就抓不到，
+            // 收回边缘内一点；旋转只看「指针相对中心的方向」，手柄位置不影响功能。
+            hx = Math.max(0.01, Math.min(0.99, hx));
+            hy = Math.max(0.01, Math.min(0.99, hy));
+            return { x: hx, y: hy };
+        },
+
         /* 叠加层绘制：蒙版范围染成青绿色 + 形状手柄；拖动期只跑这一条路径 */
         drawMaskOverlay() {
             const ov = overlayEl();
@@ -857,6 +890,28 @@
                 g.lineWidth = 1 * dpr;
                 g.strokeStyle = 'rgba(255,255,255,.55)';
                 g.stroke();
+                // 旋转手柄(PS 式直接拖)：长轴端点外侧的小圆点，拖它绕中心转
+                const rh = this.maskRotHandle(m.shape);
+                if (rh) {
+                    const hp = P(rh.x, rh.y);
+                    g.beginPath();
+                    g.moveTo(tip.x, tip.y);
+                    g.lineTo(hp.x, hp.y);
+                    g.lineWidth = 1 * dpr;
+                    g.strokeStyle = 'rgba(255,255,255,.5)';
+                    g.stroke();
+                    g.beginPath();
+                    g.arc(hp.x, hp.y, 6 * dpr, 0, Math.PI * 2);
+                    g.fillStyle = 'rgba(255,255,255,.95)';
+                    g.fill();
+                    g.lineWidth = 1.5 * dpr;
+                    g.strokeStyle = 'rgba(0,0,0,.6)';
+                    g.stroke();
+                    g.beginPath();
+                    g.arc(hp.x, hp.y, 2.2 * dpr, 0, Math.PI * 2);
+                    g.fillStyle = 'rgba(64,208,150,1)';
+                    g.fill();
+                }
                 dot(c, 5);
             }
             g.restore();
@@ -908,7 +963,7 @@
             bindNum('slMaskRot', (v, done) => {
                 const m = this.activeMask(this.image);
                 if (!m || m.type !== 'radial') return;
-                m.shape.rot = Math.max(0, Math.min(180, Math.round(v)));
+                m.shape.rot = Math.max(0, Math.min(360, Math.round(v)));
                 if (this.updateLabel) this.updateLabel('lblMaskRot', m.shape.rot + '°');
                 this.commitMaskShape(done ? 'full' : 'live');
                 // commitMaskShape 只重烘照片，叠加层的椭圆/手柄要自己重画才跟手
@@ -1082,7 +1137,12 @@
                     }
                 } else if (m.type === 'radial') {
                     const rr = radialRR(pt, m.shape);
-                    if (hit(pt, { x: m.shape.cx, y: m.shape.cy }, 12) || rr < 0.95) {
+                    const rh = this.maskRotHandle(m.shape);
+                    // 旋转手柄优先于「拖动/改大小」：它本来就落在 rr≈1 的边缘带里，
+                    // 不先判就会被当成改大小，永远转不动。
+                    if (rh && hit(pt, rh, 10)) {
+                        drag = { kind: 'rotate' };
+                    } else if (hit(pt, { x: m.shape.cx, y: m.shape.cy }, 12) || rr < 0.95) {
                         drag = { kind: 'move', ox: m.shape.cx, oy: m.shape.cy, px: pt.x, py: pt.y };
                     } else if (rr < 1.35) {
                         // 记住按下时的半径与位置：按「离中心的距离比」等比缩放。
@@ -1115,7 +1175,23 @@
                 const m = this.activeMask(this.image);
                 if (!m) return;
                 // 注意：pending（按下未拖）也要进这里，否则「拖出新渐变」永远升级不了
-                if (!drag && !pending) return;
+                if (!drag && !pending) {
+                    // 悬停光标：旋转手柄 grab / 内部 move / 边缘可缩放 / 空白 crosshair
+                    let cur = '';
+                    if (m.type === 'radial') {
+                        const pt0 = this._maskPoint(e);
+                        if (pt0) {
+                            const rh = this.maskRotHandle(m.shape);
+                            if (rh && hit(pt0, rh, 10)) cur = 'grab';
+                            else {
+                                const rr = radialRR(pt0, m.shape);
+                                cur = rr < 0.95 ? 'move' : (rr < 1.35 ? 'nwse-resize' : 'crosshair');
+                            }
+                        }
+                    }
+                    if (ov.style.cursor !== cur) ov.style.cursor = cur;
+                    return;
+                }
                 const pt = this._maskPoint(e);
                 if (!pt) return;
                 if (pending) {
@@ -1160,6 +1236,26 @@
                     const k = Math.max(0.05, d / drag.d0);
                     m.shape.rx = Math.max(0.02, Math.min(1, drag.rx0 * k));
                     m.shape.ry = Math.max(0.02, Math.min(1, drag.ry0 * k));
+                } else if (drag.kind === 'rotate') {
+                    const pr = this._photoRect;
+                    if (pr) {
+                        // 角度必须在**像素/基准空间**算：rx、ry 是归一化比例，
+                        // 照片非正方形时直接用归一化坐标算 atan2 会歪（宽图尤其明显）。
+                        const vx = (pt.x - m.shape.cx) * Math.max(1, pr.w);
+                        const vy = (pt.y - m.shape.cy) * Math.max(1, pr.h);
+                        const Rx = Math.max(0.01, m.shape.rx) * Math.max(1, pr.w);
+                        const Ry = Math.max(0.01, m.shape.ry) * Math.max(1, pr.h);
+                        let deg = Math.atan2(vy, vx) * 180 / Math.PI;
+                        // 手柄挂在「屏幕更长的那根轴」上：rx 更长是局部 x 轴(角度=rot)，
+                        // ry 更长是局部 y 轴(世界角 = rot+90°)，所以要减 90°
+                        if (Rx < Ry) deg -= 90;
+                        if (e.shiftKey) deg = Math.round(deg / 15) * 15;   // 与元素旋转一致的 15° 吸附
+                        m.shape.rot = Math.round(((deg % 360) + 360) % 360);
+                        // 拖动期同步「方向」滑块/标签，松手再统一 syncMaskUI
+                        const rotRng = $('slMaskRot');
+                        if (rotRng) rotRng.value = String(m.shape.rot);
+                        if (this.updateLabel) this.updateLabel('lblMaskRot', m.shape.rot + '°');
+                    }
                 } else if (drag.kind === 'brush') {
                     const st = m.shape.strokes[m.shape.strokes.length - 1];
                     st.pts.push([pt.x, pt.y]);
@@ -1172,11 +1268,13 @@
                 pending = null;
                 if (!drag) return;
                 const wasBrush = drag.kind === 'brush';
+                const wasRotate = drag.kind === 'rotate';
                 drag = null;
                 try { if (ov.hasPointerCapture(e.pointerId)) ov.releasePointerCapture(e.pointerId); } catch (_) { /* ignore */ }
                 // 松手烘一次全分辨率：拖动期只画叠加层，保证跟手
                 this.commitMaskShape('full');
-                if (wasBrush) this.syncMaskUI();
+                // 旋转/画笔要回写面板（方向滑块、笔刷大小）；拖动/改大小面板本来就不用变
+                if (wasBrush || wasRotate) this.syncMaskUI();
             };
             ov.addEventListener('pointerup', end);
             ov.addEventListener('pointercancel', end);
@@ -1250,7 +1348,7 @@
                     const noPos = !this.maskPositionSupported();
                     tip.textContent = pr ? ({
                         linear: '拖线身整体移动、拖两端点改过渡；空白处拖一下可重画',
-                        radial: '拖椭圆内部移动、拖边缘改大小、调「方向」旋转；外面拖出新椭圆',
+                        radial: '拖内部移动、拖边缘改大小、拖外侧圆点旋转（Shift 15°吸附）；外面拖出新椭圆',
                         brush: '按住涂抹；按住 Alt 或右键涂抹 = 擦除',
                         lum: '按亮度自动选区，调下面的暗部/亮部阈值',
                         color: '在画布上点一下取色，再调色相/容差；灰和近白黑不会被选中'

@@ -134,9 +134,9 @@ async function main() {
     })()`);
     check(sA.defaultRot === 0, '数据模型:新建椭圆默认方向 0°', 'rot=' + sA.defaultRot);
     check(sA.keptRot === 37, '数据模型:草稿/导入清洗保留方向', 'rot=' + sA.keptRot);
-    check(sA.wrappedRot === 99, '数据模型:超范围角度按椭圆 180° 周期归一(999°→99°)', 'rot=' + sA.wrappedRot);
-    check(sA.negRot === 150, '数据模型:负角度归一(-30°→150°)', 'rot=' + sA.negRot);
-    check(sA.maxRot === 180, '数据模型:180° 端点保留', 'rot=' + sA.maxRot);
+    check(sA.wrappedRot === 279, '数据模型:超范围角度按整圈归一(999°→279°)', 'rot=' + sA.wrappedRot);
+    check(sA.negRot === 330, '数据模型:负角度归一(-30°→330°)', 'rot=' + sA.negRot);
+    check(sA.maxRot === 180, '数据模型:180° 保留(直拖手柄时角度要存满一圈)', 'rot=' + sA.maxRot);
     check(sA.sigChanged, '数据模型:maskSignature 随方向变化(否则缓存不失效，画面按旧朝向)',
         'sigChanged=' + sA.sigChanged);
 
@@ -213,6 +213,76 @@ async function main() {
     check(sC.a0 > 60 && sC.a90 < 20,
         '叠加层:椭圆范围按方向旋转(取样点 0° 有绿色范围 / 90° 无)',
         `rot0 a=${sC.a0}, rot90 a=${sC.a90}`);
+
+    // ── 场景 D：直接拖旋转手柄（PS 式操作） ──
+    // 手柄在长轴端点外侧；拖它绕中心转。两条断言：
+    //   1) 拖到中心正下方 → 长轴(x)指向下 → rot=90°
+    //   2) 拖到基准空间 37° 方向 + Shift → 15° 吸附 → 30°
+    // 同时确认旋转不会改动 cx/cy/rx/ry。
+    const sD = await exec(`(async () => {
+        const A = window.App;
+        const im = A.image;
+        const m = A.activeMask(im);
+        if (!m) return { error: 'no active mask' };
+        m.shape.cx = 0.5; m.shape.cy = 0.5;
+        m.shape.rx = 0.4; m.shape.ry = 0.2;
+        m.shape.rot = 0;
+        m.feather = 20;
+        A.syncMaskUI();
+        await new Promise((r) => setTimeout(r, 120));
+
+        const ov = document.getElementById('maskOverlay');
+        const base = A._baseSize();
+        const pr = A._photoRect;
+        if (!ov || !pr) return { error: 'overlay/photoRect not ready' };
+        const r = ov.getBoundingClientRect();
+        const toClient = (nx, ny) => ({
+            x: r.left + (pr.x + nx * pr.w) / Math.max(1, base.w) * r.width,
+            y: r.top + (pr.y + ny * pr.h) / Math.max(1, base.h) * r.height
+        });
+        const ev = (t, x, y, shift) => ov.dispatchEvent(new PointerEvent(t, {
+            clientX: x, clientY: y, bubbles: true, pointerId: 1, button: 0, shiftKey: !!shift
+        }));
+        const before = { rx: m.shape.rx, ry: m.shape.ry, cx: m.shape.cx, cy: m.shape.cy };
+        const rh = A.maskRotHandle(m.shape);
+        if (!rh) return { error: 'no rotate handle' };
+
+        // 1) 拖到正下方
+        const hp = toClient(rh.x, rh.y);
+        const pDown = toClient(0.5, 0.8);
+        ev('pointerdown', hp.x, hp.y);
+        ev('pointermove', pDown.x, pDown.y);
+        ev('pointerup', pDown.x, pDown.y);
+        await new Promise((r2) => setTimeout(r2, 60));
+        const afterDown = m.shape.rot;
+
+        // 2) 拖到基准空间 37°，按住 Shift
+        const rad = 37 * Math.PI / 180;
+        const cxB = pr.x + m.shape.cx * pr.w, cyB = pr.y + m.shape.cy * pr.h;
+        const dist = Math.min(pr.w, pr.h) * 0.3;
+        const nx = (cxB + Math.cos(rad) * dist - pr.x) / pr.w;
+        const ny = (cyB + Math.sin(rad) * dist - pr.y) / pr.h;
+        const rh2 = A.maskRotHandle(m.shape);
+        const hp2 = toClient(rh2.x, rh2.y);
+        const tp = toClient(nx, ny);
+        ev('pointerdown', hp2.x, hp2.y);
+        ev('pointermove', tp.x, tp.y, true);
+        ev('pointerup', tp.x, tp.y, true);
+        await new Promise((r2) => setTimeout(r2, 60));
+        const afterShift = m.shape.rot;
+
+        const after = { rx: m.shape.rx, ry: m.shape.ry, cx: m.shape.cx, cy: m.shape.cy };
+        return { before, after, afterDown, afterShift, handle: rh };
+    })()`);
+    check(!sD.error, '拖拽前置:旋转手柄位置可计算', JSON.stringify(sD.error || ''));
+    check(Math.round(sD.afterDown) === 90,
+        '直接拖旋转手柄:拖到正下方 → 方向 90°', 'rot=' + sD.afterDown);
+    check(Math.round(sD.afterShift) === 30,
+        '直接拖旋转手柄:Shift 按 15° 吸附(37°→30°)', 'rot=' + sD.afterShift);
+    check(sD.after && sD.before
+        && sD.after.rx === sD.before.rx && sD.after.ry === sD.before.ry
+        && sD.after.cx === sD.before.cx && sD.after.cy === sD.before.cy,
+        '旋转不改变椭圆位置/大小', JSON.stringify({ before: sD.before, after: sD.after }));
 
     await win.close();
     app.exit(failures.length ? 1 : 0);
