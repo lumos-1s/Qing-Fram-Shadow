@@ -421,11 +421,17 @@ window.App = Object.assign(window.App || {}, {
 
     setWallCardScale(v) {
         const s = Math.min(WALL_CARD_SCALE_MAX, Math.max(WALL_CARD_SCALE_MIN, Math.round(v * 100) / 100));
+        const grid = this._wallDom && this._wallDom.grid;
+        // 缩放前先记住视口中心是哪张卡
+        const anchor = (grid && this._wallActive) ? this.wallCenterCell() : null;
         this._wallCardScale = s;
         try { localStorage.setItem(WALL_CARD_SCALE_KEY, String(s)); } catch (_) { /* 存不了也照样生效 */ }
-        // 只改尺寸不用重建卡片节点：layoutWallTiles 会重写宽高和周期块偏移，
-        // 位移取模回绕照旧（卡片变大了，看的那块墙还是那块）。
-        if (this._wallDom && this._wallDom.grid) this.layoutWallTiles();
+        // 只改尺寸不用重建卡片节点：layoutWallTiles 会重写宽高和周期块偏移。
+        if (!grid) return s;
+        this.layoutWallTiles();
+        // 再把刚才那张卡摆回视口中心：不这么做的话，缩放锚点是墙的坐标原点，
+        // 每次拖动滑块画面都往右下角飘，越大的卡片飘得越远。
+        if (anchor) this.centerWallOn(anchor.r, anchor.c, 'keep');
         return s;
     },
 
@@ -1277,16 +1283,34 @@ window.App = Object.assign(window.App || {}, {
             this._wallOffsetX = _pwWrap(targetX, span.w);
             this._wallOffsetY = _pwWrap(targetY, span.h);
         }
-        for (const t of grid.querySelectorAll('.pw-tile.selected')) t.classList.remove('selected');
-        const targets = (el.cells || {})[r + '_' + c] || [];
-        if (select !== false) {
-            for (const t of targets) t.classList.add('selected');
-            if (targets.length) {
-                try { targets[0].focus({ preventScroll: true }); } catch (_) {}
+        // select==='keep'：只挪位置，不动选中态（缩放卡片大小时用——那不是用户换选中，
+        // 把当前选中的卡片给人取消掉会很突然）
+        if (select !== 'keep') {
+            for (const t of grid.querySelectorAll('.pw-tile.selected')) t.classList.remove('selected');
+            const targets = (el.cells || {})[r + '_' + c] || [];
+            if (select !== false) {
+                for (const t of targets) t.classList.add('selected');
+                if (targets.length) {
+                    try { targets[0].focus({ preventScroll: true }); } catch (_) {}
+                }
             }
         }
         this.applyWallTransform();
         this.focusWall(true);
+    },
+
+    // 视口中心那张卡落在哪个格子上。缩放前后拿它当锚点，画面才像「以中间那张为中心」
+    // 放大；否则缩放的锚点是墙的坐标原点，卡片越大漂得越明显，看着像放大后跑偏了。
+    wallCenterCell() {
+        const el = this._wallDom, b = this._wallBounds;
+        if (!el || !el.grid || !b) return null;
+        const cx = el.grid.clientWidth / 2, cy = el.grid.clientHeight / 2;
+        // _wallPan 是未回绕的位移累计，用它反算墙坐标（offset 是取过模的，反算会差一个周期）
+        const wx = cx - (this._wallPan ? this._wallPan.x : 0);
+        const wy = cy - (this._wallPan ? this._wallPan.y : 0);
+        const c = Math.round((wx - b.pad - b.tw / 2) / (b.tw + b.gap));
+        const r = Math.round((wy - b.pad - b.th / 2) / (b.th + b.gap));
+        return { r: ((r % b.Q) + b.Q) % b.Q, c: ((c % b.P) + b.P) % b.P };
     },
 
     // 回墙时把选中框落到「当前模板用的那个预设」上：用户不用再满墙找刚才选的是哪张
