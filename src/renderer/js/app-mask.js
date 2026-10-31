@@ -42,7 +42,8 @@
 
     function defaultShape(type) {
         if (type === 'linear') return { x1: 0.5, y1: 0.08, x2: 0.5, y2: 0.62 };
-        if (type === 'radial') return { cx: 0.5, cy: 0.42, rx: 0.34, ry: 0.28 };
+        // rot：椭圆自身轴的方向（度）。椭圆中心对称，0~180° 已覆盖所有朝向。
+        if (type === 'radial') return { cx: 0.5, cy: 0.42, rx: 0.34, ry: 0.28, rot: 0 };
         if (type === 'brush') return { size: 18, strokes: [] };
         if (type === 'color') return { h: 210, tol: 28, minS: 12, sat: 40 };  // 默认选蓝天那类色相
         return { lo: 0, hi: 45 };   // lum：只选亮度 0~45% 的区域
@@ -94,6 +95,8 @@
             if (type === 'radial') {
                 out.shape.rx = Math.max(0.02, Math.min(1, num(s.rx, out.shape.rx)));
                 out.shape.ry = Math.max(0.02, Math.min(1, num(s.ry, out.shape.ry)));
+                // 旧草稿没有 rot 字段，缺省 0°（保持原来的水平椭圆）
+                out.shape.rot = Math.max(0, Math.min(180, Math.round(num(s.rot, 0))));
             }
             if (type === 'linear' && Math.abs(out.shape.x2 - out.shape.x1) < 1e-4
                 && Math.abs(out.shape.y2 - out.shape.y1) < 1e-4) {
@@ -245,7 +248,8 @@
         } else if (m.type === 'color') {
             base.push(s.h, s.tol, s.minS);
         } else {
-            base.push(s.x1, s.y1, s.x2, s.y2, s.cx, s.cy, s.rx, s.ry);
+            // rot 必须进签名：否则改方向不会让蒙版缓存失效，画面还按旧朝向合成
+            base.push(s.x1, s.y1, s.x2, s.y2, s.cx, s.cy, s.rx, s.ry, s.rot);
         }
         return base.join('|');
     }
@@ -283,8 +287,11 @@
         const f = Math.max(0.001, m.feather / 100);
         const cx = s.cx * w, cy = s.cy * h;
         const rx = Math.max(0.01, s.rx) * w, ry = Math.max(0.01, s.ry) * h;
+        // 方向：与叠加层同一套「像素空间绕中心旋转」，两边角度自然一致
+        const rot = (num(s.rot, 0) || 0) * Math.PI / 180;
         g.save();
         g.translate(cx, cy);
+        if (rot) g.rotate(rot);
         g.scale(rx, ry);
         const grad = g.createRadialGradient(0, 0, Math.max(0, 1 - f), 0, 0, 1);
         if (m.inv) {
@@ -296,6 +303,7 @@
             g.fillRect(0, 0, w, h);
             g.save();
             g.translate(cx, cy);
+            if (rot) g.rotate(rot);
             g.scale(rx, ry);
             const cut = g.createRadialGradient(0, 0, Math.max(0, 1 - f), 0, 0, 1);
             cut.addColorStop(0, 'rgba(255,255,255,1)');
@@ -708,6 +716,8 @@
             const rgba = (a) => 'rgba(' + TINT[0] + ',' + TINT[1] + ',' + TINT[2] + ',' + a.toFixed(3) + ')';
             const grp = this.activeGroup ? this.activeGroup(this.image) : null;
             const members = (grp && grp.members) || [m];
+            // 椭圆方向（度→弧度）：叠加层、渐变、手柄、命中判定共用同一个角
+            const rotRad = (Number(m.shape && m.shape.rot) || 0) * Math.PI / 180;
             const paintRaster = (alpha, color) => {
                 const tint = document.createElement('canvas');
                 tint.width = alpha.width; tint.height = alpha.height;
@@ -737,7 +747,7 @@
             g.beginPath();
             if (m.type === 'radial' && !m.inv) {
                 g.ellipse(sx + m.shape.cx * sw, sy + m.shape.cy * sh,
-                    Math.max(1, m.shape.rx * sw), Math.max(1, m.shape.ry * sh), 0, 0, Math.PI * 2);
+                    Math.max(1, m.shape.rx * sw), Math.max(1, m.shape.ry * sh), rotRad, 0, Math.PI * 2);
             } else {
                 // 反相椭圆要覆盖椭圆外的整幅照片，不能先裁到椭圆里
                 g.rect(sx, sy, sw, sh);
@@ -767,6 +777,7 @@
                     g.fillRect(sx, sy, sw, sh);
                     g.save();
                     g.translate(cx, cy);
+                    if (rotRad) g.rotate(rotRad);
                     g.scale(rx, ry);
                     g.globalCompositeOperation = 'destination-out';
                     const cut = g.createRadialGradient(0, 0, Math.max(0, 1 - f), 0, 0, 1);
@@ -779,6 +790,7 @@
                     g.restore();
                 } else {
                     g.translate(cx, cy);
+                    if (rotRad) g.rotate(rotRad);
                     g.scale(rx, ry);
                     // 单位圆内的径向渐变：内圈到 (1-f) 是满权重，之外衰减到 0
                     const grad = g.createRadialGradient(0, 0, Math.max(0, 1 - f), 0, 0, 1);
@@ -825,9 +837,21 @@
                 g.strokeStyle = 'rgba(255,255,255,.85)';
                 g.setLineDash([5 * dpr, 4 * dpr]);
                 g.beginPath();
-                g.ellipse(c.x, c.y, Math.max(2, rx), Math.max(2, ry), 0, 0, Math.PI * 2);
+                g.ellipse(c.x, c.y, Math.max(2, rx), Math.max(2, ry), rotRad, 0, Math.PI * 2);
                 g.stroke();
                 g.setLineDash([]);
+                // 长轴指示线：rx≈ry 时椭圆接近正圆，光看轮廓看不出方向，
+                // 这条线让「方向」始终可见（也方便确认滑块确实生效）。
+                const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad);
+                const tip = rx >= ry
+                    ? { x: c.x + rx * cosR, y: c.y + rx * sinR }
+                    : { x: c.x - ry * sinR, y: c.y + ry * cosR };
+                g.beginPath();
+                g.moveTo(c.x, c.y);
+                g.lineTo(tip.x, tip.y);
+                g.lineWidth = 1 * dpr;
+                g.strokeStyle = 'rgba(255,255,255,.55)';
+                g.stroke();
                 dot(c, 5);
             }
             g.restore();
@@ -874,6 +898,16 @@
                 if (this.updateLabel) this.updateLabel('lblMaskBrushSize', String(v));
                 // input 期用低分辨率预览，松手（change）补一次全分辨率烘焙。
                 this.commitMaskShape(done ? 'full' : 'live');
+            });
+            // 椭圆方向：改的是 shape.rot（不走 _patchMask，它写的是蒙版顶层字段）
+            bindNum('slMaskRot', (v, done) => {
+                const m = this.activeMask(this.image);
+                if (!m || m.type !== 'radial') return;
+                m.shape.rot = Math.max(0, Math.min(180, Math.round(v)));
+                if (this.updateLabel) this.updateLabel('lblMaskRot', m.shape.rot + '°');
+                this.commitMaskShape(done ? 'full' : 'live');
+                // commitMaskShape 只重烘照片，叠加层的椭圆/手柄要自己重画才跟手
+                this.drawMaskOverlay();
             });
             bindNum('slMaskLo', (v, done) => this._patchLum(v, null, done));
             bindNum('slMaskHi', (v, done) => this._patchLum(null, v, done));
@@ -1005,6 +1039,23 @@
                 const cx = a.x + t * dx, cy = a.y + t * dy;
                 return Math.hypot(p.x - cx, p.y - cy);
             };
+            // 点到**旋转后**椭圆的「单位圆距离」：<1 在内部、≈1 在边缘、>1 在外面。
+            // 必须先按 -rot 把点转回椭圆局部系，否则旋转过的椭圆会按未旋转的轴来判断，
+            // 斜着拖边缘会被误判成「空白处按下」→ 拖出一个新椭圆。
+            const radialRR = (pt, s) => {
+                const pr = this._photoRect;
+                if (!pr) return 1e9;
+                const rot = (Number(s.rot) || 0) * Math.PI / 180;
+                const pw = Math.max(1, pr.w), ph = Math.max(1, pr.h);
+                const px = (pt.x - s.cx) * pw;
+                const py = (pt.y - s.cy) * ph;
+                const cos = Math.cos(rot), sin = Math.sin(rot);
+                const u = px * cos + py * sin;
+                const v = -px * sin + py * cos;
+                const dx = u / Math.max(0.01, s.rx * pw);
+                const dy = v / Math.max(0.01, s.ry * ph);
+                return Math.hypot(dx, dy);
+            };
 
             ov.addEventListener('pointerdown', (e) => {
                 const m = this.activeMask(this.image);
@@ -1025,9 +1076,7 @@
                         pending = { kind: 'newLine', start: pt, orig: Object.assign({}, m.shape) };
                     }
                 } else if (m.type === 'radial') {
-                    const dx = (pt.x - m.shape.cx) / Math.max(0.01, m.shape.rx);
-                    const dy = (pt.y - m.shape.cy) / Math.max(0.01, m.shape.ry);
-                    const rr = Math.hypot(dx, dy);
+                    const rr = radialRR(pt, m.shape);
                     if (hit(pt, { x: m.shape.cx, y: m.shape.cy }, 12) || rr < 0.95) {
                         drag = { kind: 'move', ox: m.shape.cx, oy: m.shape.cy, px: pt.x, py: pt.y };
                     } else if (rr < 1.35) {
@@ -1165,6 +1214,9 @@
             if (opts) opts.style.display = act ? '' : 'none';
             const brushRow = $('rowMaskBrush');
             if (brushRow) brushRow.style.display = (act && act.type === 'brush') ? '' : 'none';
+            // 方向只对椭圆有意义（线性的方向由两端点决定）
+            const rotRow = $('rowMaskRot');
+            if (rotRow) rotRow.style.display = (act && act.type === 'radial') ? '' : 'none';
             const lumLo = $('rowMaskLo'), lumHi = $('rowMaskHi');
             if (lumLo) lumLo.style.display = (act && act.type === 'lum') ? '' : 'none';
             if (lumHi) lumHi.style.display = (act && act.type === 'lum') ? '' : 'none';
@@ -1193,7 +1245,7 @@
                     const noPos = !this.maskPositionSupported();
                     tip.textContent = pr ? ({
                         linear: '拖线身整体移动、拖两端点改过渡；空白处拖一下可重画',
-                        radial: '拖椭圆内部移动、拖边缘改大小；外面拖出新椭圆',
+                        radial: '拖椭圆内部移动、拖边缘改大小、调「方向」旋转；外面拖出新椭圆',
                         brush: '按住涂抹；按住 Alt 或右键涂抹 = 擦除',
                         lum: '按亮度自动选区，调下面的暗部/亮部阈值',
                         color: '在画布上点一下取色，再调色相/容差；灰和近白黑不会被选中'
@@ -1216,6 +1268,14 @@
                 setV('slMaskFeather', act.feather);
                 setV('slMaskDensity', act.density);
                 if (act.type === 'brush') setV('slMaskBrushSize', act.shape.size);
+                if (act.type === 'radial') {
+                    // 不走 setV：它回显纯数字，会把角度单位「°」吃掉
+                    // （updateLabel 会解析标签里的数字同步数字框，单位单独显示）
+                    const rotV = act.shape.rot || 0;
+                    const rotRng = $('slMaskRot');
+                    if (rotRng) rotRng.value = String(rotV);
+                    if (this.updateLabel) this.updateLabel('lblMaskRot', rotV + '°');
+                }
                 if (act.type === 'lum') { setV('slMaskLo', act.shape.lo); setV('slMaskHi', act.shape.hi); }
                 if (act.type === 'color') {
                     setV('slMaskHue', act.shape.h);
