@@ -3921,8 +3921,13 @@ document.addEventListener('DOMContentLoaded', () => App.init());
     const min = document.getElementById('tbMin');
     const max = document.getElementById('tbMax');
     const close = document.getElementById('tbClose');
+    const full = document.getElementById('tbFull');
     if (min) min.addEventListener('click', () => wc.minimize());
     if (close) close.addEventListener('click', () => wc.close());
+    if (full && wc.toggleFullScreen) {
+        full.addEventListener('click', () => wc.toggleFullScreen());
+        if (wc.onFullScreenChange) wc.onFullScreenChange((v) => full.classList.toggle('is-full', !!v));
+    }
     if (max) {
         max.addEventListener('click', () => wc.toggleMaximize());
         if (wc.onMaximizedChange) wc.onMaximizedChange((v) => max.classList.toggle('is-max', !!v));
@@ -3941,4 +3946,19 @@ document.addEventListener('DOMContentLoaded', () => App.init());
         if (wc.onMaximizedChange) wc.onMaximizedChange((v) => pwMax.classList.toggle('is-max', !!v));
     }
     if (pwExit) pwExit.addEventListener('click', () => wc.close());
+
+    // 键盘出入口：全屏后标题栏按钮还在，但很多人第一反应是按 Esc/F11。
+    // F11 是约定俗成的全屏键；Esc 只在确认全屏中、且没有菜单/弹窗抢键时才退，
+    // 否则会把「关右键菜单」和「退全屏」搅在一起。
+    let isFs = false;
+    if (wc.onFullScreenChange) wc.onFullScreenChange((v) => { isFs = !!v; });
+    document.addEventListener('keydown', (e) => {
+        if (!wc.toggleFullScreen) return;
+        if (e.key === 'F11') { e.preventDefault(); wc.toggleFullScreen(); return; }
+        if (e.key === 'Escape' && isFs) {
+            if (document.querySelector('.ctx-menu')) return;   // 菜单自己会关，别抢
+            e.preventDefault();
+            wc.toggleFullScreen();
+        }
+    }, true);
 })();

@@ -1620,6 +1620,10 @@ button:disabled, input:disabled, select:disabled, textarea:disabled {
 .tb-btn .ico-restore { display: none; }
 .tb-btn.is-max .ico-max { display: none; }
 .tb-btn.is-max .ico-restore { display: inline-flex; }
+/* 全屏按钮：两套图标按状态互换，跟最大化按钮一个套路 */
+.tb-btn .ico-unfull { display: none; }
+.tb-btn.is-full .ico-full { display: none; }
+.tb-btn.is-full .ico-unfull { display: inline-flex; }
 /* mac:保留系统红绿灯,隐藏自绘按钮 */
 body.platform-darwin .titlebar { padding-left: 80px; }
 body.platform-darwin .titlebar-controls { display: none; }
