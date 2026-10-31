@@ -116,8 +116,7 @@ window.App = Object.assign(window.App || {}, {
         if (!this.undoStack.length) { this.setStatus('没有可撤销的操作'); return; }
         const hadPuzzle = !!(this.template && this.template.puzzle && this.template.puzzle.enabled);
         this.redoStack.push(this.cloneTemplate());
-        this.template = this.undoStack.pop();
-        this.normalizeTemplate();
+        this.applyUndoSnapshot(this.undoStack.pop());
         this.selectedEls = [];
         this.saveCurrentTemplate();
         this.refreshUI();
@@ -133,8 +132,7 @@ window.App = Object.assign(window.App || {}, {
         if (!this.redoStack.length) { this.setStatus('没有可重做的操作'); return; }
         this.undoStack.push(this.cloneTemplate());
         if (this.undoStack.length > this.MAX_UNDO) this.undoStack.shift();
-        this.template = this.redoStack.pop();
-        this.normalizeTemplate();
+        this.applyUndoSnapshot(this.redoStack.pop());
         this.selectedEls = [];
         this.saveCurrentTemplate();
         this.refreshUI();
@@ -148,10 +146,54 @@ window.App = Object.assign(window.App || {}, {
         this.dom.btnRedo.disabled = !this.redoStack.length;
     },
 
+    // 快照 = 模板 + 该照片的调色参数。
+    // 以前快照里只有模板，调色参数挂在 im.grade 上不在栈里，于是
+    // 「调完曝光按 Ctrl+Z」撤不掉调色，反而撤掉了上一条边框/文字操作。
+    // grade 用非枚举字段挂在快照上：快照本体仍是模板对象，cloneTemplate 的既有语义不变。
     cloneTemplate() {
         const t = JSON.parse(JSON.stringify(this.template || null));
         if (t && t._draftText) delete t._draftText;
+        const im = this.image;
+        // 总是带上 grade（即使是 null）：快照必须能表达「这张照片本来没有调色」，
+        // 否则「调完再撤销」时找不到 grade 就什么都不还原，Ctrl+Z 像是失灵了。
+        const grade = (im && im.grade) ? JSON.parse(JSON.stringify(im.grade)) : null;
+        Object.defineProperty(t, '__grade', { value: grade, enumerable: false, configurable: true, writable: true });
         return t;
+    },
+
+    // 栈顶快照与当前状态是否完全一致（模板 + 调色都相同）。
+    // 用来给「一次拖动只压一次快照」做去重：比标记法可靠，
+    // 不依赖 change 事件一定触发（键盘方向键调滑块就不会触发 change）。
+    sameUndoState(snap) {
+        if (!snap) return false;
+        const t = this.template || null;
+        const snapT = JSON.parse(JSON.stringify(t || null));
+        if (snapT && snapT._draftText) delete snapT._draftText;
+        const a = JSON.stringify(snapT);
+        const b = JSON.stringify(snap);
+        if (a !== b) return false;
+        const im = this.image;
+        const cur = (im && im.grade) ? JSON.parse(JSON.stringify(im.grade)) : null;
+        const sg = snap.__grade;
+        return JSON.stringify(cur || null) === JSON.stringify(sg || null);
+    },
+
+    // 应用一个撤销/重做快照。旧栈里可能存着「只有模板」的老格式，按缺失处理。
+    applyUndoSnapshot(snap) {
+        if (!snap) return;
+        this.template = snap;
+        this.normalizeTemplate();
+        const im = this.image;
+        // 用 '__grade' in snap 判存在性：快照里的 grade 可能是 null（本来就没调色），
+        // 用真值判断会漏掉「从有调色回到无调色」这一种还原。
+        if (im && snap && '__grade' in snap) {
+            const g = snap.__grade;
+            im.grade = g ? JSON.parse(JSON.stringify(g)) : null;
+            // 底图和参数都变了，调色缓存必须作废，否则画面还挂着旧的烘焙结果
+            if (this.invalidateGrade) this.invalidateGrade(im);
+            if (this.rebuildGrade) this.rebuildGrade('full');
+            if (this.syncGradeUI) this.syncGradeUI();
+        }
     },
 
     /* ══ 每图模板唯一存取口 ══ */

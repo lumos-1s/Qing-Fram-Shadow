@@ -1425,6 +1425,114 @@ async function main() {
         '镜头畸变 +100：角落被白线取代（边缘被拉进来）、中心不动',
         JSON.stringify(lcPix));
 
+    // ── 还原原图必须作废调色缓存（否则画面纹丝不动、导出的还是裁切图）──
+    const restore = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        const el0 = await window.__mk(600, 400);
+        im.el = el0; im.w = 600; im.h = 400;
+        im.orig = { el: el0, w: 600, h: 400 };
+        // 裁一刀：底图换成 300×200
+        const c = document.createElement('canvas'); c.width = 300; c.height = 200;
+        const g = c.getContext('2d'); g.drawImage(el0, 0, 0, 300, 200);
+        im.el = c; im.w = 300; im.h = 200;
+        A.setGrade({ exp: 2 });
+        await new Promise((r) => setTimeout(r, 400));
+        const before = (() => { const s = window.photoSrcOf(im);
+            return { w: s.naturalWidth || s.width, h: s.naturalHeight || s.height }; })();
+        A.restoreOriginalPhoto(im);
+        await new Promise((r) => setTimeout(r, 400));
+        const after = (() => { const s = window.photoSrcOf(im);
+            return { w: s.naturalWidth || s.width, h: s.naturalHeight || s.height }; })();
+        return { before, after, expKept: !!(im.grade && im.grade.exp) };
+    })()`);
+    check(restore.after.w === 600 && restore.after.h === 400 && restore.before.w === 300,
+        '还原原图：取源回到原图尺寸（不是继续用裁切图）',
+        JSON.stringify(restore));
+    check(restore.expKept, '还原原图：调色参数保留（只换底图，不清参数）', JSON.stringify(restore));
+
+    // ── 按图缓存的 ACR 测度必须随源图失效 ──
+    const acrCache = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        const el1 = await window.__mk(600, 400);
+        im.el = el1; im.w = 600; im.h = 400;
+        A.setGrade({ con: 10 });
+        await new Promise((r) => setTimeout(r, 400));
+        const had = { bright: !!im._acrBright, haze: im._acrHaze !== undefined };
+        // 换底图（模拟裁切）→ invalidateGrade 必须把按图缓存一起清掉
+        const c = document.createElement('canvas'); c.width = 200; c.height = 200;
+        const g = c.getContext('2d'); g.fillStyle = '#808080'; g.fillRect(0, 0, 200, 200);
+        im.el = c; im.w = 200; im.h = 200;
+        A.invalidateGrade(im);
+        await new Promise((r) => setTimeout(r, 200));
+        return { had, after: { bright: !!im._acrBright, haze: im._acrHaze !== undefined } };
+    })()`);
+    check(acrCache.had.bright && !acrCache.after.bright && !acrCache.after.haze,
+        '换底图后 ACR 按图缓存（亮度测度/雾色）被清掉',
+        JSON.stringify(acrCache));
+
+    // ── 导出前必须补全分辨率烘焙（否则把 1600px 低采样图放大导出）──
+    const fullBake = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        const el2 = await window.__mk(600, 400);
+        im.el = el2; im.w = 600; im.h = 400;
+        im._grade = { neutral: false, canvas: null, low: null, key: '' };
+        A.rebuildGrade('low');
+        await new Promise((r) => setTimeout(r, 300));
+        const lowOnly = { canvas: !!im._grade.canvas, low: !!im._grade.low };
+        window.ensureFullGrade(im);
+        return { lowOnly, canvas: !!im._grade.canvas,
+            srcW: (() => { const s = window.photoSrcOf(im); return s.naturalWidth || s.width; })() };
+    })()`);
+    check(fullBake.lowOnly.low && !fullBake.lowOnly.canvas && fullBake.canvas,
+        'ensureFullGrade：只有 low 缓存时补出全分辨率烘焙',
+        JSON.stringify(fullBake));
+
+    // ── 撤销/重做必须覆盖调色参数（以前只快照模板，调色挂在 im.grade 上撤不掉）──
+    const undoGrade = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        const el0 = await window.__mk(600, 400);
+        im.el = el0; im.w = 600; im.h = 400;
+        A.resetGrade();
+        await new Promise((r) => setTimeout(r, 300));
+        const sl = document.getElementById('slGradeExp');
+        const stackBefore = A.undoStack.length;
+        // 模拟真实拖动：focus → input → change
+        sl.focus();
+        sl.value = '2';
+        sl.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 250));
+        sl.dispatchEvent(new Event('change', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 350));
+        const afterDrag = { exp: (im.grade || {}).exp, pushed: A.undoStack.length - stackBefore };
+        A.undo();
+        await new Promise((r) => setTimeout(r, 450));
+        const afterUndo = { exp: (im.grade || {}).exp, slider: document.getElementById('slGradeExp').value };
+        A.redo();
+        await new Promise((r) => setTimeout(r, 450));
+        const afterRedo = { exp: (im.grade || {}).exp, slider: document.getElementById('slGradeExp').value };
+        // 第二次拖动要能再压一个新快照
+        const s0 = A.undoStack.length;
+        sl.focus();
+        sl.value = '3';
+        sl.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 250));
+        sl.dispatchEvent(new Event('change', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 350));
+        const secondPush = A.undoStack.length - s0;
+        return { afterDrag, afterUndo, afterRedo, secondPush };
+    })()`);
+    check(undoGrade.afterDrag.exp === 2 && undoGrade.afterDrag.pushed === 1,
+        '拖动调色滑块压一次撤销快照（不是每次 input 都压）',
+        JSON.stringify(undoGrade));
+    check(!undoGrade.afterUndo.exp && undoGrade.afterUndo.slider === '0',
+        'Ctrl+Z 撤销调色（曝光回到 0，滑块同步回显）',
+        JSON.stringify(undoGrade));
+    check(undoGrade.afterRedo.exp === 2 && undoGrade.afterRedo.slider === '2',
+        'Ctrl+Y 重做调色（曝光回到 2）',
+        JSON.stringify(undoGrade));
+    check(undoGrade.secondPush === 1, '第二次拖动调色滑块能再压一个新快照',
+        JSON.stringify(undoGrade));
+
     console.log('');
     if (failures.length) {
         console.log(`FAILURE  ${failures.length} 项未通过`);

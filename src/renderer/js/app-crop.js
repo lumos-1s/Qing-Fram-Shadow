@@ -589,6 +589,11 @@ window.App = Object.assign(window.App || {}, {
         delete t.orig;
         t.thumb = null;
         t._tqAt = 0;
+        // 底图换了：调色缓存作废，参数保留 —— 渲染时在新底图上重放。
+        // 不清的话 photoSrcOf 会优先返回旧烘焙画布（还是裁切前那张），
+        // 用户看到的是「点了还原原图，画面纹丝不动」，导出的也是裁切图。
+        if (this.invalidateGrade) this.invalidateGrade(t);
+        if (this.rebuildGrade) this.rebuildGrade('full');
         if (this.invalidateStyleCaches) this.invalidateStyleCaches();
         if (this.queueThumb) this.queueThumb(t);
         if (this.buildThumbnails) this.buildThumbnails();

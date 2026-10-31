@@ -1981,3 +1981,8 @@ window.PUZZLE_LAYOUT_AXES = PUZZLE_LAYOUT_AXES;
 window.__buildPuzzleSlots = buildPuzzleSlots;
 window.__clampPuzzleAxes = clampPuzzleAxes;
 window.__puzzleFit = puzzleFit;
+// photoSrc 显式导出：engine-styles.js 的相框/卡片管线（44 个预设）靠 window.photoSrc
+// 取「调色过就取烘焙画布、否则取原图」。以前能用是因为经典脚本的顶层函数会自动挂到
+// window —— 但哪天把 engine.js 包进 IIFE 或改成 ES module，这行就会静默失效：
+// 相框样式的调色全部消失，且没有任何报错。显式导出把这个隐式依赖钉死。
+window.photoSrc = photoSrc;

@@ -1178,6 +1178,11 @@
             if (!t) return;
             const neutral = isNeutral(t.grade);
             t._grade = { neutral, canvas: null, low: null, key: '' };
+            // 按图缓存的测度必须跟源图一起作废：裁切/旋转/还原换了底图之后，
+            // ACR 的对比度/高光/阴影仍按旧直方图选行，「去薄雾」也还在用旧图
+            // 最亮 1% 当雾色 —— 换图之后这些参数等于作用在错误的图像上。
+            delete t._acrBright;
+            delete t._acrHaze;
             if (neutral) { t._grade.key = ''; return; }
             lruTouch(t);
         },
@@ -1297,11 +1302,24 @@
                 clearTimeout(im._gradeThumbT);
                 im._gradeThumbT = setTimeout(() => this.renderFramedThumb(im), 260);
             };
+            // 一次拖动只压一次撤销快照：拖动开始时记下「拖动前」的状态，
+            // 拖动过程中 input 只改参数不压栈，否则一次拖动能生成几十个撤销点。
+            // 去重不靠「标记 + change 重置」那种易漏的时序（change 不一定触发，
+            // 例如键盘方向键调完、或程序化设值），改成比对栈顶快照的内容：
+            // 只要栈顶快照与当前状态完全一样，说明这次拖动已经压过了，不再重复压。
+            const pushGradeUndoOnce = () => {
+                if (!this.pushUndo) return;
+                const top = this.undoStack && this.undoStack[this.undoStack.length - 1];
+                if (top && this.sameUndoState(top)) return;
+                this.pushUndo();
+            };
             for (const f of GRADE_FIELDS) {
                 const s = sliders[f.k];
                 if (!s) continue;
+                s.addEventListener('focus', pushGradeUndoOnce);
                 s.addEventListener('input', () => {
                     // 拖动中只换降采样，别让每一次 input 都去烘焙 2400 万像素
+                    pushGradeUndoOnce();
                     this.setGrade({ [f.k]: Number(s.value) || 0 });
                     clearTimeout(settle);
                     settle = setTimeout(() => { this.rebuildGrade('full'); syncThumb(); }, 220);

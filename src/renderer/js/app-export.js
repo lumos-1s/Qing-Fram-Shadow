@@ -189,6 +189,10 @@ window.App = Object.assign(window.App || {}, {
                         await this._awaitFrameRender(puzzle);
                         beforeW = Math.max(1, this.dom.canvas.width || 1);
                     }
+                    // 导出要的是原图分辨率，但引擎取源走 photoSrcOf —— 拖动滑块后
+                    // 缓存里只有 1600px 的 low 版本，不补全分辨率烘焙就会把
+                    // 降采样图放大导出（4K 照片出 1600px 的糊图）。
+                    if (window.ensureFullGrade) window.ensureFullGrade(im);
                     const targetPx = sizeOpt > 0 ? sizeOpt : Math.max(1, im.w || 1, im.h || 1);
                     this.displayMax = targetPx;
                     // 选了大尺寸选项时交出目标长边,由引擎上采样到该值(小图也能导出到所选尺寸)
@@ -310,6 +314,11 @@ window.App = Object.assign(window.App || {}, {
         this.displayMax = this.gridRenderMax();
         this.uiDprOverride = 1;
         try {
+            // 同上：切图导出的是成品像素，引擎取源不能是 1600px 的低采样版。
+            // 逐张补全分辨率烘焙（已烘好的会直接跳过，不重复算）。
+            for (const im of (this.images || [])) {
+                if (window.ensureFullGrade) window.ensureFullGrade(im);
+            }
             await this._awaitFrameRender();
             let src = this.dom.canvas;
             if (this.dom.selFormat.value === 'jpeg') {
