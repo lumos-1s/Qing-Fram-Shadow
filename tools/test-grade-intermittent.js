@@ -1,7 +1,9 @@
 // 调色间歇失效回归：根因是「换底图/还原/重设时调色缓存被作废却没重建」+
-// 「photoSrcOf 返回已失效的 low 画布」+「切回被 LRU 淘汰的已调色照片不重建」。
+// 「photoSrcOf 返回已失效的 low 画布」+「切回被 LRU 淘汰的已调色照片不重建」+
+// 「导入照片(无 _grade 槽位)时 setGrade 因 !t._grade 提前返回,调色静默失效,加蒙版后才恢复」。
 // 复现：applyCrop/rotateCurrentPhoto 只 invalidateGrade 不 rebuild → 旧 low 被当结果返回；
-// selectImage 完全不重建 → 编辑超过 LRU_MAX(4) 张后切回早期图,调色像没了。
+// selectImage 完全不重建 → 编辑超过 LRU_MAX(4) 张后切回早期图,调色像没了；
+// imageFromPick 不给 _grade → 调色拖滑块毫无反应,直到添加蒙版把它建出来。
 // 用法：node tools/run-electron.js tools/test-grade-intermittent.js
 'use strict';
 
@@ -159,6 +161,33 @@ async function main() {
     check(s2.evictedCanvas && s2.evictedLow, 'LRU 淘汰后早期图的调色缓存已被清空（场景2前置）', JSON.stringify(s2));
     check(s2.afterCanvas && s2.rebuiltGraded,
         '切回被淘汰的已调色照片,selectImage 立即重建,调色恢复(取源变回离屏画布)', JSON.stringify(s2));
+
+    // ── 场景 3：导入照片(没有 _grade 槽位)后拖调色滑块必须立即生效 ──
+    // 复刻 imageFromPick 修复前的产物：对象里完全没有 _grade 字段。旧代码里
+    // setGrade→invalidateFullGrade/rebuildGrade 都会因「!t._grade」提前返回，
+    // 调色静默失效，直到某条会建 _grade 的路径(如添加蒙版)出现才恢复。
+    const s3 = await exec(`(async () => {
+        const A = window.App;
+        const el = await window.__mk(600, 400);
+        const im = { el, name: 'imported', path: null, w: 600, h: 400, exif: {}, customSettings: null };
+        A.images.push(im);
+        A.image = im; A.currentIdx = A.images.length - 1;
+        A.template = A.defaultTemplate(); A.setTpl(im, A.template);
+        delete im._grade;                                   // 强制模拟「修复前 imageFromPick 没给 _grade」
+        const hadGradeBefore = !!im._grade;
+        A.setGrade({ exp: 1, con: 0, sat: 0, temp: 0, tint: 0, hi: 0, sh: 0 }, { full: true });
+        const src = window.photoSrcOf(im);
+        return {
+            hadGradeBefore,
+            createdSlot: !!im._grade,
+            notNeutral: !!(im._grade && im._grade.neutral === false),
+            bakedCanvas: !!(im._grade && im._grade.canvas),
+            srcIsGraded: !!(src && src !== im.el && src.tagName === 'CANVAS')
+        };
+    })()`);
+    check(!s3.hadGradeBefore, '复刻导入照片:修复前没有 _grade 槽位（场景3前置）', JSON.stringify(s3));
+    check(s3.createdSlot && s3.notNeutral && s3.bakedCanvas && s3.srcIsGraded,
+        '导入照片后拖滑块立即烘焙,photoSrcOf 取回离屏画布(调色生效)', JSON.stringify(s3));
 
     await win.close();
     app.exit(failures.length ? 1 : 0);

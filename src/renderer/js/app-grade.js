@@ -1147,6 +1147,9 @@
         setGrade(patch, opts) {
             const im = this.image;
             if (!im) return false;
+            // 导入的照片可能没有 _grade 槽位：先确保它存在，否则下面
+            // invalidateFullGrade 会因「!t._grade」直接返回，调色静默失效。
+            this.ensureGrade(im);
             // 选中某个蒙版时，9 档滑块改的是**该蒙版的参数**（与 LR 一致）；
             // 曲线/校准/混色器/蒙版列表这类全局项仍然落到 grade 上。
             // 组合模式：滑块读写「组首」的参数（一组共用一套）
@@ -1235,9 +1238,25 @@
             lruTouch(t);
         },
 
+        // 兜底：任何图像首次进烘焙管线前都必须有 _grade 槽位。否则 setGrade→
+        // invalidateFullGrade / rebuildGrade 都会因为「!t._grade」提前返回，导致调色
+        // 静默失效（表现：导入照片后拖滑块毫无反应，直到某条会建 _grade 的路径——
+        // 例如添加蒙版——把它建出来才恢复）。导入流程 imageFromPick 已初始化，这里
+        // 再做一次防御，覆盖所有图像创建路径（示例图/预设图/草稿还原等）。
+        ensureGrade(im) {
+            const t = im || this.image;
+            if (!t) return null;
+            if (!t._grade) {
+                t._grade = { neutral: isNeutral(t.grade || defaultGrade()), canvas: null, low: null, lowKey: '', fullKey: '' };
+            }
+            return t._grade;
+        },
+
         rebuildGrade(level) {
             const im = this.image;
-            if (!im || !im._grade || im._grade.neutral) return false;
+            if (!im) return false;
+            this.ensureGrade(im);
+            if (im._grade.neutral) return false;
             // key 里带上**源图版本**：裁切/旋转/还原原图会换掉 im.el，
             // 参数签名却一个字都没变 —— 只比参数就会命中裁切前烘的图，
             // 画面看着没换底图。多带一个版本号，这条路径就断死了。

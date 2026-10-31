@@ -2235,7 +2235,8 @@ window.App = {
         const useEl = oriented ? oriented.el : img;
         const w = oriented ? oriented.w : img.naturalWidth;
         const h = oriented ? oriented.h : img.naturalHeight;
-        const im = { el: useEl, name: res.name, path: res.path, w, h, exif, customSettings: null };
+        const im = { el: useEl, name: res.name, path: res.path, w, h, exif, customSettings: null,
+            _grade: { neutral: true, canvas: null, low: null, lowKey: '', fullKey: '' } };
         this.queueThumb(im);
         return im;
     },
