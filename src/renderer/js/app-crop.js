@@ -588,6 +588,7 @@ window.App = Object.assign(window.App || {}, {
         t.h = t.orig.h;
         delete t.orig;
         t.thumb = null;
+        t._thumbEl = null;
         t._tqAt = 0;
         // 底图换了：调色缓存作废，参数保留 —— 渲染时在新底图上重放。
         // 不清的话 photoSrcOf 会优先返回旧烘焙画布（还是裁切前那张），
@@ -711,6 +712,7 @@ window.App = Object.assign(window.App || {}, {
         im.h = h;
         // 缩略图必须重做：不清掉 thumb 的话 queueThumb 会认为"350ms 内刚做过"直接跳过
         im.thumb = null;
+        im._thumbEl = null;
         im._tqAt = 0;
         this.closeCrop(true);
         if (this.invalidateStyleCaches) this.invalidateStyleCaches();

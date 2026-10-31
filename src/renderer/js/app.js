@@ -2030,11 +2030,17 @@ window.App = {
         im.w = canvas.width;
         im.h = canvas.height;
         im.rotate = ((im.rotate || 0) + 1) % 4;
+        // 底图换了：旧缩略图必须作废，否则胶片条还是旋转前那张（与画布不一致）
+        im.thumb = null;
+        im._thumbEl = null;
+        im._tqAt = 0;
         if (this.invalidateStyleCaches) this.invalidateStyleCaches();
         // 底图换了：调色缓存作废，参数保留 —— 立刻在新底图上重放（与"还原原图"一致）
         if (this.invalidateGrade) this.invalidateGrade(im);
         if (this.rebuildGrade) this.rebuildGrade('full');
         if (this.buildThumbnails) this.buildThumbnails();
+        // thumb 已清空：立刻重排一张旋转后的装框缩略图（buildThumbnails 先用原图占位）
+        if (this.queueThumb) this.queueThumb(im);
         this.scheduleRender(true);
         if (this.syncCropOriginalBtn) this.syncCropOriginalBtn();
         this.setStatus('照片已旋转 90°(再次右键可继续旋转)');
@@ -2598,6 +2604,8 @@ window.App = {
         const cv = document.createElement('canvas');
         cv.width = 1; cv.height = 1;
         cv.style.position = 'absolute'; cv.style.visibility = 'hidden';
+        // 记下这次渲染用的是哪张位图：buildThumbnails 会核对，防止旧缩略图串到新底图上
+        const srcEl = im.el;
         try {
             this.dom.canvas = cv;
             this.displayMax = 200;
@@ -2615,17 +2623,19 @@ window.App = {
             }
             window.__render(this, false);
             im.thumb = cv.toDataURL('image/jpeg', 0.8);
+            im._thumbEl = srcEl;
             // 直接按图对象取缩略图节点:原来每次都 querySelectorAll('img.thumb') 扫全条再逐个比对
             // dataset.idx,导入 50 张时是 O(n²)(2500 次节点访问 + 属性读)。
             // 映射缺失时(例如缩略图条还没建)回退到原来的扫描,行为不变。
+            const fresh = im._thumbEl === im.el;
             const hit = this._thumbEls && this._thumbEls.get(im);
             if (hit && hit.isConnected) {
-                if (hit.src !== im.thumb) hit.src = im.thumb;
+                if (fresh && hit.src !== im.thumb) hit.src = im.thumb;
             } else {
                 const strip = this.dom.thumbStrip ? this.dom.thumbStrip.querySelectorAll('img.thumb') : [];
                 strip.forEach(t => {
                     const ti = t.dataset.idx != null ? parseInt(t.dataset.idx, 10) : -1;
-                    if (ti >= 0 && this.images[ti] === im && t.src !== im.thumb) t.src = im.thumb;
+                    if (fresh && ti >= 0 && this.images[ti] === im && t.src !== im.thumb) t.src = im.thumb;
                 });
             }
         } catch (_) { /* 装框缩略图失败:保留原图占位 */ }
@@ -2657,8 +2667,18 @@ window.App = {
             if (this.image && this.images.indexOf(this.image) === i) cls.push('main');
             t.className = cls.join(' ');
             t.draggable = false;
+            // 缩略图必须由**当前位图**渲染：renderFramedThumb 会在 im._thumbEl 记下源 el。
+            // 对不上（旧版本缓存 / 串图 / 换过底图）就丢掉，先用原图占位并重排 ——
+            // 否则胶片条会显示一张和画布完全不同的照片，看起来像切错图。
+            const fresh = !!(im.thumb && im._thumbEl === im.el);
+            if (im.thumb && !fresh) {
+                im.thumb = null;
+                im._thumbEl = null;
+                im._tqAt = 0;
+                if (typeof this.queueThumb === 'function') this.queueThumb(im);
+            }
             // 同值不重赋:赋 src 会让浏览器重新解码同一张图
-            const wantSrc = im.thumb || im.el.src;
+            const wantSrc = fresh ? im.thumb : im.el.src;
             if (t.src !== wantSrc) t.src = wantSrc;
             t.dataset.idx = i;
             elMap.set(im, t);
