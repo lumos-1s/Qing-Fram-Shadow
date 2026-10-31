@@ -952,6 +952,10 @@
     // 渲染取源：优先全分辨率，其次拖动中的降采样，都没有就原图
     window.photoSrcOf = function (im) {
         if (!im) return null;
+        // 蒙版「原图预览」：只在主预览渲染期间(renderPreview 临时置 _previewUseOriginal)生效。
+        // 导出/缩略图走各自的渲染入口，不会误用未调色源；导出后画面不会变。
+        const app = window.App;
+        if (app && app._previewUseOriginal && im === app.image) return im.el || null;
         const g = im._grade;
         if (g && !g.neutral) {
             if (g.canvas) return g.canvas;
@@ -1288,6 +1292,9 @@
             if (!im) return false;
             im.grade = defaultGrade();
             this._activeMaskId = null;
+            // 重置调色后没有可预览的「原图 vs 调色」差异，退出蒙版原图预览
+            this._maskPreviewOriginal = false;
+            if (this._syncMaskOrigHint) this._syncMaskOrigHint();
             im._gradeCache = null;
             this.invalidateGrade(im);
             this.syncGradeUI();

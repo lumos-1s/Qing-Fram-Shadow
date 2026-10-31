@@ -407,6 +407,66 @@ html.dark .stage {
 }
 .rot-hint[hidden] { display: none; }
 .rot-hint span { color: rgba(234, 255, 248, .60); }
+
+/* 蒙版「原图预览」：亮度/颜色蒙版的选区由像素内容决定，暂时隐藏调色看原图更好选。
+   自动切图很容易被当成「调色丢了」，所以必须给一个显眼的浮层 + 明确的返回入口。 */
+.mask-orig-hint {
+    position: absolute;
+    z-index: 18;
+    left: 50%;
+    top: 14px;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 6px 6px 10px;
+    border-radius: 10px;
+    background: rgba(10, 14, 13, .88);
+    color: #eafff8;
+    font-size: var(--fs-11);
+    line-height: 1.2;
+    white-space: nowrap;
+    box-shadow: 0 6px 22px rgba(0, 0, 0, .44), 0 0 0 1px rgba(0, 229, 160, .42);
+    animation: maskOrigIn .16s ease;
+    /* 只有按钮拦截点击；文字区让位给画布，否则会挡住顶部蒙版的拖动/涂抹 */
+    pointer-events: none;
+}
+.mask-orig-hint[hidden] { display: none; }
+.mask-orig-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: rgba(0, 229, 160, .16);
+    color: var(--primary);
+    font-weight: 600;
+}
+.mask-orig-hint button {
+    padding: 3px 9px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 229, 160, .48);
+    background: rgba(0, 229, 160, .12);
+    color: #eafff8;
+    font-size: var(--fs-11);
+    line-height: 1.2;
+    cursor: pointer;
+    pointer-events: auto;
+}
+.mask-orig-hint button:hover { background: var(--primary); color: #06251C; }
+@keyframes maskOrigIn {
+    from { opacity: 0; transform: translate(-50%, -6px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+}
+/* 原图/调色切换时盖在当前画面上淡出的快照：让切换看起来是「过渡」而不是「闪一下」 */
+.mask-swap-fade {
+    position: absolute;
+    z-index: 3;
+    pointer-events: none;
+    border-radius: 2px;
+    opacity: 1;
+    transition: opacity .18s ease;
+}
+.mask-swap-fade.is-out { opacity: 0; }
 #previewCanvas {
     display: block;
     cursor: grab;

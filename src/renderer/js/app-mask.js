@@ -522,6 +522,10 @@
     Object.assign(window.App || (window.App = {}), {
         _activeMaskId: null,
         _maskRotHover: false,   // 指针是否停在旋转手柄上（叠加层画高亮用）
+        // 蒙版「原图预览」：亮度/颜色蒙版选区依赖像素内容，暂时隐藏调色看原图更好选。
+        // _previewUseOriginal 只在主预览渲染的一帧内为 true（见 app-render.js / photoSrcOf）。
+        _maskPreviewOriginal: false,
+        _previewUseOriginal: false,
 
         masksOf(im) {
             const g = (im || this.image || {}).grade;
@@ -575,10 +579,89 @@
         setActiveMask(id) {
             const list = this.masksOf(this.image);
             this._activeMaskId = (id && list.some((m) => m.id === id)) ? id : null;
+            // 原图预览只服务亮度/颜色蒙版：切到别的蒙版或取消选中时恢复调色画面
+            const act = this.activeMask(this.image);
+            if (this._maskPreviewOriginal && (!act || (act.type !== 'lum' && act.type !== 'color'))) {
+                this.setMaskOriginalPreview(false);
+            }
             if (this.syncGradeUI) this.syncGradeUI();
             if (this.syncMaskUI) this.syncMaskUI();
             this.drawMaskOverlay();
+            this._syncMaskOrigHint();
             return true;
+        },
+
+        /* 蒙版「原图预览」：把照片源临时换成未调色的 im.el（模板/边框/文字全部保留），
+           让亮度/颜色蒙版在原图上选区。与「对比原图」旁路不同 —— 那个会去掉边框只画照片，
+           这里不动布局，蒙版叠加层的几何也完全不变。
+           切换时先抓一帧旧画面淡出，避免「啪」一下换图被误认为调色丢了。 */
+        setMaskOriginalPreview(on, opts) {
+            on = !!on;
+            const act = this.activeMask(this.image);
+            if (on && (!act || (act.type !== 'lum' && act.type !== 'color'))) on = false;
+            if (this._maskPreviewOriginal === on) { this._syncMaskOrigHint(); return; }
+            const snap = (opts && opts.instant) ? null : this._snapshotPreviewCanvas();
+            this._maskPreviewOriginal = on;
+            // 预览换的是渲染源：拖影/元素拖动缓存必须作废，否则下一帧可能拷到旧背景
+            if (this._dropDragBase) this._dropDragBase();
+            if (this.scheduleRender) this.scheduleRender(true);
+            this._syncMaskOrigHint();
+            if (snap) this._fadeSnapshot(snap);
+        },
+
+        _syncMaskOrigHint() {
+            const act = this.activeMask(this.image);
+            const on = !!this._maskPreviewOriginal && !!this.image && !!act
+                && (act.type === 'lum' || act.type === 'color');
+            const hint = document.getElementById('maskOrigHint');
+            if (hint) hint.hidden = !on;
+            const cb = document.getElementById('cbMaskViewOrig');
+            if (cb && cb.checked !== on) cb.checked = on;
+        },
+
+        /* 切换源前抓一张当前画布：新帧渲染后由 _fadeSnapshot 淡出。
+           快照贴在 stage 里、z-index 低于蒙版叠加层，所以过渡期间绿色范围仍可见。 */
+        _snapshotPreviewCanvas() {
+            const cv = this.dom && this.dom.canvas;
+            const stage = this.dom && this.dom.stage;
+            if (!cv || !stage || !cv.width || !cv.height) return null;
+            try {
+                const cr = cv.getBoundingClientRect();
+                const sr = stage.getBoundingClientRect();
+                if (!cr.width || !cr.height) return null;
+                const dpr = Math.min(2, window.devicePixelRatio || 1);
+                const snap = document.createElement('canvas');
+                snap.className = 'mask-swap-fade';
+                snap.width = Math.max(1, Math.round(cr.width * dpr));
+                snap.height = Math.max(1, Math.round(cr.height * dpr));
+                // 绝对定位的参照是 stage 的 padding box，要扣掉边框宽度（与 syncOverlayGeometry 一致）
+                snap.style.left = (cr.left - sr.left - (stage.clientLeft || 0)) + 'px';
+                snap.style.top = (cr.top - sr.top - (stage.clientTop || 0)) + 'px';
+                snap.style.width = cr.width + 'px';
+                snap.style.height = cr.height + 'px';
+                const g = snap.getContext('2d');
+                if (!g) return null;
+                g.drawImage(cv, 0, 0, snap.width, snap.height);
+                // 同一时刻只留一张：连续切换不会叠出多层残影
+                if (this._maskFadeEl && this._maskFadeEl.parentNode) {
+                    this._maskFadeEl.parentNode.removeChild(this._maskFadeEl);
+                }
+                stage.appendChild(snap);
+                this._maskFadeEl = snap;
+                return snap;
+            } catch (_) { return null; }
+        },
+
+        _fadeSnapshot(snap) {
+            if (!snap) return;
+            // 等两帧让新画面先渲染，再开始淡出；否则可能先淡出、后换帧，闪一下旧图
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                if (snap.parentNode) snap.classList.add('is-out');
+            }));
+            setTimeout(() => {
+                if (snap.parentNode) snap.parentNode.removeChild(snap);
+                if (this._maskFadeEl === snap) this._maskFadeEl = null;
+            }, 280);
         },
 
         // 相框/卡片管线没有照片矩形，叠加层无法定位；默认图层模板才有。
@@ -603,7 +686,17 @@
             const m = window.QfsMask.newMask(type);
             const masks = (p.masks || []).concat([m]);
             this._activeMaskId = m.id;
+            // 亮度/颜色蒙版的选区由像素内容决定：自动进入「原图预览」，方便看原图选范围。
+            // 还没调过色时切了也一模一样，不切（避免出现无意义的提示）。
+            // 没有 _grade 槽位 = 还没调过色（不能把 undefined 当成「非中性」）
+            const neutral = !im._grade || im._grade.neutral;
+            const wantOrig = (type === 'lum' || type === 'color') && !neutral;
+            const changed = wantOrig !== !!this._maskPreviewOriginal;
+            const snap = changed ? this._snapshotPreviewCanvas() : null;
+            this._maskPreviewOriginal = wantOrig;
             this.setGrade({ masks });
+            this._syncMaskOrigHint();
+            if (snap) this._fadeSnapshot(snap);
             const label = (window.QfsMask.TYPES.find((t) => t.k === type) || {}).label;
             this.setStatus('已添加' + label + '蒙版'
                 + (this.maskPositionSupported() ? '' : '；当前边框样式不支持画布定位，切回默认模板样式后可拖动位置'));
@@ -616,6 +709,12 @@
             const p = this.gradeOf(im);
             const masks = (p.masks || []).filter((m) => m.id !== id);
             if (this._activeMaskId === id) this._activeMaskId = masks.length ? masks[masks.length - 1].id : null;
+            // 删掉后如果选中的不再是亮度/颜色蒙版，先退出原图预览，再渲染
+            const act = this.activeMask(im);
+            if (this._maskPreviewOriginal && (!act || (act.type !== 'lum' && act.type !== 'color'))) {
+                this._maskPreviewOriginal = false;
+                this._syncMaskOrigHint();
+            }
             this.setGrade({ masks });
             this.setStatus('已删除蒙版');
             return true;
@@ -985,6 +1084,11 @@
             bindNum('slMaskHi', (v, done) => this._patchLum(null, v, done));
             const inv = $('cbMaskInv');
             if (inv) inv.addEventListener('change', () => this._patchMask({ inv: inv.checked ? 1 : 0 }, true));
+            // 亮度/颜色蒙版：查看原图（隐藏调色，方便选区）；浮层上的「返回调色」走同一个开关
+            const viewOrig = $('cbMaskViewOrig');
+            if (viewOrig) viewOrig.addEventListener('change', () => this.setMaskOriginalPreview(viewOrig.checked));
+            const backOrig = $('btnMaskOrigBack');
+            if (backOrig) backOrig.addEventListener('click', () => this.setMaskOriginalPreview(false));
             // 组合方式：改的是「当前选中成员」的 mode（第一个只能是新建）
             const modes = $('maskModes');
             if (modes) {
@@ -1359,6 +1463,9 @@
                 const row = $(id);
                 if (row) row.style.display = isColor ? '' : 'none';
             }
+            // 「查看原图」只对亮度/颜色蒙版有意义（选区依赖像素内容，几何类不需要）
+            const viewRow = $('rowMaskViewOrig');
+            if (viewRow) viewRow.style.display = (act && (act.type === 'lum' || act.type === 'color')) ? '' : 'none';
             // 组合按钮：高亮当前方式；列表里第一个只能是「新建」
             const modesBar = $('maskModes');
             if (modesBar) {
@@ -1420,6 +1527,7 @@
                 if (inv) inv.checked = act.inv === 1;
             }
             this.drawMaskOverlay();
+            this._syncMaskOrigHint();
         }
     });
 })();

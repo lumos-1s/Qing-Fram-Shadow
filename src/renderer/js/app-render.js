@@ -220,6 +220,10 @@ window.App = Object.assign(window.App || {}, {
             this.template = previewTpl;
             // 手势首帧:合成完整帧(此时该元素已被 _skipUserEl 排除)后缓存为背景,供后续帧复用
             const needDragBase = !!(xfRef && (!this._dragBase || !this._dragBaseValid()));
+            // 蒙版「原图预览」：只在这一帧的整帧合成里生效(取源见 photoSrcOf)，
+            // 帧结束立刻复位 —— 导出/缩略图/后续帧都不会被污染。
+            const prevUseOrig = this._previewUseOriginal;
+            this._previewUseOriginal = !!this._maskPreviewOriginal;
             try {
                 const puzzle = previewTpl && previewTpl.puzzle && previewTpl.puzzle.enabled;
                 const fire = () => {
@@ -232,6 +236,7 @@ window.App = Object.assign(window.App || {}, {
                 if (needDragBase) fire();
             } finally {
                 this.template = prevTpl;
+                this._previewUseOriginal = prevUseOrig;
             }
             if (needDragBase) this._dragBaseBuild();
             this.drawSelectionBox();

@@ -196,6 +196,11 @@
                 <div class="stage">
                     <canvas id="previewCanvas" width="800" height="600"></canvas>
                     <canvas id="maskOverlay" class="mask-overlay" width="1" height="1" aria-label="蒙版编辑层：拖出渐变/椭圆，或按住涂抹"></canvas>
+                    <div id="maskOrigHint" class="mask-orig-hint" hidden>
+                        <span class="mask-orig-tag">原图</span>
+                        <span class="mask-orig-text">调色暂时隐藏，方便选择蒙版范围</span>
+                        <button id="btnMaskOrigBack" type="button" title="回到调色后的画面">返回调色</button>
+                    </div>
                     <div id="rotHint" class="rot-hint" hidden>↻ 拖动旋转<span>Shift 15°</span></div>
                 </div>
                 <button id="btnImmersive" class="stage-immersive-btn" type="button" title="全屏沉浸展示 (Ctrl+Shift+P)" aria-label="全屏沉浸展示" hidden>
@@ -1031,6 +1036,10 @@
                                     <label>最低饱和</label>
                                     <input type="range" id="slMaskMinS" class="ctl-rng" min="0" max="90" step="1" value="12" />
                                     <span class="pval" id="lblMaskMinS">12</span>
+                                </div>
+                                <div class="param-row chk-row" id="rowMaskViewOrig">
+                                    <label>查看原图</label>
+                                    <input type="checkbox" id="cbMaskViewOrig" class="ctl-chk" title="暂时隐藏调色，显示未调色的原图，方便选择亮度/颜色范围；不影响导出" />
                                 </div>
                                 <div class="param-row chk-row">
                                     <label>反相</label>

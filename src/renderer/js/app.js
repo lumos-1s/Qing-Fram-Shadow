@@ -1986,6 +1986,12 @@ window.App = {
         this.batchSel = [idx];
         this.currentIdx = idx;
         this.image = this.images[idx];
+        // 切图时退出蒙版「原图预览」：预览属于上一张照片的编辑上下文，
+        // 不清的话新图会一直显示未调色源，而蒙版面板已经不在了（看起来就是调色丢了）
+        if (this._maskPreviewOriginal) {
+            this._maskPreviewOriginal = false;
+            if (this._syncMaskOrigHint) this._syncMaskOrigHint();
+        }
         // 有独立预设的图恢复其自身模板;没有独立预设的以默认(原图)开始,画布显示原图
         const saved = this.getTpl(this.image);
         this.template = saved ? JSON.parse(JSON.stringify(saved)) : this.defaultTemplate();

@@ -199,6 +199,9 @@ window.App = Object.assign(window.App || {}, {
             const ci = Math.min(Math.max(0, draft.currentIdx || 0), restored.length - 1);
             this.currentIdx = ci;
             this.image = restored[ci];
+            // 恢复草稿换了一批照片：退出蒙版原图预览，避免新图一直显示未调色源
+            this._maskPreviewOriginal = false;
+            if (this._syncMaskOrigHint) this._syncMaskOrigHint();
             const draftTpl = this.getTpl(this.image);
             this.template = draftTpl || (draft.template ? JSON.parse(JSON.stringify(draft.template)) : this.defaultTemplate());
             this.normalizeTemplate();
