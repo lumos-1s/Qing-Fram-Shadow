@@ -714,8 +714,9 @@ window.App = Object.assign(window.App || {}, {
         im._tqAt = 0;
         this.closeCrop(true);
         if (this.invalidateStyleCaches) this.invalidateStyleCaches();
-        // 位图已换，调色缓存失效；参数保留，渲染时在新底图上重放
+        // 位图已换，调色缓存失效；参数保留，立刻在新底图上重放（与"还原原图"一致）
         if (this.invalidateGrade) this.invalidateGrade(im);
+        if (this.rebuildGrade) this.rebuildGrade('full');
         if (this.queueThumb) this.queueThumb(im);
         if (this.buildThumbnails) this.buildThumbnails();
         this.scheduleRender(true);

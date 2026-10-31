@@ -955,7 +955,10 @@
         const g = im._grade;
         if (g && !g.neutral) {
             if (g.canvas) return g.canvas;
-            if (g.low) return g.low;
+            // low 只在 lowKey 仍有效时才可信：invalidateGrade(换底图/还原/重设等)会清空
+            // lowKey 却保留旧 low 画布,若直接返回会拿到裁切前/旋转前的旧图当"已调色结果"
+            // —— 表现就是调色像没了,碰一下滑块才回来。
+            if (g.low && g.lowKey) return g.low;
         }
         return im.el || null;
     };

@@ -252,7 +252,7 @@ window.App = Object.assign(window.App || {}, {
                 customSettings: null,
                 grade: meta.grade || null
             };
-            // 有调色参数就得让它立刻生效：invalidateGrade 会清缓存并按参数重烘焙
+            // 有调色参数：作废旧缓存,载入后该图被选中时会由 selectImage 在新底图上重放
             if (im.grade && this.invalidateGrade) this.invalidateGrade(im);
             if (savedTpl) this.setTpl(im, savedTpl);
             this.queueThumb(im);

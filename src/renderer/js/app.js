@@ -1992,6 +1992,10 @@ window.App = {
         this.invalidateStyleCaches();
         this.buildThumbnails();
         this.afterImageSelect();
+        // 切回某张照片时,它的调色烘焙画布可能已被 LRU 淘汰(去编辑别的图 / 批量应用后切回),
+        // 此时 photoSrcOf 会回退到原图,调色像"没了"。只要参数还在就立刻在新底图上重放。
+        const g = this.image && this.image._grade;
+        if (g && !g.neutral && !g.canvas && !g.low) this.rebuildGrade('full');
         if (prevHadPuzzle && !(this.tplPuzzle && this.tplPuzzle())) {
             this.setStatus('拼图保存在「' + (prevIm.name || '上一张') + '」上（点胶片条切回该照片可继续编辑）');
         }
@@ -2021,8 +2025,9 @@ window.App = {
         im.h = canvas.height;
         im.rotate = ((im.rotate || 0) + 1) % 4;
         if (this.invalidateStyleCaches) this.invalidateStyleCaches();
-        // 底图换了：调色缓存作废，参数保留 —— 下次渲染会在新底图上重放
+        // 底图换了：调色缓存作废，参数保留 —— 立刻在新底图上重放（与"还原原图"一致）
         if (this.invalidateGrade) this.invalidateGrade(im);
+        if (this.rebuildGrade) this.rebuildGrade('full');
         if (this.buildThumbnails) this.buildThumbnails();
         this.scheduleRender(true);
         if (this.syncCropOriginalBtn) this.syncCropOriginalBtn();
