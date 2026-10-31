@@ -105,13 +105,22 @@ function computeCanvasSize(imgW, imgH, template) {
 function renderToCanvas(app, compare) {
     const canvas = app.dom.canvas;
     const prevW = canvas.width, prevH = canvas.height;
+    // _canvasBaseW/H 是「未经 displayMax/DPR 缩放」的画布内容基尺寸(setupCanvas 写入)。
+    // 后备像素(canvas.width)会随 displayMax/DPR/exportScale 变化,而基尺寸不会。
+    const prevBW = app._canvasBaseW || 0, prevBH = app._canvasBaseH || 0;
     _renderToCanvasInner(app, compare);
     // 画布后备尺寸变化后自动重新适配显示(缩略图条上方留白),避免旧缩放下画布溢出盖住缩略图条
     const curW = canvas.width, curH = canvas.height;
-    if (prevW > 0 && prevH > 0 && (curW !== prevW || curH !== prevH)) {
-        // 正在操作元素(logo/sticker)时不自动 fitZoom,保持用户当前缩放级别
+    const curBW = app._canvasBaseW || 0, curBH = app._canvasBaseH || 0;
+    // 仅当「后备尺寸」与「内容基尺寸」同时变化才重新适配:基尺寸变化 = 真实内容变化
+    // (换图/裁切/旋转/换模板),必然需要重新 fit;而手势期 displayMax 临时降到 900 再复原、
+    // 或导出 exportScale/DPR 变化只改后备分辨率,基尺寸不变,不应触发 fitZoom —— 否则拖调色滑块时
+    // 画布后备尺寸一变就 fitZoom,把用户当前的平移/缩放回退成「适应窗口」,照片即发生位置/大小突变(跳跃)。
+    if (prevW > 0 && prevH > 0 && (curW !== prevW || curH !== prevH)
+        && (curBW !== prevBW || curBH !== prevBH)) {
+        // 正在操作元素(logo/sticker)或正在手势(拖调色滑块)时不自动 fitZoom,保持用户当前缩放级别
         const hasSel = app.selectedEls && app.selectedEls.length;
-        if (!hasSel && typeof app.fitZoom === 'function') requestAnimationFrame(() => app.fitZoom());
+        if (!hasSel && !app._gesture && typeof app.fitZoom === 'function') requestAnimationFrame(() => app.fitZoom());
     }
 }
 function _renderToCanvasInner(app, compare) {
