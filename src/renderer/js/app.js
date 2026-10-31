@@ -1149,6 +1149,13 @@ window.App = {
                 this._dropDragBase();
                 this._logoSnapV = null; this._logoSnapH = null;
                 this._logoSnapEdgeV = null; this._logoSnapEdgeH = null;
+                this._logoSnapPhotoV = null; this._logoSnapPhotoH = null;
+                // 选中/松手时必须补一帧全量重绘:上面已清掉 _skipUserEl(它被引擎
+                // _filterUserEls 用来在拖拽优化时把该元素从静态背景里排除),若不重绘,
+                // 按下瞬间那帧(已排除该 logo)会一直停留在屏幕上 —— 表现就是「点一下
+                // logo,选中框出来了,但 logo 变成空白,得再动一下鼠标才回来」。
+                // 真实拖动时最后一帧已把它画在 ghost 上所以不明显,纯点击(未拖动)必现。
+                this.scheduleRender();
                 if (moved) this.commitNoPush();
             }
             if (this._pan) { this._pan = null; canvas.style.cursor = ''; }
