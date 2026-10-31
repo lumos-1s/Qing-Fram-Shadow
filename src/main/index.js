@@ -598,7 +598,12 @@ ipcMain.handle('list-wall-covers', async () => {
             if (!['.webp', '.jpg', '.jpeg', '.png'].includes(ext)) continue;
             const cover = path.join(dir, n);
             allowImagePath(cover);
-            out[path.basename(n, ext)] = cover;
+            // 带上 mtime 当版本号：渲染端只在文件真的变了时才换 <img src> 的 URL。
+            // 之前用的是「每次扫描取当前时间戳」，于是每次开墙 / 窗口聚焦 / 切换无限·有限
+            // 都会让所有自定义封面换 URL → 重新读盘 + 重新解码，卡片肉眼可见地闪一下。
+            let mtime = 0;
+            try { mtime = Math.round((await fs.promises.stat(cover)).mtimeMs) || 0; } catch (_) { mtime = 0; }
+            out[path.basename(n, ext)] = { path: cover, mtime };
         }
         return out;
     } catch (e) {

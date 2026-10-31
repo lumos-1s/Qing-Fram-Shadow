@@ -119,6 +119,19 @@ async function main() {
         r.menuCustom = [...document.querySelectorAll('.ctx-menu button')].map(x => x.textContent);
         A.closeCtx();
 
+        // ⑥b 重复扫描不能换 URL：版本号曾经取「每次扫描的时间戳」，于是开墙 /
+        //     窗口聚焦 / 切模式都会把自定义封面重新读盘解码一遍，卡片肉眼可见地闪。
+        //     现在版本号取自文件 mtime，文件没动 URL 就必须稳定。
+        const srcNow = () => { const t = [...document.querySelectorAll('.pw-tile')].find(x => x.dataset.customCover === '1');
+            return t ? t.querySelector('img').getAttribute('src') : null; };
+        const v0 = srcNow();
+        await A.refreshWallCovers(true);
+        await new Promise(r => setTimeout(r, 300));
+        const v1 = srcNow();
+        await A.refreshWallCovers(true);
+        await new Promise(r => setTimeout(r, 300));
+        r.versionStable = { same: v0 === srcNow() && v0 === v1, v0: String(v0).slice(-14) };
+
         // ⑦ 切换有限墙（重建 360 张卡）后封面要还在
         A.setWallMode('finite');
         await new Promise(r => setTimeout(r, 900));
@@ -205,6 +218,7 @@ async function main() {
     check(out.menuCustom.includes('更换封面…') && out.menuCustom.includes('恢复默认封面'), '右键菜单：有自定义封面时可恢复默认', out.menuCustom.join(' / '));
     check(!!(out.realCtx && out.realCtx.opened) && (out.realCtx.items || []).includes('更换封面…'),
         '真实右键能弹出菜单（mousedown 不能吞掉 contextmenu）', JSON.stringify(out.realCtx));
+    check(out.versionStable && out.versionStable.same, '重复扫描不换封面 URL（不重复解码）', JSON.stringify(out.versionStable));
     check(out.afterModeSwitch.stillLocal && out.afterModeSwitch.marked, '无限/有限切换重建卡片后封面不丢', JSON.stringify(out.afterModeSwitch));
     check(!out.afterClear.marked && out.afterClear.isBuiltin, '恢复默认后回落内置封面', JSON.stringify(out.afterClear));
     check(!out.menuNoCustom.includes('恢复默认封面'), '没有自定义封面时不显示「恢复默认」', out.menuNoCustom.join(' / '));

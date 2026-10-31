@@ -1008,9 +1008,7 @@ window.App = Object.assign(window.App || {}, {
         if (!window.qingframe || typeof window.qingframe.listWallCovers !== 'function') return 0;
         let covers = {};
         try { covers = await window.qingframe.listWallCovers() || {}; } catch (_) { return 0; }
-        // 同名文件可能被用户直接替换:版本号变化会让 <img src> 换 URL，绕开旧缓存。
-        // 用时间戳而不是会话内自增，避免重启后再次生成相同 URL 又命中磁盘缓存。
-        this._coverVersion = Math.max(Date.now(), (this._coverVersion || 0) + 1);
+        covers = this.normalizeWallCovers(covers);
         this._wallCovers = covers;   // 供右键菜单判断"能否恢复默认"
         let applied = 0;
         for (const tile of el.grid.querySelectorAll('.pw-tile')) {

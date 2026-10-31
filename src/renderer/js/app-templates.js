@@ -778,11 +778,8 @@ window.App = Object.assign(window.App || {}, {
         // 否则先发出的旧扫描晚回来,会把刚换上的封面又盖回旧图。
         const seq = (this._thumbCoverSeq = (this._thumbCoverSeq || 0) + 1);
         try {
-            const covers = (await q.listWallCovers()) || {};
+            const covers = this.normalizeWallCovers((await q.listWallCovers()) || {});
             if (seq !== this._thumbCoverSeq) return 0;
-            // 同名文件可能被用户直接替换:版本号变化会让 <img src> 换 URL，绕开旧缓存。
-            // 用时间戳而不是会话内自增，避免重启后再次生成相同 URL 又命中磁盘缓存。
-            this._coverVersion = Math.max(Date.now(), (this._coverVersion || 0) + 1);
             this._thumbCovers = covers;
             this.applyPresetThumbCovers();
             return Object.keys(covers).length;

@@ -2179,11 +2179,34 @@ window.App = {
     photoUrl(filePath) { return 'qflocal://img?p=' + encodeURIComponent(filePath); },
 
     // 自定义封面专用 URL:浏览器按 URL 缓存图片,同名封面文件被替换后只改文件
-    // 不改 URL 会继续显示旧图。每次扫描封面后递增 _coverVersion,强制重新解码。
+    // 不改 URL 会继续显示旧图。版本号取自文件 mtime(由 list-wall-covers 带回),
+    // 所以「文件没变」时 URL 稳定,不会每次开墙/聚焦都把封面重新解码一遍;
+    // 文件被替换时 mtime 变了,URL 跟着变,自然绕开旧缓存。
+    // _coverVersion 是旧主进程(只给路径、给不出 mtime)的兜底:那时只能靠时间戳。
     coverUrl(filePath) {
         const u = this.photoUrl(filePath);
-        const v = this._coverVersion || 0;
+        const v = (this._coverVer && this._coverVer[filePath]) || this._coverVersion || 0;
         return v ? u + '&v=' + v : u;
+    },
+
+    // 把 list-wall-covers 的返回整理成「名字 → 路径」,并把 mtime 摘成按路径记的版本号。
+    // 新主进程给 {名字:{path,mtime}},旧主进程只给路径字符串——两种都要能跑。
+    normalizeWallCovers(covers) {
+        const ver = {};
+        let legacy = false;
+        for (const k of Object.keys(covers || {})) {
+            const v = covers[k];
+            if (v && typeof v === 'object' && typeof v.path === 'string') {
+                ver[v.path] = v.mtime || 0;
+                covers[k] = v.path;
+            } else if (typeof v === 'string') {
+                legacy = true;
+            }
+        }
+        this._coverVer = ver;
+        // 旧主进程拿不到 mtime,退回时间戳版本号:宁可多解码一次,也不能显示旧图
+        if (legacy) this._coverVersion = Math.max(Date.now(), (this._coverVersion || 0) + 1);
+        return covers;
     },
 
     // 把系统选择框返回的单个文件构造成胶片条照片对象(不插入)
