@@ -167,13 +167,13 @@
     }
 
     // 组合后的权重画布：按 mode 依次合并（add 取并集、subtract 挖掉、intersect 取交集）
-    function groupAlpha(group, w, h, src) {
+    function groupAlpha(group, w, h, src, opts) {
         const members = group.members || [group.head];
-        let acc = render(group.head, w, h, src);
+        let acc = render(group.head, w, h, src, opts);
         for (let i = 1; i < members.length; i++) {
             const m = members[i];
             if (m.on === 0) continue;
-            const a = render(m, w, h, src);
+            const a = render(m, w, h, src, opts);
             const c = newCanvas(w, h);
             const g = c.getContext('2d');
             if (!g) return acc;
@@ -252,14 +252,35 @@
     function fillRadial(g, w, h, m) {
         const s = m.shape;
         const f = Math.max(0.001, m.feather / 100);
+        const cx = s.cx * w, cy = s.cy * h;
+        const rx = Math.max(0.01, s.rx) * w, ry = Math.max(0.01, s.ry) * h;
         g.save();
-        g.translate(s.cx * w, s.cy * h);
-        g.scale(Math.max(0.01, s.rx) * w, Math.max(0.01, s.ry) * h);
+        g.translate(cx, cy);
+        g.scale(rx, ry);
         const grad = g.createRadialGradient(0, 0, Math.max(0, 1 - f), 0, 0, 1);
-        const c0 = m.inv ? 'rgba(255,255,255,0)' : 'rgba(255,255,255,1)';
-        const c1 = m.inv ? 'rgba(255,255,255,1)' : 'rgba(255,255,255,0)';
-        grad.addColorStop(0, c0);
-        grad.addColorStop(1, c1);
+        if (m.inv) {
+            // 反相椭圆 = 椭圆外全权重、椭圆内按羽化挖空。
+            // 不能只把渐变颜色反过来再填椭圆内部：椭圆外仍是 alpha 0，
+            // 结果“反相”只反了里面，外面一点没选中（用户看到的就是反相没效果）。
+            g.restore();
+            g.fillStyle = 'rgba(255,255,255,1)';
+            g.fillRect(0, 0, w, h);
+            g.save();
+            g.translate(cx, cy);
+            g.scale(rx, ry);
+            const cut = g.createRadialGradient(0, 0, Math.max(0, 1 - f), 0, 0, 1);
+            cut.addColorStop(0, 'rgba(255,255,255,1)');
+            cut.addColorStop(1, 'rgba(255,255,255,0)');
+            g.globalCompositeOperation = 'destination-out';
+            g.fillStyle = cut;
+            g.beginPath();
+            g.arc(0, 0, 1.02, 0, Math.PI * 2);
+            g.fill();
+            g.restore();
+            return;
+        }
+        grad.addColorStop(0, 'rgba(255,255,255,1)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
         g.fillStyle = grad;
         g.beginPath();
         g.arc(0, 0, 1.02, 0, Math.PI * 2);
@@ -332,7 +353,11 @@
         try { data = sg.getImageData(0, 0, tw, th); } catch (_) { return; }
         const d = data.data;
         const lo = s.lo / 100, hi = s.hi / 100;
-        const soft = Math.max(0.02, (hi - lo) * 0.35);
+        // 羽化以前对亮度蒙版完全无效（soft 固定 35%），滑块拖了画面不动。
+        // 现在按羽化控制阈值两侧的过渡带宽：0 = 硬边，100 = 很软的过渡；
+        // 50 仍是原来的 35%，老草稿/测试的观感不变。
+        const feather = Math.max(0, Math.min(100, Number(m.feather) || 0)) / 100;
+        const soft = Math.max(0.001, (hi - lo) * (0.001 + 0.7 * feather));
         for (let i = 0; i < d.length; i += 4) {
             const y = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
             let v = 0;
@@ -399,7 +424,9 @@
     }
 
     // 生成蒙版 alpha 画布（w×h 与烘焙图层一致）
-    function render(m, w, h, src) {
+    // opts.rawAlpha：忽略浓度，返回「纯范围」。叠加层只表示范围，不表示强度，
+    // 否则把浓度调低后绿色范围跟着变淡/消失，看起来像蒙版自己缩小了。
+    function render(m, w, h, src, opts) {
         const out = newCanvas(w, h);
         const g = out.getContext('2d');
         if (!g) return out;
@@ -409,7 +436,8 @@
         else if (m.type === 'color') fillColor(g, out.width, out.height, m, src);
         else fillLuma(g, out.width, out.height, m, src);
         // 浓度：整体压权重（100 不动、0 完全无效）
-        const dens = Math.max(0, Math.min(100, m.density != null ? m.density : 100)) / 100;
+        const dens = (opts && opts.rawAlpha) ? 1
+            : Math.max(0, Math.min(100, m.density != null ? m.density : 100)) / 100;
         if (dens < 1) {
             const scaled = newCanvas(out.width, out.height);
             const sg = scaled.getContext('2d');
@@ -510,15 +538,32 @@
             return true;
         },
 
+        // 相框/卡片管线没有照片矩形，叠加层无法定位；默认图层模板才有。
+        // 与 engine.js 的渲染分流保持一致，避免把「还没渲染完」误判成不支持。
+        maskPositionSupported() {
+            const t = this.template || {};
+            const pf = t.photoFrameStyle;
+            if (pf && pf !== 'NONE') return false;
+            return ((t.baseMargin || {}).bgBlurEnable || 0) !== 1;
+        },
+
         addMask(type) {
             const im = this.image;
             if (!im) return false;
             const p = this.gradeOf(im);
+            // 与 sanitizeMasks 的上限一致：超过 12 个会被静默截掉，用户以为
+            // 「刚加的蒙版没保存」。这里先挡住并说明原因。
+            if ((p.masks || []).length >= 12) {
+                this.setStatus('最多 12 个蒙版，先删掉不用的再添加');
+                return false;
+            }
             const m = window.QfsMask.newMask(type);
             const masks = (p.masks || []).concat([m]);
             this._activeMaskId = m.id;
             this.setGrade({ masks });
-            this.setStatus('已添加' + (window.QfsMask.TYPES.find((t) => t.k === type) || {}).label + '蒙版');
+            const label = (window.QfsMask.TYPES.find((t) => t.k === type) || {}).label;
+            this.setStatus('已添加' + label + '蒙版'
+                + (this.maskPositionSupported() ? '' : '；当前边框样式不支持画布定位，切回默认模板样式后可拖动位置'));
             return true;
         },
 
@@ -538,7 +583,9 @@
             const im = this.image;
             if (!im) return;
             if (this.invalidateGrade) this.invalidateGrade(im);
-            if (this.rebuildGrade) this.rebuildGrade(reason === 'drag' ? 'low' : 'full');
+            // 拖动/滑块 input 期只烘低分辨率，保证跟手；松手（full）再补全分辨率。
+            // 以前 'live' 也走 full，羽化/浓度每动一格都全图重算，大图上会明显卡顿。
+            if (this.rebuildGrade) this.rebuildGrade(reason === 'full' ? 'full' : 'low');
             if (this.scheduleRender) this.scheduleRender(true);
             if (this.scheduleDraft) this.scheduleDraft();
         },
@@ -651,17 +698,19 @@
                 // 红=当前这个「减去」成员挖掉的部分（让用户看得见自己在删哪里）。
                 const pw = Math.max(64, Math.min(400, Math.round(pr.w)));
                 const ph = Math.max(32, Math.round(pw * pr.h / Math.max(1, pr.w)));
-                paintRaster(window.QfsMask.groupAlpha(grp, pw, ph, this.image.el), rgba(1));
+                const raw = { rawAlpha: true };
+                paintRaster(window.QfsMask.groupAlpha(grp, pw, ph, this.image.el, raw), rgba(1));
                 if (m.mode === 'subtract') {
-                    paintRaster(window.QfsMask.render(m, pw, ph, this.image.el), 'rgba(232,96,86,0.55)');
+                    paintRaster(window.QfsMask.render(m, pw, ph, this.image.el, raw), 'rgba(232,96,86,0.55)');
                 }
                 g.restore();
             } else {
             g.beginPath();
-            if (m.type === 'radial') {
+            if (m.type === 'radial' && !m.inv) {
                 g.ellipse(sx + m.shape.cx * sw, sy + m.shape.cy * sh,
                     Math.max(1, m.shape.rx * sw), Math.max(1, m.shape.ry * sh), 0, 0, Math.PI * 2);
             } else {
+                // 反相椭圆要覆盖椭圆外的整幅照片，不能先裁到椭圆里
                 g.rect(sx, sy, sw, sh);
             }
             g.clip();
@@ -681,21 +730,41 @@
                 const f = Math.max(0.001, m.feather / 100);
                 const cx = sx + m.shape.cx * sw, cy = sy + m.shape.cy * sh;
                 const rx = Math.max(1, m.shape.rx * sw), ry = Math.max(1, m.shape.ry * sh);
-                g.translate(cx, cy);
-                g.scale(rx, ry);
-                // 单位圆内的径向渐变：内圈到 (1-f) 是满权重，之外衰减到 0
-                const grad = g.createRadialGradient(0, 0, Math.max(0, 1 - f), 0, 0, 1);
-                const c0 = rgba(m.inv ? 0 : baseA), c1 = rgba(m.inv ? baseA : 0);
-                grad.addColorStop(0, c0);
-                grad.addColorStop(1, c1);
-                g.fillStyle = grad;
-                g.fillRect(-1.05, -1.05, 2.1, 2.1);
+                if (m.inv) {
+                    // 反相：整幅照片染绿，再把椭圆内部按羽化擦掉。
+                    // 只把渐变颜色反过来的话，椭圆外根本没被 fillRect 覆盖，
+                    // 看起来就像“反相只作用在椭圆里”。
+                    g.fillStyle = rgba(baseA);
+                    g.fillRect(sx, sy, sw, sh);
+                    g.save();
+                    g.translate(cx, cy);
+                    g.scale(rx, ry);
+                    g.globalCompositeOperation = 'destination-out';
+                    const cut = g.createRadialGradient(0, 0, Math.max(0, 1 - f), 0, 0, 1);
+                    cut.addColorStop(0, 'rgba(255,255,255,1)');
+                    cut.addColorStop(1, 'rgba(255,255,255,0)');
+                    g.fillStyle = cut;
+                    g.beginPath();
+                    g.arc(0, 0, 1.02, 0, Math.PI * 2);
+                    g.fill();
+                    g.restore();
+                } else {
+                    g.translate(cx, cy);
+                    g.scale(rx, ry);
+                    // 单位圆内的径向渐变：内圈到 (1-f) 是满权重，之外衰减到 0
+                    const grad = g.createRadialGradient(0, 0, Math.max(0, 1 - f), 0, 0, 1);
+                    grad.addColorStop(0, rgba(baseA));
+                    grad.addColorStop(1, rgba(0));
+                    g.fillStyle = grad;
+                    g.fillRect(-1.05, -1.05, 2.1, 2.1);
+                }
             } else if (m.type === 'brush' || m.type === 'lum' || m.type === 'color') {
                 const pw = Math.max(64, Math.min(400, Math.round(pr.w)));
                 const ph = Math.max(32, Math.round(pw * pr.h / Math.max(1, pr.w)));
                 // 源必须是**原图**：亮度/颜色蒙版按像素内容选区，若用调过色的烘焙图，
                 // 一压暗选区就变大、一提亮就变小 —— 用户看到的就是「调完色蒙版范围变了」。
-                paintRaster(window.QfsMask.render(m, pw, ph, this.image.el), rgba(1));
+                // rawAlpha：叠加层只显示范围，浓度调低不该让绿色范围跟着变淡。
+                paintRaster(window.QfsMask.render(m, pw, ph, this.image.el, { rawAlpha: true }), rgba(1));
             }
             g.restore();
             }
@@ -767,11 +836,15 @@
             };
             bindNum('slMaskFeather', (v, done) => this._patchMask({ feather: v }, done));
             bindNum('slMaskDensity', (v, done) => this._patchMask({ density: v }, done));
-            bindNum('slMaskBrushSize', (v) => {
+            bindNum('slMaskBrushSize', (v, done) => {
                 const m = this.activeMask(this.image);
                 if (!m || m.type !== 'brush') return;
                 m.shape.size = v;
-                this.commitMaskShape('live');
+                // 这个滑块没有走 _patchMask，必须自己回写标签/数字框；
+                // 否则拖完笔刷大小，面板上还停在旧值（其他蒙版滑块由 syncMaskUI 负责）。
+                if (this.updateLabel) this.updateLabel('lblMaskBrushSize', String(v));
+                // input 期用低分辨率预览，松手（change）补一次全分辨率烘焙。
+                this.commitMaskShape(done ? 'full' : 'live');
             });
             bindNum('slMaskLo', (v, done) => this._patchLum(v, null, done));
             bindNum('slMaskHi', (v, done) => this._patchLum(null, v, done));
@@ -873,7 +946,11 @@
             let pending = null;   // 按下但还没拖动：单击不应该改动蒙版
             const hit = (pt, target, rCss) => {
                 const ovr = ov.getBoundingClientRect();
-                const lw = this.dom.canvas._logW || 1, lh = this.dom.canvas._logH || 1;
+                // 照片矩形和蒙版坐标都是「基准画布」口径（_canvasBaseW/H），
+                // 不是 _logW（= 基准 × uiScale）。混用会让大图上的 12px 容差
+                // 实际变成 12×base/logW（4000px 图上约 27px），手感发飘。
+                const base = this._baseSize();
+                const lw = base.w || 1, lh = base.h || 1;
                 const pr = this._photoRect;
                 if (!pr) return false;
                 const px = (pr.x + target.x * pr.w) / lw * ovr.width;
@@ -887,8 +964,10 @@
                 const ovr = ov.getBoundingClientRect();
                 const pr = this._photoRect;
                 if (!pr) return 1e9;
-                const toCss = (x, y) => ({ x: (pr.x + x * pr.w) / (this.dom.canvas._logW || 1) * ovr.width,
-                                           y: (pr.y + y * pr.h) / (this.dom.canvas._logH || 1) * ovr.height });
+                const base = this._baseSize();
+                const lw = base.w || 1, lh = base.h || 1;
+                const toCss = (x, y) => ({ x: (pr.x + x * pr.w) / lw * ovr.width,
+                                           y: (pr.y + y * pr.h) / lh * ovr.height });
                 const a = toCss(s.x1, s.y1), b = toCss(s.x2, s.y2), p = toCss(pt.x, pt.y);
                 const dx = b.x - a.x, dy = b.y - a.y;
                 const len2 = dx * dx + dy * dy || 1e-6;
@@ -966,11 +1045,19 @@
                         pending = null;
                         drag = { kind: 'p2' };
                     } else {
-                        m.shape.cx = pending.start.x; m.shape.cy = pending.start.y;
-                        m.shape.rx = Math.max(0.02, Math.abs(pt.x - m.shape.cx));
-                        m.shape.ry = Math.max(0.02, Math.abs(pt.y - m.shape.cy));
+                        const cx = pending.start.x, cy = pending.start.y;
+                        m.shape.cx = cx; m.shape.cy = cy;
+                        m.shape.rx = Math.max(0.02, Math.abs(pt.x - cx));
+                        m.shape.ry = Math.max(0.02, Math.abs(pt.y - cy));
                         pending = null;
-                        drag = { kind: 'size' };
+                        // 新椭圆升级成 size 拖动时，必须把半径基准一起带上：
+                        // 否则下一次 pointermove 读 drag.rx0/d0 全是 undefined，
+                        // rx/ry 会算成 NaN，椭圆当场消失（用户看到的就是“拖不出来”）。
+                        drag = {
+                            kind: 'size', rx0: m.shape.rx, ry0: m.shape.ry,
+                            cx: cx, cy: cy,
+                            d0: Math.max(0.01, Math.hypot(pt.x - cx, pt.y - cy))
+                        };
                     }
                     this.drawMaskOverlay();
                     return;
@@ -1074,13 +1161,16 @@
                 tip.style.display = act ? '' : 'none';
                 if (act) {
                     const pr = this._photoRect;
+                    const noPos = !this.maskPositionSupported();
                     tip.textContent = pr ? ({
                         linear: '拖线身整体移动、拖两端点改过渡；空白处拖一下可重画',
                         radial: '拖椭圆内部移动、拖边缘改大小；外面拖出新椭圆',
                         brush: '按住涂抹；按住 Alt 或右键涂抹 = 擦除',
                         lum: '按亮度自动选区，调下面的暗部/亮部阈值',
                         color: '在画布上点一下取色，再调色相/容差；灰和近白黑不会被选中'
-                    })[act.type] : '当前样式下无法在画布上编辑蒙版（切回默认模板样式即可）';
+                    })[act.type] : (noPos
+                        ? '当前边框样式（相框/卡片）不支持画布定位；切回默认模板样式后可拖动蒙版'
+                        : '蒙版叠加层还没准备好，稍等片刻再试');
                 }
             }
             const badge = $('grpMask');

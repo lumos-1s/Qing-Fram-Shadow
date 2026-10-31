@@ -178,6 +178,38 @@ async function main() {
     check(lum.dark > 200 && lum.bright < 40 && lum.darkInv < 40,
         '亮度范围：只选暗部，反相后选亮部', JSON.stringify(lum));
 
+    // ── 4.5 亮度蒙版的羽化必须真的改变过渡带（以前 soft 固定 35%，滑块是死的）──
+    const lumFeather = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+        const g = c.getContext('2d');
+        const grd = g.createLinearGradient(0, 0, 0, 256);
+        grd.addColorStop(0, '#000'); grd.addColorStop(1, '#fff');
+        g.fillStyle = grd; g.fillRect(0, 0, 256, 256);
+        const el = new Image();
+        await new Promise((r) => { el.onload = r; el.onerror = r; el.src = c.toDataURL('image/png'); });
+        im.el = el; im.w = 256; im.h = 256; im._gradeCache = null;
+        A.resetGrade();
+        A.addMask('lum');
+        await new Promise((r) => setTimeout(r, 120));
+        const m = A.activeMask(im);
+        m.shape = { lo: 40, hi: 60 }; m.inv = 0; m.density = 100;
+        const at = (feather, y) => {
+            m.feather = feather;
+            const cc = window.QfsMask.render(m, 256, 256, el);
+            return cc.getContext('2d').getImageData(128, y, 1, 1).data[3];
+        };
+        const hard = at(0, 115);      // 45%：硬边应满权重
+        const soft = at(100, 115);    // 羽化 100：同一位置应明显变淡
+        const hardEdge = at(0, 103);  // 40.2%：刚过下阈值
+        const softEdge = at(100, 103);
+        return { hard, soft, hardEdge, softEdge };
+    })()`);
+    check(lumFeather.hard > 240 && lumFeather.soft < 180
+          && lumFeather.softEdge < lumFeather.hardEdge,
+        '亮度蒙版羽化真的改变过渡带（0=硬边、100=软边）',
+        JSON.stringify(lumFeather));
+
     // ── 5. 画笔：没涂=全 0，涂过=笔迹处有权重 ──
     const brush = await exec(`(async () => {
         const A = window.App, im = A.image;
@@ -198,6 +230,46 @@ async function main() {
     })()`);
     check(brush.empty.at === 0 && brush.painted.at > 120 && brush.painted.far < 60,
         '画笔：未涂无权重、涂过的笔迹处有权重、远处为 0', JSON.stringify(brush));
+
+    // ── 5.1 笔刷大小滑块：标签/数字框必须跟着滑块走（它没走 _patchMask）──
+    const brushUi = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        const m = A.masksOf(im).find((x) => x.type === 'brush');
+        A.setActiveMask(m.id);
+        await new Promise((r) => setTimeout(r, 120));
+        const sl = document.getElementById('slMaskBrushSize');
+        const lbl = document.getElementById('lblMaskBrushSize');
+        const num = document.querySelector('#rowMaskBrush .pval-num');
+        sl.value = '42';
+        sl.dispatchEvent(new Event('input', { bubbles: true }));
+        const during = { size: m.shape.size, label: lbl.textContent, num: num && num.value };
+        sl.dispatchEvent(new Event('change', { bubbles: true }));
+        return { during };
+    })()`);
+    check(brushUi.during.size === 42 && brushUi.during.label === '42'
+          && brushUi.during.num === '42',
+        '笔刷大小滑块：标签和数字框跟着滑块更新（不再停在旧值）',
+        JSON.stringify(brushUi.during));
+
+    // ── 5.2 滑块 input 期只烘低分辨率，松手才补全分辨率（大图不卡）──
+    const bakeLevel = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        im.el = await window.__mkGray(600, 400); im.w = 600; im.h = 400; im._gradeCache = null;
+        A.resetGrade();
+        A.addMask('linear');
+        await new Promise((r) => setTimeout(r, 150));
+        const m = A.activeMask(im);
+        m.p.exp = 1;
+        A.commitMaskShape('live');
+        const live = { low: !!im._grade.low, full: !!im._grade.canvas };
+        A.commitMaskShape('full');
+        const done = { low: !!im._grade.low, full: !!im._grade.canvas };
+        return { live, done };
+    })()`);
+    check(bakeLevel.live.low && !bakeLevel.live.full
+          && bakeLevel.done.full && !bakeLevel.done.low,
+        '蒙版滑块 input 期低分辨率预览、松手补全分辨率',
+        JSON.stringify(bakeLevel));
 
     // ── 6. 参数分流：选中蒙版时 9 档改蒙版，点「全局」改整图 ──
     const route = await exec(`(async () => {
@@ -554,6 +626,15 @@ async function main() {
             }
             return n ? { x0: minX, x1: maxX, y0: minY, y1: maxY, n } : null;
         };
+        // 叠加层只表示范围：浓度 20 时这里的绿色 alpha 应与 100 时一致
+        const ovAlpha = () => {
+            const ov = document.getElementById('maskOverlay');
+            const g = ov.getContext('2d');
+            const pr = A._photoRect, base = A._baseSize();
+            const k = ov.width / Math.max(1, base.w);
+            return g.getImageData(Math.round((pr.x + pr.w * 0.5) * k),
+                Math.round((pr.y + pr.h * 0.1) * k), 1, 1).data[3];
+        };
         const px = (src) => {
             const c = document.createElement('canvas'); c.width = 400; c.height = 200;
             const g = c.getContext('2d'); g.drawImage(src, 0, 0, 400, 200);
@@ -561,7 +642,7 @@ async function main() {
             return { top: at(200, 20), bot: at(200, 180) };
         };
 
-        const before = { alpha: alpha(im.el), box: bbox(), px: px(window.photoSrcOf(im)) };
+        const before = { alpha: alpha(im.el), box: bbox(), ov: ovAlpha(), px: px(window.photoSrcOf(im)) };
 
         // 选中蒙版状态下压暗（走真实路由：9 档 → mask.p）
         A.setGrade({ exp: -2.5 });
@@ -571,6 +652,7 @@ async function main() {
         const after = {
             alpha: alpha(im.el),
             box: bbox(),
+            ov: ovAlpha(),
             px: px(window.photoSrcOf(im)),
             // 旧口径（用烘焙图当源）会漂成什么，作为对照存证
             legacyAlpha: alpha(window.photoSrcOf(im)),
@@ -580,7 +662,7 @@ async function main() {
         // 浓度调低：叠加层表示的是「范围」，不该跟着变淡/消失
         m.density = 20; A.syncMaskUI();
         await new Promise((r) => setTimeout(r, 300));
-        const lowDens = { box: bbox() };
+        const lowDens = { box: bbox(), ov: ovAlpha() };
         m.density = 100; A.syncMaskUI();
         return { before, after, lowDens };
     })()`);
@@ -605,6 +687,9 @@ async function main() {
     check(bd && bb2 && Math.abs(bd.n - bb2.n) / Math.max(1, bb2.n) < 0.08,
         '浓度调低不改变叠加层显示的范围（叠层只表示范围，不表示强度）',
         JSON.stringify({ full: bb2 && bb2.n, dens20: bd && bd.n }));
+    check(Math.abs(drift.lowDens.ov - drift.before.ov) < 12,
+        '浓度调低不改变叠加层绿色强度（亮度/画笔类蒙版也一样）',
+        JSON.stringify({ full: drift.before.ov, dens20: drift.lowDens.ov }));
 
     // ── 9.9 组合模式：添加 / 减去 / 相交 ──
     // 用户的原话是「想修个边缘只能重画」。这一组测的就是「不用重画」：
@@ -757,6 +842,173 @@ async function main() {
         JSON.stringify(colorMask.afterPick) + ' ' + JSON.stringify(colorMask.pickedGreen));
     check(colorMask.grayAlpha === 0,
         '颜色蒙版不选中中性灰（灰没有色相，不该被任何色带带走）', String(colorMask.grayAlpha));
+
+    // ── 9.9 大图（uiScale < 1）上抓渐变线身：命中测试必须用基准坐标 ──
+    // 叠加层是按 base 坐标画的，命中却用 _logW（= base × uiScale）算，
+    // 4000px 照片上会偏到 2 倍开外 —— 看起来就是“线抓不住/一拖就重画”。
+    const bigLine = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        im.el = await window.__mkGray(4000, 3000); im.w = 4000; im.h = 3000; im._gradeCache = null;
+        A.template = A.defaultTemplate(); A.setTpl(im, A.template);
+        A.resetGrade();
+        A.scheduleRender(true);
+        await new Promise((r) => setTimeout(r, 700));
+        A.addMask('linear');
+        await new Promise((r) => setTimeout(r, 250));
+        const m = A.activeMask(im);
+        m.shape = { x1: 0.5, y1: 0.2, x2: 0.5, y2: 0.8 }; m.feather = 40;
+        A.syncMaskUI();
+        await new Promise((r) => setTimeout(r, 250));
+
+        const ov = document.getElementById('maskOverlay');
+        const r = ov.getBoundingClientRect();
+        const pr = A._photoRect, base = A._baseSize();
+        const toClient = (nx, ny) => ({
+            x: r.left + ((pr.x + nx * pr.w) / base.w) * r.width,
+            y: r.top + ((pr.y + ny * pr.h) / base.h) * r.height
+        });
+        const ev = (t, x, y) => ov.dispatchEvent(new PointerEvent(t, {
+            clientX: x, clientY: y, bubbles: true, pointerId: 1, button: 0
+        }));
+        const before = Object.assign({}, m.shape);
+        const p = toClient(0.5, 0.5), q = toClient(0.6, 0.55);
+        ev('pointerdown', p.x, p.y);
+        ev('pointermove', q.x, q.y);
+        ev('pointerup', q.x, q.y);
+        await new Promise((r2) => setTimeout(r2, 250));
+        return { before, after: Object.assign({}, m.shape), base, logW: A.dom.canvas._logW, pr };
+    })()`);
+    const bl = bigLine.after, bl0 = bigLine.before;
+    check(Math.abs(bl.x1 - (bl0.x1 + 0.1)) < 0.03 && Math.abs(bl.y1 - (bl0.y1 + 0.05)) < 0.03
+          && Math.abs((bl.x2 - bl.x1) - (bl0.x2 - bl0.x1)) < 0.02,
+        '大图上抓渐变线身 = 整条线平移（命中按基准坐标，不再重画）',
+        JSON.stringify(bigLine));
+
+    // ── 9.10 空白处拖出新椭圆后继续拖：drag 状态必须带半径基准 ──
+    // pending 升级成 size 拖动时若忘了写 rx0/ry0/d0，第二次 pointermove 会算出 NaN。
+    const newRadial = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        im.el = await window.__mkGray(600, 400); im.w = 600; im.h = 400; im._gradeCache = null;
+        A.template = A.defaultTemplate(); A.setTpl(im, A.template);
+        A.resetGrade();
+        A.scheduleRender(true);
+        await new Promise((r) => setTimeout(r, 600));
+        A.addMask('radial');
+        await new Promise((r) => setTimeout(r, 200));
+        const m = A.activeMask(im);
+        m.shape = { cx: 0.5, cy: 0.5, rx: 0.2, ry: 0.2 }; m.feather = 40;
+        A.syncMaskUI();
+        await new Promise((r) => setTimeout(r, 250));
+        const ov = document.getElementById('maskOverlay');
+        const r = ov.getBoundingClientRect();
+        const P = (nx, ny) => [r.left + nx * r.width, r.top + ny * r.height];
+        const ev = (t, x, y) => ov.dispatchEvent(new PointerEvent(t, {
+            clientX: x, clientY: y, bubbles: true, pointerId: 1, button: 0
+        }));
+        const a = P(0.1, 0.1), b = P(0.2, 0.2), c = P(0.3, 0.3);
+        ev('pointerdown', a[0], a[1]);
+        ev('pointermove', b[0], b[1]);
+        ev('pointermove', c[0], c[1]);
+        ev('pointerup', c[0], c[1]);
+        await new Promise((r2) => setTimeout(r2, 250));
+        return { shape: Object.assign({}, m.shape) };
+    })()`);
+    const nr = newRadial.shape;
+    check(Number.isFinite(nr.rx) && Number.isFinite(nr.ry)
+          && nr.rx > 0.05 && nr.ry > 0.05
+          && Math.abs(nr.cx - 0.1) < 0.03 && Math.abs(nr.cy - 0.1) < 0.03,
+        '空白处拖出新椭圆后继续拖：半径保持有效（不再变成 NaN）',
+        JSON.stringify(newRadial));
+
+    // ── 9.11 椭圆反相：中心不选、四周全选 ──
+    // fillRadial 原先只填椭圆内部；反相时椭圆外仍是透明，等于“反相只反了里面”。
+    const radialInv = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        im.el = await window.__mkGray(600, 400); im.w = 600; im.h = 400; im._gradeCache = null;
+        A.template = A.defaultTemplate(); A.setTpl(im, A.template);
+        A.resetGrade();
+        A.scheduleRender(true);
+        await new Promise((r) => setTimeout(r, 600));
+        A.addMask('radial');
+        await new Promise((r) => setTimeout(r, 200));
+        const m = A.activeMask(im);
+        m.shape = { cx: 0.5, cy: 0.5, rx: 0.3, ry: 0.3 }; m.feather = 30; m.inv = 1;
+        A.syncMaskUI();
+        await new Promise((r) => setTimeout(r, 250));
+        const c = window.QfsMask.render(m, 80, 80, im.el);
+        const g = c.getContext('2d');
+        const at = (x, y) => g.getImageData(x, y, 1, 1).data[3];
+        const alpha = { center: at(40, 40), corner: at(2, 2) };
+
+        const ov = document.getElementById('maskOverlay');
+        const og = ov.getContext('2d');
+        const pr = A._photoRect, base = A._baseSize();
+        const k = ov.width / Math.max(1, base.w);
+        const ovAt = (nx, ny) => og.getImageData(
+            Math.round((pr.x + nx * pr.w) * k),
+            Math.round((pr.y + ny * pr.h) * k), 1, 1).data[3];
+        const overlay = { inside: ovAt(0.5, 0.35), outside: ovAt(0.05, 0.05) };
+        return { alpha, overlay };
+    })()`);
+    check(radialInv.alpha.center < 40 && radialInv.alpha.corner > 200,
+        '椭圆反相：中心权重 0、椭圆外权重 255', JSON.stringify(radialInv.alpha));
+    check(radialInv.overlay.outside > radialInv.overlay.inside + 40,
+        '椭圆反相的叠加层：椭圆外染色、内部透明', JSON.stringify(radialInv.overlay));
+
+    // ── 9.12 离开调色页签要退出蒙版编辑：编辑层不能继续挡 Logo/文字的画布操作 ──
+    const tabLeave = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        im.el = await window.__mkGray(600, 400); im.w = 600; im.h = 400; im._gradeCache = null;
+        A.template = A.defaultTemplate(); A.setTpl(im, A.template);
+        A.resetGrade();
+        A.scheduleRender(true);
+        await new Promise((r) => setTimeout(r, 600));
+        A.addMask('linear');
+        await new Promise((r) => setTimeout(r, 200));
+        const ov = document.getElementById('maskOverlay');
+        const onGrade = { active: ov.classList.contains('active'), id: A._activeMaskId };
+        A.switchTab('logo');
+        await new Promise((r) => setTimeout(r, 100));
+        const onLogo = { active: ov.classList.contains('active'), id: A._activeMaskId,
+            pe: getComputedStyle(ov).pointerEvents };
+        A.switchTab('grade');
+        return { onGrade, onLogo };
+    })()`);
+    check(tabLeave.onGrade.active && tabLeave.onGrade.id
+          && !tabLeave.onLogo.active && !tabLeave.onLogo.id
+          && tabLeave.onLogo.pe === 'none',
+        '切到其它页签自动退出蒙版编辑（编辑层不再挡画布）',
+        JSON.stringify(tabLeave));
+
+    // ── 9.13 相框/卡片样式没有照片矩形：添加蒙版要明确说明不能定位，不能假装成功 ──
+    const unsupportedStyle = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        im.el = await window.__mkGray(600, 400); im.w = 600; im.h = 400; im._gradeCache = null;
+        A.template = A.defaultTemplate();
+        A.template.photoFrameStyle = 'CARD_3D';
+        A.setTpl(im, A.template);
+        A.resetGrade();
+        A.scheduleRender(true);
+        await new Promise((r) => setTimeout(r, 700));
+        const before = { pr: A._photoRect, supported: A.maskPositionSupported() };
+        A.addMask('linear');
+        await new Promise((r) => setTimeout(r, 250));
+        const ov = document.getElementById('maskOverlay');
+        const tip = document.getElementById('maskEditTip');
+        const out = {
+            before, active: ov.classList.contains('active'), mask: !!A.activeMask(im),
+            tip: tip.textContent, status: A.statusMsg
+        };
+        A.template = A.defaultTemplate(); A.setTpl(im, A.template);
+        A.resetGrade(); A.scheduleRender(true);
+        await new Promise((r) => setTimeout(r, 500));
+        return out;
+    })()`);
+    check(!unsupportedStyle.before.supported && unsupportedStyle.before.pr === null
+          && !unsupportedStyle.active && unsupportedStyle.mask
+          && /默认模板/.test(unsupportedStyle.tip) && /默认模板/.test(unsupportedStyle.status),
+        '相框/卡片样式添加蒙版时明确提示无法画布定位（蒙版仍保留）',
+        JSON.stringify(unsupportedStyle));
 
     // ── 10. 持久化 / 中性 / 深拷贝 / 重置 ──
     const persist = await exec(`(async () => {

@@ -1058,6 +1058,11 @@
                         </div>
                         <div class="param-group" id="grpGrade">
                             <div class="pg-title collapsible">调色</div>
+                            <div class="param-row grade-acts">
+                                <button id="btnGradeReset" class="mini-btn" type="button" title="全部归零，回到照片本色">重置</button>
+                                <button id="btnGradeApplyAll" class="mini-btn" type="button" title="把这套参数复制给本次导入的所有照片">应用到全部</button>
+                                <button id="btnGradeImportXmp" class="mini-btn" type="button" title="导入 Lightroom / Camera Raw 的 .xmp 调色预设（曝光/白平衡/高光阴影/参数曲线/HSL/颜色分级/校准等）">导入 LR 预设</button>
+                            </div>
                             <div class="param-row" id="rowGradeExp">
                                 <label>曝光</label>
                                 <input type="range" id="slGradeExp" class="ctl-rng" min="-5" max="5" step="0.01" value="0" />
@@ -1113,11 +1118,6 @@
                                 <label>色调</label>
                                 <input type="range" id="slGradeTint" class="ctl-rng" min="-100" max="100" step="1" value="0" />
                                 <span class="pval" id="lblGradeTint">0</span>
-                            </div>
-                            <div class="param-row grade-acts">
-                                <button id="btnGradeReset" class="mini-btn" type="button" title="全部归零，回到照片本色">重置</button>
-                                <button id="btnGradeApplyAll" class="mini-btn" type="button" title="把这套参数复制给本次导入的所有照片">应用到全部</button>
-                                <button id="btnGradeImportXmp" class="mini-btn" type="button" title="导入 Lightroom / Camera Raw 的 .xmp 调色预设（曝光/白平衡/高光阴影/参数曲线/HSL/颜色分级/校准等）">导入 LR 预设</button>
                             </div>
                         </div>
 <!--                        <div class="pg-section-title">氛围</div>-->

@@ -63,6 +63,9 @@ window.App = Object.assign(window.App || {}, {
             t.setAttribute('aria-selected', on ? 'true' : 'false');
         });
         this.dom.panels.forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+        // 蒙版编辑层盖在画布上并接管 pointer 事件。离开调色页签时必须退出蒙版编辑，
+        // 否则去 Logo/文字页拖元素时，点击会先被透明蒙版层吃掉（看起来像画布点不动）。
+        if (name !== 'grade' && this._activeMaskId) this.setActiveMask(null);
         if (name === 'logo') this.renderLogoPools();
         if (name === 'template') this.refreshTemplates();
         if (name === 'puzzle') this.refreshPuzzleUI();
