@@ -1217,10 +1217,12 @@
             const t = im || this.image;
             if (!t) return;
             const neutral = isNeutral(t.grade);
-            const keepLow = t._grade && !neutral ? t._grade.low : null;
-            const keepLowKey = t._grade && !neutral ? t._grade.lowKey : '';
-            // low 缓存保留：它的 key 还对得上时可以直接复用（见 rebuildGrade）
-            t._grade = { neutral, canvas: null, low: keepLow, lowKey: keepLowKey, fullKey: '' };
+            // low 画布**保留**（它只是一张小图，留着省一次重烘），
+            // 但它的 key 必须作废：invalidateGrade 的调用点里有「换底图」的路径
+            // （裁切/旋转/还原原图），底图变了却让 rebuildGrade 命中旧 key，
+            // 就会复用裁切前烘的图 —— 画面看着没换，导出的也是旧图。
+            // key 作废 → rebuildGrade 发现对不上 → 重新烘。
+            t._grade = { neutral, canvas: null, low: t._grade ? t._grade.low : null, lowKey: '', fullKey: '' };
             // 按图缓存的测度必须跟源图一起作废：裁切/旋转/还原换了底图之后，
             // ACR 的对比度/高光/阴影仍按旧直方图选行，「去薄雾」也还在用旧图
             // 最亮 1% 当雾色 —— 换图之后这些参数等于作用在错误的图像上。
@@ -1233,7 +1235,16 @@
         rebuildGrade(level) {
             const im = this.image;
             if (!im || !im._grade || im._grade.neutral) return false;
-            const key = signature(im.grade);
+            // key 里带上**源图版本**：裁切/旋转/还原原图会换掉 im.el，
+            // 参数签名却一个字都没变 —— 只比参数就会命中裁切前烘的图，
+            // 画面看着没换底图。多带一个版本号，这条路径就断死了。
+            const src = im.el;
+            // 源图版本号：每个 el 对象一个（换底图 = 换对象 = 新版本）。
+            // 这里要确保它已存在，否则第一次的 key 是 @0、bake 之后变成 @1，
+            // 下次就会因为「key 变了」白重烘一次。
+            if (src && !src._qfsVer) src._qfsVer = ++_srcSeq;
+            const srcVer = (src && src._qfsVer) ? src._qfsVer : 0;
+            const key = signature(im.grade) + '@' + srcVer;
             if (level === 'full') {
                 // full / low 各记各的 key：以前共用一个字段，
                 // 「full 烘好了」会把 low 的 key 覆盖掉，之后 low 要么被误判为

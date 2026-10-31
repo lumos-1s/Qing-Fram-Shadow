@@ -1588,31 +1588,46 @@ async function main() {
         JSON.stringify(perfKeys));
 
     // ── 性能：曲线拖动 30 次只烘焙一次（rAF 合并）──
+    // 走真实链路：派发 pointermove 事件，让 app-curve.js 自己的 rAF 合并逻辑跑
     const perfCurve = await exec(`(async () => {
         const A = window.App;
-        A._curveChan = 'rgb';
+        A.switchTab('grade');
+        const el = document.getElementById('curveCanvas');
+        if (!el) return { noCanvas: true };
+        const rgbBtn = Array.prototype.slice.call(document.querySelectorAll('#curveChans .curve-chan'))
+            .find(x => x.dataset.chan === 'rgb');
+        if (rgbBtn) rgbBtn.click();
+        A.setGrade({ exp: 0, con: 0, sat: 0, temp: 0, tint: 0, hi: 0, sh: 0, curve: null });
+        await new Promise((r) => setTimeout(r, 200));
         let calls = 0;
         const orig = A.setCurve.bind(A);
         A.setCurve = function (...a) { calls++; return orig(...a); };
-        // 模拟 30 次 pointermove 的连发
-        const raf = window.requestAnimationFrame;
-        for (let i = 0; i < 30; i++) {
-            const pts = [[0, 0], [0.5, 0.5 - i * 0.01], [1, 1]];
-            A._curveLive = { chan: 'rgb', pts: pts };
-            if (!A._curveRaf) {
-                A._curveRaf = raf(() => {
-                    A._curveRaf = 0;
-                    const live = A._curveLive;
-                    if (live) A.setCurve(live.chan, live.pts);
-                });
-            }
-        }
-        await new Promise((r) => setTimeout(r, 400));
+        const r = el.getBoundingClientRect();
+        const pad = 8;
+        const at = (fx, fy) => ({ x: r.left + pad + fx * (r.width - pad * 2),
+                                  y: r.top + r.height - pad - fy * (r.height - pad * 2) });
+        const ev = (type, p) => el.dispatchEvent(new PointerEvent(type,
+            { clientX: p.x, clientY: p.y, bubbles: true, pointerId: 1 }));
+        const p0 = at(0.5, 0.7);
+        ev('pointerdown', p0);
+        const n1 = A.curvePoints('rgb').length;
+        for (let i = 0; i < 30; i++) ev('pointermove', at(0.5, 0.7 + i * 0.004));
+        await new Promise((r2) => setTimeout(r2, 400));
+        const during = calls;
+        ev('pointerup', at(0.5, 0.82));
+        await new Promise((r2) => setTimeout(r2, 300));
         A.setCurve = orig;
-        A._curveLive = null;
-        return { calls };
+        return { calls: during, afterUp: calls, n1, pts: A.curvePoints('rgb').length,
+            graded: !!A.image.grade.curve };
     })()`);
-    check(perfCurve.calls === 1, '曲线连拖 30 次只烘焙一次（rAF 合并）', JSON.stringify(perfCurve));
+    // 期望 2 次：① pointerdown 加点是离散操作，立即烘一次（不该被节流）
+    //            ② 30 次 pointermove 经 rAF 合并成一次
+    // 修复前是 31 次（每次 pointermove 都全链烘焙）。
+    check(!perfCurve.noCanvas && perfCurve.calls === 2,
+        '曲线连拖 30 次只烘焙 2 次（加点 1 + rAF 合并 1，原为 31 次）',
+        JSON.stringify(perfCurve));
+    check(perfCurve.n1 === 3 && perfCurve.graded,
+        '曲线拖动数据即时生效（不被节流吃掉）', JSON.stringify(perfCurve));
 
     // ── 性能：画笔笔迹签名是常数级（不是百万级字符串）──
     const perfSig = await exec(`(async () => {
@@ -1638,6 +1653,42 @@ async function main() {
     check(perfSig.hasExport && perfSig.len < 200,
         '画笔签名是常数级短串（不再是百万级浮点字符串）', JSON.stringify(perfSig));
     check(perfSig.changed, '画笔改一个点 → 签名变化（缓存会正确失效）', JSON.stringify(perfSig));
+
+    // ── 换底图后调色缓存必须失效（裁切/旋转/还原原图共用这条路径）──
+    // 这是「调色没反应」的元凶：invalidateGrade 保留 low 画布时若把 key 也留着，
+    // rebuildGrade 会命中裁切前烘的图 —— 底图换了，画面却纹丝不动。
+    const srcSwap = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        const el0 = await window.__mk(600, 400);
+        im.el = el0; im.w = 600; im.h = 400;
+        im._gradeCache = null;
+        A.resetGrade();
+        await new Promise((r) => setTimeout(r, 300));
+        A.setGrade({ exp: 1 });
+        await new Promise((r) => setTimeout(r, 450));
+        const lowBefore = im._grade.low;
+        // 换底图：红色 → 绿色
+        const c = document.createElement('canvas'); c.width = 300; c.height = 200;
+        const g = c.getContext('2d'); g.fillStyle = '#00ff00'; g.fillRect(0, 0, 300, 200);
+        im.el = c; im.w = 300; im.h = 200;
+        A.invalidateGrade(im);
+        await new Promise((r) => setTimeout(r, 250));
+        const afterInvalidate = { lowKey: im._grade.lowKey, lowKept: !!im._grade.low };
+        A.rebuildGrade('low');
+        await new Promise((r) => setTimeout(r, 350));
+        const src = window.photoSrcOf(im);
+        const cc = document.createElement('canvas'); cc.width = 4; cc.height = 4;
+        const gg = cc.getContext('2d'); gg.drawImage(src, 0, 0, 4, 4);
+        const px = Array.from(gg.getImageData(2, 2, 1, 1).data).slice(0, 3);
+        return { afterInvalidate, px, w: src.naturalWidth || src.width,
+            rebaked: im._grade.low !== lowBefore };
+    })()`);
+    check(srcSwap.afterInvalidate.lowKey === '',
+        '换底图后 low 缓存的 key 必须作废（否则会复用旧底图的烘焙）',
+        JSON.stringify(srcSwap));
+    check(srcSwap.px[1] > 200 && srcSwap.px[0] < 60 && srcSwap.w === 300,
+        '换底图后取源是新图（画面确实换了，不是旧底图）',
+        JSON.stringify(srcSwap));
 
     console.log('');
     if (failures.length) {
