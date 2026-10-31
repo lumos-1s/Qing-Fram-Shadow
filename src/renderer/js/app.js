@@ -3927,4 +3927,18 @@ document.addEventListener('DOMContentLoaded', () => App.init());
         max.addEventListener('click', () => wc.toggleMaximize());
         if (wc.onMaximizedChange) wc.onMaximizedChange((v) => max.classList.toggle('is-max', !!v));
     }
+    // 首页（预设墙）盖住了整条标题栏，那边也有一组同样的按钮：
+    // 全屏 / 最大化 / 退出，行为与标题栏一致，图标状态同步。
+    const pwFull = document.getElementById('pwFull');
+    const pwMax = document.getElementById('pwMax');
+    const pwExit = document.getElementById('pwExit');
+    if (pwFull && wc.toggleFullScreen) {
+        pwFull.addEventListener('click', () => wc.toggleFullScreen());
+        if (wc.onFullScreenChange) wc.onFullScreenChange((v) => pwFull.classList.toggle('is-full', !!v));
+    }
+    if (pwMax) {
+        pwMax.addEventListener('click', () => wc.toggleMaximize());
+        if (wc.onMaximizedChange) wc.onMaximizedChange((v) => pwMax.classList.toggle('is-max', !!v));
+    }
+    if (pwExit) pwExit.addEventListener('click', () => wc.close());
 })();

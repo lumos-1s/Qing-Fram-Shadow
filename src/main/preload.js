@@ -89,11 +89,17 @@ contextBridge.exposeInMainWorld('qingframe', {
     winControls: {
         minimize: () => ipcRenderer.send('win-minimize'),
         toggleMaximize: () => ipcRenderer.send('win-toggle-max'),
+        toggleFullScreen: () => ipcRenderer.send('win-toggle-fullscreen'),
         close: () => ipcRenderer.send('win-close'),
         onMaximizedChange: (cb) => {
             const l = (_e, v) => cb(v);
             ipcRenderer.on('win-maximized', l);
             return () => ipcRenderer.removeListener('win-maximized', l);
+        },
+        onFullScreenChange: (cb) => {
+            const l = (_e, v) => cb(v);
+            ipcRenderer.on('win-fullscreen', l);
+            return () => ipcRenderer.removeListener('win-fullscreen', l);
         }
     }
 });

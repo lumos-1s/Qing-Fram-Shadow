@@ -2123,7 +2123,9 @@ body.editing #canvasPane { flex: 1 1 auto; }
     color: #e8ecf1;
     overflow: hidden;
 }
-.pw-head { display: flex; align-items: center; gap: 16px; padding: 20px 28px 12px; flex: 0 0 auto; }
+.pw-head { display: flex; align-items: center; gap: 16px; padding: 20px 28px 12px; flex: 0 0 auto; -webkit-app-region: drag; }
+/* 拖拽区里的交互元素必须 no-drag，否则按下去变成拖窗口、按钮点不动 */
+.pw-head button, .pw-mode, .pw-mode-btn { -webkit-app-region: no-drag; }
 .pw-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--fs-15); letter-spacing: .02em; color: var(--brand-gold-text); white-space: nowrap; }
 .pw-head-meta { flex: 1; text-align: center; min-width: 0; }
 .pw-title { margin: 0; font-size: var(--fs-22); font-weight: 600; letter-spacing: .06em; color: #f0f3f7; }
@@ -2134,6 +2136,30 @@ body.editing #canvasPane { flex: 1 1 auto; }
     font-size: var(--fs-12); padding: 6px 14px; cursor: pointer; transition: border-color .15s ease, background .15s ease;
 }
 .pw-skip:hover { border-color: rgba(220,186,121,.55); background: rgba(255,255,255,.08); }
+/* 首页的窗口控制（全屏 / 最大化 / 退出）：首页盖住了自绘标题栏，这里补一份入口。
+   图标按钮比文字按钮轻，不会和「进入工作台」抢视线。 */
+.pw-winbtns {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 1px;
+    margin-left: 4px; padding-left: 8px;
+    border-left: 1px solid rgba(255,255,255,.1);
+}
+.pw-winbtn {
+    width: 30px; height: 30px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 0; border-radius: 7px; background: transparent;
+    color: rgba(232,236,241,.6); cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+}
+.pw-winbtn:hover { background: rgba(255,255,255,.09); color: #fff; }
+.pw-winbtn-close:hover { background: #e81123; color: #fff; }
+.pw-winbtn .ico-unfull,
+.pw-winbtn .ico-restore { display: none; }
+.pw-winbtn.is-full .ico-full { display: none; }
+.pw-winbtn.is-full .ico-unfull { display: inline-flex; }
+.pw-winbtn.is-max .ico-max { display: none; }
+.pw-winbtn.is-max .ico-restore { display: inline-flex; }
+/* mac 有系统红绿灯，这里不重复 */
+body.platform-darwin .pw-winbtns { display: none; }
 /* 无限 / 有限 切换：分段控件，状态由 aria-pressed + .is-on 双写（读屏和肉眼都拿得到） */
 .pw-mode {
     display: flex; flex: 0 0 auto; gap: 2px; padding: 2px;

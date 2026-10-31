@@ -178,11 +178,20 @@ if (!app.requestSingleInstanceLock()) {
 // ── 自定义标题栏:窗口控制(最小化/最大化切换/关闭)与最大化状态推送 ──
 ipcMain.on('win-minimize', (e) => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.minimize(); });
 ipcMain.on('win-toggle-max', (e) => { const w = BrowserWindow.fromWebContents(e.sender); if (!w) return; if (w.isMaximized()) w.unmaximize(); else w.maximize(); });
+ipcMain.on('win-toggle-fullscreen', (e) => {
+    const w = BrowserWindow.fromWebContents(e.sender);
+    if (!w) return;
+    w.setFullScreen(!w.isFullScreen());
+});
 ipcMain.on('win-close', (e) => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.close(); });
 const wireTitleBar = (win) => {
     const pushMax = () => { if (!win.isDestroyed()) win.webContents.send('win-maximized', win.isMaximized()); };
     win.on('maximize', pushMax);
     win.on('unmaximize', pushMax);
+    // 全屏状态也要回推：首页那颗按钮的图标要跟着在「进入/退出全屏」之间切
+    const pushFs = () => { if (!win.isDestroyed()) win.webContents.send('win-fullscreen', win.isFullScreen()); };
+    win.on('enter-full-screen', pushFs);
+    win.on('leave-full-screen', pushFs);
 };
 
 const createWindow = () => {
