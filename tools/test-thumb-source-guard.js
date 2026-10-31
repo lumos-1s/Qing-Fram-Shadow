@@ -85,6 +85,22 @@ async function main() {
 
     await exec(`(async () => { if (window.QfsAcr) await QfsAcr.ensure(); return QfsAcr && QfsAcr.ready(); })()`)
         .then((r) => console.log('ACR tables ready=' + r));
+    // 同步合成补丁：隐藏窗口 rAF 会被节流，采样会落在同一帧
+    await exec(`(() => {
+        const A = window.App;
+        if (!A || A.__syncRenderPatched) return true;
+        A.__syncRenderPatched = true;
+        const orig = A.scheduleRender.bind(A);
+        let busy = false;
+        A.scheduleRender = function (immediate) {
+            orig(immediate);
+            if (busy) return;
+            busy = true;
+            try { A._renderDirty = true; if (typeof A._drainRenderQueue === 'function') A._drainRenderQueue(); }
+            finally { busy = false; }
+        };
+        return true;
+    })()`);
     await exec(`window.__mk = ${MAKE_IMAGE}; true`);
 
     // ── A：串图缩略图（thumb 指向另一张图）必须被丢弃，先用当前原图占位，再重排 ──
@@ -150,6 +166,32 @@ async function main() {
         '旋转换底图后旧缩略图立即失效', JSON.stringify(sC));
     check(sC.sourceOk && sC.hasThumb,
         '旋转后重新排出的缩略图绑定新底图', JSON.stringify(sC));
+
+    // ── D：this.image 与 currentIdx 错位时，主渲染必须以 currentIdx 为准纠正 ──
+    // 场景：临时渲染（缩略图/沉浸/导出）还原 this.image 时留下了旧图，
+    // 缩略条已高亮新选中的图，画布却还画旧图 —— 用户看到的就是「切图后不一致」。
+    const sD = await exec(`(async () => {
+        const A = window.App;
+        const a = A.images[0], b = A.images[1];
+        if (!a || !b) return { error: 'need two images' };
+        // 模拟错位：image 还是 a（红），但 currentIdx 指向 b（蓝）
+        A.image = a;
+        A.currentIdx = 1;
+        A.template = A.defaultTemplate();
+        A.scheduleRender(true);
+        await new Promise((r) => setTimeout(r, 160));
+        const cv = A.dom.canvas, pr = A._photoRect, base = A._baseSize();
+        if (!cv || !pr) return { error: 'canvas/photoRect not ready' };
+        const k = cv.width / Math.max(1, base.w);
+        const d = cv.getContext('2d').getImageData(
+            Math.round((pr.x + pr.w / 2) * k),
+            Math.round((pr.y + pr.h / 2) * k), 1, 1).data;
+        return { imageIsB: A.image === b, r: d[0], g: d[1], b: d[2] };
+    })()`);
+    check(!sD.error && sD.imageIsB,
+        '主渲染以 currentIdx 纠正错位的 this.image', JSON.stringify(sD));
+    check(!sD.error && sD.b > sD.r + 20,
+        '画布画的是选中图(b 蓝)，不是旧图 a(红)', JSON.stringify(sD));
 
     await win.close();
     app.exit(failures.length ? 1 : 0);

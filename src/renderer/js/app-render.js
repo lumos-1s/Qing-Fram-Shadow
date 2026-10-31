@@ -1,5 +1,20 @@
 // 渲染模块：rAF 调度队列 / 拖动背景缓存 / 帧合成 —— 从 app.js 拆分
 window.App = Object.assign(window.App || {}, {
+    /* 防御：临时渲染（缩略图 / 沉浸预览 / 导出）会临时改 this.image，
+       还原时若与 currentIdx 错位，就会出现「胶片条高亮新图、画布还画旧图」
+       —— 表现为切图后缩略图与画布不是同一张。这里以 currentIdx 为准纠正一次。
+       正常路径下 this.image === images[currentIdx]，本函数是空操作。 */
+    _reconcileCurrentImage() {
+        const imgs = this.images;
+        if (!imgs || !imgs.length) return false;
+        const cur = imgs[this.currentIdx];
+        if (!cur || this.image === cur) return false;
+        this.image = cur;
+        const saved = this.getTpl ? this.getTpl(cur) : null;
+        this.template = saved ? JSON.parse(JSON.stringify(saved)) : this.defaultTemplate();
+        return true;
+    },
+
     /* ══ 渲染调度 ══ */
     // 单一 rAF 队列 + 脏标记。任意多次 scheduleRender 合并为「下一帧渲一次」,
     // 帧回调天然与屏幕刷新对齐,不会出现 setTimeout 落在两次 vblank 之间造成的撕裂/半帧感。
@@ -181,6 +196,11 @@ window.App = Object.assign(window.App || {}, {
     // 与外层调度器构成双重排队,白白多等一帧,且 renderToken 的作废判断在同步体内永远为真、
     // 形同死代码。现在由 _drainRenderQueue 保证「每帧至多一次、且不丢最后一次」,这里直接画。
     renderPreview() {
+        // 先纠正错位的当前图（见 _reconcileCurrentImage）：切图后画布必须跟选中图一致
+        if (this._reconcileCurrentImage()) {
+            this._dropDragBase();
+            this.invalidateStyleCaches();
+        }
         if (!this.image) return;
         this.renderToken++;
         // 对比原图是一次性旁路:取用本帧挂载的 compare 标记后立即清空,避免污染后续正常帧

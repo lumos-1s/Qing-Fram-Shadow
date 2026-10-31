@@ -390,6 +390,8 @@ window.App = Object.assign(window.App || {}, {
             if (this.dom.canvas) this.dom.canvas = prevCanvas;
             if (prevMax === undefined) delete this.displayMax;
             else this.displayMax = prevMax;
+            // 临时借用主编辑器状态后，若当前图已被用户切走，以 currentIdx 为准补一帧
+            if (this._reconcileCurrentImage && this._reconcileCurrentImage()) this.scheduleRender(true);
         }
     },
 

@@ -558,7 +558,9 @@ html.dark #previewCanvas {
     transform: rotate(-45deg) translate(.5px, -1px);
 }
 .thumb-strip .thumb:hover { transform: scale(1.06); }
-.thumb-strip .thumb.active { border-color: var(--primary); }
+/* 批量勾选只靠左上角复选框表示；绿色描边专属于「当前画布」(.main)。
+   以前两者都用绿色边框，勾一张别的图做批量时，它看起来也像当前图 ——
+   用户会以为「缩略图选中了，画布却没切过去」。 */
 .thumb-strip .thumb.src { border-color: var(--thumb-active); box-shadow: 0 0 0 1px var(--thumb-active); }
 .thumb-src {
     position: absolute; top: 2px; right: 2px; z-index: 1;

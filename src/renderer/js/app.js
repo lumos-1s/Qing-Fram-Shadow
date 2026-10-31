@@ -2645,6 +2645,9 @@ window.App = {
             if (this.dom.canvas === cv) this.dom.canvas = prevCanvas;
             if (prevMax === undefined) delete this.displayMax;
             else this.displayMax = prevMax;
+            // 还原后若当前图已不是选中图（临时渲染期间用户切了图），纠正并补一帧，
+            // 否则画布会停在旧图、缩略图却高亮新图。
+            if (this._reconcileCurrentImage && this._reconcileCurrentImage()) this.scheduleRender(true);
         }
     },
 

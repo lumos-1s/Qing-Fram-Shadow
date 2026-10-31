@@ -298,6 +298,8 @@ window.App = Object.assign(window.App || {}, {
             this.image = prev.image;
             this.template = prev.template;
             this.selectedEls = prev.selectedEls;
+            // 临时借用后若当前图已被切走，以 currentIdx 为准补一帧，避免画布停在旧图
+            if (this._reconcileCurrentImage && this._reconcileCurrentImage()) this.scheduleRender(true);
         }
     },
 
