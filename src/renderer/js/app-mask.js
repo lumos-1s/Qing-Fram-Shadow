@@ -981,6 +981,17 @@
             g.restore();
             }
 
+            // 蒙版的作用边界 = 照片矩形：描一圈很淡的虚线框把它画出来。
+            // ① 让「蒙版只作用于照片本体、盖不到相框/背景」这件事可见；
+            // ② 框和照片对不上 = 某条管线把照片矩形抓错了，一眼就能发现（可自查的回归）。
+            g.save();
+            g.setLineDash([4 * dpr, 4 * dpr]);
+            g.lineWidth = 1 * dpr;
+            g.strokeStyle = 'rgba(255,255,255,.4)';
+            g.strokeRect(sx + 0.5, sy + 0.5, Math.max(1, sw - 1), Math.max(1, sh - 1));
+            g.setLineDash([]);
+            g.restore();
+
             // 手柄（线性：两端点；径向：中心 + 四个方向点）
             const P = (x, y) => ({ x: sx + x * sw, y: sy + y * sh });
             const dot = (p, r) => {
