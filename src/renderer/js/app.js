@@ -259,6 +259,9 @@ window.App = {
             if (p && p.exportQuality && this.dom.slExportQuality) {
                 this.dom.slExportQuality.value = p.exportQuality;
             }
+            if (p && p.exportFormat && this.dom.selFormat) {
+                this.dom.selFormat.value = p.exportFormat;
+            }
             if (p && typeof p.keepExif === 'boolean' && this.dom.chkKeepExif) this.dom.chkKeepExif.checked = p.keepExif;
             if (p && typeof p.keepGps === 'boolean' && this.dom.chkKeepGps) this.dom.chkKeepGps.checked = p.keepGps;
             if (this.dom.chkKeepGps) this.dom.chkKeepGps.disabled = !(this.dom.chkKeepExif && this.dom.chkKeepExif.checked);
@@ -273,6 +276,7 @@ window.App = {
         // 异步调用,静默忽略失败(旧主进程无该 handler 时不报未处理错误)
         window.qingframe.savePrefs({
             exportQuality: d.slExportQuality ? d.slExportQuality.value : undefined,
+            exportFormat: d.selFormat ? d.selFormat.value : undefined,
             keepExif: !!(d.chkKeepExif && d.chkKeepExif.checked),
             keepGps: !!(d.chkKeepGps && d.chkKeepGps.checked)
         }).catch(() => {});
@@ -372,6 +376,7 @@ window.App = {
             slExportQuality: $('slExportQuality'), exportSizeNote: $('exportSizeNote'),
             chkKeepExif: $('chkKeepExif'), chkKeepGps: $('chkKeepGps'),
             btnExportSettings: $('btnExportSettings'), exportPop: $('exportPop'),
+            btnEpPickDir: $('btnEpPickDir'), btnEpClearDir: $('btnEpClearDir'), epExportDirPath: $('epExportDirPath'),
             btnSyncSel: $('btnSyncSel'), btnUndo: $('btnUndo'), btnRedo: $('btnRedo'),
             btnReset: $('btnReset'), btnRandom: $('btnRandom'), btnFit: $('btnFit'),
             zoomInput: $('zoomInput'), zoomRange: $('zoomRange'), btnTheme: $('btnTheme'),
@@ -431,7 +436,7 @@ window.App = {
                 // 提示只在弹窗可见时才有意义。挂在这里而不是每处照片/样式载入点,
                 // 是因为导入、切图、恢复草稿、导入模板的赋值点分散在 6+ 处,逐个挂必漏;
                 // 而弹窗打开这一个时机就能保证「看到提示时它一定是对的」。
-                if (open) this.updateExportSizeNote();
+                if (open) { this.updateExportSizeNote(); this.refreshExportDirRow(); }
             });
             document.addEventListener('click', (ev) => {
                 // 用 contains 而不是 !==:箭头按钮里现在有 SVG,点的 target 是 <path> 不是按钮本身
@@ -441,6 +446,18 @@ window.App = {
             });
         }
         if (d.slExportQuality) d.slExportQuality.addEventListener('change', () => this._saveExportPrefs());
+        // 格式也记进偏好：以前每次启动都回到默认 JPG，常用 PNG 的人每次都要重选
+        if (d.selFormat) d.selFormat.addEventListener('change', () => this._saveExportPrefs());
+        // 导出弹层里的「保存到」：更改/改回询问直接复用设置里的同一套取目录逻辑，
+        // 只是改完额外刷新弹层这一行（设置弹窗那行由 choose*/clear* 内部顺带刷新）。
+        if (d.btnEpPickDir) d.btnEpPickDir.addEventListener('click', async () => {
+            await this.chooseDefaultExportDir();
+            await this.refreshExportDirRow();
+        });
+        if (d.btnEpClearDir) d.btnEpClearDir.addEventListener('click', async () => {
+            await this.clearDefaultExportDir();
+            await this.refreshExportDirRow();
+        });
         if (d.chkKeepExif) {
             d.chkKeepExif.addEventListener('change', () => {
                 // 总开关关掉时 GPS 选项失去意义,置灰但保留状态(重新打开总开关时恢复)
@@ -929,7 +946,10 @@ window.App = {
             const el = this.pickElement(pt);
             if (el) {
                 e.preventDefault();
-                this.selectedEls = this.hasEl(this.selectedEls, el) ? this.selectedEls : [el];
+                const changed = !this.hasEl(this.selectedEls, el);
+                this.selectedEls = changed ? [el] : this.selectedEls;
+                // 选中即定位：右侧翻到能改它的页签并滚到对应分组（只在新选中时翻，避免拖动中来回跳）
+                if (changed && this.revealElementPanel) this.revealElementPanel(el.kind);
                 this._dragEl = { kind: el.kind, ref: el.obj, sx: e.screenX, sy: e.screenY, x: el.x0, y: el.y0, moved: false };
                 // 整帧渲染时排除被拖元素,使其余内容可作为静态背景缓存(见 renderPreview)
                 this._skipUserEl = el.obj;
@@ -4010,6 +4030,25 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         if (!r || r.ok === false) { this.setStatus('取消失败，请重试'); return; }
         await this.refreshSettingsExportDir();
         this.setStatus('导出时将询问保存位置');
+    },
+
+    // 刷新导出弹层里的「保存到」行：显示当前默认导出位置，或「每次询问」。
+    // 与 refreshSettingsExportDir 同源（都读 defaultExportDir），但写的是弹层这一行而不是设置弹窗。
+    async refreshExportDirRow() {
+        const api = window.qingframe;
+        let dir = '';
+        try {
+            const p = (api && api.getPrefs) ? await api.getPrefs() : null;
+            dir = (p && typeof p.defaultExportDir === 'string') ? p.defaultExportDir : '';
+        } catch (_) { dir = ''; }
+        const pathEl = this.$('epExportDirPath');
+        if (pathEl) {
+            pathEl.textContent = dir || '每次询问';
+            pathEl.classList.toggle('muted', !dir);
+            pathEl.title = dir || '导出时弹出系统保存框，并记住上次选择的文件夹';
+        }
+        const clearBtn = this.$('btnEpClearDir');
+        if (clearBtn) clearBtn.disabled = !dir;
     },
 
     // 新手引导:首次启动展示 3 步上手,点"开始使用"后记 localStorage,不再弹出

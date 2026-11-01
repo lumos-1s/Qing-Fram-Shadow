@@ -114,11 +114,19 @@
                             <label>拍摄信息</label>
                             <label class="ep-check" title="把原图的机型/镜头/参数/拍摄时间写进导出文件（仅 JPG 生效）"><input type="checkbox" id="chkKeepExif" class="ctl-chk" checked /> 保留 EXIF</label>
                         </div>
-                        <div class="ep-row">
-                            <label>位置信息</label>
-                            <label class="ep-check" title="默认去除 GPS；勾选后拍摄地点会随文件带出，分享前注意隐私"><input type="checkbox" id="chkKeepGps" class="ctl-chk" /> 含 GPS</label>
+                    <div class="ep-row">
+                        <label>位置信息</label>
+                        <label class="ep-check" title="默认去除 GPS；勾选后拍摄地点会随文件带出，分享前注意隐私"><input type="checkbox" id="chkKeepGps" class="ctl-chk" /> 含 GPS</label>
+                    </div>
+                    <div class="ep-dir">
+                        <div class="ep-dir-head">保存到</div>
+                        <code class="ep-dir-path" id="epExportDirPath" title="">每次询问</code>
+                        <div class="ep-dir-btns">
+                            <button class="mini-btn" id="btnEpPickDir" type="button">更改</button>
+                            <button class="mini-btn" id="btnEpClearDir" type="button" disabled>改回询问</button>
                         </div>
-                        <div class="ep-note" id="exportSizeNote" style="display:none"></div>
+                    </div>
+                    <div class="ep-note" id="exportSizeNote" style="display:none"></div>
                         <div class="ep-note muted" id="exportExifNote">拍摄信息仅 JPG 导出时写入</div>
                     </div>
                 </div>
@@ -777,7 +785,7 @@
                             </div>
                         </div>
 
-                        <div class="param-group">
+                        <div class="param-group" id="grpElManage">
                             <div class="pg-title collapsible">元素管理</div>
                             <div class="el-status" id="elStatus">未选中元素</div>
                             <div class="el-list" id="elList"></div>

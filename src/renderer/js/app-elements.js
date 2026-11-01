@@ -11,6 +11,25 @@ window.App = Object.assign(window.App || {}, {
 
     hasEl(list, el) { return list.some(x => x.kind === el.kind && x.obj === el.obj); },
 
+    /* 画布上选中元素后，把右侧面板翻到能改它的地方并滚到对应分组：
+       文字 → 「文字」页签的「自定义文字」组；Logo / 贴纸 → 「Logo」页签的「元素管理」组。
+       以前只有「双击文字」会翻页签，点选 Logo 时右侧还停在别的页签，用户得自己找。 */
+    revealElementPanel(kind) {
+        const tab = (kind === 'text') ? 'text' : 'logo';
+        const panel = document.getElementById('panel-' + tab);
+        if (!panel) return;
+        if (!panel.classList.contains('active') && typeof this.switchTab === 'function') this.switchTab(tab);
+        const anchor = document.getElementById(tab === 'text' ? 'grpCustomText' : 'grpElManage');
+        const body = document.querySelector('#inspector .insp-body');
+        if (!anchor || !body) return;
+        // 自己算滚动量：scrollIntoView 会连带把外层容器一起滚走
+        const ar = anchor.getBoundingClientRect();
+        const br = body.getBoundingClientRect();
+        if (ar.top < br.top || ar.bottom > br.bottom) {
+            body.scrollTop += (ar.top - br.top) - 8;
+        }
+    },
+
     // 命中检测:logo/贴纸/自由文字
     pickElement(pt) {
         const hitLogo = this.hitTestLogos(pt);
