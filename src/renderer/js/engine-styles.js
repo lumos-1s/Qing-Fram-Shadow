@@ -7828,9 +7828,12 @@ const w = natW;
                 g.drawImage = function(src, ...args) {
                     if (src !== img) { origDrawImage(src, ...args); return; }
                     let dx = 0, dy = 0, dw = img.width, dh = img.height;
-                    if (args.length === 3) { dx = args[0]; dy = args[1]; }
-                    else if (args.length === 5) { dx = args[0]; dy = args[1]; dw = args[2]; dh = args[3]; }
-                    else if (args.length === 9) { dx = args[4]; dy = args[5]; dw = args[6]; dh = args[7]; }
+                    // ⚠ args 不含 src:三/五/九参数形式的 rest 长度是 2/4/8。
+                    //   这里曾经写成 3/5/9,永远不命中 → 恒走默认值 (0,0,img.width,img.height),
+                    //   所有相框风格的蒙版范围都按"原图铺满画布"定位(照片越偏离画布原点错得越狠)。
+                    if (args.length === 2) { dx = args[0]; dy = args[1]; }
+                    else if (args.length === 4) { dx = args[0]; dy = args[1]; dw = args[2]; dh = args[3]; }
+                    else if (args.length === 8) { dx = args[4]; dy = args[5]; dw = args[6]; dh = args[7]; }
                     // 模糊铺底画的也是同一张 img，但它是背景不是照片本身：
                     // 带 filter 的那次跳过，否则蒙版会按整张画布定位。
                     if (!photoRect && (!g.filter || g.filter === 'none') && dw > 0 && dh > 0) {

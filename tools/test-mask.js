@@ -984,7 +984,8 @@ async function main() {
         '切到其它页签自动退出蒙版编辑（编辑层不再挡画布）',
         JSON.stringify(tabLeave));
 
-    // ── 9.13 相框/卡片样式没有照片矩形：添加蒙版要明确说明不能定位，不能假装成功 ──
+    // ── 9.13 相框/卡片样式如今会上报照片矩形(drawImage 劫持,engine-styles):蒙版可画布定位 ──
+    // 旧断言"明确提示无法定位"属于劫持缺失的年代;劫持到位后这里反过来验证定位真的可用。
     const unsupportedStyle = await exec(`(async () => {
         const A = window.App, im = A.image;
         im.el = await window.__mkGray(600, 400); im.w = 600; im.h = 400; im._gradeCache = null;
@@ -1008,10 +1009,10 @@ async function main() {
         await new Promise((r) => setTimeout(r, 500));
         return out;
     })()`);
-    check(!unsupportedStyle.before.supported && unsupportedStyle.before.pr === null
-          && !unsupportedStyle.active && unsupportedStyle.mask
-          && /默认模板/.test(unsupportedStyle.tip) && /默认模板/.test(unsupportedStyle.status),
-        '相框/卡片样式添加蒙版时明确提示无法画布定位（蒙版仍保留）',
+    check(!!unsupportedStyle.before.pr && unsupportedStyle.before.supported
+          && unsupportedStyle.active && unsupportedStyle.mask
+          && /线的一侧/.test(unsupportedStyle.tip) && /混色器/.test(unsupportedStyle.tip),
+        '相框样式添加蒙版可画布定位（照片矩形已上报，提示含渐变语义说明）',
         JSON.stringify(unsupportedStyle));
 
     // ── 10. 持久化 / 中性 / 深拷贝 / 重置 ──
