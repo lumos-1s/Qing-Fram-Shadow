@@ -817,6 +817,39 @@
             return { x: hx, y: hy };
         },
 
+        /* 椭圆的四个「轴向手柄」（照片归一化坐标）：两条轴各自的 ± 端点。
+           拖 ±X 只改 rx（变长变短）、拖 ±Y 只改 ry（变胖变瘦）——
+           以前只能拖边缘做等比缩放，长轴短轴一起变，调不出更扁/更长的形状。 */
+        maskAxisHandles(shape) {
+            const pr = this._photoRect;
+            if (!pr || !shape) return [];
+            const rot = (Number(shape.rot) || 0) * Math.PI / 180;
+            const cos = Math.cos(rot), sin = Math.sin(rot);
+            const pw = Math.max(1, pr.w), ph = Math.max(1, pr.h);
+            const Rx = Math.max(0.01, shape.rx) * pw;
+            const Ry = Math.max(0.01, shape.ry) * ph;
+            const cxB = pr.x + shape.cx * pw, cyB = pr.y + shape.cy * ph;
+            // 轴太短时不给手柄：小椭圆的端点会挤在中心，8px 命中半径会把「拖动中心」
+            // 抢成「改大小」，反而更难用。
+            const ov = overlayEl();
+            const ovr = ov ? ov.getBoundingClientRect() : null;
+            const perCss = (ovr && ovr.width > 1) ? (pw / ovr.width) : 1;
+            const minBase = 14 * perCss;
+            // 基准像素 → 归一化；夹到照片内，保证手柄一定抓得到（_maskPoint 会 clamp 指针）
+            const mk = (bx, by, axis) => ({
+                x: Math.max(0.01, Math.min(0.99, (bx - pr.x) / pw)),
+                y: Math.max(0.01, Math.min(0.99, (by - pr.y) / ph)),
+                axis
+            });
+            const list = [
+                mk(cxB + Rx * cos, cyB + Rx * sin, 'x'),
+                mk(cxB - Rx * cos, cyB - Rx * sin, 'x'),
+                mk(cxB - Ry * sin, cyB + Ry * cos, 'y'),
+                mk(cxB + Ry * sin, cyB - Ry * cos, 'y')
+            ];
+            return list.filter((h) => (h.axis === 'x' ? Rx : Ry) >= minBase);
+        },
+
         /* 叠加层绘制：蒙版范围染成青绿色 + 形状手柄；拖动期只跑这一条路径 */
         drawMaskOverlay() {
             const ov = overlayEl();
@@ -978,6 +1011,20 @@
                 g.ellipse(c.x, c.y, Math.max(2, rx), Math.max(2, ry), rotRad, 0, Math.PI * 2);
                 g.stroke();
                 g.setLineDash([]);
+                // 四个轴向手柄（两条轴的 ± 端点）：拖它只改这一根轴的长度。
+                // 画成小方块，和「圆点=旋转」区分开，用户一眼知道有两套手柄。
+                const axisHs = this.maskAxisHandles(m.shape);
+                for (const h of axisHs) {
+                    const hp = P(h.x, h.y);
+                    const half = 3.5 * dpr;
+                    g.beginPath();
+                    g.rect(hp.x - half, hp.y - half, half * 2, half * 2);
+                    g.fillStyle = 'rgba(255,255,255,.95)';
+                    g.fill();
+                    g.lineWidth = 1.2 * dpr;
+                    g.strokeStyle = 'rgba(0,0,0,.62)';
+                    g.stroke();
+                }
                 // 长轴指示线：rx≈ry 时椭圆接近正圆，光看轮廓看不出方向，
                 // 这条线让「方向」始终可见（也方便确认滑块确实生效）。
                 const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad);
@@ -1252,9 +1299,14 @@
                 } else if (m.type === 'radial') {
                     const rr = radialRR(pt, m.shape);
                     const rh = this.maskRotHandle(m.shape);
+                    // 轴向手柄最先判：它正好落在椭圆轮廓上，命中半径(8px)比旋转手柄(10px)小，
+                    // 不先判就会被后面的「等比缩放」抢走，永远只改不了单轴。
+                    const ah = this.maskAxisHandles(m.shape).find((h) => hit(pt, h, 8));
                     // 旋转手柄优先于「拖动/改大小」：它本来就落在 rr≈1 的边缘带里，
                     // 不先判就会被当成改大小，永远转不动。
-                    if (rh && hit(pt, rh, 10)) {
+                    if (ah) {
+                        drag = { kind: 'axis', axis: ah.axis };
+                    } else if (rh && hit(pt, rh, 10)) {
                         drag = { kind: 'rotate' };
                     } else if (hit(pt, { x: m.shape.cx, y: m.shape.cy }, 12) || rr < 0.95) {
                         drag = { kind: 'move', ox: m.shape.cx, oy: m.shape.cy, px: pt.x, py: pt.y };
@@ -1297,7 +1349,11 @@
                         const pt0 = this._maskPoint(e);
                         if (pt0) {
                             const rh = this.maskRotHandle(m.shape);
-                            if (rh && hit(pt0, rh, 10)) { cur = 'grab'; overRot = true; }
+                            const ah = this.maskAxisHandles(m.shape).find((h) => hit(pt0, h, 8));
+                            if (ah) {
+                                // 轴向手柄：左右改长轴、上下改短轴
+                                cur = ah.axis === 'x' ? 'ew-resize' : 'ns-resize';
+                            } else if (rh && hit(pt0, rh, 10)) { cur = 'grab'; overRot = true; }
                             else {
                                 const rr = radialRR(pt0, m.shape);
                                 cur = rr < 0.95 ? 'move' : (rr < 1.35 ? 'nwse-resize' : 'crosshair');
@@ -1351,6 +1407,23 @@
                     const dx = pt.x - drag.px, dy = pt.y - drag.py;
                     m.shape.cx = clamp01(drag.ox + dx);
                     m.shape.cy = clamp01(drag.oy + dy);
+                } else if (drag.kind === 'axis') {
+                    // 只改被拖的那一根轴：把指针投到椭圆局部轴上量长度。
+                    // 必须在像素空间投影 —— rx/ry 是归一化比例，非正方形照片上直接
+                    // 用归一化坐标算会把方向搞歪（宽图尤其明显）。
+                    const pr = this._photoRect;
+                    if (pr) {
+                        const rot = (Number(m.shape.rot) || 0) * Math.PI / 180;
+                        const cos = Math.cos(rot), sin = Math.sin(rot);
+                        const pw = Math.max(1, pr.w), ph = Math.max(1, pr.h);
+                        const px = (pt.x - m.shape.cx) * pw;
+                        const py = (pt.y - m.shape.cy) * ph;
+                        if (drag.axis === 'x') {
+                            m.shape.rx = Math.max(0.02, Math.min(1, Math.abs(px * cos + py * sin) / pw));
+                        } else {
+                            m.shape.ry = Math.max(0.02, Math.min(1, Math.abs(-px * sin + py * cos) / ph));
+                        }
+                    }
                 } else if (drag.kind === 'size') {
                     const d = Math.hypot(pt.x - drag.cx, pt.y - drag.cy);
                     const k = Math.max(0.05, d / drag.d0);
@@ -1484,7 +1557,7 @@
                     // 相框/卡片管线现在也会上报照片矩形，pr 为空只剩「还没渲染完」一种情况
                     tip.textContent = pr ? ({
                         linear: '拖线身整体移动、拖两端点改过渡；空白处拖一下可重画',
-                        radial: '拖内部移动、拖边缘改大小、拖外侧圆点旋转（Shift 15°吸附）；外面拖出新椭圆',
+                        radial: '拖内部移动；拖四个方块手柄单独调长轴/短轴，拖边缘等比缩放；拖外侧圆点旋转（Shift 15°吸附）；外面拖出新椭圆',
                         brush: '按住涂抹；按住 Alt 或右键涂抹 = 擦除',
                         lum: '按亮度自动选区，调下面的暗部/亮部阈值',
                         color: '在画布上点一下取色，再调色相/容差；灰和近白黑不会被选中'

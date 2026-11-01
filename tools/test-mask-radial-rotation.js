@@ -352,6 +352,69 @@ async function main() {
     check(sE.aAfter < 10,
         '移出旋转手柄:高亮撤销(取样点恢复透明)', 'after=' + sE.aAfter);
 
+    // ── 场景 F：四个轴向手柄分别改长轴/短轴 ──
+    // 以前拖椭圆边缘是「等比缩放」，长轴短轴一起变，调不出更扁/更长的形状。
+    // 现在两条轴的四个端点各有一个方块手柄，拖它只改这一根轴。
+    const sF = await exec(`(async () => {
+        const A = window.App;
+        const im = A.image;
+        const m = A.activeMask(im);
+        if (!m) return { error: 'no active mask' };
+        m.shape.cx = 0.5; m.shape.cy = 0.5;
+        m.shape.rx = 0.3; m.shape.ry = 0.2;
+        m.shape.rot = 0;
+        A.syncMaskUI();
+        await new Promise((r) => setTimeout(r, 120));
+
+        const ov = document.getElementById('maskOverlay');
+        const base = A._baseSize();
+        const pr = A._photoRect;
+        if (!ov || !pr) return { error: 'overlay/photoRect not ready' };
+        const r = ov.getBoundingClientRect();
+        const toClient = (nx, ny) => ({
+            x: r.left + (pr.x + nx * pr.w) / Math.max(1, base.w) * r.width,
+            y: r.top + (pr.y + ny * pr.h) / Math.max(1, base.h) * r.height
+        });
+        const ev = (t, p) => ov.dispatchEvent(new PointerEvent(t, {
+            clientX: p.x, clientY: p.y, bubbles: true, pointerId: 1, button: 0
+        }));
+
+        const handles = A.maskAxisHandles(m.shape);
+        const before = { rx: m.shape.rx, ry: m.shape.ry };
+
+        // 1) 拖 +X 端点往外：只改长轴
+        const hx = handles.find((h) => h.axis === 'x' && h.x > 0.5);
+        if (!hx) return { error: 'no +X handle' };
+        ev('pointerdown', toClient(hx.x, hx.y));
+        ev('pointermove', toClient(0.95, 0.5));
+        ev('pointerup', toClient(0.95, 0.5));
+        await new Promise((r2) => setTimeout(r2, 80));
+        const afterX = { rx: m.shape.rx, ry: m.shape.ry };
+
+        // 2) 拖 +Y 端点往外：只改短轴
+        const hy = A.maskAxisHandles(m.shape).find((h) => h.axis === 'y' && h.y > 0.5);
+        if (!hy) return { error: 'no +Y handle' };
+        ev('pointerdown', toClient(hy.x, hy.y));
+        ev('pointermove', toClient(0.5, 0.95));
+        ev('pointerup', toClient(0.5, 0.95));
+        await new Promise((r2) => setTimeout(r2, 80));
+        const afterY = { rx: m.shape.rx, ry: m.shape.ry };
+
+        return { before, afterX, afterY, count: handles.length, cursorX: null };
+    })()`);
+    check(!sF.error, '轴向手柄前置:四个手柄位置可计算', JSON.stringify(sF.error || ''));
+    check(sF.count === 4, '椭圆有四个轴向手柄（两轴的 ± 端点）', 'count=' + sF.count);
+    check(sF.afterX && sF.before
+        && sF.afterX.rx > sF.before.rx + 0.05
+        && Math.abs(sF.afterX.ry - sF.before.ry) < 0.005,
+        '拖左右端点只改长轴，短轴纹丝不动',
+        JSON.stringify({ before: sF.before, afterX: sF.afterX }));
+    check(sF.afterY && sF.afterX
+        && sF.afterY.ry > sF.afterX.ry + 0.05
+        && Math.abs(sF.afterY.rx - sF.afterX.rx) < 0.005,
+        '拖上下端点只改短轴，长轴纹丝不动',
+        JSON.stringify({ afterX: sF.afterX, afterY: sF.afterY }));
+
     await win.close();
     app.exit(failures.length ? 1 : 0);
 }
