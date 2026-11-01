@@ -1348,6 +1348,9 @@ function renderCardStyle(app) {
     const drawH = originH * imgScale;
     const drawX = cardX + (cardW0 - drawW) / 2 + (margin.imgOffsetX || 0);
     const drawY = cardY + (cardH - drawH) / 2 + (margin.imgOffsetY || 0);
+    // 照片在基准坐标里的矩形：蒙版叠加层靠它把指针换算成照片内坐标。
+    // 卡片管线的画布由 setupCanvas 建（_canvasBaseW/H、_canvasScale 已就绪），这里只补矩形。
+    app._photoRect = { x: drawX, y: drawY, w: drawW, h: drawH };
 
     // 阴影参数:优先图层启用的阴??否则默认柔和阴影
     let cardShadow = null;

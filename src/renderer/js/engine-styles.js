@@ -5357,6 +5357,11 @@ const w = natW;
             g.drawImage(img, 0, 0);
             g.restore();
             drawUserElements(g, t, canvas.width, canvas.height);
+            // 这张管线是把照片按 scale 铺满画布：照片矩形就是整块基准画布
+            app._canvasBaseW = iw;
+            app._canvasBaseH = ih;
+            app._canvasScale = scale;
+            app._photoRect = { x: 0, y: 0, w: iw, h: ih };
             app.applyZoomStyle();
             return;
         }
@@ -7776,6 +7781,9 @@ const w = natW;
 
         try {
             let out;
+            // 照片在「最终画布基准坐标」上的矩形（蒙版叠加层用）。由下面的 drawImage 劫持抓取，
+            // expandToRatio 补边后再按居中偏移修正。
+            let photoRect = null;
             if (!draw) {
                 const dims = styleDims('_PH', iw, ih, size);
                 out = newCanvas(dims.w, dims.h);
@@ -7805,34 +7813,49 @@ const w = natW;
                 out = newCanvas(targetW, targetH);
                 const g = out.getContext('2d');
                 g.imageSmoothingEnabled = true;
-                // 劫持drawImage:画原始照片时自动应用cornerConfig圆角
+                // 劫持 drawImage 做两件事：
+                //  ① 画照片时套用 cornerConfig 圆角（原有行为）
+                //  ② 记下照片在这张离屏画布上的矩形（基准坐标）—— 蒙版叠加层靠它
+                //    把指针换算成「照片内坐标」。相框有 60 多款、各自排版，逐款上报
+                //    不现实，统一在「画照片」这一次调用上抓最省事也最准。
                 const cc = t.cornerConfig || {};
                 const photoTl = cc.cornerRadiusTL || 0, photoTr = cc.cornerRadiusTR || 0;
                 const photoBl = cc.cornerRadiusBL || 0, photoBr = cc.cornerRadiusBR || 0;
                 const photoRAll = cc.cornerRadiusAll || 0;
                 const hasPhotoRound = photoRAll > 0 || photoTl > 0 || photoTr > 0 || photoBl > 0 || photoBr > 0;
+                const photoRound = photoRAll > 0 ? photoRAll : Math.min(photoTl, photoTr, photoBl, photoBr);
                 const origDrawImage = g.drawImage.bind(g);
-                if (hasPhotoRound) {
-                    g.drawImage = function(src, ...args) {
-                        if (src === img) {
-                            // 计算照片在画布上的位置和尺寸
-                            let dx, dy, dw, dh;
-                            if (args.length === 3) { dx = args[0]; dy = args[1]; dw = img.width; dh = img.height; }
-                            else if (args.length === 5) { dx = args[0]; dy = args[1]; dw = args[2]; dh = args[3]; }
-                            else if (args.length === 9) { dx = args[4]; dy = args[5]; dw = args[6]; dh = args[7]; }
-                            else { origDrawImage(src, ...args); return; }
-                            const r = photoRAll > 0 ? photoRAll : Math.min(photoTl, photoTr, photoBl, photoBr);
-                            g.save();
-                            if (r > 0 && g.roundRect) {
-                                g.beginPath(); g.roundRect(dx, dy, dw, dh, r); g.clip();
+                g.drawImage = function(src, ...args) {
+                    if (src !== img) { origDrawImage(src, ...args); return; }
+                    let dx = 0, dy = 0, dw = img.width, dh = img.height;
+                    if (args.length === 3) { dx = args[0]; dy = args[1]; }
+                    else if (args.length === 5) { dx = args[0]; dy = args[1]; dw = args[2]; dh = args[3]; }
+                    else if (args.length === 9) { dx = args[4]; dy = args[5]; dw = args[6]; dh = args[7]; }
+                    // 模糊铺底画的也是同一张 img，但它是背景不是照片本身：
+                    // 带 filter 的那次跳过，否则蒙版会按整张画布定位。
+                    if (!photoRect && (!g.filter || g.filter === 'none') && dw > 0 && dh > 0) {
+                        // 有些样式先 translate/rotate 再画照片（倾斜、手账类），dx/dy 是局部坐标：
+                        // 用当前变换把四个角映射回画布坐标，取轴对齐包围盒。无变换时结果就是原矩形。
+                        let x0 = dx, y0 = dy, x1 = dx + dw, y1 = dy + dh;
+                        try {
+                            const m = g.getTransform ? g.getTransform() : null;
+                            if (m && (m.a !== 1 || m.b !== 0 || m.c !== 0 || m.d !== 1 || m.e !== 0 || m.f !== 0)) {
+                                const pts = [[dx, dy], [dx + dw, dy], [dx, dy + dh], [dx + dw, dy + dh]]
+                                    .map(([x, y]) => [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f]);
+                                x0 = Math.min(...pts.map((p) => p[0])); x1 = Math.max(...pts.map((p) => p[0]));
+                                y0 = Math.min(...pts.map((p) => p[1])); y1 = Math.max(...pts.map((p) => p[1]));
                             }
-                            origDrawImage(src, ...args);
-                            g.restore();
-                        } else {
-                            origDrawImage(src, ...args);
-                        }
-                    };
-                }
+                        } catch (_) { /* 拿不到变换就按原矩形 */ }
+                        photoRect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+                    }
+                    if (!hasPhotoRound || !(dw > 0 && dh > 0)) { origDrawImage(src, ...args); return; }
+                    g.save();
+                    if (photoRound > 0 && g.roundRect) {
+                        g.beginPath(); g.roundRect(dx, dy, dw, dh, photoRound); g.clip();
+                    }
+                    origDrawImage(src, ...args);
+                    g.restore();
+                };
                 if (blurMode) draw(img, size, g, iw, ih, S, targetW, targetH);
                 else draw(img, size, g, iw, ih, S);
                 g.drawImage = origDrawImage;
@@ -7849,7 +7872,12 @@ const w = natW;
             // 相框样式也支持画布比例(只扩大、不裁切)。仅当用户启用了背景模糊(bgBlurEnable)
             // 时补边才用模糊照片延伸,否则回退四角采样纯色,避免没开模糊却出现模糊
             const useBlurFill = (t.baseMargin && (t.baseMargin.bgBlurEnable || 0) === 1);
+            const preExpandW = out.width, preExpandH = out.height;
             out = expandToRatio(out, effectiveCanvasRatio(t), useBlurFill ? img : null, (t.baseMargin && t.baseMargin.bgBlurRadius) || 30);
+            // 补边是「原画布居中贴进更大的画布」，照片矩形要跟着平移同样的偏移，
+            // 否则按比例补边后蒙版范围会整体左/上偏（照片越偏离中心越明显）。
+            const padX = Math.round((out.width - preExpandW) / 2);
+            const padY = Math.round((out.height - preExpandH) / 2);
 
             // 导出时 app.exportScale 是用户选的 4096/8192 目标长边:相框样式也要真正
             // 上采样到该尺寸(旧实现 min(1, ...) 让小图永远停在原尺寸)。
@@ -7861,6 +7889,15 @@ const w = natW;
             const finalScale = upscaleTarget
                 ? (upscaleTarget / longEdge)
                 : Math.min(1, displayMax / longEdge);
+
+            // 基准坐标 = out 的像素尺寸；_canvasScale 是基准→逻辑像素的比例（与 setupCanvas 同义）。
+            // 蒙版叠加层靠这两个值 + _photoRect 把指针换算成照片内坐标，缺一个就拖不动。
+            app._canvasBaseW = out.width;
+            app._canvasBaseH = out.height;
+            app._canvasScale = finalScale || 1;
+            app._photoRect = photoRect
+                ? { x: photoRect.x + padX, y: photoRect.y + padY, w: photoRect.w, h: photoRect.h }
+                : null;
             canvas.width = Math.max(1, Math.round(out.width * finalScale));
             canvas.height = Math.max(1, Math.round(out.height * finalScale));
             canvas._logW = canvas.width;
@@ -7890,6 +7927,11 @@ const w = natW;
             g.scale(scale, scale);
             g.drawImage(img, 0, 0);
             g.restore();
+            // 回退图同样按「铺满画布」处理，保证蒙版对照的仍是这张照片
+            app._canvasBaseW = iw;
+            app._canvasBaseH = ih;
+            app._canvasScale = scale;
+            app._photoRect = { x: 0, y: 0, w: iw, h: ih };
             app.applyZoomStyle();
         }
     }

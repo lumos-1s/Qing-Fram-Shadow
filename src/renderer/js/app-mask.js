@@ -664,13 +664,11 @@
             }, 280);
         },
 
-        // 相框/卡片管线没有照片矩形，叠加层无法定位；默认图层模板才有。
-        // 与 engine.js 的渲染分流保持一致，避免把「还没渲染完」误判成不支持。
+        // 只要渲染管线上报了「照片在画布上的矩形」，叠加层就能把指针换算成照片内坐标。
+        // 默认图层、相框、卡片三条管线现在都会写 app._photoRect（见 engine.js / engine-styles.js），
+        // 因此这里只看矩形在不在 —— 它就是「能不能在画布上拖蒙版」的唯一真相。
         maskPositionSupported() {
-            const t = this.template || {};
-            const pf = t.photoFrameStyle;
-            if (pf && pf !== 'NONE') return false;
-            return ((t.baseMargin || {}).bgBlurEnable || 0) !== 1;
+            return !!this._photoRect;
         },
 
         addMask(type) {
@@ -699,7 +697,7 @@
             if (snap) this._fadeSnapshot(snap);
             const label = (window.QfsMask.TYPES.find((t) => t.k === type) || {}).label;
             this.setStatus('已添加' + label + '蒙版'
-                + (this.maskPositionSupported() ? '' : '；当前边框样式不支持画布定位，切回默认边框样式后可拖动位置'));
+                + (this.maskPositionSupported() ? '' : '；画布还在准备，稍等片刻再拖动'));
             return true;
         },
 
@@ -1483,16 +1481,14 @@
                 tip.style.display = act ? '' : 'none';
                 if (act) {
                     const pr = this._photoRect;
-                    const noPos = !this.maskPositionSupported();
+                    // 相框/卡片管线现在也会上报照片矩形，pr 为空只剩「还没渲染完」一种情况
                     tip.textContent = pr ? ({
                         linear: '拖线身整体移动、拖两端点改过渡；空白处拖一下可重画',
                         radial: '拖内部移动、拖边缘改大小、拖外侧圆点旋转（Shift 15°吸附）；外面拖出新椭圆',
                         brush: '按住涂抹；按住 Alt 或右键涂抹 = 擦除',
                         lum: '按亮度自动选区，调下面的暗部/亮部阈值',
                         color: '在画布上点一下取色，再调色相/容差；灰和近白黑不会被选中'
-                    })[act.type] : (noPos
-                        ? '当前边框样式（相框/卡片）不支持画布定位；切回默认边框样式后可拖动蒙版'
-                        : '蒙版叠加层还没准备好，稍等片刻再试');
+                    })[act.type] : '蒙版叠加层还没准备好，稍等片刻再试';
                 }
             }
             const badge = $('grpMask');
