@@ -50,7 +50,7 @@ ipcMain.handle('list-textures', () => []);
 ipcMain.handle('list-templates', () => []);
 ipcMain.handle('get-user', () => null);
 ipcMain.handle('get-app-info', () => ({
-    version: '0.1.22', electron: '31', chrome: '126', node: '20',
+    version: '0.1.23', electron: '31', chrome: '126', node: '20',
     platform: 'win32', arch: 'x64', packaged: true, portable: false,
     userData: process.env.TEMP, appPath: ROOT
 }));
@@ -175,6 +175,7 @@ app.whenReady().then(async () => {
         return {
             open: modal.style.display,
             head: document.getElementById('changelogHead').textContent,
+            ver: (window.App._aboutInfo && window.App._aboutInfo.version) || '',
             count: entries.length,
             curOpen: !!cur && cur.open,
             curLen: cur ? cur.textContent.length : 0,
@@ -184,11 +185,13 @@ app.whenReady().then(async () => {
     })()`);
     await sleep(120);
     check(sA4b.open === 'flex', '点「更新内容」打开弹窗', JSON.stringify(sA4b));
-    check(/0\.1\.22/.test(sA4b.head), '弹窗标题带上当前版本号', sA4b.head);
+    // 版本断言一律取「运行版本」，不写死号——否则每次发版都要改测试
+    check(!!sA4b.ver && sA4b.head.indexOf('v' + sA4b.ver) >= 0,
+        '弹窗标题带上当前版本号', sA4b.head);
     check(sA4b.curOpen && sA4b.curLen > 200 && sA4b.groups.length >= 2,
         '当前版本那一条默认展开且有内容', JSON.stringify({ o: sA4b.curOpen, n: sA4b.curLen, g: sA4b.groups }));
     check(sA4b.injected === 0, '更新说明是纯文本渲染（不注入 HTML）', String(sA4b.injected));
-    check(savedPrefs.some((p) => p && p.changelogSeen === '0.1.22'),
+    check(savedPrefs.some((p) => p && p.changelogSeen === sA4b.ver),
         '看过即记住版本号（prefs.changelogSeen）', JSON.stringify(savedPrefs.slice(-2)));
 
     await exec(`window.App.openSettings()`);
@@ -206,12 +209,13 @@ app.whenReady().then(async () => {
 
     // 运行版本早于内置最新说明时：说明是「未来版本」的，不该拿去打扰用户
     const sA4d = await exec(`(() => {
+        const cur = (window.App._aboutInfo || {}).version || '';
         window.App._aboutInfo = { version: '0.1.21' };
         window.App._changelogSeen = '';
         window.App.syncChangelogDot();
         const oldHidden = document.getElementById('aboutChangelogDot').hidden;
-        window.App._aboutInfo = { version: '0.1.22' };
-        window.App._changelogSeen = '0.1.22';
+        window.App._aboutInfo = { version: cur };
+        window.App._changelogSeen = cur;
         window.App.syncChangelogDot();
         return { oldHidden };
     })()`);

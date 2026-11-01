@@ -38,7 +38,7 @@ ipcMain.handle('get-prefs', () => ({}));
 ipcMain.handle('get-user', () => null);
 ipcMain.handle('load-acr-tables', () => null);
 ipcMain.handle('get-app-info', () => ({
-    version: '0.1.22', electron: '31', chrome: '126', node: '20',
+    version: '0.1.23', electron: '31', chrome: '126', node: '20',
     platform: 'win32', arch: 'x64', packaged: false, portable: false,
     userData: process.env.TEMP, appPath: ROOT
 }));
