@@ -373,6 +373,12 @@ window.App = Object.assign(window.App || {}, {
         const prevMax = this.displayMax;
         const prevImg = this.image;
         const prevTpl = this.template;
+        // 渲染会往 app 写这一帧的几何(照片矩形 + 基准尺寸)，蒙版叠加层靠 _photoRect 定位。
+        // 这里拿样例图 + 别人的模板 + displayMax=96 渲缩略图，写完必须还原，
+        // 否则渲完模板列表后蒙版会按这次的矩形跑位。
+        const prevPhotoRect = this._photoRect;
+        const prevBaseW = this._canvasBaseW, prevBaseH = this._canvasBaseH;
+        const prevScale = this._canvasScale;
         try {
             const cv = document.createElement('canvas');
             cv.width = 1; cv.height = 1;
@@ -390,6 +396,10 @@ window.App = Object.assign(window.App || {}, {
             if (this.dom.canvas) this.dom.canvas = prevCanvas;
             if (prevMax === undefined) delete this.displayMax;
             else this.displayMax = prevMax;
+            this._photoRect = prevPhotoRect;
+            if (prevBaseW === undefined) delete this._canvasBaseW; else this._canvasBaseW = prevBaseW;
+            if (prevBaseH === undefined) delete this._canvasBaseH; else this._canvasBaseH = prevBaseH;
+            if (prevScale === undefined) delete this._canvasScale; else this._canvasScale = prevScale;
             // 临时借用主编辑器状态后，若当前图已被用户切走，以 currentIdx 为准补一帧
             if (this._reconcileCurrentImage && this._reconcileCurrentImage()) this.scheduleRender(true);
         }

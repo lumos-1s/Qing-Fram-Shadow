@@ -270,6 +270,10 @@ window.App = Object.assign(window.App || {}, {
             uiDprOverride: this.uiDprOverride,
             image: this.image,
             template: this.template,
+            // 渲染还会往 app 写这一帧的几何(照片矩形 + 基准尺寸)，蒙版叠加层靠 _photoRect
+            // 定位。这里用的是另一张图/另一套模板，写完必须还原，否则蒙版会按这次的矩形跑位。
+            photoRect: this._photoRect,
+            baseW: this._canvasBaseW, baseH: this._canvasBaseH, scale: this._canvasScale,
             selectedEls: this.selectedEls
         };
         const cv = document.createElement('canvas');
@@ -298,6 +302,10 @@ window.App = Object.assign(window.App || {}, {
             this.image = prev.image;
             this.template = prev.template;
             this.selectedEls = prev.selectedEls;
+            this._photoRect = prev.photoRect;
+            if (prev.baseW === undefined) delete this._canvasBaseW; else this._canvasBaseW = prev.baseW;
+            if (prev.baseH === undefined) delete this._canvasBaseH; else this._canvasBaseH = prev.baseH;
+            if (prev.scale === undefined) delete this._canvasScale; else this._canvasScale = prev.scale;
             // 临时借用后若当前图已被切走，以 currentIdx 为准补一帧，避免画布停在旧图
             if (this._reconcileCurrentImage && this._reconcileCurrentImage()) this.scheduleRender(true);
         }

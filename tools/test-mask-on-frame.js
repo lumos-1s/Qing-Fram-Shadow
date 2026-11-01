@@ -145,6 +145,30 @@ async function main() {
     check(sFrame.inset === true, '相框的照片矩形确实小于整块画布（不是把画布当照片）',
         JSON.stringify({ rect: sFrame.rect, base: sFrame.base }));
 
+    // 装框缩略图是「临时接管画布/当前图/模板渲一帧」，那一帧同样会往 app 写 _photoRect。
+    // 漏还原时：调色/羽化滑块停手后 260ms 会重渲缩略图，蒙版就按**缩略图那次**的照片矩形
+    // 定位 —— 表现是绿蒙版突然跳到画布别处，直到下一次整帧渲染才回来。
+    const sThumb = await exec(`(() => {
+        const A = window.App;
+        const before = A._photoRect ? JSON.stringify(A._photoRect) : '';
+        // 模拟「队列里另一张图、带自己的模板」：换成无边框样式，照片矩形必然与相框的不同
+        const im = A.image;
+        const hadMap = !!(A.imageTemplates && A.imageTemplates.has(im));
+        const mapSaved = hadMap ? A.imageTemplates.get(im) : null;
+        const csSaved = im.customSettings;
+        const csHad = 'customSettings' in im;
+        const tpl = JSON.parse(JSON.stringify(A.template));
+        tpl.photoFrameStyle = 'NONE';
+        im.customSettings = tpl;
+        if (hadMap) A.imageTemplates.delete(im);
+        try { A.renderFramedThumb(im); } catch (_) { /* 缩略图失败不影响本断言 */ }
+        if (hadMap) A.imageTemplates.set(im, mapSaved);
+        if (csHad) im.customSettings = csSaved; else delete im.customSettings;
+        return { before, after: A._photoRect ? JSON.stringify(A._photoRect) : '' };
+    })()`);
+    check(!!sThumb.before && sThumb.before === sThumb.after,
+        '渲装框缩略图后 _photoRect 未被污染', JSON.stringify(sThumb));
+
     const sCard = await exec(`window.__probe('card')`);
     check(sCard.ok && sCard.hasRect, '卡片样式上报了照片矩形', JSON.stringify(sCard.rect || sCard));
     check(sCard.supported === true, '卡片样式下 maskPositionSupported() 为真', String(sCard.supported));

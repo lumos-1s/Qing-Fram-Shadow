@@ -2669,6 +2669,14 @@ window.App = {
         const prevMax = this.displayMax;
         const prevImg = this.image;
         const prevTpl = this.template;
+        // 渲染管线还会往 app 上写「这一帧的几何」:照片矩形 _photoRect 与基准尺寸
+        // _canvasBaseW/H / _canvasScale。蒙版叠加层全靠 _photoRect 把指针换算成照片内坐标，
+        // 而缩略图渲染用的是**另一张图的模板**、且 displayMax=200 —— 它写进去的矩形属于
+        // 那次渲染，不是当前画面。漏还原就会:调色/羽化滑块一停手(260ms 后重渲缩略图)，
+        // 绿蒙版突然跳到画布别处，直到下一次整帧渲染才回来。
+        const prevPhotoRect = this._photoRect;
+        const prevBaseW = this._canvasBaseW, prevBaseH = this._canvasBaseH;
+        const prevScale = this._canvasScale;
         const cv = document.createElement('canvas');
         cv.width = 1; cv.height = 1;
         cv.style.position = 'absolute'; cv.style.visibility = 'hidden';
@@ -2713,6 +2721,11 @@ window.App = {
             if (this.dom.canvas === cv) this.dom.canvas = prevCanvas;
             if (prevMax === undefined) delete this.displayMax;
             else this.displayMax = prevMax;
+            // 缩略图那一帧写的几何必须一起还原，否则蒙版叠加层会按缩略图的照片矩形定位
+            this._photoRect = prevPhotoRect;
+            if (prevBaseW === undefined) delete this._canvasBaseW; else this._canvasBaseW = prevBaseW;
+            if (prevBaseH === undefined) delete this._canvasBaseH; else this._canvasBaseH = prevBaseH;
+            if (prevScale === undefined) delete this._canvasScale; else this._canvasScale = prevScale;
             // 还原后若当前图已不是选中图（临时渲染期间用户切了图），纠正并补一帧，
             // 否则画布会停在旧图、缩略图却高亮新图。
             if (this._reconcileCurrentImage && this._reconcileCurrentImage()) this.scheduleRender(true);
