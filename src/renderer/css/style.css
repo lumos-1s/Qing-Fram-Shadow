@@ -2274,8 +2274,14 @@ body.editing #canvasPane { flex: 1 1 auto; }
 .pw-head { display: flex; align-items: center; gap: 16px; padding: calc(20px * var(--font-scale)) calc(28px * var(--font-scale)) calc(12px * var(--font-scale)); flex: 0 0 auto; -webkit-app-region: drag; }
 /* 拖拽区里的交互元素必须 no-drag，否则按下去变成拖窗口、按钮点不动 */
 .pw-head button, .pw-mode, .pw-mode-btn { -webkit-app-region: no-drag; }
-.pw-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--fs-15); letter-spacing: .02em; color: var(--brand-gold-text); white-space: nowrap; }
-.pw-head-meta { flex: 1; text-align: center; min-width: 0; }
+/* 与右侧控件群各占一半宽度（flex 1 1 0），标题才能落在窗口正中 —— 见 .pw-head-right 注释 */
+/* 一侧吃满剩余宽度以便把标题顶到正中（flex 1 1 0）。刻意不写 min-width:0 ——
+   写了它就能被压到小于内容宽度，配合 justify-content:flex-end 会让内容向左溢出压住标题；
+   不写则由 flex 的自动最小尺寸兜底，窄窗时保住控件完整、改由品牌栏让位。 */
+.pw-brand { flex: 1 1 0; display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--fs-15); letter-spacing: .02em; color: var(--brand-gold-text); white-space: nowrap; }
+/* 标题不再吃满剩余宽度（旧写法 flex:1 会让它只在「剩余空间」里居中而偏左），
+   改成按内容占位、可压缩，左右两条等宽栏把它顶在正中。 */
+.pw-head-meta { flex: 0 1 auto; text-align: center; min-width: 0; }
 .pw-title { margin: 0; font-size: var(--fs-22); font-weight: 600; letter-spacing: .06em; color: #f0f3f7; }
 .pw-sub { margin: 5px 0 0; font-size: var(--fs-12); color: rgba(232,236,241,.52); }
 .pw-skip {
@@ -2284,12 +2290,27 @@ body.editing #canvasPane { flex: 1 1 auto; }
     font-size: var(--fs-12); padding: calc(6px * var(--font-scale)) calc(14px * var(--font-scale)); cursor: pointer; transition: border-color .15s ease, background .15s ease;
 }
 .pw-skip:hover { border-color: rgba(220,186,121,.55); background: rgba(255,255,255,.08); }
+/* 右侧控件群（浏览方式 / 操作 / 窗口控制）：与左侧品牌各占一半宽度（都是 flex 1 1 0），
+   标题才能落在窗口正中。旧写法是 .pw-head-meta{flex:1} —— 那只是在「剩余空间」里居中，
+   而右侧控件约 576px、品牌仅约 73px，标题会整体偏左一大截、右边空出一片。
+   窗口窄到放不下等宽的一半时，右侧按内容宽度（min-content）占位、品牌让位，
+   标题回落到偏左但不会与控件重叠，属于安全降级。 */
+.pw-head-right {
+    flex: 1 1 0;
+    display: flex; align-items: center; justify-content: flex-end;
+    gap: calc(14px * var(--font-scale));
+}
+/* 组内紧、组间松：把「无限/有限 + 卡片大小」归为浏览方式，「换封面 / 进入工作台」归为操作，
+   两组之间加留白与淡分隔线，一眼能分出两类控件（原来四个元素等距排成一串，看不出层次）。 */
+.pw-head-tools, .pw-head-acts { display: flex; align-items: center; flex: 0 0 auto; gap: calc(8px * var(--font-scale)); }
+.pw-head-acts { padding-left: calc(14px * var(--font-scale)); border-left: 1px solid rgba(255,255,255,.12); }
 /* 首页的窗口控制（全屏 / 最大化 / 退出）：首页盖住了自绘标题栏，这里补一份入口。
-   图标按钮比文字按钮轻，不会和「进入工作台」抢视线。 */
+   图标按钮比文字按钮轻，不会和「进入工作台」抢视线。
+   与「进入工作台」拉开距离并加深分隔线，区分「应用操作」与「窗口控制」两种层级。 */
 .pw-winbtns {
     flex: 0 0 auto; display: flex; align-items: center; gap: 1px;
-    margin-left: 4px; padding-left: calc(8px * var(--font-scale));
-    border-left: 1px solid rgba(255,255,255,.1);
+    margin-left: calc(6px * var(--font-scale)); padding-left: calc(12px * var(--font-scale));
+    border-left: 1px solid rgba(255,255,255,.14);
 }
 .pw-winbtn {
     width: 30px; height: 30px; padding: 0;
