@@ -1547,7 +1547,11 @@
                         <div class="settings-label">预览画质</div>
                         <div class="settings-control">
                             <button class="mini-btn" id="btnPreviewQualityToggle" type="button">当前：标准（点此切原图 1:1）</button>
-                            <div class="settings-hint">标准：成品长边降到 1800px 渲染，拖动流畅。原图 1:1：按照片原始分辨率渲染，能看清锐度与噪点，但大图调参会变慢（拖动手柄时仍自动降级保流畅）。<b>不影响导出</b>——导出始终是完整原图分辨率。</div>
+                            <div class="settings-hint settings-hint-dl">
+                                <div><b>标准</b>成品长边降到 1800px 渲染，拖动流畅</div>
+                                <div><b>原图 1:1</b>按原始分辨率渲染，能看清锐度与噪点，大图调参变慢</div>
+                                <div class="settings-hint-em">不影响导出：导出始终是完整原图分辨率</div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -1555,17 +1559,24 @@
                 <section class="settings-sec">
                     <div class="settings-sec-title">更新</div>
                     <!-- 更新下载源：清单始终来自 GitHub（校验用），这里只换二进制下载地址 -->
-                    <div class="about-mirror">
-                        <label for="tfUpdateMirror" class="about-mirror-label" title="留空=GitHub 直连。可填镜像前缀（如 https://ghproxy.net/{url}）或自建反代地址；下载完仍按 GitHub 清单里的 sha512 校验">更新下载源</label>
-                        <input id="tfUpdateMirror" class="about-mirror-input" type="text" spellcheck="false" autocomplete="off"
-                               placeholder="留空 = GitHub 直连；例：https://ghproxy.net/{url}" />
-                        <button id="btnSaveUpdateMirror" class="mini-btn" type="button">保存</button>
-                    </div>
-                    <div id="aboutMirrorHint" class="about-status about-mirror-hint" role="status" aria-live="polite"></div>
-                    <div class="about-status about-mirror-hint">
-                        常见公共镜像（第三方，速度与可用性随网络变化，可随时清空回直连）：
-                        <code>https://ghproxy.net/{url}</code> · <code>https://gh-proxy.com/{url}</code> · <code>https://ghfast.top/{url}</code><br />
-<!--                        也可以填自建反代的前缀；留空则直连 GitHub。下载完一律按 GitHub 清单里的 sha512 校验，对不上会丢弃重下。-->
+                    <div class="settings-row">
+                        <label for="tfUpdateMirror" class="settings-label" title="留空=GitHub 直连。可填镜像前缀（如 https://ghproxy.net/{url}）或自建反代地址；下载完仍按 GitHub 清单里的 sha512 校验">更新下载源</label>
+                        <div class="settings-control">
+                            <div class="settings-mirror">
+                                <input id="tfUpdateMirror" class="about-mirror-input" type="text" spellcheck="false" autocomplete="off"
+                                       placeholder="留空 = GitHub 直连；例：https://ghproxy.net/{url}" />
+                                <button id="btnSaveUpdateMirror" class="mini-btn" type="button">保存</button>
+                            </div>
+                            <div id="aboutMirrorHint" class="about-status about-mirror-hint" role="status" aria-live="polite"></div>
+                            <div class="settings-hint">
+                                常见公共镜像（第三方，速度与可用性随网络变化，可随时清空回直连）
+                                <span class="mirror-list">
+                                    <code>https://ghproxy.net/{url}</code>
+                                    <code>https://gh-proxy.com/{url}</code>
+                                    <code>https://ghfast.top/{url}</code>
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </section>
 

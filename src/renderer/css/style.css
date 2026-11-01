@@ -1439,7 +1439,7 @@ html.dark .icon-pool .icon-cell {
 .about-name span { margin-left: var(--sp-1); font-size: var(--fs-11); font-weight: 500; color: var(--text-3); }
 .about-version { margin-top: 3px; font-size: var(--fs-12); color: var(--text-3); }
 .about-tagline { margin-top: 2px; font-size: var(--fs-12); color: var(--text-3); }
-.about-desc { margin-top: 13px; font-size: var(--fs-12); line-height: 1.75; color: var(--text-2); }
+.about-desc { margin-top: calc(9px * var(--font-scale)); font-size: var(--fs-12); line-height: 1.75; color: var(--text-2); }
 .about-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 14px; }
 .about-actions .mini-btn { flex: 0 0 auto; }
 .mini-btn:disabled { opacity: .55; cursor: default; transform: none; }
@@ -1453,16 +1453,22 @@ html.dark .icon-pool .icon-cell {
 .about-status.error { color: var(--rose-text); }
 .about-status-row .about-link, .about-diag-status .about-link { font-size: var(--fs-12); }
 .about-diag-status { min-height: 16px; margin-top: 7px; overflow-wrap: anywhere; }
-/* 更新下载源：一行输入 + 保存，尺寸与 about-status-row 对齐 */
-.about-mirror { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
-.about-mirror-label { flex: 0 0 auto; font-size: var(--fs-12); color: var(--text-3); }
+/* 更新下载源：并入 settings 栅格（左列与「默认导出位置 / 界面缩放」等同一宽度），
+   不再单独用 about-mirror 那套 flex:0 0 auto 的标签，避免左列宽窄不一。 */
+.settings-mirror { display: flex; align-items: center; gap: var(--sp-2); }
 .about-mirror-input {
     flex: 1 1 auto; min-width: 0; padding: calc(4px * var(--font-scale)) calc(7px * var(--font-scale)); border-radius: 6px;
     border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
     font: inherit; font-size: var(--fs-12);
 }
 .about-mirror-input:focus { outline: none; border-color: var(--primary); }
-.about-mirror-hint { min-height: 15px; margin-top: 4px; }
+/* 状态提示：字号降回 --fs-11 与 .settings-hint 一致（原先继承 .settings-body 的 13px，
+   比同区说明文字大一档，看着像个小标题，层级突兀）。
+   这里刻意不写 color —— app-export.js 会整体覆写 className 为 'about-status about-mirror-hint'，
+   ok/error 的颜色由 .about-status 系列给出；此处若写 color 会因后定义且同特异性而盖掉它们。
+   空文案时（初始态）用 :empty 收掉整行，避免行间留出无意义的空隙。 */
+.about-mirror-hint { min-height: 0; margin-top: calc(6px * var(--font-scale)); font-size: var(--fs-11); line-height: 1.6; }
+.about-mirror-hint:empty { display: none; }
 
 /* 设置:分区面板（默认导出位置 / 更新下载源）。关于弹窗只留版本与诊断，设置项集中到这里 */
 .settings-card { width: 560px; max-width: 92vw; max-height: 86vh; display: flex; flex-direction: column; }
@@ -1475,7 +1481,8 @@ html.dark .icon-pool .icon-cell {
 .settings-label { flex: 0 0 92px; padding-top: calc(6px * var(--font-scale)); font-size: var(--fs-12); color: var(--text-3); }
 .settings-control { flex: 1 1 auto; min-width: 0; }
 .settings-scale { display: flex; align-items: center; gap: var(--sp-2); }
-.settings-scale .ctl-rng { width: 200px; max-width: 60%; }
+/* 滑块自适应填满整行：原先固定 200px，右侧会剩一截参差的空白，看着像没排完 */
+.settings-scale .ctl-rng { flex: 1 1 auto; min-width: calc(120px * var(--font-scale)); max-width: calc(280px * var(--font-scale)); }
 .settings-scale-val { min-width: 44px; text-align: right; color: var(--text); font-size: var(--fs-12); font-variant-numeric: tabular-nums; }
 .settings-path {
     display: block; padding: calc(6px * var(--font-scale)) calc(9px * var(--font-scale)); border-radius: 8px;
@@ -1488,6 +1495,17 @@ html.dark .icon-pool .icon-cell {
 .settings-btns { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
 .settings-hint { margin-top: 8px; font-size: var(--fs-11); line-height: 1.6; color: var(--text-3); }
 .settings-hint code { background: var(--surface-2); border-radius: 4px; padding: calc(1px * var(--font-scale)) calc(4px * var(--font-scale)); font-size: var(--fs-11); color: var(--text-2); }
+/* 「两个档位」类说明（如预览画质）：档位名单独成列，避免长句糊成一团读不进去 */
+.settings-hint-dl { display: grid; gap: calc(3px * var(--font-scale)); }
+.settings-hint-dl b {
+    display: inline-block; min-width: calc(66px * var(--font-scale)); margin-right: var(--sp-1);
+    font-weight: 600; color: var(--text-2);
+}
+.settings-hint-em { margin-top: calc(2px * var(--font-scale)); }
+/* 镜像地址改成可换行的 chip 列表，窄窗下不会挤成一长行再错乱折行 */
+.mirror-list { display: flex; flex-wrap: wrap; gap: calc(3px * var(--font-scale)) var(--sp-1-5); margin-top: calc(3px * var(--font-scale)); }
+/* 同组里的次级按钮拉到等宽，避免「选择文件夹 / 改回每次询问」宽窄不一显得散 */
+.settings-btns .mini-btn { min-width: calc(92px * var(--font-scale)); text-align: center; }
 .about-details {
     margin-top: var(--sp-2-5); padding: calc(9px * var(--font-scale)) calc(11px * var(--font-scale)); border: 1px solid var(--border);
     border-radius: 10px; background: var(--bg-soft);
