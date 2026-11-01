@@ -25,6 +25,7 @@ protocol.registerSchemesAsPrivileged([
 // 主进程侧可变的 prefs：设置页读到什么由这里决定，等价于用户改过设置
 let prefsStub = {};
 let savedPrefs = [];
+let pickFail = false;
 ipcMain.handle('get-prefs', () => prefsStub);
 ipcMain.handle('save-prefs', (_e, p) => {
     savedPrefs.push(p);
@@ -37,6 +38,8 @@ ipcMain.handle('save-prefs', (_e, p) => {
     return { ok: true };
 });
 ipcMain.handle('pick-default-export-dir', () => {
+    // 模拟「主进程还是旧版」：Electron 会以 invoke 失败的形式抛回来
+    if (pickFail) throw new Error("Error invoking remote method 'pick-default-export-dir': Error: No handler registered for 'pick-default-export-dir'");
     prefsStub = { defaultExportDir: 'E:\\导出' };
     return { ok: true, dir: 'E:\\导出' };
 });
@@ -156,6 +159,21 @@ app.whenReady().then(async () => {
         '清除时把默认导出位置写成空串（回落到每次询问）', JSON.stringify(savedPrefs));
     check(sF.text === '每次询问' && sF.muted && sF.clearDisabled === true,
         '清除后面板回到「每次询问」', JSON.stringify(sF));
+
+    // ── G：主进程缺少新接口时不能说「没反应」，要给出可操作的提示 ──
+    // 复现用户现场：旧 electron.exe 还活着（主进程旧），页面却是新的
+    pickFail = true;
+    await exec(`window.App.chooseDefaultExportDir()`);
+    await sleep(100);
+    const sG = await exec(`({
+        msg: window.App.statusMsg || '',
+        path: document.getElementById('setExportDirPath').textContent
+    })`);
+    check(/重启/.test(sG.msg),
+        '接口不可用时提示「重启应用」而不是静默', JSON.stringify(sG));
+    check(sG.path === '每次询问',
+        '接口不可用时不会把已有设置改坏', JSON.stringify(sG));
+    pickFail = false;
 
     if (failures.length) {
         console.error('\n设置页检查失败: ' + failures.length);

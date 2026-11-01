@@ -3979,10 +3979,25 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
     // 选一个固定文件夹当默认导出位置。存进 prefs 后，主进程 pick-export-location 就不再弹框。
     async chooseDefaultExportDir() {
         const api = window.qingframe;
-        if (!api || !api.pickDefaultExportDir) { this.setStatus('当前版本不支持设置默认导出位置'); return; }
-        const r = await api.pickDefaultExportDir().catch(() => null);
-        if (!r || r.canceled) return;
-        if (!r.ok) { this.setStatus(r.error || '设置默认导出位置失败'); return; }
+        if (!api || !api.pickDefaultExportDir) {
+            // 主进程还是旧版：常见于只刷新了页面(或旧进程没退干净)而没重启应用
+            this.setStatus('设置失败：请完全退出应用再重新启动（主进程未载入新接口）');
+            return;
+        }
+        let r = null;
+        try { r = await api.pickDefaultExportDir(); }
+        catch (e) { r = { ok: false, error: (e && e.message) || '' }; }
+        // 用户自己取消选择框：什么都不用说
+        if (r && r.canceled) return;
+        if (!r || !r.ok) {
+            const why = (r && r.error) ? String(r.error) : '';
+            // Electron 原始报错是 "No handler registered for ..."，对用户没有意义，翻译成可操作的话
+            const hint = /No handler|not a function|is not a function/i.test(why)
+                ? '主进程没有响应，请完全退出应用再重新启动'
+                : (why || '未知原因');
+            this.setStatus('设置默认导出位置失败：' + hint);
+            return;
+        }
         await this.refreshSettingsExportDir();
         this.setStatus('默认导出位置：' + r.dir);
     },

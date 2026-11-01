@@ -1601,11 +1601,15 @@ ipcMain.handle('pick-default-export-dir', async (event) => {
     if (!isTrustedFrame(event)) return BLOCKED;
     const st = loadState();
     const cur = (st.prefs && validDir(st.prefs.defaultExportDir)) ? st.prefs.defaultExportDir : undefined;
-    const res = await dialog.showOpenDialog({
+    const opts = {
         title: '选择默认导出文件夹',
         defaultPath: cur,
         properties: ['openDirectory', 'createDirectory']
-    });
+    };
+    // 挂到父窗口上做成模态：无父窗口的对话框在 Windows 上可能被主窗口盖住，
+    // 用户看到的就是「点了没反应」（其实框已经开了，只是藏在后面）。
+    const parent = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
+    const res = parent ? await dialog.showOpenDialog(parent, opts) : await dialog.showOpenDialog(opts);
     if (res.canceled || !res.filePaths.length) return { canceled: true };
     const dir = res.filePaths[0];
     saveState({ prefs: { defaultExportDir: dir } });
