@@ -70,12 +70,12 @@ async () => {
         const ok = near(r.x, cw / 2) && near(r.y, ch / 2);
         out.snap.push({ label: '正中间吸附居中', ok, got: r.x + ',' + r.y, expect: (cw/2) + ',' + (ch/2) });
     }
-    // 大 Logo:贴边距离应随尺寸增大,保证完整可见(半宽 400 → glx 应显著大于小 Logo 的 150)
+    // 大 Logo:贴边距离应随尺寸增大,保证完整可见(上限 500 → 半宽 250,半高 100)
     {
-        const big = mkLogo(0, 0, 800, 0.4);   // 半宽 400,半高 160
+        const big = mkLogo(0, 0, 500, 0.4);   // 半宽 250,半高 100
         const rb = App.snapToGuides(20, 20, cw, ch, big);
-        const ok = rb.x >= 400 && rb.x <= cw / 2 && rb.y >= 160;
-        out.snap.push({ label: '大Logo贴边仍完整可见', ok, got: 'x=' + rb.x + ' y=' + rb.y, expect: 'x>=400 且 x<=500, y>=160' });
+        const ok = rb.x >= 250 && rb.x <= cw / 2 && rb.y >= 100;
+        out.snap.push({ label: '大Logo贴边仍完整可见', ok, got: 'x=' + rb.x + ' y=' + rb.y, expect: 'x>=250 且 x<=500, y>=100' });
     }
 
     // ── ② 对齐 ──

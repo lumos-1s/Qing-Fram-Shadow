@@ -24,7 +24,7 @@ window.App = Object.assign(window.App || {}, {
     },
 
     /* ── 导出总入口:工具栏主按钮 / Ctrl+E / 右键菜单共用 ──
-       只有切图页签要换通道(九宫格是一张图切成 n² 块,不是单图导出)。
+       只有切图页签要换通道(切图是一张图切成 rows×cols 块,不是单图导出)。
        拼图页签仍走主导出管线:exportImage 自己会渲染拼图成品,格式/质量/尺寸都跟随导出设置
        (默认 JPG),不再被锁死在拼图面板按钮的固定档位上。 */
     doExport() {
@@ -290,8 +290,69 @@ window.App = Object.assign(window.App || {}, {
         this.updateStatusBar();
     },
 
-    // ── 九宫格切图:当前画布(含边框/水印/元素,所见即所得)按 n×n 切成 n² 张 ──
-    gridSize() { return parseInt((document.getElementById('selGridSize') && document.getElementById('selGridSize').value) || '3', 10) || 3; },
+    // ── 切图:当前画布(含边框/水印/元素,所见即所得)按 rows×cols 切成对应张数 ──
+    // 「切图比例」= 列 × 行。预设 2/3/4 为方阵;custom 读自定义列/行(各 1–12),
+    // 横竖可以不同(如 3 列 × 4 行),不再局限于九宫格。
+    gridSpec() {
+        const el = document.getElementById('selGridSize');
+        const v = (el && el.value) || '3';
+        const clamp = (n) => Math.max(1, Math.min(12, n || 1));
+        if (v === 'custom') {
+            const read = (id) => {
+                const inp = document.getElementById(id);
+                const n = parseInt(inp && inp.value, 10);
+                return Number.isFinite(n) ? clamp(n) : 3;
+            };
+            return { rows: read('inpGridRows'), cols: read('inpGridCols') };
+        }
+        const n = clamp(parseInt(v, 10) || 3);
+        return { rows: n, cols: n };
+    },
+
+    // 兼容旧调用:方阵返回 n;非方阵返回较长边(旧代码/测试读值时仍可用)
+    gridSize() { const s = this.gridSpec(); return s.rows === s.cols ? s.rows : Math.max(s.rows, s.cols); },
+
+    // 预设方阵沿用「九宫格」命名(2×2/3×3/4×4 的旧文件名不变);自定义横竖不同或超出 2–4 方阵时用「切图」
+    gridLabel() { const s = this.gridSpec(); return (s.rows === s.cols && s.rows >= 2 && s.rows <= 4) ? '九宫格' : '切图'; },
+
+    gridCustomSelected() { const el = document.getElementById('selGridSize'); return !!(el && el.value === 'custom'); },
+
+    // 只有选「自定义」时露出列/行输入;切换规格时同步提示
+    syncGridCustomUI() {
+        const on = this.gridCustomSelected();
+        const row = document.getElementById('rowGridRatio');
+        if (row) row.hidden = !on;
+        if (on) {
+            const c = document.getElementById('inpGridCols');
+            const r = document.getElementById('inpGridRows');
+            if (c && !c.value) c.value = '3';
+            if (r && !r.value) r.value = '3';
+        }
+        // 顺手把脏值（旧记忆里的 0/空）收回 1–12；normalize 内部会刷新提示
+        this.normalizeGridInputs();
+    },
+
+    updateGridRatioHint() {
+        const hint = document.getElementById('gridRatioHint');
+        if (!hint) return;
+        const s = this.gridSpec();
+        hint.textContent = s.cols + ' 列 × ' + s.rows + ' 行 · 共 ' + (s.cols * s.rows) + ' 块';
+    },
+
+    // 离开输入框时把越界/空值收回到 1–12,避免 0 列或 999 行这种脏值留在框里
+    normalizeGridInputs() {
+        const fix = (id) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const n = parseInt(el.value, 10);
+            el.value = String(Math.max(1, Math.min(12, Number.isFinite(n) ? n : 3)));
+        };
+        fix('inpGridCols'); fix('inpGridRows');
+        this.updateGridRatioHint();
+    },
+
+    // 预览缓存失效:改了规格/留白/渲染长边后,导出不能继续用旧切块
+    invalidateGridCache() { this._gridBlocks = null; this._gridCacheKey = ''; },
 
     // 切图渲染长边:3000/4000/6000/原图(封顶 12000 防爆内存)
     gridRenderMax() {
@@ -339,16 +400,20 @@ window.App = Object.assign(window.App || {}, {
         }
     },
 
-    // 把 src 切成 n×n,返回每块 canvas(行优先 1..n²;最后一行/列取剩余尺寸防漏缝;
+    // 把 src 切成 rows×cols,返回每块 canvas(行优先 1..rows*cols;最后一行/列取剩余尺寸防漏缝;
     // pad>0 时每块四周加 pad px 白边,拼贴无缝)
-    _sliceGrid(src, n, pad) {
+    _sliceGrid(src, rows, cols, pad) {
         const cw = src.width, ch = src.height;
+        const rn = Math.max(1, Math.min(12, rows | 0 || 1));
+        const cn = Math.max(1, Math.min(12, cols | 0 || 1));
         const p = pad || 0;
         const out = [];
-        for (let r = 0; r < n; r++) {
-            for (let c = 0; c < n; c++) {
-                const x = Math.round(c * cw / n), y = Math.round(r * ch / n);
-                const w = Math.round((c + 1) * cw / n) - x, h = Math.round((r + 1) * ch / n) - y;
+        for (let r = 0; r < rn; r++) {
+            const y = Math.round(r * ch / rn), y2 = Math.round((r + 1) * ch / rn);
+            const h = Math.max(1, y2 - y);
+            for (let c = 0; c < cn; c++) {
+                const x = Math.round(c * cw / cn), x2 = Math.round((c + 1) * cw / cn);
+                const w = Math.max(1, x2 - x);
                 const cv = document.createElement('canvas');
                 const g = cv.getContext('2d');
                 if (p > 0) {
@@ -368,17 +433,18 @@ window.App = Object.assign(window.App || {}, {
     _gridExt() { return (this.dom.selFormat.value === 'jpeg') ? 'jpg' : this.dom.selFormat.value; },
 
     // 按当前导出格式/质量把缓存切块转成可写盘文件
-    // im:这些切块源自哪张照片(九宫格是同源裁切,EXIF 仍跟随它的主照片)
+    // im:这些切块源自哪张照片(切图是同源裁切,EXIF 仍跟随它的主照片)
     _gridFiles(baseName, subdir, im) {
         baseName = this.safeExportBase(baseName);
         const fmt = this.dom.selFormat.value;
         const mime = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }[fmt] || 'image/jpeg';
         const quality = (fmt === 'jpeg' || fmt === 'webp') ? Math.min(1, Math.max(0.6, (parseInt(this.dom.slExportQuality.value, 10) || 92) / 100)) : 1;
         const ex = this._exportExifFor(im);
+        const label = this.gridLabel();
         return this._gridBlocks.map((cv, i) => Object.assign({
             data: cv.toDataURL(mime, quality).split(',')[1],
-            filename: baseName + '_九宫格_' + (i + 1) + '.' + this._gridExt(),
-            stem: baseName + '_九宫格_' + (i + 1),
+            filename: baseName + '_' + label + '_' + (i + 1) + '.' + this._gridExt(),
+            stem: baseName + '_' + label + '_' + (i + 1),
             ext: this._gridExt(),
             subdir: subdir || ''
         }, ex));
@@ -389,14 +455,16 @@ window.App = Object.assign(window.App || {}, {
         if (!this.image) { this.setStatus('请先导入照片'); return; }
         if (this._gridBusy) return;
         this._gridBusy = true;
-        const n = this.gridSize();
-        this.setStatus('正在渲染九宫格…');
+        const { rows, cols } = this.gridSpec();
+        this.setStatus('正在渲染切图…');
         try {
             const src = await this._renderGridFrame();
-            const blocks = this._sliceGrid(src, n, this.gridPad());
+            const blocks = this._sliceGrid(src, rows, cols, this.gridPad());
             const box = document.getElementById('gridPreviewGrid');
             if (!box) { return; }
-            box.className = 'grid-preview-grid n' + n;
+            // 自定义网格的列数不固定:用行内网格列数,替代原来的 n2/n3/n4 固定类
+            box.className = 'grid-preview-grid';
+            box.style.gridTemplateColumns = 'repeat(' + cols + ', minmax(0, 1fr))';
             box.innerHTML = '';
             const ext = this._gridExt();
             const baseName = (this.image.name || 'photo').replace(/\.[^.]+$/, '');
@@ -412,55 +480,65 @@ window.App = Object.assign(window.App || {}, {
                 cell.appendChild(img); cell.appendChild(cap);
                 box.appendChild(cell);
             });
+            const label = this.gridLabel();
             const hint = document.getElementById('gridPreviewHint');
-            if (hint) hint.textContent = '共 ' + blocks.length + ' 格 · 每格约 ' + blocks[0].width + '×' + blocks[0].height + 'px · 导出文件名 ' + baseName + '_九宫格_1..' + blocks.length + '.' + ext;
+            if (hint) hint.textContent = '共 ' + blocks.length + ' 格（' + cols + ' 列 × ' + rows + ' 行）· 每格约 ' + blocks[0].width + '×' + blocks[0].height + 'px · 导出文件名 ' + baseName + '_' + label + '_1..' + blocks.length + '.' + ext;
+            const title = document.getElementById('gridPreviewTitle');
+            if (title) title.textContent = '切图预览 · ' + cols + ' 列 × ' + rows + ' 行';
+            const expBtn = document.getElementById('btnGridPreviewExport');
+            if (expBtn) expBtn.textContent = '导出这 ' + blocks.length + ' 张';
             this._gridBlocks = blocks;
+            this._gridCacheKey = rows + 'x' + cols + '@' + this.gridPad();
             document.getElementById('gridPreviewModal').style.display = 'flex';
-            this.setStatus('已生成九宫格预览,确认后导出');
+            this.setStatus('已生成切图预览,确认后导出');
         } catch (e) {
-            console.warn('九宫格预览失败:', e);
-            this.setStatus('九宫格预览失败');
+            console.warn('切图预览失败:', e);
+            this.setStatus('切图预览失败');
         } finally { this._gridBusy = false; }
         this.resetProgress(); this.updateStatusBar();
     },
 
     hideGridPreview() {
         const m = document.getElementById('gridPreviewModal'); if (m) m.style.display = 'none';
-        this._gridBlocks = null;
+        this.invalidateGridCache();
         if (this.image) this.scheduleRender(true);
         this.resetProgress(); this.updateStatusBar();
     },
 
-    // 导出:单张(预览已生成则直接导出);胶片条 Ctrl/Shift 多选则批量每张切 n² 张
+    // 导出:单张(预览已生成则直接导出);胶片条 Ctrl/Shift 多选则批量每张切 rows×cols 张
     async exportGridCrop() {
         if (!this.image) { this.setStatus('请先导入照片'); return; }
         if (this._gridBusy) return;
         this._gridBusy = true;
         const targets = (this.selectedIdx && this.selectedIdx.length > 1) ? this.selectedIdx.slice() : [this.currentIdx];
-        const n = this.gridSize();
+        const { rows, cols } = this.gridSpec();
+        const gridCount = rows * cols;
+        const pad = this.gridPad();
+        const gridLabel = this.gridLabel();
+        const cacheKey = rows + 'x' + cols + '@' + pad;
         let offWrite = null;
         try {
             if (targets.length > 1) {
                 const targetIdxs = targets.filter(i => this.images[i]);
-                const totalCount = targetIdxs.length * n * n;
+                const totalCount = targetIdxs.length * gridCount;
                 if (!totalCount) { this.setStatus('请先导入照片'); return; }
                 // 先选目录再逐张渲染/写盘:不再把所有切块的 base64 同时攒在内存里。
-                const loc = await window.qingframe.pickExportLocation({ count: totalCount, hintName: '九宫格批量' });
+                const loc = await window.qingframe.pickExportLocation({ count: totalCount, hintName: '切图批量' });
                 if (!loc || loc.canceled) { this.setStatus('已取消切图'); return; }
                 {
                     const bar0 = document.getElementById('progressBar');
                     if (bar0) bar0.style.width = '2%';
                     this.progressWrap(true);
                     const label0 = document.getElementById('exportProgressText');
-                    if (label0) { label0.style.display = ''; label0.textContent = '写盘 0/' + totalCount + ' · 九宫格'; }
+                    if (label0) { label0.style.display = ''; label0.textContent = '写盘 0/' + totalCount + ' · ' + gridLabel; }
                 }
-                let writeBase = 0, okCount = 0, failCount = 0;
+                let writeBase = 0, okCount = 0, failCount = 0, lastW = 0, lastH = 0;
                 offWrite = window.qingframe.onExportProgress((d) => {
                     const done = Math.min(totalCount, writeBase + d.done);
                     const bar = document.getElementById('progressBar');
                     if (bar) bar.style.width = Math.round((done / totalCount) * 100) + '%';
                     const label = document.getElementById('exportProgressText');
-                    if (label) { label.style.display = ''; label.textContent = '写盘 ' + done + '/' + totalCount + ' · 九宫格'; }
+                    if (label) { label.style.display = ''; label.textContent = '写盘 ' + done + '/' + totalCount + ' · ' + gridLabel; }
                     if (done >= totalCount && offWrite) { offWrite(); offWrite = null; }
                 });
                 const originalIdx = this.currentIdx;
@@ -476,7 +554,8 @@ window.App = Object.assign(window.App || {}, {
                         this.normalizeTemplate && this.normalizeTemplate();
                         this.showExportProgress(k, targetIdxs.length, im.name);
                         const src = await this._renderGridFrame();
-                        const blocks = this._sliceGrid(src, n, this.gridPad());
+                        const blocks = this._sliceGrid(src, rows, cols, pad);
+                        if (blocks[0]) { lastW = blocks[0].width; lastH = blocks[0].height; }
                         this._gridBlocks = blocks;
                         const baseName = this.safeExportBase(im.name || ('photo' + (idx + 1)));
                         const files = this._gridFiles(baseName, this.gridSubdir() ? baseName : '', im);
@@ -491,44 +570,47 @@ window.App = Object.assign(window.App || {}, {
                     this.currentIdx = originalIdx; this.image = this.images[originalIdx];
                     this.invalidateStyleCaches && this.invalidateStyleCaches();
                     this.template = baseTemplate;
-                    this._gridBlocks = null;
+                    this.invalidateGridCache();
                 }
-                this.setStatus('批量九宫格完成:' + targetIdxs.length + '张×' + n * n + '=' + totalCount + '张,成功 ' + okCount + (failCount ? ',失败 ' + failCount : '') + ' · 每块约 ' + Math.round(this.gridRenderMax() / n) + 'px');
+                const sizeText = lastW ? ' · 每块约 ' + lastW + '×' + lastH + 'px' : '';
+                this.setStatus('批量' + gridLabel + '完成:' + targetIdxs.length + '张×' + gridCount + '=' + totalCount + '张,成功 ' + okCount + (failCount ? ',失败 ' + failCount : '') + sizeText);
                 return;
             }
-            // 单张:预览已生成则用缓存,否则现渲染
-            let blocks = this._gridBlocks;
+            // 单张:预览已生成且规格/留白未变则用缓存,否则现渲染
+            let blocks = (this._gridBlocks && this._gridCacheKey === cacheKey) ? this._gridBlocks : null;
             if (!blocks) {
-                this.setStatus('正在渲染九宫格…');
+                this.setStatus('正在渲染切图…');
                 this.showExportProgress(0, 1, this.image.name);
                 const src = await this._renderGridFrame();
-                blocks = this._sliceGrid(src, n, this.gridPad());
+                blocks = this._sliceGrid(src, rows, cols, pad);
                 this._gridBlocks = blocks;
+                this._gridCacheKey = cacheKey;
             }
 
             const baseName = this.safeExportBase(this.image.name || 'photo');
             const files = this._gridFiles(baseName, this.gridSubdir() ? baseName : '', this.image);
-            const loc = await window.qingframe.pickExportLocation({ count: files.length, hintName: baseName + '_九宫格' });
+            const loc = await window.qingframe.pickExportLocation({ count: files.length, hintName: baseName + '_' + gridLabel });
             if (!loc || loc.canceled) { this.setStatus('已取消切图'); this.scheduleRender(true); return; }
             {
                 const bar0 = document.getElementById('progressBar');
                 if (bar0) bar0.style.width = '2%';
                 this.progressWrap(true);
                 const label0 = document.getElementById('exportProgressText');
-                if (label0) { label0.style.display = ''; label0.textContent = '写盘 0/' + files.length + ' · 九宫格'; }
+                if (label0) { label0.style.display = ''; label0.textContent = '写盘 0/' + files.length + ' · ' + gridLabel; }
             }
             offWrite = window.qingframe.onExportProgress((d) => {
                 const bar = document.getElementById('progressBar');
                 if (bar) bar.style.width = Math.round((d.done / d.total) * 100) + '%';
                 const label = document.getElementById('exportProgressText');
-                if (label) { label.style.display = ''; label.textContent = '写盘 ' + d.done + '/' + d.total + ' · 九宫格'; }
+                if (label) { label.style.display = ''; label.textContent = '写盘 ' + d.done + '/' + d.total + ' · ' + gridLabel; }
                 if (d.done >= d.total && offWrite) { offWrite(); offWrite = null; }
             });
             const wr = await window.qingframe.writeExportFiles({ location: loc, files }) || {};
-            this.setStatus(wr.ok ? '九宫格切图完成:成功 ' + wr.ok + ' 张' + (wr.fail ? ',失败 ' + wr.fail : '') + ' · 每块约 ' + Math.round(this.gridRenderMax() / n) + 'px' : '切图导出失败');
+            const sizeText = blocks[0] ? ' · 每块约 ' + blocks[0].width + '×' + blocks[0].height + 'px' : '';
+            this.setStatus(wr.ok ? (gridLabel === '九宫格' ? '九宫格切图完成' : '切图完成') + ':成功 ' + wr.ok + ' 张' + (wr.fail ? ',失败 ' + wr.fail : '') + sizeText : '切图导出失败');
             this.hideGridPreview();
         } catch (e) {
-            console.warn('九宫格导出失败:', e, (e && e.stack || ''));
+            console.warn('切图导出失败:', e, (e && e.stack || ''));
             this.setStatus('切图导出失败:' + (e && e.message || ''));
         } finally {
             this._gridBusy = false;
@@ -540,7 +622,7 @@ window.App = Object.assign(window.App || {}, {
         }
     },
 
-    // 切图设置记忆:规格/渲染长边/留白/分文件夹 存 localStorage
+    // 切图设置记忆:规格/列/行/渲染长边/留白/分文件夹 存 localStorage
     loadGridPrefs() {
         try {
             const raw = localStorage.getItem('qfs-grid-prefs');
@@ -549,8 +631,10 @@ window.App = Object.assign(window.App || {}, {
             const set = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined && v !== null) el.value = v; };
             const chk = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined && v !== null) el.checked = !!v; };
             set('selGridSize', p.size); set('selGridRender', p.render); set('slGridPad', p.pad); chk('cbGridSubdir', p.subdir);
+            set('inpGridCols', p.cols); set('inpGridRows', p.rows);
             const lbl = document.getElementById('lblGridPad');
             if (lbl) lbl.textContent = (document.getElementById('slGridPad') && document.getElementById('slGridPad').value) || '0';
+            this.syncGridCustomUI();
         } catch (e) { console.warn('loadGridPrefs:', e); }
     },
 
@@ -558,7 +642,10 @@ window.App = Object.assign(window.App || {}, {
         try {
             const g = (id) => { const el = document.getElementById(id); return el ? el.value : undefined; };
             const chk = (id) => { const el = document.getElementById(id); return el ? el.checked : undefined; };
-            localStorage.setItem('qfs-grid-prefs', JSON.stringify({ size: g('selGridSize'), render: g('selGridRender'), pad: g('slGridPad'), subdir: chk('cbGridSubdir') }));
+            localStorage.setItem('qfs-grid-prefs', JSON.stringify({
+                size: g('selGridSize'), render: g('selGridRender'), pad: g('slGridPad'), subdir: chk('cbGridSubdir'),
+                cols: g('inpGridCols'), rows: g('inpGridRows')
+            }));
         } catch (e) { console.warn('saveGridPrefs:', e); }
     },
 

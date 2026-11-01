@@ -275,7 +275,7 @@
                         <svg class="tab-ico" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
                         拼图
                     </button>
-                    <button class="tab tab-tool" data-tab="grid" role="tab" aria-selected="false" title="切图：把一张照片切成九宫格">
+                    <button class="tab tab-tool" data-tab="grid" role="tab" aria-selected="false" title="切图：把一张照片切成九宫格或自定义网格">
                         <svg class="tab-ico" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M6 2v12M10 2v12M2 6h12M2 10h12"/></svg>
                         切图
                     </button>
@@ -799,7 +799,7 @@
                             <div class="param-row"><label>位置 X</label><input type="number" id="inpElX" class="ctl-num" min="0" step="1" value="0" title="元素中心 X(像素),方向键微移 / 直接输入精确值" /></div>
                             <div class="param-row"><label>位置 Y</label><input type="number" id="inpElY" class="ctl-num" min="0" step="1" value="0" title="元素中心 Y(像素),方向键微移 / 直接输入精确值" /></div>
                             <div class="param-row"><label>透明度</label><input type="range" id="slActiveIconOpacity" class="ctl-rng" min="0" max="100" value="100" /><input type="number" id="inpElOpacity" class="ctl-num" min="0" max="100" step="1" value="100" /><span class="pval" id="lblActiveIconOpacity"></span></div>
-                            <div class="param-row" id="rowElSize"><label id="lblElSizeName">缩放</label><input type="range" id="slElementSize" class="ctl-rng" min="16" max="10000" value="500" /><input type="number" id="inpElSize" class="ctl-num" min="16" step="1" value="500" /><span class="pval" id="lblElementSize"></span></div>
+                            <div class="param-row" id="rowElSize"><label id="lblElSizeName">缩放</label><input type="range" id="slElementSize" class="ctl-rng" min="0" max="1000" step="1" value="500" /><input type="number" id="inpElSize" class="ctl-num" min="16" max="500" step="1" value="500" /><span class="pval" id="lblElementSize"></span></div>
                             <div class="param-row"><label>旋转</label><input type="range" id="slElementRotation" class="ctl-rng" min="0" max="360" value="0" /><input type="number" id="inpElRotation" class="ctl-num" min="0" max="360" step="1" value="0" /><span class="pval" id="lblElementRotation"></span></div>
                             <div class="btn-row btn-3">
                                 <button class="mini-btn" id="btnCopySelectedElement">复制 (Ctrl+C)</button>
@@ -945,14 +945,28 @@
                     <!-- ══ Tab8 切图 ══ -->
                     <div class="tab-panel" id="panel-grid">
                         <div class="param-group">
-                            <div class="pg-title collapsible">九宫格切图</div>
+                            <div class="pg-title collapsible">切图 · 九宫格 / 自定义</div>
                             <div class="param-row">
                                 <label>切分规格</label>
                                 <select id="selGridSize" class="ctl-sel">
                                     <option value="3">3×3 · 小红书</option>
                                     <option value="2">2×2 · 四格</option>
                                     <option value="4">4×4 · 十六格</option>
+                                    <option value="custom">自定义 · 列 × 行</option>
                                 </select>
+                            </div>
+                            <div class="param-row" id="rowGridRatio" hidden>
+                                <label>切图比例</label>
+                                <div class="grid-ratio-ctl">
+                                    <input id="inpGridCols" class="ctl-num grid-ratio-num" type="number" min="1" max="12" step="1" value="3"
+                                           inputmode="numeric" title="横向切成几列（1–12）" aria-label="切图列数" />
+                                    <span class="grid-ratio-unit">列</span>
+                                    <span class="grid-ratio-x">×</span>
+                                    <input id="inpGridRows" class="ctl-num grid-ratio-num" type="number" min="1" max="12" step="1" value="3"
+                                           inputmode="numeric" title="纵向切成几行（1–12）" aria-label="切图行数" />
+                                    <span class="grid-ratio-unit">行</span>
+                                </div>
+                                <span class="pval-note" id="gridRatioHint">3 列 × 3 行 · 共 9 块</span>
                             </div>
                             <div class="param-row">
                                 <label>渲染长边</label>
@@ -973,7 +987,7 @@
                                 <button class="mini-btn" id="btnGridPreview">切分预览</button>
                                 <button class="mini-btn primary" id="btnGridExport">导出切图</button>
                             </div>
-                            <div class="hint-box">单张：先预览 n² 格缩略图再导出；胶片条 Ctrl/Shift 多选：跳过预览，批量每张切 n² 张。留白让每块自带白边，适合直接发拼图。</div>
+                            <div class="hint-box">单张：先预览全部切块再导出；胶片条 Ctrl/Shift 多选：跳过预览，批量每张按同一规格切。切分规格支持 2×2 / 3×3 / 4×4，也可自定义列 × 行（各 1–12，横竖不必相同）。留白让每块自带白边，适合直接发拼图。</div>
                         </div>
                     </div>
 
@@ -1811,11 +1825,11 @@
         </div>
     </div>
 
-    <!-- 九宫格切分预览弹窗 -->
+    <!-- 切图预览弹窗 -->
     <div id="gridPreviewModal" class="modal-overlay" style="display:none">
         <div class="modal-card grid-preview-card">
             <div class="modal-header">
-                <span class="modal-title">九宫格切分预览</span>
+                <span class="modal-title" id="gridPreviewTitle">切图预览</span>
                 <button id="gridPreviewClose" class="modal-close" title="关闭">&times;</button>
             </div>
             <div class="modal-body">
@@ -1828,7 +1842,7 @@
                 </div>
                 <div class="modal-actions">
                     <button id="btnGridPreviewCancel" class="mini-btn">取消</button>
-                    <button id="btnGridPreviewExport" class="mini-btn primary">导出这 n² 张</button>
+                    <button id="btnGridPreviewExport" class="mini-btn primary">导出切图</button>
                 </div>
             </div>
         </div>

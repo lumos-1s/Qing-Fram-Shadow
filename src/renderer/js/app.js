@@ -3011,14 +3011,35 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         });
         // 切图设置记忆
         if (typeof this.loadGridPrefs === 'function') this.loadGridPrefs();
-        ['selGridSize', 'selGridRender'].forEach(id => {
+        const gridSizeEl = document.getElementById('selGridSize');
+        if (gridSizeEl) gridSizeEl.addEventListener('change', () => {
+            if (typeof this.invalidateGridCache === 'function') this.invalidateGridCache();
+            if (typeof this.syncGridCustomUI === 'function') this.syncGridCustomUI();
+            if (typeof this.saveGridPrefs === 'function') this.saveGridPrefs();
+        });
+        const gridRenderEl = document.getElementById('selGridRender');
+        if (gridRenderEl) gridRenderEl.addEventListener('change', () => {
+            if (typeof this.invalidateGridCache === 'function') this.invalidateGridCache();
+            if (typeof this.saveGridPrefs === 'function') this.saveGridPrefs();
+        });
+        ['inpGridCols', 'inpGridRows'].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.addEventListener('change', () => { if (typeof this.saveGridPrefs === 'function') this.saveGridPrefs(); });
+            if (!el) return;
+            el.addEventListener('input', () => {
+                if (typeof this.invalidateGridCache === 'function') this.invalidateGridCache();
+                if (typeof this.updateGridRatioHint === 'function') this.updateGridRatioHint();
+            });
+            el.addEventListener('change', () => {
+                if (typeof this.invalidateGridCache === 'function') this.invalidateGridCache();
+                if (typeof this.normalizeGridInputs === 'function') this.normalizeGridInputs();
+                if (typeof this.saveGridPrefs === 'function') this.saveGridPrefs();
+            });
         });
         const padEl = document.getElementById('slGridPad');
         if (padEl) padEl.addEventListener('input', () => {
             const lbl = document.getElementById('lblGridPad');
             if (lbl) lbl.textContent = padEl.value;
+            if (typeof this.invalidateGridCache === 'function') this.invalidateGridCache();
             if (typeof this.saveGridPrefs === 'function') this.saveGridPrefs();
         });
         const subEl = document.getElementById('cbGridSubdir');
@@ -3324,14 +3345,16 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
             this.batchElOps();
         });
         if ($('slElementSize')) $('slElementSize').addEventListener('input', () => {
-            // 平方映射:滑块 0~1000 → 尺寸 16~10000(L 为滑块长度,平方项在低端更精细)
-            const pos = parseInt($('slElementSize').value, 10);
+            // 平方映射:滑块 0~1000 → 尺寸 16~当前上限(L 为滑块长度,平方项在低端更精细)。
+            // Logo 的上限随画布/纵横比变化，非 Logo 仍是原来的 10000。
+            const pos = clampNum(parseInt($('slElementSize').value, 10) || 0, 0, 1000);
+            const maxSize = this.selectedElementSizeMax();
             const k = pos / 1000;
-            const v = Math.round(16 + (10000 - 16) * k * k);
+            const v = Math.round(16 + (Math.max(16, maxSize) - 16) * k * k);
             this.updateLabel('lblElementSize', v);
             if ($('inpElSize')) $('inpElSize').value = v;
             this.applyToSelectedEls((el, kind) => {
-                if (kind === 'logo') el.size = v;
+                if (kind === 'logo') el.size = clampNum(v, 8, this.logoMaxSize(el));
                 else if (kind === 'sticker') el.scale = clampNum(v / 60, 0.02, 3);
             });
             this.batchElOps();
@@ -3359,9 +3382,14 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         bindNum('inpElSize', () => {
             const v = parseFloat($('inpElSize').value);
             if (isNaN(v)) return;
-            const c = Math.max(16, Math.min(10000, v));
+            const maxSize = this.selectedElementSizeMax();
+            const c = Math.max(16, Math.min(Math.max(16, maxSize), v));
             const sl = $('slElementSize');
-            if (sl) { sl.value = Math.round(1000 * Math.sqrt((c - 16) / (10000 - 16))); sl.dispatchEvent(new Event('input')); }
+            if (sl) {
+                const span = Math.max(1, maxSize - 16);
+                sl.value = Math.round(1000 * Math.sqrt(clampNum((c - 16) / span, 0, 1)));
+                sl.dispatchEvent(new Event('input'));
+            }
         });
         bindNum('inpElRotation', () => {
             const v = parseFloat($('inpElRotation').value);

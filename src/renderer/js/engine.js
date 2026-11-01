@@ -1435,9 +1435,16 @@ function drawLogoElements(ctx, elements, cw, ch) {
         if (!el || !el.dataUrl) continue;
         const img = getElementBitmap(el.dataUrl);
         if (!img || !img.complete || !img.naturalWidth) continue;
-        const size = Math.max(2, el.size || 60);
         // 按原图宽高比缩放(size为宽度,高度按比例)
         const ratio = img.naturalHeight / img.naturalWidth || 1;
+        // 放大上限:宽、高都不超过画布。手势期 canvas 会临时缩到 900px,
+        // 此时用 App 按手势前画布算出的上限，避免拖动过程中把 Logo 压小；
+        // 导出/正常预览没有手势，直接用当前真实画布做最终兜底。
+        const app = (typeof window !== 'undefined') ? window.App : null;
+        let maxSize = Math.min(cw, ch / ratio);
+        if (app && app._gesture && typeof app.logoMaxSize === 'function') maxSize = app.logoMaxSize(el);
+        if (!(maxSize > 0)) maxSize = Infinity;
+        const size = Math.max(2, Math.min(el.size || 60, maxSize));
         const dw = size, dh = size * ratio;
         let cx, cy;
         if (el.rel && typeof el.rx === 'number' && typeof el.ry === 'number') {

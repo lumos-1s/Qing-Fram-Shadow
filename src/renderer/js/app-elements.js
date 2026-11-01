@@ -1,4 +1,8 @@
 // 元素模块：命中检测 / 坐标换算 / 选择框 / 元素增删与对齐 —— 从 app.js 拆分
+
+// Logo 编辑时的放大上限（绘制宽度，单位与 el.size / 缩放输入框一致）
+const LOGO_MAX_SIZE = 500;
+
 window.App = Object.assign(window.App || {}, {
     screenToCanvas(e) {
         const canvas = this.dom.canvas;
@@ -49,7 +53,9 @@ window.App = Object.assign(window.App || {}, {
         const base = this.logoBaseForOverlay();
         for (let i = els.length - 1; i >= 0; i--) {
             const el = els[i];
-            const size = el.size || 60;
+            // 命中框跟实际绘制尺寸走：旧模板/导入模板里超过上限的 size 不能
+            // 让用户点在看不见的“大框”上。
+            const size = this._logoDrawSize(el, 'logo').w;
             const pos = this.logoPos(el, base.w, base.h, size);
             if (Math.abs(pt.x - pos.cx) <= size / 2 && Math.abs(pt.y - pos.cy) <= size / 2) {
                 return { kind: 'logo', obj: el, x0: pos.cx, y0: pos.cy, z: el.z || 0 };
@@ -646,6 +652,60 @@ window.App = Object.assign(window.App || {}, {
         return { w: (cv && cv.width) || 1, h: (cv && cv.height) || 1 };
     },
 
+    // Logo 的绘制宽高比（高度 / 宽度）。优先用添加/导入时写入的 ratio；
+    // 旧模板没有这个字段时查已加载位图，避免把长条 Logo 当成正方形来算上限。
+    logoRatio(el) {
+        let ratio = (el && el.ratio) || 0;
+        if (!(ratio > 0) && el && el.dataUrl) {
+            const im = window.getElementBitmap ? window.getElementBitmap(el.dataUrl) : null;
+            if (im && im.naturalWidth) ratio = im.naturalHeight / im.naturalWidth;
+        }
+        return ratio > 0 ? ratio : 0;
+    },
+
+    // 计算 Logo 上限时使用的画布尺寸（物理像素，与 el.size 同一口径）。
+    // 手势期间 displayMax 会临时降到 900，不能拿缩小后的 canvas 当上限，
+    // 否则拖一次缩放滑块就会把大 Logo 永久压小。这里用基准画布 + 手势前的
+    // displayMax 还原出正常预览尺寸，松手后与真实 canvas 一致。
+    logoViewportSize() {
+        const cv = this.dom && this.dom.canvas;
+        if (!cv || !(cv.width > 1) || !(cv.height > 1)) return null;
+        if (!this._gesture) return { w: cv.width, h: cv.height };
+        const bw = this._canvasBaseW || 0, bh = this._canvasBaseH || 0;
+        if (!(bw > 1) || !(bh > 1)) return { w: cv.width, h: cv.height };
+        const prevMax = (this._gesturePrevMax != null) ? this._gesturePrevMax : 1800;
+        const dpr = (typeof this.uiDprOverride === 'number' && this.uiDprOverride > 0)
+            ? this.uiDprOverride
+            : ((typeof window !== 'undefined' && window.devicePixelRatio) || 1);
+        const k = Math.min(1, prevMax / Math.max(bw, bh)) * dpr;
+        return { w: bw * k, h: bh * k };
+    },
+
+    // Logo 放大上限：500px（size 是绘制宽度）。同时不超出画布，极小画布或
+    // 竖长 Logo 仍以画布宽/高为最终边界。高度 = size * ratio。
+    logoMaxSize(el) {
+        const vp = this.logoViewportSize();
+        const ratio = this.logoRatio(el) || 0.4;
+        const canvasMax = vp ? Math.min(vp.w, vp.h / ratio) : LOGO_MAX_SIZE;
+        return Math.max(8, Math.floor(Math.min(LOGO_MAX_SIZE, canvasMax)));
+    },
+
+    // 旧模板/导入模板里的 Logo 可能超过上限；渲染前统一收回。
+    // 这里只按固定 500 收，不依赖当前 canvas，避免首帧画布尚未切到新照片时误缩。
+    clampLogoElementSizes(t) {
+        const tpl = t || this.template;
+        if (!tpl || !Array.isArray(tpl.logoElements)) return;
+        for (const el of tpl.logoElements) {
+            if (el && Number(el.size) > LOGO_MAX_SIZE) el.size = LOGO_MAX_SIZE;
+        }
+    },
+
+    // 当前选中元素在缩放滑块上的实际上限。目前只有 Logo 需要按画布封顶。
+    selectedElementSizeMax() {
+        const first = this.selectedEls && this.selectedEls[0];
+        return (first && first.kind === 'logo') ? this.logoMaxSize(first.obj) : 10000;
+    },
+
     // 相对比例格式迁移:旧版 rx/ry 以「基准画布 _logW/_logH」为分母,而导出(uiDprOverride=1)
     // 时画布变回 _logW,同一数值画完会被放大 canvas.width/_logW 倍,形成
     // 「预览居中、导出跑到角上/贴边」的偏差。新版统一以「显示画布 canvas.width/height」为分母,
@@ -712,7 +772,12 @@ window.App = Object.assign(window.App || {}, {
             // 取 1 位小数再存：3.2 + 5 这类累加会变成 8.199999999999989，
             // 显示层虽然会圆，但值会写进模板/导出，不该带这种尾巴。
             if (mode === 'rot') e.rotation = Math.round((((e.rotation || 0) + dir * 5) % 360 + 360) % 360 * 10) / 10;
-            else e.size = clampNum((e.size || 60) + dir * 25, 8, 10000);
+            else {
+                // 旧模板可能存着超过上限的 size；从“实际显示尺寸”开始加减，
+                // 否则第一次按缩小键会 clamp 回上限，看起来像按了没反应。
+                const max = this.logoMaxSize(e);
+                e.size = clampNum(Math.min(e.size || 60, max) + dir * 25, 8, max);
+            }
         } else if (el.kind === 'sticker') {
             // 取 1 位小数再存：3.2 + 5 这类累加会变成 8.199999999999989，
             // 显示层虽然会圆，但值会写进模板/导出，不该带这种尾巴。
@@ -890,6 +955,7 @@ window.App = Object.assign(window.App || {}, {
         }
         let size = Math.max(2, (el && el.size) || 60);
         if (kind === 'sticker') size = Math.max(6, Math.round(((el && el.scale) || 1) * 60));
+        if (kind === 'logo') size = Math.min(size, this.logoMaxSize(el));
         let ratio = (el && el.ratio) || 0;
         if (!ratio && el && el.dataUrl) {
             const im = window.getElementBitmap ? window.getElementBitmap(el.dataUrl) : null;
@@ -1006,16 +1072,24 @@ window.App = Object.assign(window.App || {}, {
         const rotDeg = Math.round((((Number(e.rotation) || 0) % 360) + 360) % 360 * 10) / 10;
         if (rot) rot.value = rotDeg;
         if (op) op.value = Math.round(e.opacity != null ? e.opacity : 100);
-        const sizeVal = el.kind === 'logo' ? Math.round(e.size || 60) : el.kind === 'sticker' ? Math.round((e.scale || 1) * 60) : 60;
-        // 缩放滑块用平方映射覆盖 16~10000:低值端(常用的小 Logo)分度仍然细,高值端也能拖到
-        if (sz) sz.value = Math.round(1000 * Math.sqrt(clampNum((sizeVal - 16) / (10000 - 16), 0, 1)));
+        // Logo 的缩放上限随画布尺寸/纵横比变化；滑块仍用 0~1000 的平方映射，
+        // 但映射终点换成当前 Logo 的实际上限，低值端依旧精细。
+        const maxSize = el.kind === 'logo' ? this.logoMaxSize(e) : 10000;
+        const rawSize = el.kind === 'logo' ? Math.round(e.size || 60)
+            : el.kind === 'sticker' ? Math.round((e.scale || 1) * 60) : 60;
+        const sizeVal = el.kind === 'logo' ? Math.min(rawSize, maxSize) : rawSize;
+        const sizeSpan = Math.max(1, maxSize - 16);
+        if (sz) sz.value = Math.round(1000 * Math.sqrt(clampNum((sizeVal - 16) / sizeSpan, 0, 1)));
         this.updateLabel('lblElementRotation', rotDeg + '°');
         this.updateLabel('lblActiveIconOpacity', Math.round(e.opacity != null ? e.opacity : 100) + '%');
         this.updateLabel('lblElementSize', sizeVal);
         const inpR = $('inpElRotation'), inpO = $('inpElOpacity'), inpS = $('inpElSize');
         if (inpR) inpR.value = rotDeg;
         if (inpO) inpO.value = Math.round(e.opacity != null ? e.opacity : 100);
-        if (inpS) inpS.value = sizeVal;
+        if (inpS) {
+            inpS.value = sizeVal;
+            inpS.max = String(Math.round(maxSize));
+        }
         this.syncTextRows(el);
         this.syncElInputs();
     },
@@ -1033,7 +1107,7 @@ window.App = Object.assign(window.App || {}, {
 
     // 文字专属的行只在选中文字时露出，其余时候整行收起。
     // 同时把「缩放」行换成「字号」——文字用 8~400 的线性字号滑条，
-    // 比复用 logo 那条 16~10000 的平方映射好用得多（后者对 40px 的字几乎不可调）。
+    // 比复用 logo 那条 16~500 的平方映射好用得多（后者对 40px 的字几乎不可调）。
     syncTextRows(sel) {
         const $ = this.$;
         const isText = !!(sel && sel.kind === 'text' && sel.obj);
@@ -1207,7 +1281,10 @@ window.App = Object.assign(window.App || {}, {
                     ctx.restore();
                     continue;
                 }
-                let cx = e.x, cy = e.y, size = e.size || 60;
+                // Logo 用实际绘制尺寸画框（含放大上限），否则旧模板/导入模板
+                // 会出现“框很大、图被引擎封顶”的错位。
+                let cx = e.x, cy = e.y;
+                let size = sel.kind === 'logo' ? this._logoDrawSize(e, 'logo').w : (e.size || 60);
                 if (typeof cx !== 'number' || typeof cy !== 'number') {
                     const p = this.logoPos(e, canvas.width, canvas.height, size);
                     cx = p.cx; cy = p.cy;
@@ -1310,7 +1387,7 @@ window.App = Object.assign(window.App || {}, {
             // 命中反馈:拖动时在元素中心画瞄准环（旋转/缩放不画，避免盖住文字）
             if (this._dragEl && (this._logoSnapV != null || this._logoSnapH != null || ev || eh || this._logoSnapPhotoV || this._logoSnapPhotoH)) {
                 const el = xf.ref;
-                const size = el.size || 60;
+                const size = this._logoDrawSize(el, 'logo').w;
                 // 与 hitTestLogos 同理:瞄准环要画在 logo 实际绘制处(rel 用 _logW 口径),
                 // 画布口径会偏 2 倍(dpr=2 时),环与 logo 对不上。
                 const gb = this.logoBaseForOverlay();
@@ -1421,13 +1498,15 @@ window.App = Object.assign(window.App || {}, {
         }
         if (!this.template.logoElements) this.template.logoElements = [];
         const cw = this.dom.canvas.width, ch = this.dom.canvas.height;
+        const ratio = bmp.naturalHeight / bmp.naturalWidth || 1;
         // 默认按画布宽度取比例(原为写死的 500px):固定值在 800px 画布上占 62%,在 3600px 上只占 14%,
         // 用户每次都得手动调。改为约 12% 画布宽并夹在 80~2000,大小观感在不同分辨率下保持一致。
-        const size = clampNum(Math.round(cw * 0.12), 80, 2000);
+        // 最后再和放大上限取小,极小画布上也不会一添加就超出画布。
+        const size = Math.min(clampNum(Math.round(cw * 0.12), 80, 2000), this.logoMaxSize({ ratio }));
         const el = {
             name: logo.name, dataUrl: logo.dataUrl, img: null,
             x: px != null ? px : Math.round(cw / 2), y: py != null ? py : Math.round(ch / 2), size, opacity: 100, rotation: 0, z: 10, free: 1,
-            ratio: bmp.naturalHeight / bmp.naturalWidth || 1,
+            ratio,
         };
         // 补记相对比例:新加的 Logo 默认在画布中央,换照片尺寸时应仍在中央,而不是按像素算偏
         this.setLogoPixelPos(el, el.x, el.y);
@@ -1686,7 +1765,9 @@ window.App = Object.assign(window.App || {}, {
         let placed = null;
         if (this._elClip.kind === 'logo') {
             if (!t.logoElements) t.logoElements = [];
-            const n = make(); t.logoElements.push(n); placed = { kind: 'logo', obj: n };
+            const n = make();
+            n.size = clampNum(n.size || 60, 8, this.logoMaxSize(n));
+            t.logoElements.push(n); placed = { kind: 'logo', obj: n };
         } else if (this._elClip.kind === 'sticker') {
             const decor = t.decorConfig || (t.decorConfig = {});
             if (!decor.stickers) decor.stickers = [];
@@ -1831,7 +1912,7 @@ window.App = Object.assign(window.App || {}, {
     },
 
     _applyElSize(kind, o, size) {
-        if (kind === 'logo') o.size = clampNum(size, 8, 10000);
+        if (kind === 'logo') o.size = clampNum(size, 8, this.logoMaxSize(o));
         else if (kind === 'sticker') o.scale = clampNum(size / 100, 0.02, 3);
         else if (kind === 'text') o.fontSize = clampNum(size, 6, 300);
     },

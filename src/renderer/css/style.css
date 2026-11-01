@@ -1692,17 +1692,21 @@ button:disabled, input:disabled, select:disabled, textarea:disabled {
    混色器组的 #mixRows 都不在名单里 —— 标题能点、箭头会转，内容纹丝不动。 */
 .param-group.collapsed > :not(.pg-title) { display: none; }
 
-/* ── 九宫格切分预览 ── */
+/* ── 切图预览 ── */
 .grid-preview-card { width: 560px; max-width: 92vw; max-height: 86vh; overflow: auto; }
 .grid-preview-hint { color: var(--text-3); font-size: var(--fs-12); margin-bottom: var(--sp-2-5); }
-.grid-preview-grid { display: grid; gap: var(--sp-2); }
-.grid-preview-grid.n2 { grid-template-columns: repeat(2, 1fr); }
-.grid-preview-grid.n3 { grid-template-columns: repeat(3, 1fr); }
-.grid-preview-grid.n4 { grid-template-columns: repeat(4, 1fr); }
+.grid-preview-grid { display: grid; gap: var(--sp-2); grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .grid-preview-cell { background: var(--bg); border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; }
 .grid-preview-cell img { width: 100%; display: block; }
 .grid-preview-cap { padding: 5px var(--sp-1-5); font-size: var(--fs-11); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .modal-actions { display: flex; justify-content: flex-end; gap: var(--sp-2-5); margin-top: 14px; }
+
+/* ── 自定义切图比例（列 × 行） ──
+   两个数字框固定 44px，避免列数变大时把“列/行”说明挤出面板。 */
+.grid-ratio-ctl { flex: 1; min-width: 0; display: flex; align-items: center; gap: calc(4px * var(--font-scale)); }
+.grid-ratio-num { flex: 0 0 44px; width: 44px; text-align: center; appearance: textfield; -moz-appearance: textfield; }
+.grid-ratio-num::-webkit-outer-spin-button, .grid-ratio-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.grid-ratio-unit, .grid-ratio-x { flex: 0 0 auto; color: var(--text-3); font-size: var(--fs-11); }
 
 /* ═══ 更新内容弹窗（设置 → 关于 → 更新内容） ═══
    内容来自内置 changelog，条目多，所以卡片加宽、正文自己滚动、头部和按钮固定。 */

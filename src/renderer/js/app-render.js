@@ -153,7 +153,9 @@ window.App = Object.assign(window.App || {}, {
             // 复用引擎的同一份位图缓存,避免拖动中重复解码
             const img = window.getElementBitmap ? window.getElementBitmap(src) : null;
             if (!img || !img.complete || !img.naturalWidth) return;
-            const size = kind === 'logo' ? Math.max(2, el.size || 60) : 0;
+            const size = kind === 'logo'
+                ? Math.min(Math.max(2, el.size || 60), this.logoMaxSize(el))
+                : 0;
             let dw, dh, cx, cy;
             if (kind === 'logo') {
                 const ratio = img.naturalHeight / img.naturalWidth || 1;
@@ -326,6 +328,7 @@ window.App = Object.assign(window.App || {}, {
             if (sg.shadowColorHex) sg.shadowColorHex = stripHash(sg.shadowColorHex);
             if (sg.glowColorHex) sg.glowColorHex = stripHash(sg.glowColorHex);
         });
+        if (typeof this.clampLogoElementSizes === 'function') this.clampLogoElementSizes(t);
     },
 
     requestRender() { this.scheduleRender(true); },
