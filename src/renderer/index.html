@@ -63,12 +63,19 @@
 
         <!-- ═══ 顶部工具栏 ═══ -->
         <header id="toolbar">
+            <!-- 返回边框墙：进入编辑后作为「回首页换风格」的入口显示；启动时由预设墙逻辑打开 -->
+            <div class="toolbar-group" id="grpBack" style="display:none">
+                <button id="btnBackWall" class="tbtn" title="返回边框墙、换个风格"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 3.5 5 8l5.5 4.5"/></svg>边框墙</button>
+            </div>
+
+            <!-- 导入 -->
             <div class="toolbar-group">
-                <button id="btnBackWall" class="tbtn" title="返回边框墙" style="display:none"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 3.5 5 8l5.5 4.5"/></svg>边框墙</button>
-                <div class="sep" id="backWallSep" style="display:none"></div>
                 <button id="btnOpen" class="tbtn" title="打开图片 (Ctrl+O)">导入照片</button>
                 <button id="btnOpenFolder" class="tbtn" title="导入整个文件夹（含子文件夹） (Ctrl+Shift+O)">导入文件夹</button>
-                <div class="sep"></div>
+            </div>
+
+            <!-- 操作 -->
+            <div class="toolbar-group">
                 <div class="export-split" id="exportSettingsWrap">
                     <button id="btnSave" class="tbtn primary export-main" title="导出当前图片">
                         <svg class="btn-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5 V10"/><path d="M4.6 6.6 8 10l3.4-3.4"/><path d="M2.6 12.4 H13.4"/></svg>
@@ -134,6 +141,7 @@
                 <button id="btnSyncSel" class="tbtn" title="将当前边框效果应用到选中的照片">同步到选中</button>
             </div>
 
+            <!-- 编辑：撤销 / 重做 / 重置 / 随机 -->
             <div class="toolbar-group">
                 <button id="btnUndo" class="tbtn icon" title="撤销 (Ctrl+Z)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5H2.5V3.5"/><path d="M12.5 12.5a5 5 0 0 0-9.4-2.2L2.5 5.5"/><path d="M2.5 8.8V13H7"/></svg>撤销</button>
                 <button id="btnRedo" class="tbtn icon" title="重做 (Ctrl+Y)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.5h1.5v-2"/><path d="M3.5 12.5a5 5 0 0 1 9.4-2.2l.6-4.8"/><path d="M13.5 8.8V13H9"/></svg>重做</button>

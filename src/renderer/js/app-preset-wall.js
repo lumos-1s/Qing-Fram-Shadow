@@ -57,7 +57,7 @@ window.App = Object.assign(window.App || {}, {
             mode: $('pwMode'),
             rail: $('pwRail'),
             back: $('btnBackWall'),
-            backSep: $('backWallSep')
+            backGroup: $('grpBack')
         };
         if (!el.overlay) return;
 
@@ -1350,7 +1350,7 @@ window.App = Object.assign(window.App || {}, {
         document.body.classList.add('wall-open');
         document.body.classList.remove('editing');
         if (el.back) el.back.style.display = '';
-        if (el.backSep) el.backSep.style.display = '';
+        if (el.backGroup) el.backGroup.style.display = '';
         // 回到墙时从头浏览：偏移归零 + 重新布局焦点
         this.stopWallMotion();
         this._wallPan = { x: 0, y: 0 };
@@ -1395,7 +1395,7 @@ window.App = Object.assign(window.App || {}, {
         const selTiles = el.grid ? el.grid.querySelectorAll('.pw-tile.selected') : [];
         for (const t of selTiles) t.classList.remove('selected');
         if (el.back) el.back.style.display = '';
-        if (el.backSep) el.backSep.style.display = '';
+        if (el.backGroup) el.backGroup.style.display = '';
         const btnOpen = document.getElementById('btnOpen');
         const focusTarget = (btnOpen && btnOpen.offsetParent) ? btnOpen : this.dom && this.dom.canvas;
         if (focusTarget && typeof focusTarget.focus === 'function') {
