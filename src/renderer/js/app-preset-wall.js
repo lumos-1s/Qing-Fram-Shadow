@@ -1175,7 +1175,7 @@ window.App = Object.assign(window.App || {}, {
             coverBtn.className = 'pw-tile-coverbtn';
             coverBtn.tabIndex = -1;
             coverBtn.textContent = '换封面';
-            coverBtn.title = '给「' + item.name + '」换一张封面图（不用手动改名）';
+            coverBtn.title = '给「' + item.name + '」换一张封面图（不用手动改名），或者直接将图片拖到想要换的封面上即可';
             inner.appendChild(coverBtn);
             tile.appendChild(inner);
             tile.__inner = inner;

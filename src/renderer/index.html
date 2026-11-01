@@ -997,9 +997,9 @@
                                  ① 新建蒙版默认零参数，不动滑块画面不会有任何变化（整组会被跳过）；
                                  ② 蒙版只接管 11 档基础调色，其余档位仍作用于全图。 -->
                             <div class="pool-note" id="maskRuleNote">
-                                <b>加了蒙版没反应？</b>蒙版默认零参数，拖下面任意一个调色滑块才会生效。<br />
-                                蒙版只接管 <b>曝光 / 对比度 / 饱和度 / 自然饱和度 / 色温 / 色调 / 高光 / 阴影 / 白场 / 黑场 / 中间调</b>；
-                                <b>曲线、黑白、清晰度、镜头校正、色彩平衡</b>这些仍作用于整张照片。
+<!--                                <b>加了蒙版没反应？</b>蒙版默认零参数，拖下面任意一个调色滑块才会生效。<br />-->
+<!--                                蒙版只接管 <b>曝光 / 对比度 / 饱和度 / 自然饱和度 / 色温 / 色调 / 高光 / 阴影 / 白场 / 黑场 / 中间调</b>；-->
+<!--                                <b>曲线、黑白、清晰度、镜头校正、色彩平衡</b>这些仍作用于整张照片。-->
                             </div>
                             <div id="maskOpts" style="display:none">
                                 <div class="param-row">
@@ -1064,7 +1064,7 @@
                             <div class="param-row grade-acts">
                                 <button id="btnGradeReset" class="mini-btn" type="button" title="全部归零，回到照片本色">重置</button>
                                 <button id="btnGradeApplyAll" class="mini-btn" type="button" title="把这套参数复制给本次导入的所有照片">应用到全部</button>
-                                <button id="btnGradeImportXmp" class="mini-btn" type="button" title="导入 Lightroom / Camera Raw 的 .xmp 调色预设（曝光/白平衡/高光阴影/参数曲线/HSL/颜色分级/校准等）">导入 LR 预设</button>
+                                <button id="btnGradeImportXmp" class="mini-btn" type="button" title="导入 Lightroom / Camera Raw 的 .xmp 调色预设">导入 LR 预设</button>
                             </div>
                             <div class="param-row" id="rowGradeExp">
                                 <label>曝光</label>
@@ -1512,7 +1512,22 @@
                                 <button class="mini-btn primary" id="btnPickExportDir" type="button">选择文件夹</button>
                                 <button class="mini-btn" id="btnClearExportDir" type="button">改回每次询问</button>
                             </div>
-                            <div class="settings-hint">设置后导出的照片会直接写进这个文件夹，不再弹出保存框；重名文件自动加 <code>_1</code>、<code>_2</code>，不会覆盖已有照片。</div>
+<!--                            <div class="settings-hint">设置后导出的照片会直接写进这个文件夹，不再弹出保存框；重名文件自动加 <code>_1</code>、<code>_2</code>，不会覆盖已有照片。</div>-->
+                        </div>
+                    </div>
+                </section>
+
+                <section class="settings-sec">
+                    <div class="settings-sec-title">外观</div>
+                    <div class="settings-row">
+                        <div class="settings-label">界面缩放</div>
+                        <div class="settings-control">
+                            <div class="settings-scale">
+                                <input id="slFontScale" class="ctl-rng" type="range" min="0.8" max="1.4" step="0.05" value="1" aria-label="界面缩放" />
+                                <span class="settings-scale-val" id="lblFontScale">100%</span>
+                                <button class="mini-btn" id="btnFontScaleReset" type="button" title="恢复默认 100%">恢复默认</button>
+                            </div>
+                            <div class="settings-hint">放大界面字号与内边距（80%–140%），字号和按钮会一起变宽。仅影响显示，不改变导出尺寸。</div>
                         </div>
                     </div>
                 </section>
@@ -1530,7 +1545,7 @@
                     <div class="about-status about-mirror-hint">
                         常见公共镜像（第三方，速度与可用性随网络变化，可随时清空回直连）：
                         <code>https://ghproxy.net/{url}</code> · <code>https://gh-proxy.com/{url}</code> · <code>https://ghfast.top/{url}</code><br />
-                        也可以填自建反代的前缀；留空则直连 GitHub。下载完一律按 GitHub 清单里的 sha512 校验，对不上会丢弃重下。
+<!--                        也可以填自建反代的前缀；留空则直连 GitHub。下载完一律按 GitHub 清单里的 sha512 校验，对不上会丢弃重下。-->
                     </div>
                 </section>
             </div>

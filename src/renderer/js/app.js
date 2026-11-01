@@ -265,7 +265,25 @@ window.App = {
             if (p && typeof p.keepExif === 'boolean' && this.dom.chkKeepExif) this.dom.chkKeepExif.checked = p.keepExif;
             if (p && typeof p.keepGps === 'boolean' && this.dom.chkKeepGps) this.dom.chkKeepGps.checked = p.keepGps;
             if (this.dom.chkKeepGps) this.dom.chkKeepGps.disabled = !(this.dom.chkKeepExif && this.dom.chkKeepExif.checked);
+            if (p && typeof p.fontScale === 'number' && p.fontScale > 0) this.applyFontScale(p.fontScale);
         } catch (_) {}
+    },
+
+    // 界面缩放:把系数写到 documentElement 的 --font-scale,字号阶梯(--fs-*)与间距刻度(--sp-*)
+    // 都乘它(见 style.css),于是字号、内边距、行高一起缩放。同步更新设置里的滑块与百分比。
+    applyFontScale(scale) {
+        const s = (typeof scale === 'number' && isFinite(scale) && scale > 0) ? scale : 1;
+        document.documentElement.style.setProperty('--font-scale', String(s));
+        const d = this.dom || {};
+        if (d.slFontScale) d.slFontScale.value = String(s);
+        if (d.lblFontScale) d.lblFontScale.textContent = Math.round(s * 100) + '%';
+    },
+
+    _saveFontScale() {
+        const d = this.dom || {};
+        const s = d.slFontScale ? parseFloat(d.slFontScale.value) : 1;
+        if (!window.qingframe || !window.qingframe.savePrefs) return;
+        window.qingframe.savePrefs({ fontScale: s }).catch(() => {});
     },
 
     // 导出偏好三项一起存。主进程现在会合并 prefs,但全量提交仍能兼容旧版主进程
@@ -402,6 +420,7 @@ window.App = {
             loginAvatar: $('loginAvatar'),
             loginDisplayName: $('loginDisplayName'),
             loginUsernameDisplay: $('loginUsernameDisplay'),
+            slFontScale: $('slFontScale'), lblFontScale: $('lblFontScale'), btnFontScaleReset: $('btnFontScaleReset'),
         };
     },
 
@@ -2976,6 +2995,11 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         bindBtn('btnSettings', () => this.openSettings());
         bindBtn('settingsClose', () => this.closeSettings());
         bindBtn('btnAboutOpenSettings', () => { this.closeAbout(); this.openSettings(); });
+        if (d.slFontScale) {
+            d.slFontScale.addEventListener('input', () => this.applyFontScale(parseFloat(d.slFontScale.value)));
+            d.slFontScale.addEventListener('change', () => this._saveFontScale());
+        }
+        if (d.btnFontScaleReset) d.btnFontScaleReset.addEventListener('click', () => { this.applyFontScale(1); this._saveFontScale(); });
         bindBtn('btnPickExportDir', () => this.chooseDefaultExportDir());
         bindBtn('btnClearExportDir', () => this.clearDefaultExportDir());
         bindBtn('aboutClose', () => this.closeAbout());
