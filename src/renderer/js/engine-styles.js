@@ -4754,6 +4754,13 @@ const w = natW;
             logoSize: clampP(t.logoSize != null ? t.logoSize : 14, 0, 200),
             brandScale: clampP(t.brandSize != null ? t.brandSize : 1, 0.5, 3),
             paramScale: clampP(t.paramScale != null ? t.paramScale : 1, 0.5, 3),
+            // 「玻璃条大小」只有 LIQUID_GLASS 读:1 = APK 原尺寸(45dp 高)。
+            // 滑块只能给出 50%~200%,所以超出这个语义的值(0 / 负数 / 非数字)一律回落 1,
+            // 而不是夹到最小档 —— 0 等于"把玻璃条画没",那是用户看不出来也找不回来的状态。
+            glassSize: (() => {
+                const v = Number(t.liquidGlassSize);
+                return clampP(Number.isFinite(v) && v > 0 ? v : 1, 0.5, 2);
+            })(),
         };
     }
 
@@ -7445,6 +7452,9 @@ const w = natW;
     //   背景裁切 → 饱和度 1.5 → 高斯模糊(8dp × haze)→ 圆角 SDF 折射(24dp × strength)
     //   → 暗色 tint → 45° 高光描边,最后叠白字(品牌/机型 + 参数/日期)。
     // 几何与 APK 一致:左右 8dp、底 6dp、高 45dp,dp = 画布宽 / 375;圆角 = 条高/2。
+    // k = 面板「玻璃条大小」倍率(默认 1 = 原尺寸)。它只乘 dp 基准 scale,
+    // 于是胶囊高/内边距/字号/Logo槽/分隔线/投影/折射带一起等比变化 ——
+    // 放大后仍是同一张设计稿,而不是"框变大、字变小"。
     function lgRoundRect(g, x, y, w, h, r) {
         const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
         g.beginPath();
@@ -7457,8 +7467,9 @@ const w = natW;
         g.closePath();
     }
 
-    function liquidGlassGeom(iw, ih) {
-        const scale = Math.max(iw / 375, 0.01);
+    function liquidGlassGeom(iw, ih, k) {
+        const kk = Math.max(0.2, Math.min(3, Number(k) || 1));
+        const scale = Math.max(iw / 375, 0.01) * kk;
         const side = 8 * scale, bottomPad = 6 * scale;
         const left = side, right = Math.max(side, iw - side);
         const bottom = Math.max(0, ih - bottomPad);
@@ -7609,7 +7620,7 @@ const w = natW;
     const LG_FONT = '"Segoe UI", "Helvetica Neue", Arial, "Microsoft YaHei", sans-serif';
 
     function styleLiquidGlass(img, size, g, iw, ih, S) {
-        const geo = liquidGlassGeom(iw, ih);
+        const geo = liquidGlassGeom(iw, ih, S && S.glassSize);
         const scale = geo.scale, capW = geo.w, capH = geo.h;
         const radius = geo.radius;
 

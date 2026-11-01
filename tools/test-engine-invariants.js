@@ -316,7 +316,7 @@ console.log('─'.repeat(72));
 
 /* ⑧ 面板能力表(style-caps)的记忆化必须完全透明
    visibleRows 是纯函数(输入只有风格名),现在按大写名缓存结果。这条测试钉住两件事:
-     · 形状不变:任何风格都返回同一组 19 个行键(少一个就意味着某行会永远显/隐)
+     · 形状不变:任何风格都返回同一组 20 个行键(少一个就意味着某行会永远显/隐)
      · 缓存透明:同一风格(含大小写变体)返回同一份结果,内容与逐次重算一致
    之所以放这里:Electron 那套 panel-visibility 用例要跑 GUI,而能力表本身是纯数据。 */
 {
@@ -326,9 +326,9 @@ console.log('─'.repeat(72));
     // 行键全集 = computeVisibleRows 写死的键 + 五个数值滑块行(DIMS)。
     // rowAvatarShow 来自 53bd5e2「显示头像」开关(index.html#rowAvatarShow),勿漏。
     const ROW_KEYS = ['rowSignModel', 'rowCreditMode', 'rowSignText', 'rowSignFont', 'rowSignColor', 'rowAvatarScale', 'rowSignSize',
-        'rowAvatarShow', 'rowParamColor', 'rowParamType', 'rowParamPos', 'rowBgBlur', 'rowBrandSize', 'rowParamScale', 'rowBrandLogo']
+        'rowAvatarShow', 'rowParamColor', 'rowParamType', 'rowParamPos', 'rowBgBlur', 'rowBrandSize', 'rowParamScale', 'rowBrandLogo', 'rowGlassSize']
         .concat(caps.DIMS.map(d => d.row)).sort();
-    ok(ROW_KEYS.length === 20, '⑧ 面板行键共 20 个', String(ROW_KEYS.length));
+    ok(ROW_KEYS.length === 21, '⑧ 面板行键共 21 个', String(ROW_KEYS.length));
 
     const styles = Object.keys(caps.MEASURED || {}).concat(['', 'NONE', 'UNKNOWN_STYLE', 'signature', 'SIMPL E']);
     const bad = [];
@@ -341,7 +341,7 @@ console.log('─'.repeat(72));
     }
     // 全量列出失败项(截断到前 8 个):此前只保留最后一条,76 个风格全挂却只报出一个,极易误判成单点问题
     const shapeBad = !bad.length ? '' : (bad.length > 8 ? bad.slice(0, 8).join(' , ') + ` …等 ${bad.length} 处` : bad.join(' , '));
-    ok(missing === 0, `⑧ ${styles.length} 个风格(含未知/空/大小写变体)都返回同一组 20 个布尔键`, shapeBad);
+    ok(missing === 0, `⑧ ${styles.length} 个风格(含未知/空/大小写变体)都返回同一组 21 个布尔键`, shapeBad);
 
     ok(caps.visibleRows('SIGNATURE') === caps.visibleRows('signature'), '⑧ 大小写变体命中同一条缓存(返回同一对象)');
     ok(caps.visibleRows('SIGNATURE') === caps.visibleRows('SIGNATURE'), '⑧ 同一输入重复调用返回同一对象(缓存在起作用)');

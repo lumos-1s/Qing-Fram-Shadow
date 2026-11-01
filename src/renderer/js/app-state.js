@@ -36,6 +36,7 @@ window.App = Object.assign(window.App || {}, {
                 brandSize: this.template.brandSize || 1,
                 brandLogo: this.template.brandLogo || 0,
                 paramScale: this.template.paramScale || 1,
+                liquidGlassSize: this.template.liquidGlassSize || 1,
             };
             localStorage.setItem('qfs_last_state', JSON.stringify(s));
         } catch (_) {}

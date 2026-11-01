@@ -88,6 +88,7 @@ window.App = {
                 if (s.brandSize) this.template.brandSize = s.brandSize;
                 if (s.brandLogo != null) this.template.brandLogo = s.brandLogo;
                 if (s.paramScale) this.template.paramScale = s.paramScale;
+                if (s.liquidGlassSize) this.template.liquidGlassSize = s.liquidGlassSize;
                 // 用户显式记忆过「背景模糊默认开/关」时，它优先于旧草稿里的单次值。
                 if (typeof this.applyBgBlurDefault === 'function') this.applyBgBlurDefault(this.template);
                 this.refreshUI();
@@ -1781,6 +1782,11 @@ window.App = {
                 $('slParamScale').value = psc;
                 this.updateLabel('lblParamScale', psc + '%');
             }
+            if ($('slGlassSize')) {
+                const gsz = Math.round((this.template.liquidGlassSize != null ? this.template.liquidGlassSize : 1) * 100);
+                $('slGlassSize').value = gsz;
+                this.updateLabel('lblGlassSize', gsz + '%');
+            }
             if ($('inpSignature')) $('inpSignature').value = this.template.userSignature || '';
             if ($('cbSignFont')) $('cbSignFont').value = this.template.signFont || 'cursive';
             if ($('cbSignColor')) $('cbSignColor').value = this.template.signColor || '#555';
@@ -2872,14 +2878,14 @@ window.App = {
         // 通用:range 拖拽时即时同步,change/pointerup 提交;select/checkbox 变更即提交
         this.bindRanges([
             'slGlobalMargin', 'slImgScale', 'slCornerTL', 'slCornerTR', 'slCornerBL', 'slCornerBR', 'slCornerRadius',
-            'slParamFontSize', 'slBrandSize', 'slParamScale', 'slFillOpacity', 'slGradientAngle', 'slTextureScale', 'slStrokeWidth', 'slStrokeOpacity',
+            'slParamFontSize', 'slBrandSize', 'slParamScale', 'slGlassSize', 'slFillOpacity', 'slGradientAngle', 'slTextureScale', 'slStrokeWidth', 'slStrokeOpacity',
             'slShadowX', 'slShadowY', 'slShadowBlur', 'slShadowOpacity', 'slGlowBlur', 'slGlowOpacity',
             'slVignetteStrength', 'slVignetteFeather', 'slLeakOpacity', 'slLeakAngle', 'slFilmGrain',
             'slCornerDecorSize', 'slActiveIconOpacity', 'slElementRotation', 'slPuzzleGap', 'slPuzzleCorner',
             'slCapSize1', 'slCapSize2', 'slCapSpacing', 'slSlotOffsetX', 'slSlotOffsetY', 'slSlotZoom',
             'slLayerCornerTL', 'slLayerCornerTR', 'slLayerCornerBL', 'slLayerCornerBR', 'slLayerCornerRadius',
         ]);
-        const onEdit = ['slGlobalMargin', 'slImgScale', 'slCornerTL', 'slCornerTR', 'slCornerBL', 'slCornerBR', 'slCornerRadius', 'slParamFontSize', 'slBrandSize', 'slParamScale',
+        const onEdit = ['slGlobalMargin', 'slImgScale', 'slCornerTL', 'slCornerTR', 'slCornerBL', 'slCornerBR', 'slCornerRadius', 'slParamFontSize', 'slBrandSize', 'slParamScale', 'slGlassSize',
             'slLayerCornerTL', 'slLayerCornerTR', 'slLayerCornerBL', 'slLayerCornerBR', 'slLayerCornerRadius'];
         (onEdit).forEach(id => {
             const el = $(id);
@@ -3686,6 +3692,12 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
                 this.onSettingChanged();
                 break;
             }
+            case 'slGlassSize': {
+                this.template.liquidGlassSize = v / 100;
+                this.updateLabel('lblGlassSize', v + '%');
+                this.onSettingChanged();
+                break;
+            }
             case 'slLayerCornerTL': case 'slLayerCornerTR': case 'slLayerCornerBL': case 'slLayerCornerBR': {
                 const layer = this.currentLayer ? this.currentLayer() : null;
                 if (!layer) break;
@@ -3759,6 +3771,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
 
             slVignetteStrength: ['lblVignetteStrength', v + '%'], slVignetteFeather: ['lblVignetteFeather', v],
             slBrandSize: ['lblBrandSize', v + '%'], slParamScale: ['lblParamScale', v + '%'],
+            slGlassSize: ['lblGlassSize', v + '%'],
             slLeakOpacity: ['lblLeakOpacity', v + '%'], slLeakAngle: ['lblLeakAngle', v + '°'],
             slFilmGrain: ['lblFilmGrain', v + '%'],
             slCornerDecorSize: ['lblCornerDecorSize', v],
@@ -3771,7 +3784,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
     },
 
     onSliderLive(id) {
-        if (['slGlobalMargin', 'slImgScale', 'slCornerTL', 'slCornerTR', 'slCornerBL', 'slCornerBR', 'slCornerRadius', 'slParamFontSize', 'slBrandSize', 'slParamScale',
+        if (['slGlobalMargin', 'slImgScale', 'slCornerTL', 'slCornerTR', 'slCornerBL', 'slCornerBR', 'slCornerRadius', 'slParamFontSize', 'slBrandSize', 'slParamScale', 'slGlassSize',
             'slLayerCornerTL', 'slLayerCornerTR', 'slLayerCornerBL', 'slLayerCornerBR', 'slLayerCornerRadius'].includes(id)) return; // 由 onSliderCustom 处理
         if (id === 'slPuzzleGap' || id === 'slPuzzleCorner' || id === 'slCapSize1' || id === 'slCapSize2' || id === 'slCapSpacing' || id === 'slSlotOffsetX' || id === 'slSlotOffsetY' || id === 'slSlotZoom') {
             this.syncPuzzleFromUI(); this.onSettingChanged(); return;
