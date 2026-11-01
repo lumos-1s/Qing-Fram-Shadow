@@ -51,11 +51,11 @@
 
 ## 它是什么 · What it is
 
-**清框影 QingFramShadow** 是一款 Windows 桌面照片加框工具。它把「边框」当成一张可编辑的画布：先选一个模板定下气质，再调整边距、圆角、纹理、光影、Logo、相机参数与签名，最后按原图尺寸或指定尺寸导出。
+**清框影 QingFramShadow** 是一款 Windows 桌面照片加框工具。它把「边框」当成一张可编辑的画布：先选一款边框定下气质，再调整边距、圆角、纹理、光影、Logo、相机参数与签名，最后按原图尺寸或指定尺寸导出。
 
-- **想让照片快速成片的人**：87 个模板直接套用，右侧参数实时预览。
+- **想让照片快速成片的人**：87 款边框直接套用，右侧参数实时预览。
 - **在意画质与隐私的人**：Canvas 2D 本地渲染，照片不上传，不登录。
-- **需要成批出图的人**：模板记忆、批量导入、同步到选中，一次导出。
+- **需要成批出图的人**：样式记忆、批量导入、同步到选中，一次导出。
 
 > **English** — A Windows desktop app for framing photos locally: 87 presets, 92 frame styles, live frame/light/logo/EXIF controls, reusable templates, collage, grid slicing and batch export. No account, no uploads.
 
@@ -65,7 +65,7 @@
 ### v0.1.22
 
 - **新增裁切照片** — 自由裁切或按常用比例裁切，支持旋转、翻转，随时可以还原原图。
-- **预设墙分为「有限」和「无限」两种模式** — 有限模式有首有尾、拖到头即止；无限模式循环浏览，按自己的习惯切换。
+- **边框墙分为「有限」和「无限」两种模式** — 有限模式有首有尾、拖到头即止；无限模式循环浏览，按自己的习惯切换。
 - **新增基础调色** — 曝光、白平衡、对比度、高光、阴影、白场、黑场、饱和度逐档可调，拖动即时预览。
 - **新增添加文字** — 画布上想加什么字就加什么字，字体、字号、颜色、效果可调，直接拖拽定位与缩放。
 - **Logo 支持自己导入** — 「Logo」页签新增「导入 Logo 素材包」，一键导入 Eagle 素材包（.eaglepack）里的整包品牌 Logo，素材名即品牌名，导入后按照片 EXIF 自动匹配。
@@ -96,22 +96,22 @@
 <a id="features"></a>
 ## 核心功能 · Features
 
-- **87 个内置模板 · 92 种边框风格** — 杂志、拍立得、撕纸、胶带、邮票、报纸、胶片、渐变卡、漫画分镜、3D 卡、签名纪念与头像叠加，以及自动取色边框等快速预设；选中即套用，再继续微调。
-- **预设墙启动页** — 启动即进入 87 张预设封面墙，方向键、滚轮或拖动浏览，点击直接套用并进入编辑；支持用自定义照片替换封面。
+- **87 款内置边框 · 92 种风格** — 杂志、拍立得、撕纸、胶带、邮票、报纸、胶片、渐变卡、漫画分镜、3D 卡、签名纪念与头像叠加，以及自动取色边框等快速预设；选中即套用，再继续微调。
+- **边框墙启动页** — 启动即进入 87 张边框封面墙，方向键、滚轮或拖动浏览，点击直接套用并进入编辑；支持用自定义照片替换封面。
 - **参数实时可调** — 圆角、边距、照片缩放/偏移、内/外阴影、描边、投影、画布比例、纹理/渐变填充，改动即时反馈。
-- **背景模糊默认偏好** — 在「跟随预设 / 默认开 / 默认关」之间切换，切预设或重启后仍记住选择。
-- **分区编辑台** — 左侧预设显示与预设墙一致的封面缩略图，墙上换封面会同步到工作台；右侧按「画布 / 文字 / 边框 / 调色 / Logo / 模板」分区，拼图与切图归入工具行（原「光影」的暗角/漏光/颗粒已并入调色页签的「氛围」分区）；滑块旁可输入精确数值，双击参数名、数字框或滑轨本身即可复位该行，按住 Shift 拖动可微调；左右侧栏可收起、拖宽并记住上次宽度；多选照片后自动浮出批量操作条。
+- **背景模糊默认偏好** — 在「跟随边框 / 默认开 / 默认关」之间切换，换边框或重启后仍记住选择。
+- **分区编辑台** — 左侧边框显示与边框墙一致的封面缩略图，墙上换封面会同步到工作台；右侧按「画布 / 文字 / 边框 / 调色 / Logo / 样式」分区，拼图与切图归入工具行（原「光影」的暗角/漏光/颗粒已并入调色页签的「氛围」分区）；滑块旁可输入精确数值，双击参数名、数字框或滑轨本身即可复位该行，按住 Shift 拖动可微调；左右侧栏可收起、拖宽并记住上次宽度；多选照片后自动浮出批量操作条。
 - **黑白混色器** — 勾一下就整张转灰度，再用 8 个色相带（红/橙/黄/绿/浅绿/蓝/紫/洋红）分别调「这个颜色转灰后有多亮」；导入 LR 预设时 `ConvertToGrayscale` 与 `GrayMixer*` 会一并套用。
 - **蒙版调色** — 调色面板顶部可加蒙版：线性渐变 / 径向椭圆 / 画笔涂抹 / 亮度范围，可叠多个；选中某个蒙版后，九档滑块只作用在蒙版范围内（曲线/校准/混色器仍是全局），支持羽化、浓度与反相；画布上直接拖渐变方向或涂抹，蒙版范围实时染成绿色预览。
 - **基础调色** — 曝光、对比度、饱和度、色温、色调、高光、阴影、白色、黑色九档滑块（白色/黑色是 Lightroom 那对黑场白场：白色并合高光、黑色抬黑或压死暗部），外加 RGB / 红 / 绿 / 蓝四条可拖动曲线（S 形加对比、抬黑点做褪色灰调、分通道调色）；再往上是「细节」（清晰度 / 纹理 / 去除薄雾）、「校准」（红/绿/蓝原色 · 色相/饱和）与「混色器」（8 色相带 × 色相/饱和度/明亮度，彩色轨道子页切换）；只作用于当前选中的照片，参数随草稿保存、随时可重置，也可一键复制到本次导入的全部照片，不改动原图。
 - **光影与质感** — 暗角、漏光、暖光/冷光、胶片颗粒（在「调色 → 氛围」里，都是常开滑块、强度 0 即关闭，叠加于整张成片含边框），以及纸张、布料等纹理，给整张成片统一的氛围。
 - **Logo、EXIF 与签名** — 品牌 Logo 或自定义图标水印；自动读取品牌、型号、焦距、光圈、ISO、快门，可手动修改；签名与头像组合排版。
-- **模板系统** — 保存/导入/导出 `.qfs` 工程与 `.json`；支持搜索、标签分组、缩略图预览、应用、重命名与带确认的删除。
+- **样式系统** — 保存/导入/导出 `.qfs` 工程与 `.json`；支持搜索、标签分组、缩略图预览、应用、重命名与带确认的删除。
 - **拼图与九宫格** — 多图网格拼贴，间距、圆角与字幕可调；九宫格切图把当前画布按 n×n 切成多张，预览确认后导出。
-- **批量处理** — 批量导入（支持整个文件夹与 HEIC，HEIC 自动读取 EXIF）、逐张记忆模板、同步到选中、装框缩略图，一键批量导出。
+- **批量处理** — 批量导入（支持整个文件夹与 HEIC，HEIC 自动读取 EXIF）、逐张记忆样式、同步到选中、装框缩略图，一键批量导出。
 - **沉浸展示** — 把胶片条或勾选的照片铺成模糊照片墙，中央毛玻璃卡片展示当前成片；←/→ 或鼠标滚轮上下切换，鼠标静止 2 秒自动隐藏工具栏与光标，Esc 或关闭按钮退出，退出后不改变当前图、选区和缩放。
 - **导出** — PNG / JPEG / WebP，质量可调；原图、1080、2048、4096、8192px；选好位置后渲染写入，默认原图尺寸。
-- **全本地** — 无需登录、不上传照片；照片、EXIF 与模板都留在本机。
+- **全本地** — 无需登录、不上传照片；照片、EXIF 与样式都留在本机。
 
 > **English** — 87 presets and 92 frame styles for magazine, polaroid, torn paper, tape, stamp, newspaper, film, gradient, comic, 3D card, signature and avatar layouts; a preset-wall launcher; live frame, shadow, texture and light controls; remembered background-blur defaults; basic per-photo grading (exposure, contrast, saturation, temperature, tint, highlight, shadow); preset thumbnails, split canvas/text panels, exact numeric slider input, double-click row reset and Shift fine-tuning; collapsible resizable side panels; logo/EXIF/signature layers; `.qfs` and `.json` templates; collage, grid slicing, batch export and an immersive photo-wall presentation with wheel navigation; PNG/JPEG/WebP up to 8192px. Everything local.
 
@@ -126,7 +126,7 @@
   <sub>六种预设的真实渲染 · 示例照片为项目自绘的黄昏湖面<br>Six real engine renders · sample photo: a self-drawn dusk lake</sub>
 </p>
 
-87 个模板覆盖复古胶片、拍立得、邮票、报纸、杂志、撕纸、胶带、漫画、签名、拼图等方向；每个模板都能继续改边距、圆角、纹理、光影与文字。六张预设图都由引擎实际渲染，不是手工绘制的模拟效果，也没有使用图库或用户照片。
+87 款边框覆盖复古胶片、拍立得、邮票、报纸、杂志、撕纸、胶带、漫画、签名、拼图等方向；每款边框都能继续改边距、圆角、纹理、光影与文字。六张预设图都由引擎实际渲染，不是手工绘制的模拟效果，也没有使用图库或用户照片。
 
 <a id="quick-start"></a>
 ## 快速开始 · Quick Start
@@ -135,8 +135,8 @@
 
 **三步出片**：
 
-1. 从预设墙选一个模板进入编辑，或导入一张/多张照片；还没照片时可点「先用示例图看看」。
-2. 在左侧换模板；右侧「画布」调边距、缩放与圆角，「文字」调字号与相机 EXIF，「边框 / 调色 / Logo / 模板」继续细化。
+1. 从边框墙选一款边框进入编辑，或导入一张/多张照片；还没照片时可点「先用示例图看看」。
+2. 在左侧换边框；右侧「画布」调边距、缩放与圆角，「文字」调字号与相机 EXIF，「边框 / 调色 / Logo / 样式」继续细化。
 3. 点「导出」，选择 PNG / JPEG / WebP 与导出尺寸。
 
 > **English** — Download a Windows build from Releases, import photos, pick a preset, adjust the frame/light/logo/EXIF, then export as PNG, JPEG or WebP.
@@ -166,9 +166,9 @@ npm run dist:portable
 > 提示：Windows 上可双击根目录 `start.bat` 直接启动开发环境。
 > Tip: on Windows you can double-click `start.bat` in the project root to launch the dev environment.
 
-### 换预设墙封面照片 · Changing preset-wall cover photos
+### 换边框墙封面照片 · Changing preset-wall cover photos
 
-预设墙（启动页）的封面由 `tools/gen-preset-wall.js` 渲染生成；换照片不用改代码：
+边框墙（启动页）的封面由 `tools/gen-preset-wall.js` 渲染生成；换照片不用改代码：
 
 1. 把照片按分类名放进 `design/preset-wall-samples/`，例如 `个性.jpg`、`艺术.webp`（支持 jpg / jpeg / png / webp）。
 2. 重新生成（应用开着也能跑，生成器是独立进程）：
@@ -207,7 +207,7 @@ npm run gen:wall
 │  └─ renderer/      # 渲染进程：UI 与 Canvas 渲染引擎
 │                    #   renderer: UI and Canvas rendering engine
 ├─ shared/
-│  ├─ presets/       # 87 个内置模板（JSON 描述）
+│  ├─ presets/       # 87 款内置边框（JSON 描述）
 │  │                 #   87 built-in preset templates (JSON)
 │  ├─ textures/      # 纹理素材 / texture assets (10)
 │  └─ brandlogos/    # 本机品牌 Logo 素材，不随发行版分发

@@ -44,16 +44,16 @@ function main() {
         if (!found) errors.push(`${label}: 没有找到对应数字`);
     };
 
-    checkAll(readme, /(\d+)\s*个内置模板/g, presets, '内置模板数');
-    checkAll(readme, /(\d+)\s*个模板/g, presets, '模板数');
-    checkAll(readme, /(\d+)\s*种边框风格/g, styles, '边框风格数');
+    checkAll(readme, /(\d+)\s*款内置边框/g, presets, '内置边框数');
+    checkAll(readme, /(\d+)\s*款边框/g, presets, '边框数');
+    checkAll(readme, /(\d+)\s*种风格/g, styles, '风格数');
     checkAll(readme, /(\d+)\s*built-in preset templates/g, presets, 'English built-in presets');
     checkAll(readme, /(\d+)\s*presets/g, presets, 'English presets');
     checkAll(readme, /(\d+)\s*frame styles/g, styles, 'English frame styles');
 
     // 关于弹窗 + 新手引导的首屏兜底数字
-    checkAll(html, /(\d+)\s*个模板/g, presets, '关于/引导模板数');
-    checkAll(html, /(\d+)\s*种边框风格/g, styles, '关于/引导边框风格数');
+    checkAll(html, /(\d+)\s*款边框/g, presets, '关于/引导边框数');
+    checkAll(html, /(\d+)\s*种风格/g, styles, '关于/引导风格数');
 
     // 关于页运行时用 StyleCaps.MEASURED 的数量;它必须和引擎 draw 表一致。
     try {
@@ -74,7 +74,7 @@ function main() {
         errors.forEach(e => console.error('  - ' + e));
         process.exit(1);
     }
-    console.log(`README / 关于页数量校验通过: ${presets} 个模板 / ${styles} 种风格`);
+    console.log(`README / 关于页数量校验通过: ${presets} 款边框 / ${styles} 种风格`);
 }
 
 main();

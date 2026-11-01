@@ -64,7 +64,7 @@
         <!-- ═══ 顶部工具栏 ═══ -->
         <header id="toolbar">
             <div class="toolbar-group">
-                <button id="btnBackWall" class="tbtn" title="返回预设墙" style="display:none"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 3.5 5 8l5.5 4.5"/></svg>预设墙</button>
+                <button id="btnBackWall" class="tbtn" title="返回边框墙" style="display:none"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 3.5 5 8l5.5 4.5"/></svg>边框墙</button>
                 <div class="sep" id="backWallSep" style="display:none"></div>
                 <button id="btnOpen" class="tbtn" title="打开图片 (Ctrl+O)">导入照片</button>
                 <button id="btnOpenFolder" class="tbtn" title="导入整个文件夹（含子文件夹） (Ctrl+Shift+O)">导入文件夹</button>
@@ -174,22 +174,22 @@
         <!-- ═══ 主体三栏 ═══ -->
         <main id="main">
 
-            <!-- 左侧：边框预设 -->
+            <!-- 左侧：边框 -->
             <aside id="sidebar">
                 <div class="side-title">
-                    <span>边框预设</span>
-                    <button id="btnMyTemplates" class="side-title-action" type="button" title="管理我的模板">我的模板</button>
-                    <button id="btnSidebarCollapse" class="panel-collapse-btn" type="button" title="收起预设栏 (Ctrl+[)" aria-label="收起预设栏">
+                    <span>边框</span>
+                    <button id="btnMyTemplates" class="side-title-action" type="button" title="管理我的样式（边框 + 文字 + Logo 的整套外观）">我的样式</button>
+                    <button id="btnSidebarCollapse" class="panel-collapse-btn" type="button" title="收起边框栏 (Ctrl+[)" aria-label="收起边框栏">
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5 5.5 8 10 12.5"/></svg>
                     </button>
                 </div>
-                <div class="side-search"><input id="presetSearch" type="text" placeholder="搜索预设…" /></div>
+                <div class="side-search"><input id="presetSearch" type="text" placeholder="搜索边框…" /></div>
                 <div id="presetTree" class="preset-tree"></div>
-                <div id="sidebarResizer" class="side-resizer" title="拖动调整预设栏宽度，双击恢复默认"></div>
+                <div id="sidebarResizer" class="side-resizer" title="拖动调整边框栏宽度，双击恢复默认"></div>
             </aside>
 
-            <button id="btnSidebarRail" class="panel-rail rail-left" type="button" title="展开预设栏 (Ctrl+[)" aria-label="展开预设栏" hidden>
-                <span>预设</span>
+            <button id="btnSidebarRail" class="panel-rail rail-left" type="button" title="展开边框栏 (Ctrl+[)" aria-label="展开边框栏" hidden>
+                <span>边框</span>
             </button>
 
             <!-- 中间：画布 -->
@@ -224,7 +224,7 @@
                             <button id="btnPickPhoto" class="tbtn primary pick-btn" title="打开图片 (Ctrl+O)">选择照片</button>
                             <button id="btnPickFolder" class="tbtn ph-folder" title="导入整个文件夹（含子文件夹） (Ctrl+Shift+O)">导入文件夹</button>
                             <button id="btnSamplePhoto" class="tbtn ph-sample" title="不用先找照片，载入一张示例图直接试用">先用示例图看看</button>
-                            <button id="btnRestoreDraft" class="tbtn restore-draft-btn" style="display:none" title="恢复上次会话的照片和模板">继续上次会话</button>
+                            <button id="btnRestoreDraft" class="tbtn restore-draft-btn" style="display:none" title="恢复上次会话的照片和样式">继续上次会话</button>
                         </div>
                     </div>
                 </div>
@@ -254,7 +254,7 @@
                     <button class="tab" data-tab="grade" role="tab" aria-selected="false" title="调色：像素调色（曝光/曲线/细节/校准/混色器）+ 氛围（暗角/漏光/颗粒）">调色</button>
 
                     <button class="tab" data-tab="logo" role="tab" aria-selected="false">Logo</button>
-                    <button class="tab" data-tab="template" role="tab" aria-selected="false">模板</button>
+                    <button class="tab" data-tab="template" role="tab" aria-selected="false">样式</button>
                     <div class="tab-sep" role="separator" aria-label="工具"></div>
                     <span class="tabs-tool-label">工具</span>
                     <button class="tab tab-tool" data-tab="puzzle" role="tab" aria-selected="false" title="拼图：把多张照片拼成一张成品">
@@ -295,7 +295,7 @@
                                 <input type="range" id="slGlobalMargin" class="ctl-rng" min="10" max="300" step="1" value="100" />
                                 <span class="pval" id="lblGlobalMargin"></span>
                             </div>
-                            <div class="hint-box">同时放大或缩小照片四周的边距；100% 为该模板的默认边距。</div>
+                            <div class="hint-box">同时放大或缩小照片四周的边距；100% 为该边框的默认边距。</div>
                         </div>
 
                         <div class="param-group">
@@ -322,7 +322,7 @@
                             <div class="param-row chk-row" id="rowBgBlur" style="display:none;">
                                 <label>背景模糊</label>
                                 <input type="checkbox" id="chkBgBlur" class="ctl-chk" />
-                                <button type="button" class="mini-btn chk-default-btn" id="btnBgBlurDefault" aria-pressed="false" title="未设置：跟随各预设自带的背景模糊开关。点击记住为“默认开启”">默认跟随</button>
+                                <button type="button" class="mini-btn chk-default-btn" id="btnBgBlurDefault" aria-pressed="false" title="未设置：跟随各边框自带的背景模糊开关。点击记住为“默认开启”">默认跟随</button>
                             </div>
                             <div class="param-row" id="rowBgBlurInt" style="display:none;">
                                 <label>模糊程度</label>
@@ -563,7 +563,7 @@
                             <div class="exif-line" id="exifLine" style="display:none"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="1" y="3.4" width="14" height="10" rx="2"/><circle cx="8" cy="8.4" r="3"/><path d="M4.4 3.4 5.2 1.6h5.6l.8 1.8"/></svg> <span id="exifLineText"></span></div>
                             <div class="param-row chk-row">
                                 <label>EXIF 参数条</label>
-                                <input type="checkbox" id="cbExifText" class="ctl-chk" checked="checked" title="仅对通用图层模板和卡片模板生效：勾选后用相机 EXIF 参数替换底部文字；相框风格预设由风格自身绘制参数条，此开关不生效" />
+                                <input type="checkbox" id="cbExifText" class="ctl-chk" checked="checked" title="仅对通用图层边框和卡片边框生效：勾选后用相机 EXIF 参数替换底部文字；相框边框由风格自身绘制参数条，此开关不生效" />
                                 <span class="pval-note" id="exifTextHint"></span>
                             </div>
                             <div class="param-row chk-row">
@@ -796,24 +796,25 @@
                         </div>
                     </div>
 
-                    <!-- ══ Tab6 模板 ══ -->
+                    <!-- ══ Tab6 样式 ══ -->
                     <div class="tab-panel" id="panel-template">
                         <div class="param-group">
-                            <div class="pg-title collapsible">模板信息</div>
-                            <div class="param-row"><label>名称</label><input type="text" id="tfTemplateName" class="ctl-tx" placeholder="模板名称" /></div>
+                            <div class="pg-title collapsible">样式信息</div>
+                            <div class="hint-box">「样式」= 边框 + 文字 + Logo 的整套外观，保存在本机，可随时套用到其它照片。</div>
+                            <div class="param-row"><label>名称</label><input type="text" id="tfTemplateName" class="ctl-tx" placeholder="样式名称" /></div>
                             <div class="param-row"><label>标签</label><input type="text" id="tfTemplateTag" class="ctl-tx" placeholder="分类标签" /></div>
                         </div>
                         <div class="param-group" id="tplSavedGroup">
                             <div class="pg-title collapsible">
-                                <span class="pg-title-text">已存模板</span>
+                                <span class="pg-title-text">已保存的样式</span>
                                 <span id="tplCount" class="tpl-count" hidden></span>
-                                <button id="btnRefreshTemplates" class="tpl-refresh" type="button" title="刷新模板列表" aria-label="刷新模板列表">↻</button>
+                                <button id="btnRefreshTemplates" class="tpl-refresh" type="button" title="刷新样式列表" aria-label="刷新样式列表">↻</button>
                             </div>
                             <div class="tpl-search-wrap">
-                                <input type="text" id="tfTemplateSearch" class="ctl-tx tpl-search" placeholder="搜索模板名称 / 标签…" aria-label="搜索已存模板" autocomplete="off" />
+                                <input type="text" id="tfTemplateSearch" class="ctl-tx tpl-search" placeholder="搜索样式名称 / 标签…" aria-label="搜索已保存的样式" autocomplete="off" />
                                 <button id="btnClearTplSearch" class="tpl-search-clear" type="button" title="清空搜索" aria-label="清空搜索" hidden>×</button>
                             </div>
-                            <div id="lvPresets" class="tpl-list" role="region" aria-label="已存模板列表"></div>
+                            <div id="lvPresets" class="tpl-list" role="region" aria-label="已保存的样式列表"></div>
                             <div class="tpl-footnote">单击卡片应用 · <b>⋯</b> 重命名 / 删除</div>
                         </div>
                         <div class="param-group">
@@ -1545,7 +1546,7 @@
                     </div>
                 </div>
 
-                <div class="about-desc"><span id="aboutStatsText">87 个模板、92 种边框风格</span>、EXIF 参数识别、拼图与批量导出，全本地渲染。</div>
+                <div class="about-desc"><span id="aboutStatsText">87 款边框、92 种风格</span>、EXIF 参数识别、拼图与批量导出，全本地渲染。</div>
 
                 <div class="about-actions">
                     <button class="mini-btn primary" id="btnAboutCheck" title="检查是否有新版本">检查更新</button>
@@ -1578,8 +1579,8 @@
                         <span>复制 / 粘贴选中元素</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>C</kbd><span class="about-sep">/</span><kbd>Ctrl</kbd><kbd>V</kbd></span>
                         <span>同步边框到勾选照片</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>D</kbd></span>
                         <span>适应窗口</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>0</kbd></span>
-                        <span>保存模板</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd></span>
-                        <span>收起 / 展开预设栏</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>[</kbd></span>
+                        <span>保存样式</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd></span>
+                        <span>收起 / 展开边框栏</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>[</kbd></span>
                         <span>收起 / 展开参数栏</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>]</kbd></span>
                         <span>全屏沉浸展示</span><span class="about-keys"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>P</kbd></span>
                         <span>删除选中照片 / 元素</span><span class="about-keys"><kbd>Delete</kbd><span class="about-sep">/</span><kbd>Backspace</kbd></span>
@@ -1609,7 +1610,7 @@
 
                 <details class="about-details">
                     <summary>开源许可与致谢</summary>
-                    <div class="about-credits">基于 Electron、electron-updater、exifr、heic-convert（libheif）等开源项目构建。感谢所有模板、素材与测试贡献者。</div>
+                    <div class="about-credits">基于 Electron、electron-updater、exifr、heic-convert（libheif）等开源项目构建。感谢所有边框、素材与测试贡献者。</div>
                     <div class="about-links">
                         <button class="about-link" id="btnAboutReleases" title="查看历史版本与更新说明">更新日志</button>
                         <button class="about-link" id="btnAboutThirdParty" title="查看第三方素材与许可说明">第三方资产说明</button>
@@ -1644,7 +1645,7 @@
             </div>
             <div class="modal-body" style="line-height:1.9;font-size:13px;color:var(--text);">
                 <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">三步上手，全程本地处理，照片与设置不上传。</div>
-                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>① 选择边框</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">启动即预设画廊，<span id="introStatsText">87 个预设</span>成片任选，点卡片进入编辑</div></div>
+                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>① 选择边框</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">启动即进入边框墙：现成边框直接套用（<span id="introStatsText">87 款边框</span>），点卡片即可开始编辑</div></div>
                 <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>② 导入照片</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">进入编辑后点「导入照片 / 导入文件夹」，或直接把图片、文件夹拖进窗口；也支持 Ctrl+V 粘贴截图</div></div>
                 <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:6px;"><b>③ 调参导出</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">右侧调整参数 / 签名 / Logo / 品牌水印，满意后点「导出」</div></div>
             </div>
@@ -1752,8 +1753,8 @@
         </div>
     </div>
 
-    <!-- ═══ 预设墙启动主页 (启动即预设画廊,点击卡片进入编辑) ═══ -->
-    <div id="presetWall" class="preset-wall" role="region" aria-label="预设画廊" hidden>
+    <!-- ═══ 边框墙启动主页 (启动即边框画廊,点击卡片进入编辑) ═══ -->
+    <div id="presetWall" class="preset-wall" role="region" aria-label="边框画廊" hidden>
         <header class="pw-head">
             <div class="pw-brand">
                 <svg width="20" height="20" viewBox="0 0 18 18" aria-hidden="true">

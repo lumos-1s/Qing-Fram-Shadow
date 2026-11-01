@@ -1542,7 +1542,7 @@ window.App = {
         if (!t) { el.textContent = ''; return; }
         const pf = String(t.photoFrameStyle || '').toUpperCase();
         if (pf && pf !== 'NONE') {
-            el.textContent = '仅对通用/卡片模板生效；当前相框风格的参数条由风格自身控制';
+            el.textContent = '仅对通用/卡片边框生效；当前相框边框的参数条由风格自身控制';
             return;
         }
         const decor = t.decorConfig || {};
@@ -1862,7 +1862,7 @@ window.App = {
                 kind = '卡片 / 模糊底';
                 name = t.templateName || '';
             } else {
-                kind = '图层模板';
+                kind = '图层边框';
                 name = t.templateName || '';
             }
             ms.style.display = '';
@@ -3843,7 +3843,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         const caps = window.StyleCaps;
         const styleCount = (caps && caps.MEASURED) ? Object.keys(caps.MEASURED).length : 0;
         if (!presetCount || !styleCount) return;
-        const text = presetCount + ' 个模板、' + styleCount + ' 种边框风格';
+        const text = presetCount + ' 款边框、' + styleCount + ' 种风格';
         const about = this.$('aboutStatsText');
         if (about) about.textContent = text;
         const intro = this.$('introStatsText');

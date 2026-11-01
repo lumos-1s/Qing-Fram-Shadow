@@ -699,7 +699,7 @@
             if (snap) this._fadeSnapshot(snap);
             const label = (window.QfsMask.TYPES.find((t) => t.k === type) || {}).label;
             this.setStatus('已添加' + label + '蒙版'
-                + (this.maskPositionSupported() ? '' : '；当前边框样式不支持画布定位，切回默认模板样式后可拖动位置'));
+                + (this.maskPositionSupported() ? '' : '；当前边框样式不支持画布定位，切回默认边框样式后可拖动位置'));
             return true;
         },
 
@@ -1491,7 +1491,7 @@
                         lum: '按亮度自动选区，调下面的暗部/亮部阈值',
                         color: '在画布上点一下取色，再调色相/容差；灰和近白黑不会被选中'
                     })[act.type] : (noPos
-                        ? '当前边框样式（相框/卡片）不支持画布定位；切回默认模板样式后可拖动蒙版'
+                        ? '当前边框样式（相框/卡片）不支持画布定位；切回默认边框样式后可拖动蒙版'
                         : '蒙版叠加层还没准备好，稍等片刻再试');
                 }
             }

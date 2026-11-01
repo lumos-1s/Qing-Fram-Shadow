@@ -129,7 +129,7 @@ app.whenReady().then(async () => {
     check(state.version.includes('Windows x64') && state.version.includes('安装版'), '版本行含平台/安装类型', state.version);
     check(state.packageType === '安装版', '安装类型行', state.packageType);
     check(state.system.includes('10.0.22631'), '系统行含 Windows 版本', state.system);
-    check(state.stats === '87 个模板、92 种边框风格', '动态模板/风格数量', state.stats);
+    check(state.stats === '87 款边框、92 种风格', '动态边框/风格数量', state.stats);
     check(state.icon.complete && state.icon.w > 0, '关于页图标加载', JSON.stringify(state.icon));
     check(state.shortcuts.includes('CtrlShiftZ'), '快捷键包含 Ctrl+Shift+Z');
     check(state.note.includes('无修饰键') || state.note.includes('保留给文本编辑'), '输入框快捷键说明已修正');

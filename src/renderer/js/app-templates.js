@@ -79,7 +79,7 @@ window.App = Object.assign(window.App || {}, {
 
     _renderTplLoading(box) {
         if (!box) return;
-        box.innerHTML = '<div class="tpl-empty tpl-loading"><div class="tpl-empty-title">正在读取模板…</div></div>';
+        box.innerHTML = '<div class="tpl-empty tpl-loading"><div class="tpl-empty-title">正在读取样式…</div></div>';
     },
 
     _renderTplEmpty(box, has, q) {
@@ -90,7 +90,7 @@ window.App = Object.assign(window.App || {}, {
         icon.textContent = q ? '⌕' : '▤';
         const title = document.createElement('div');
         title.className = 'tpl-empty-title';
-        title.textContent = q ? '没有匹配的模板' : (has ? '暂无已存模板' : '还没有已存模板');
+        title.textContent = q ? '没有匹配的样式' : (has ? '暂无已保存的样式' : '还没有保存过样式');
         const hint = document.createElement('div');
         hint.className = 'tpl-empty-hint';
         hint.textContent = q ? '换个名称或标签试试' : '调好边框后，点下方「保存」留一份';
@@ -228,14 +228,14 @@ window.App = Object.assign(window.App || {}, {
         const rect = btn.getBoundingClientRect();
         const x = Math.max(8, rect.right - 170);
         this.openCtx(x, rect.bottom + 4, [
-            ['应用模板', () => { this.applySavedTemplate(r); }],
+            ['应用样式', () => { this.applySavedTemplate(r); }],
             ['重命名', () => { this.renameTemplateItem(r); }],
             ['删除', () => { this._deleteTpl(r); }],
         ]);
     },
 
     async _deleteTpl(r) {
-        if (!confirm('确定删除模板「' + r.disp + '」？')) return;
+        if (!confirm('确定删除样式「' + r.disp + '」？')) return;
         const res = await window.qingframe.deleteTemplate(r.name);
         if (res && res.ok === false) {
             this.setStatus('删除失败：' + (res.error || ''));
@@ -278,8 +278,8 @@ window.App = Object.assign(window.App || {}, {
         const main = document.createElement('button');
         main.type = 'button';
         main.className = 'tpl-main';
-        main.title = '应用模板「' + r.disp + '」';
-        main.setAttribute('aria-label', '应用模板「' + r.disp + '」');
+        main.title = '应用样式「' + r.disp + '」';
+        main.setAttribute('aria-label', '应用样式「' + r.disp + '」');
         const thumb = document.createElement('img');
         thumb.className = 'tpl-thumb';
         thumb.alt = '';
@@ -311,7 +311,7 @@ window.App = Object.assign(window.App || {}, {
         more.className = 'tpl-more';
         more.textContent = '⋯';
         more.title = '管理「' + r.disp + '」';
-        more.setAttribute('aria-label', '管理模板「' + r.disp + '」');
+        more.setAttribute('aria-label', '管理样式「' + r.disp + '」');
         more.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -323,7 +323,7 @@ window.App = Object.assign(window.App || {}, {
     },
 
     async renameTemplateItem(r) {
-        const name = await this.promptText('重命名模板(另存为新名称并删除旧的)', r.disp);
+        const name = await this.promptText('重命名样式(另存为新名称并删除旧的)', r.disp);
         if (!name) return;
         // 与主进程 save/rename 的非法文件名字符处理保持一致，避免按未清洗的名字回读。
         const safe = String(name).trim().replace(/[\\:*?"<>|/]/g, '_');
@@ -457,7 +457,7 @@ window.App = Object.assign(window.App || {}, {
     async saveTemplate() {
         const $ = this.$;
         const name = ($('tfTemplateName') ? $('tfTemplateName').value : '').trim();
-        if (!name) { this.setStatus('请输入模板名称'); return; }
+        if (!name) { this.setStatus('请输入样式名称'); return; }
         // 从回显字段刷新模板(名称/标签)
         if (this.template) {
             this.template.templateName = name;
@@ -475,14 +475,14 @@ window.App = Object.assign(window.App || {}, {
     async loadTemplateByName(name) {
         if (!window.qingframe.loadTemplate) return false;
         const data = await window.qingframe.loadTemplate(name);
-        if (!data) { this.setStatus('加载模板失败'); return false; }
+        if (!data) { this.setStatus('加载样式失败'); return false; }
         this.onSettingCommit();
         this.template = JSON.parse(JSON.stringify(data));
         this.normalizeTemplate();
         this.saveCurrentTemplate();
         this.refreshUI();
         this.scheduleRender(true);
-        this.setStatus(`已应用模板「${data.templateName || name}」`);
+        this.setStatus(`已应用样式「${data.templateName || name}」`);
         this._markActiveTplRows();
         return true;
     },
@@ -493,7 +493,7 @@ window.App = Object.assign(window.App || {}, {
         const name = (this.$('tfTemplateName') ? this.$('tfTemplateName').value : '').trim() || 'template';
         this.syncModelFromUI();
         const r = await window.qingframe.exportTemplate(name, this.cloneTemplate());
-        this.setStatus(r.ok ? '模板已导出' : (r.canceled ? '已取消' : '导出失败'));
+        this.setStatus(r.ok ? '样式已导出' : (r.canceled ? '已取消' : '导出失败'));
     },
 
     async importTemplate() {
@@ -529,7 +529,7 @@ window.App = Object.assign(window.App || {}, {
         // 配置包:取内部 template;裸模板:直接用
         if (data.kind === 'qfs-config' && data.template && typeof data.template === 'object') data = data.template;
         if (!data || typeof data !== 'object' || typeof data.photoFrameStyle !== 'string') {
-            this.setStatus('导入失败：不是有效的清框影配置/模板文件');
+            this.setStatus('导入失败：不是有效的清框影配置/样式文件');
             return;
         }
         this.onSettingCommit();
