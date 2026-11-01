@@ -1599,6 +1599,7 @@
 
                         <div class="about-actions">
                             <button class="mini-btn primary" id="btnAboutCheck" title="检查是否有新版本">检查更新</button>
+                            <button class="mini-btn" id="btnAboutChangelog" title="查看当前版本更新了什么">更新内容<span id="aboutChangelogDot" class="about-btn-dot" hidden></span></button>
                             <button class="mini-btn" id="btnAboutIntro" title="重新查看三步上手引导">新手引导</button>
                             <button class="mini-btn" id="btnAboutHome" title="打开 GitHub 项目主页">项目主页</button>
                             <button class="mini-btn" id="btnAboutIssues" title="反馈问题或建议">问题反馈</button>
@@ -1696,6 +1697,24 @@
             </div>
             <div class="modal-actions">
                 <button id="btnIntroDone" class="ub-btn primary">开始使用</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ 更新内容(设置 → 关于 → 「更新内容」):离线读内置的更新说明,不联网 ═══ -->
+    <div id="changelogModal" class="modal-overlay" style="display:none">
+        <div class="modal-card changelog-card">
+            <div class="modal-header">
+                <span class="modal-title">更新内容</span>
+                <button id="btnChangelogClose" class="modal-close" title="关闭">&times;</button>
+            </div>
+            <div class="modal-body changelog-body">
+                <div id="changelogHead" class="changelog-head"></div>
+                <div id="changelogList" class="changelog-list"></div>
+            </div>
+            <div class="modal-actions changelog-actions">
+                <button class="about-link" id="btnChangelogReleases" type="button" title="在浏览器打开 GitHub Releases">历史版本…</button>
+                <button id="btnChangelogDone" class="ub-btn primary">知道了</button>
             </div>
         </div>
     </div>
@@ -1874,6 +1893,7 @@
     <script src="js/engine.js"></script>
     <script src="js/engine-styles.js"></script>
   <script src="js/style-caps.js"></script>
+    <script src="js/changelog.js"></script>
     <script src="js/app.js"></script>
     <script src="js/app-render.js"></script>
     <script src="js/app-elements.js"></script>

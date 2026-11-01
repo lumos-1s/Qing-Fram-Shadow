@@ -1445,6 +1445,13 @@ html.dark .icon-pool .icon-cell {
 .about-desc { margin-top: calc(9px * var(--font-scale)); font-size: var(--fs-12); line-height: 1.75; color: var(--text-2); }
 .about-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 14px; }
 .about-actions .mini-btn { flex: 0 0 auto; }
+/* 「更新内容」未读小红点：版本号没读过就亮，点开看过即消（prefs.changelogSeen） */
+.about-btn-dot {
+    display: inline-block; width: 6px; height: 6px; margin-left: 5px; vertical-align: 1px;
+    border-radius: 50%; background: var(--rose, #d4627a);
+}
+.about-btn-dot[hidden] { display: none; }
+.mini-btn.unread { border-color: var(--rose, #d4627a); }
 .mini-btn:disabled { opacity: .55; cursor: default; transform: none; }
 .about-status-row {
     display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
@@ -1696,6 +1703,46 @@ button:disabled, input:disabled, select:disabled, textarea:disabled {
 .grid-preview-cell img { width: 100%; display: block; }
 .grid-preview-cap { padding: 5px var(--sp-1-5); font-size: var(--fs-11); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .modal-actions { display: flex; justify-content: flex-end; gap: var(--sp-2-5); margin-top: 14px; }
+
+/* ═══ 更新内容弹窗（设置 → 关于 → 更新内容） ═══
+   内容来自内置 changelog，条目多，所以卡片加宽、正文自己滚动、头部和按钮固定。 */
+.changelog-card { width: 620px; max-width: 92vw; max-height: 86vh; display: flex; flex-direction: column; }
+.changelog-body { overflow-y: auto; min-height: 0; }
+.changelog-head { font-size: var(--fs-12); color: var(--text-3); line-height: 1.6; }
+.changelog-list { margin-top: var(--sp-3); }
+.changelog-entry {
+    margin-bottom: var(--sp-2); padding: calc(9px * var(--font-scale)) calc(11px * var(--font-scale));
+    border: 1px solid var(--border); border-radius: 10px; background: var(--bg-soft);
+}
+.changelog-entry > summary {
+    display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; list-style: none; user-select: none;
+    font-size: var(--fs-13); font-weight: 700; color: var(--text);
+}
+.changelog-entry > summary::-webkit-details-marker { display: none; }
+.changelog-entry > summary::before {
+    content: '▸'; display: inline-block; width: 14px; flex: 0 0 auto; color: var(--text-3);
+    transition: transform .15s ease;
+}
+.changelog-entry[open] > summary::before { transform: rotate(90deg); }
+.changelog-entry[open] > summary { margin-bottom: var(--sp-2); }
+.changelog-date { font-size: var(--fs-11); font-weight: 500; color: var(--text-3); }
+.changelog-tag {
+    padding: 1px 7px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-text);
+    font-size: var(--fs-11); font-weight: 600;
+}
+.changelog-group { margin-top: var(--sp-2-5); }
+.changelog-group-title {
+    font-size: var(--fs-12); font-weight: 600; color: var(--text-2);
+    padding-bottom: 3px; border-bottom: 1px dashed var(--border);
+}
+.changelog-items {
+    margin: 6px 0 0; padding-left: 17px; list-style: disc;
+    font-size: var(--fs-12); line-height: 1.75; color: var(--text-2);
+}
+.changelog-items > li { margin-bottom: 3px; }
+.changelog-empty { padding: var(--sp-3) 0; font-size: var(--fs-12); line-height: 1.7; color: var(--text-3); }
+/* 底部：左侧「历史版本」外链，右侧「知道了」，两端对齐不挤在一起 */
+.changelog-actions { justify-content: space-between; align-items: center; margin-top: var(--sp-2); }
 
 /* ═══ 裁切照片弹层 ═══ */
 /* 比普通弹窗再高一层：它可能从「关于 / 更新说明」里都点不到，但别被它们盖住 */

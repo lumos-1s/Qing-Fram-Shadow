@@ -147,6 +147,79 @@ app.whenReady().then(async () => {
         '未识别的地址落到「自定义」，空值回到「直连」',
         JSON.stringify({ c: sA3.hitCustom, d: sA3.hitDirect }));
 
+    // ── A4：关于 →「更新内容」：按钮 / 弹窗 / 未读红点 / Esc 逐层关闭 ──
+    await exec(`window.App.refreshAboutInfo()`);
+    await sleep(80);
+    const sA4a = await exec(`(() => {
+        const btn = document.getElementById('btnAboutChangelog');
+        const dot = document.getElementById('aboutChangelogDot');
+        const modal = document.getElementById('changelogModal');
+        return {
+            hasBtn: !!btn && btn.textContent.indexOf('更新内容') >= 0,
+            inSettings: !!document.querySelector('#settingsModal #btnAboutChangelog'),
+            dotShown: !!dot && !dot.hidden,
+            modalHidden: !!modal && modal.style.display === 'none',
+            count: (window.QF_CHANGELOG || []).length
+        };
+    })()`);
+    check(sA4a.hasBtn && sA4a.inSettings, '设置「关于」区有「更新内容」按钮', JSON.stringify(sA4a));
+    check(sA4a.modalHidden, '更新内容弹窗默认关闭', JSON.stringify(sA4a));
+    check(sA4a.count >= 1, '内置了至少一条版本更新说明', String(sA4a.count));
+    check(sA4a.dotShown, '没读过的版本在按钮上亮未读红点', JSON.stringify(sA4a));
+
+    const sA4b = await exec(`(() => {
+        window.App.openChangelog();
+        const modal = document.getElementById('changelogModal');
+        const entries = [...document.querySelectorAll('#changelogList .changelog-entry')];
+        const cur = entries.find(e => e.querySelector('.changelog-tag'));
+        return {
+            open: modal.style.display,
+            head: document.getElementById('changelogHead').textContent,
+            count: entries.length,
+            curOpen: !!cur && cur.open,
+            curLen: cur ? cur.textContent.length : 0,
+            groups: cur ? [...cur.querySelectorAll('.changelog-group-title')].map(n => n.textContent) : [],
+            injected: document.getElementById('changelogList').querySelectorAll('script,img,iframe').length
+        };
+    })()`);
+    await sleep(120);
+    check(sA4b.open === 'flex', '点「更新内容」打开弹窗', JSON.stringify(sA4b));
+    check(/0\.1\.22/.test(sA4b.head), '弹窗标题带上当前版本号', sA4b.head);
+    check(sA4b.curOpen && sA4b.curLen > 200 && sA4b.groups.length >= 2,
+        '当前版本那一条默认展开且有内容', JSON.stringify({ o: sA4b.curOpen, n: sA4b.curLen, g: sA4b.groups }));
+    check(sA4b.injected === 0, '更新说明是纯文本渲染（不注入 HTML）', String(sA4b.injected));
+    check(savedPrefs.some((p) => p && p.changelogSeen === '0.1.22'),
+        '看过即记住版本号（prefs.changelogSeen）', JSON.stringify(savedPrefs.slice(-2)));
+
+    await exec(`window.App.openSettings()`);
+    await sleep(80);
+    await exec(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`);
+    await sleep(120);
+    const sA4c = await exec(`(() => ({
+        cl: document.getElementById('changelogModal').style.display,
+        sm: document.getElementById('settingsModal').style.display,
+        dotHidden: document.getElementById('aboutChangelogDot').hidden
+    }))()`);
+    check(sA4c.cl === 'none' && sA4c.sm !== 'none',
+        'Esc 逐层关闭：先收「更新内容」，设置弹窗仍开着', JSON.stringify(sA4c));
+    check(sA4c.dotHidden === true, '读过后按钮上的红点消失', JSON.stringify(sA4c));
+
+    // 运行版本早于内置最新说明时：说明是「未来版本」的，不该拿去打扰用户
+    const sA4d = await exec(`(() => {
+        window.App._aboutInfo = { version: '0.1.21' };
+        window.App._changelogSeen = '';
+        window.App.syncChangelogDot();
+        const oldHidden = document.getElementById('aboutChangelogDot').hidden;
+        window.App._aboutInfo = { version: '0.1.22' };
+        window.App._changelogSeen = '0.1.22';
+        window.App.syncChangelogDot();
+        return { oldHidden };
+    })()`);
+    check(sA4d.oldHidden === true,
+        '运行的是旧版本时不拿未来版本的说明打扰用户', JSON.stringify(sA4d));
+    await exec(`window.App.closeSettings()`);
+    await sleep(80);
+
     // ── B：未设置时显示「每次询问」，清除按钮禁用 ──
     await exec(`window.App.openSettings()`);
     await sleep(80);
@@ -211,7 +284,8 @@ app.whenReady().then(async () => {
         msg: window.App.statusMsg || '',
         path: document.getElementById('setExportDirPath').textContent
     })`);
-    check(/重启/.test(sG.msg),
+    // 文案是「请完全退出应用再重新启动」：断言认「重新启动 / 重启」两种写法，别把好文案判成失败
+    check(/重新?启动|重启应用/.test(sG.msg),
         '接口不可用时提示「重启应用」而不是静默', JSON.stringify(sG));
     check(sG.path === '每次询问',
         '接口不可用时不会把已有设置改坏', JSON.stringify(sG));

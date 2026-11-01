@@ -268,6 +268,9 @@ window.App = {
             if (p && typeof p.fontScale === 'number' && p.fontScale > 0) this.applyFontScale(p.fontScale);
             if (p && (p.theme === 'dark' || p.theme === 'light')) this.applyTheme(p.theme);
             this.applyPreviewQuality(!!(p && p.previewQuality === 'full'));
+            // 更新内容:「已读版本」用来决定按钮上的小红点,读过的版本不再提醒
+            this._changelogSeen = (p && typeof p.changelogSeen === 'string') ? p.changelogSeen : '';
+            this.syncChangelogDot();
         } catch (_) {}
     },
 
@@ -3068,11 +3071,24 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
             btnAboutPrivacy: repo + '/blob/main/PRIVACY.md',
         };
         Object.entries(aboutLinks).forEach(([id, url]) => bindBtn(id, () => this.openExternal(url)));
+        bindBtn('btnAboutChangelog', () => this.openChangelog());
+        bindBtn('btnChangelogClose', () => this.closeChangelog());
+        bindBtn('btnChangelogDone', () => this.closeChangelog());
+        bindBtn('btnChangelogReleases', () => this.openExternal(repo + '/releases'));
+        const changelogModal = $('changelogModal');
+        if (changelogModal) changelogModal.addEventListener('click', (e) => { if (e.target === changelogModal) this.closeChangelog(); });
         const settingsModal = $('settingsModal');
         if (settingsModal) settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) this.closeSettings(); });
         // 设置弹窗的键盘闭环:Esc 关闭,Tab 在弹窗内循环(关闭后焦点回到触发按钮)。
         // 关于已并入设置,不再有独立的关于弹窗需要判定。
         document.addEventListener('keydown', (e) => {
+            // 更新内容是叠在设置之上的一层:Esc/Tab 先归它,关掉后按键才回到设置弹窗
+            const cl = $('changelogModal');
+            if (cl && cl.style.display !== 'none') {
+                if (e.key === 'Escape') { e.preventDefault(); this.closeChangelog(); return; }
+                if (e.key === 'Tab') this.trapFocus(cl, e);
+                return;
+            }
             const sm = $('settingsModal');
             if (!sm || sm.style.display === 'none') return;
             if (e.key === 'Escape') {
@@ -3962,6 +3978,8 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         this.updateStatsText();
         this._setAboutDiagStatus('');
         this.syncAboutUpdateState();
+        // 版本号是异步拿到的:拿到后才能判断「更新内容」该不该亮未读红点
+        this.syncChangelogDot();
     },
     // 从更新横幅「下载慢？」直接跳到下载源设置:打开设置弹窗并把光标放进输入框,
     // 省得用户自己去设置里找(输入框在设置「更新」区)。
@@ -4020,6 +4038,9 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
     },
 
     closeSettings() {
+        // 「更新内容」是叠在设置之上的一层:关设置时一并收掉,不然会留一层点不动的遮罩
+        const cl = this.$('changelogModal');
+        if (cl && cl.style.display !== 'none') { cl.style.display = 'none'; return; }
         const m = this.$('settingsModal');
         if (m) m.style.display = 'none';
         const back = this._settingsReturnFocus;
@@ -4122,6 +4143,115 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         this.updateStatsText();
         const m = this.$('introModal');
         if (m) m.style.display = 'flex';
+    },
+
+    /* ── 更新内容(设置 → 关于 →「更新内容」)──
+       说明离线内置在 js/changelog.js(window.QF_CHANGELOG),不联网、不读本地文件,
+       所以离线可用、也不会因为说明写错把界面搞崩。运行版本在表里就展开那一条;
+       不在(说明表还没补)就展开最新一条并在标题里说清楚。 */
+    changelogData() {
+        const list = Array.isArray(window.QF_CHANGELOG) ? window.QF_CHANGELOG : [];
+        return list.filter((e) => e && e.version && Array.isArray(e.groups));
+    },
+    syncChangelogDot() {
+        const dot = this.$('aboutChangelogDot');
+        const btn = this.$('btnAboutChangelog');
+        const cur = (this._aboutInfo && this._aboutInfo.version) || '';
+        const latest = (this.changelogData()[0] || {}).version || '';
+        // 只有「运行版本就是表里最新那条、且还没读过」才亮红点:
+        // 运行的是旧版本时不拿未来版本的说明去打扰用户。
+        const unread = !!cur && cur === latest && this._changelogSeen !== latest;
+        if (dot) dot.hidden = !unread;
+        if (btn) btn.classList.toggle('unread', unread);
+    },
+    renderChangelog() {
+        const head = this.$('changelogHead');
+        const list = this.$('changelogList');
+        if (!head || !list) return;
+        const data = this.changelogData();
+        const cur = (this._aboutInfo && this._aboutInfo.version) || '';
+        head.textContent = '';
+        list.textContent = '';
+        if (!data.length) {
+            head.textContent = cur ? '当前版本 v' + cur : '更新内容';
+            const empty = document.createElement('div');
+            empty.className = 'changelog-empty';
+            empty.textContent = '当前版本还没有内置的更新说明，完整发布记录见项目主页 → Releases。';
+            list.appendChild(empty);
+            return;
+        }
+        const hit = data.find((e) => e.version === cur);
+        head.textContent = hit
+            ? '当前版本 v' + cur + (hit.date ? '（' + hit.date + '）' : '') + ' · 本次更新内容'
+            : '当前版本 v' + cur + ' · 这次的说明还没收录，下面是最近一次更新（v' + data[0].version + '）';
+        data.forEach((entry, i) => {
+            const det = document.createElement('details');
+            det.className = 'changelog-entry';
+            det.open = hit ? entry.version === cur : i === 0;
+            const sum = document.createElement('summary');
+            const v = document.createElement('b');
+            v.textContent = 'v' + entry.version;
+            sum.appendChild(v);
+            if (entry.date) {
+                const d = document.createElement('span');
+                d.className = 'changelog-date';
+                d.textContent = entry.date;
+                sum.appendChild(d);
+            }
+            if (entry.version === cur) {
+                const t = document.createElement('span');
+                t.className = 'changelog-tag';
+                t.textContent = '当前版本';
+                sum.appendChild(t);
+            }
+            det.appendChild(sum);
+            (entry.groups || []).forEach((g) => {
+                if (!g || !g.title) return;
+                const sec = document.createElement('div');
+                sec.className = 'changelog-group';
+                const title = document.createElement('div');
+                title.className = 'changelog-group-title';
+                title.textContent = g.title;
+                sec.appendChild(title);
+                const ul = document.createElement('ul');
+                ul.className = 'changelog-items';
+                (g.items || []).forEach((text) => {
+                    if (!text) return;
+                    const li = document.createElement('li');
+                    li.textContent = text;   // 纯文本,不吃 HTML
+                    ul.appendChild(li);
+                });
+                sec.appendChild(ul);
+                det.appendChild(sec);
+            });
+            list.appendChild(det);
+        });
+    },
+    openChangelog() {
+        this.renderChangelog();
+        const m = this.$('changelogModal');
+        if (m) m.style.display = 'flex';
+        this.markChangelogSeen();
+        setTimeout(() => { const b = this.$('btnChangelogDone'); if (b) b.focus({ preventScroll: true }); }, 0);
+    },
+    closeChangelog() {
+        const m = this.$('changelogModal');
+        if (m) m.style.display = 'none';
+        // 焦点还给打开它的按钮;若设置弹窗已关(从别处进来),退回顶栏设置按钮
+        const back = this.$('btnAboutChangelog');
+        const alive = back && document.contains(back) && back.getClientRects().length;
+        const target = alive ? back : this.$('btnSettings');
+        if (target) setTimeout(() => target.focus({ preventScroll: true }), 0);
+    },
+    // 看过就记版本号,按钮上的小红点不再出现(存进 prefs,主进程按字段合并保存)
+    markChangelogSeen() {
+        const cur = (this._aboutInfo && this._aboutInfo.version) || (this.changelogData()[0] || {}).version || '';
+        if (!cur || this._changelogSeen === cur) { this.syncChangelogDot(); return; }
+        this._changelogSeen = cur;
+        this.syncChangelogDot();
+        if (window.qingframe && window.qingframe.savePrefs) {
+            window.qingframe.savePrefs({ changelogSeen: cur }).catch(() => {});
+        }
     },
 
     // 空状态: 没有照片时右侧面板置灰并显示中央提示; 导入照片后恢复
