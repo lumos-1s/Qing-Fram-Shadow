@@ -271,6 +271,9 @@ window.App = {
             // 更新内容:「已读版本」用来决定按钮上的小红点,读过的版本不再提醒
             this._changelogSeen = (p && typeof p.changelogSeen === 'string') ? p.changelogSeen : '';
             this.syncChangelogDot();
+            // 自动检查更新的频率:startup(默认) / daily / off。认不出的值回落到 startup
+            const ac = this.$('selAutoCheck');
+            if (ac) ac.value = ['startup', 'daily', 'off'].indexOf(p && p.autoCheck) >= 0 ? p.autoCheck : 'startup';
         } catch (_) {}
     },
 
@@ -3059,6 +3062,14 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         if (selUpdateMirror) selUpdateMirror.addEventListener('change', () => this.onMirrorSelectChange());
         const tfUpdateMirror = $('tfUpdateMirror');
         if (tfUpdateMirror) tfUpdateMirror.addEventListener('input', () => this.onMirrorInput());
+        // 自动检查更新:选中即保存(与镜像下拉同一套手感),主进程启动时读这个字段决定查不查
+        const selAutoCheck = $('selAutoCheck');
+        if (selAutoCheck) selAutoCheck.addEventListener('change', () => {
+            const v = ['startup', 'daily', 'off'].indexOf(selAutoCheck.value) >= 0 ? selAutoCheck.value : 'startup';
+            if (window.qingframe && window.qingframe.savePrefs) {
+                window.qingframe.savePrefs({ autoCheck: v }).catch(() => {});
+            }
+        });
         bindBtn('btnAboutIntro', () => this.showIntroAgain());
         bindBtn('aboutUpdateAction', () => this.aboutUpdateActionClick());
         const repo = 'https://github.com/lumos-1s/Qing-Fram-Shadow';

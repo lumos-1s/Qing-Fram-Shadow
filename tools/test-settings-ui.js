@@ -220,6 +220,42 @@ app.whenReady().then(async () => {
     await exec(`window.App.closeSettings()`);
     await sleep(80);
 
+    // ── A5：自动检查更新（每次启动 / 每天一次 / 从不）──
+    const sA5a = await exec(`(() => {
+        const sel = document.getElementById('selAutoCheck');
+        return {
+            has: !!sel,
+            inUpdateSec: !!document.querySelector('.settings-sec #selAutoCheck'),
+            vals: sel ? [...sel.options].map(o => o.value) : [],
+            val: sel ? sel.value : ''
+        };
+    })()`);
+    check(sA5a.has && sA5a.inUpdateSec, '设置「更新」区有自动检查更新下拉', JSON.stringify(sA5a));
+    check(JSON.stringify(sA5a.vals) === JSON.stringify(['startup', 'daily', 'off']),
+        '三档：每次启动 / 每天一次 / 从不', JSON.stringify(sA5a.vals));
+    check(sA5a.val === 'startup', '默认是「每次启动」（老用户升级后行为不变）', sA5a.val);
+
+    await exec(`(() => {
+        const sel = document.getElementById('selAutoCheck');
+        sel.value = 'off';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await sleep(120);
+    const sA5b = await exec(`document.getElementById('selAutoCheck').value`);
+    check(savedPrefs.some((p) => p && p.autoCheck === 'off'),
+        '改了就保存（选中即生效，不用再点保存）', JSON.stringify(savedPrefs.slice(-2)));
+    check(sA5b === 'off', '下拉保持所选档位', sA5b);
+    // 已存的档位要能回显：prefs 现在已被主进程桩合并成 autoCheck='off',重新读一次应同步到下拉
+    await exec(`window.App.loadPrefs()`);
+    await sleep(120);
+    const sA5c = await exec(`document.getElementById('selAutoCheck').value`);
+    check(sA5c === 'off', '重读偏好后回显已存档位', sA5c);
+    await exec(`(() => {
+        const sel = document.getElementById('selAutoCheck');
+        sel.value = 'startup';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+
     // ── B：未设置时显示「每次询问」，清除按钮禁用 ──
     await exec(`window.App.openSettings()`);
     await sleep(80);

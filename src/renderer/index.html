@@ -1558,6 +1558,23 @@
 
                 <section class="settings-sec">
                     <div class="settings-sec-title">更新</div>
+                    <!-- 自动检查：只决定「要不要在启动时悄悄查一次」，下载与安装始终要用户点按钮 -->
+                    <div class="settings-row">
+                        <label for="selAutoCheck" class="settings-label" title="只影响启动时是否悄悄查一次；不管哪一档，都可以随时手动点「检查更新」">自动检查更新</label>
+                        <div class="settings-control">
+                            <div class="settings-mirror">
+                                <select id="selAutoCheck" class="inline-select" aria-label="自动检查更新的频率">
+                                    <option value="startup">每次启动</option>
+                                    <option value="daily">每天最多一次</option>
+                                    <option value="off">从不（只手动查）</option>
+                                </select>
+                            </div>
+                            <div class="settings-hint">
+                                只决定启动时是否悄悄查一次，查到新版本也只是顶部横幅提示；<b>下载和安装永远要你点按钮</b>。
+                                选「从不」也不会影响「检查更新」按钮。
+                            </div>
+                        </div>
+                    </div>
                     <!-- 更新下载源：清单始终来自 GitHub（校验用），这里只换二进制下载地址 -->
                     <div class="settings-row">
                         <label for="tfUpdateMirror" class="settings-label" title="留空=GitHub 直连。可填镜像前缀（如 https://ghproxy.net/{url}）或自建反代地址；下载完仍按 GitHub 清单里的 sha512 校验">更新下载源</label>

@@ -8,6 +8,7 @@ const zlib = require('zlib');
 const { createStateStore } = require('./state');
 const { safeLeafName, safeExportName, autoExportTarget, EXPORT_EXTS } = require('./export-path');
 const { normalizeMirror, mirrorUrlFor, downloadVerified, releaseAssetUrl } = require('./update-mirror');
+const { normalizeAutoCheck, shouldAutoCheck } = require('./update-policy');
 const { importLogoPack } = require('./logo-pack');
 
 // 仓库改名后统一从这里取,避免菜单 / 更新源 / 下载兜底 / 外链白名单各写一份。
@@ -406,9 +407,17 @@ app.whenReady().then(() => {
             autoUpdater.on('update-downloaded', () => pushUpdater('downloaded'));
             autoUpdater.on('error', (err) => { console.warn('[updater]', err && err.message); pushUpdater('error', { message: friendlyUpdaterError(err && err.message) }); });
             // 启动后延迟静默检查,避免拖慢首屏;国内网络慢,加超时兜底(失败静默,不打扰首屏)
-            setTimeout(() => {
-                withTimeout(autoUpdater.checkForUpdates(), CHECK_TIMEOUT_MS, '检查更新').catch(() => {});
-            }, 3000);
+            // 「自动检查更新」设置:off=从不自动查(仍可手动点),daily=一天最多一次,startup=每次启动
+            const prefs0 = loadState().prefs || {};
+            if (!shouldAutoCheck(prefs0, Date.now())) {
+                console.log('[updater] 按设置跳过本次启动检查:', normalizeAutoCheck(prefs0.autoCheck));
+            } else {
+                setTimeout(() => {
+                    withTimeout(autoUpdater.checkForUpdates(), CHECK_TIMEOUT_MS, '检查更新')
+                        .then(() => saveState({ prefs: { updateCheckedAt: Date.now() } }))
+                        .catch(() => {});
+                }, 3000);
+            }
         } catch (e) {
             console.warn('[updater] 初始化失败:', e && e.message);
         }
@@ -418,6 +427,8 @@ app.whenReady().then(() => {
         if (!updater) return { ok: false, message: '当前版本不支持在线自动更新,请到 GitHub Releases 下载新版' };
         try {
             await withTimeout(updater.checkForUpdates(), CHECK_TIMEOUT_MS, '检查更新');
+            // 手动查过也算「今天查过了」：daily 档下重启不会再查一次
+            try { saveState({ prefs: { updateCheckedAt: Date.now() } }); } catch (_) { /* ignore */ }
             return { ok: true };
         } catch (e) {
             const msg = friendlyUpdaterError(e && e.message);
