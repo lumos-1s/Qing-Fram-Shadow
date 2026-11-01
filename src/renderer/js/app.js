@@ -2995,11 +2995,12 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         bindBtn('btnSettings', () => this.openSettings());
         bindBtn('settingsClose', () => this.closeSettings());
         bindBtn('btnAboutOpenSettings', () => { this.closeAbout(); this.openSettings(); });
-        if (d.slFontScale) {
-            d.slFontScale.addEventListener('input', () => this.applyFontScale(parseFloat(d.slFontScale.value)));
-            d.slFontScale.addEventListener('change', () => this._saveFontScale());
+        const slFontScale = $('slFontScale'), btnFontScaleReset = $('btnFontScaleReset');
+        if (slFontScale) {
+            slFontScale.addEventListener('input', () => this.applyFontScale(parseFloat(slFontScale.value)));
+            slFontScale.addEventListener('change', () => this._saveFontScale());
         }
-        if (d.btnFontScaleReset) d.btnFontScaleReset.addEventListener('click', () => { this.applyFontScale(1); this._saveFontScale(); });
+        if (btnFontScaleReset) btnFontScaleReset.addEventListener('click', () => { this.applyFontScale(1); this._saveFontScale(); });
         bindBtn('btnPickExportDir', () => this.chooseDefaultExportDir());
         bindBtn('btnClearExportDir', () => this.clearDefaultExportDir());
         bindBtn('aboutClose', () => this.closeAbout());
