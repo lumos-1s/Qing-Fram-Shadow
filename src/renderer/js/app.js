@@ -1357,7 +1357,7 @@ window.App = {
     /* ══ 默认模板 ══ */
     defaultTemplate() {
         return {
-            templateName: '', templateTag: '', photoFrameStyle: '', canvasRatio: 'original',
+            templateName: '', templateTag: '', photoFrameStyle: '', canvasRatio: 'original', canvasSync: 0,
             baseMargin: {
                 marginLock: 1, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0,
                 imgScale: 1, imgOffsetX: 0, imgOffsetY: 0,
@@ -1438,6 +1438,7 @@ window.App = {
         const decor = this.template.decorConfig || (this.template.decorConfig = {});
 
         this.template.canvasRatio = $('cbCanvasRatio') ? $('cbCanvasRatio').value : 'original';
+        this.template.canvasSync = $('cbCanvasSync') ? ($('cbCanvasSync').checked ? 1 : 0) : (this.template.canvasSync || 0);
         const gm = $('slGlobalMargin') ? parseInt($('slGlobalMargin').value, 10) / 100 : 1;
         m.globalMargin = gm;
         this.applyGlobalMargin(gm, false);
@@ -1750,6 +1751,7 @@ window.App = {
             const decor = this.template.decorConfig || {};
 
             if ($('cbCanvasRatio')) $('cbCanvasRatio').value = this.template.canvasRatio || 'original';
+            if ($('cbCanvasSync')) $('cbCanvasSync').checked = (this.template.canvasSync || 0) === 1;
             this.refreshMarginFields();
             if ($('slImgScale')) $('slImgScale').value = Math.round((m.imgScale || 1) * 100);
             this.updateLabel('lblImgScale', Math.round((m.imgScale || 1) * 100) + '%');
@@ -2915,7 +2917,7 @@ window.App = {
         }
 
         // 复选框 -> onSettingCommit
-        const chks = ['cbCornerLock', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq'];
+        const chks = ['cbCornerLock', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq', 'cbCanvasSync'];
         chks.forEach(id => {
             const el = $(id);
             if (el) el.addEventListener('change', () => this.onSettingCommit());

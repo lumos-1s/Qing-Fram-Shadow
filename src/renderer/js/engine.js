@@ -550,10 +550,22 @@ function punchRoundedCorners(ctx, x, y, w, h, tl, tr, bl, br) {
 
 // 照片绘制(投影 + 圆角裁剪),与原??drawOriginImage 一??
 function drawOriginImage(ctx, img, margin, cw, ch, template) {
-    const iw = img.naturalWidth * (margin.imgScale || 1);
-    const ih = img.naturalHeight * (margin.imgScale || 1);
+    // 照片同步画幅:画布比例非「原始」且开启同步时,照片按画布(内容区)比例 cover 填满,
+    // 超出部分在绘制时被内容区裁掉 —— 照片显示比例与边框/画布比例一致,不留空白。
+    // 关闭(默认)保持原行为:照片完整,画布向目标比例补齐(可能留白)。
+    const ratio = template.canvasRatio;
+    const syncOn = template.canvasSync === 1 && ratio && ratio !== 'original';
+    let iw = img.naturalWidth * (margin.imgScale || 1);
+    let ih = img.naturalHeight * (margin.imgScale || 1);
     const usableW = cw - (margin.marginLeft || 0) - (margin.marginRight || 0);
     const usableH = ch - (margin.marginTop || 0) - (margin.marginBottom || 0);
+    if (syncOn) {
+        // cover:放大到覆盖整个内容区(比例与画布一致),居中后多出的部分在照片本体绘制时裁掉
+        const nw = Math.max(1, img.naturalWidth), nh = Math.max(1, img.naturalHeight);
+        const k = Math.max(usableW / nw, usableH / nh) * (margin.imgScale || 1);
+        iw = nw * k;
+        ih = nh * k;
+    }
     const ox = (margin.marginLeft || 0) + (usableW - iw) / 2 + (margin.imgOffsetX || 0);
     const oy = (margin.marginTop || 0) + (usableH - ih) / 2 + (margin.imgOffsetY || 0);
     const rect = { x: ox, y: oy, w: iw, h: ih };
@@ -636,6 +648,8 @@ function drawOriginImage(ctx, img, margin, cw, ch, template) {
     // 照片本体:同尺寸临时画布(设备分辨率)绘制后单独镂空四角,再 1:1 贴回主画布。
     // 这样照片圆角外露出下方边框/卡片本体,而不会把边框凿穿成透明(否则深色主题下四角透出黑底);
     // 主画布 drawImage 全程不处于裁剪态,规避裁剪态缩放照片产生的高频纹理摩尔纹横线。
+    // 同步画幅时把照片裁到内容区内(照片 cover 后超出边距/画布的部分不绘制)
+    if (syncOn) { ctx.save(); ctx.beginPath(); ctx.rect(margin.marginLeft || 0, margin.marginTop || 0, usableW, usableH); ctx.clip(); }
     if (hasCorner) {
         const sc = Math.abs(ctx.getTransform().a) || 1;
         const tmpW = Math.max(1, Math.round(iw * sc));
@@ -653,6 +667,7 @@ function drawOriginImage(ctx, img, margin, cw, ch, template) {
     } else {
         ctx.drawImage(img, ox, oy, iw, ih);
     }
+    if (syncOn) ctx.restore();
     return rect;
 }
 
