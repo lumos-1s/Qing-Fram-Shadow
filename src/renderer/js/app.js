@@ -267,6 +267,7 @@ window.App = {
             if (this.dom.chkKeepGps) this.dom.chkKeepGps.disabled = !(this.dom.chkKeepExif && this.dom.chkKeepExif.checked);
             if (p && typeof p.fontScale === 'number' && p.fontScale > 0) this.applyFontScale(p.fontScale);
             if (p && (p.theme === 'dark' || p.theme === 'light')) this.applyTheme(p.theme);
+            this.applyPreviewQuality(!!(p && p.previewQuality === 'full'));
         } catch (_) {}
     },
 
@@ -285,6 +286,32 @@ window.App = {
         const s = d.slFontScale ? parseFloat(d.slFontScale.value) : 1;
         if (!window.qingframe || !window.qingframe.savePrefs) return;
         window.qingframe.savePrefs({ fontScale: s }).catch(() => {});
+    },
+
+    // 预览画质:「标准」= 成品长边降到 1800px(默认,流畅);「原图 1:1」= 按照片原始分辨率渲染。
+    // setupCanvas 里 ui = min(1, displayMax / 长边):删掉 displayMax 就回落默认 1800;
+    // 设成很大的值则 ui=1 不再缩小。但后备缓冲 = 逻辑尺寸 × devicePixelRatio,高分屏上还要再翻一倍,
+    // 所以按 DPR 反推一个安全上限,把缓冲长边压在约 12000px 内 —— 否则超大图会让画布创建失败或吃掉大量内存。
+    _previewMaxFull() {
+        const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+        return Math.max(1800, Math.floor(12000 / Math.max(1, dpr)));
+    },
+
+    applyPreviewQuality(full) {
+        this._previewFull = !!full;
+        if (full) this.displayMax = this._previewMaxFull();
+        else delete this.displayMax; // 回到 setupCanvas 的默认 1800
+        const d = this.dom || {};
+        if (d.btnPreviewQualityToggle) {
+            d.btnPreviewQualityToggle.textContent = full ? '当前：原图 1:1（点此切标准）' : '当前：标准（点此切原图 1:1）';
+        }
+        // 没图时不触发渲染:启动恢复阶段还没载入照片,后续正常渲染自然会用到新的 displayMax。
+        if (this.image && typeof this.scheduleRender === 'function') this.scheduleRender(true);
+    },
+
+    _savePreviewQuality() {
+        if (!window.qingframe || !window.qingframe.savePrefs) return;
+        window.qingframe.savePrefs({ previewQuality: this._previewFull ? 'full' : 'standard' }).catch(() => {});
     },
 
     // 导出偏好三项一起存。主进程现在会合并 prefs,但全量提交仍能兼容旧版主进程
@@ -398,6 +425,7 @@ window.App = {
             btnEpPickDir: $('btnEpPickDir'), btnEpClearDir: $('btnEpClearDir'), epExportDirPath: $('epExportDirPath'),
             btnSyncSel: $('btnSyncSel'), btnUndo: $('btnUndo'), btnRedo: $('btnRedo'),
             btnReset: $('btnReset'), btnRandom: $('btnRandom'), btnFit: $('btnFit'),
+            btnPreviewQualityToggle: $('btnPreviewQualityToggle'),
             zoomInput: $('zoomInput'), zoomRange: $('zoomRange'), btnTheme: $('btnTheme'),
             presetTree: $('presetTree'), presetSearch: $('presetSearch'),
             canvas: $('previewCanvas'), canvasPane: $('canvasPane'), placeholder: $('placeholder'), inspector: $('inspector'),
@@ -3001,6 +3029,11 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         if (btnFontScaleReset) btnFontScaleReset.addEventListener('click', () => { this.applyFontScale(1); this._saveFontScale(); });
         const btnThemeToggle = $('btnThemeToggle');
         if (btnThemeToggle) btnThemeToggle.addEventListener('click', () => this.toggleTheme());
+        const btnPreviewQualityToggle = $('btnPreviewQualityToggle');
+        if (btnPreviewQualityToggle) btnPreviewQualityToggle.addEventListener('click', () => {
+            this.applyPreviewQuality(!this._previewFull);
+            this._savePreviewQuality();
+        });
         bindBtn('btnPickExportDir', () => this.chooseDefaultExportDir());
         bindBtn('btnClearExportDir', () => this.clearDefaultExportDir());
         bindBtn('btnAboutCheck', () => this.checkUpdatesFromAbout());

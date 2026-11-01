@@ -1,4 +1,5 @@
-// 关于页回归:ARIA / Esc / 焦点循环 / 更新状态机 / 诊断内联反馈。
+// 设置-「关于」区回归:ARIA / Esc / 焦点循环 / 更新状态机 / 诊断内联反馈。
+// 关于已并入设置弹窗(无独立 aboutModal),这里统一通过「打开设置」进入关于区验证。
 // 用法: node tools/run-electron.js tools/test-about-ui.js
 'use strict';
 
@@ -94,21 +95,22 @@ app.whenReady().then(async () => {
 
     const exec = (expr) => win.webContents.executeJavaScript(expr);
     await exec(`(() => {
-        const b = document.getElementById('btnAbout');
+        const b = document.getElementById('btnSettings');
         if (b) b.focus();
         window.App.presets = new Array(87).fill(0);
     })()`);
-    await exec('window.App.openAbout()');
+    await exec('window.App.openSettings()');
     await new Promise(r => setTimeout(r, 300));
 
     const state = await exec(`(() => {
-        const modal = document.getElementById('aboutModal');
+        const modal = document.getElementById('settingsModal');
         const image = document.querySelector('.about-logo');
         return {
             dialogRole: modal.getAttribute('role'),
             ariaModal: modal.getAttribute('aria-modal'),
             labelled: modal.getAttribute('aria-labelledby'),
-            titleId: document.getElementById('aboutTitle') ? document.getElementById('aboutTitle').id : '',
+            titleId: document.getElementById('settingsTitle') ? document.getElementById('settingsTitle').id : '',
+            aboutSec: !!document.getElementById('aboutSec'),
             focus: document.activeElement && document.activeElement.id,
             version: document.getElementById('aboutInfo').textContent,
             packageType: document.getElementById('aboutPackageType').textContent,
@@ -124,8 +126,9 @@ app.whenReady().then(async () => {
     })()`);
     check(state.dialogRole === 'dialog', 'ARIA role=dialog');
     check(state.ariaModal === 'true', 'ARIA aria-modal=true');
-    check(state.labelled === 'aboutTitle' && state.titleId === 'aboutTitle', 'ARIA labelledby/title');
-    check(state.focus === 'aboutClose', '打开时焦点在关闭按钮', state.focus);
+    check(state.labelled === 'settingsTitle' && state.titleId === 'settingsTitle', 'ARIA labelledby/title');
+    check(state.aboutSec, '设置里有「关于」区');
+    check(state.focus === 'settingsClose', '打开时焦点在关闭按钮', state.focus);
     check(state.version.includes('Windows x64') && state.version.includes('安装版'), '版本行含平台/安装类型', state.version);
     check(state.packageType === '安装版', '安装类型行', state.packageType);
     check(state.system.includes('10.0.22631'), '系统行含 Windows 版本', state.system);
@@ -156,9 +159,9 @@ app.whenReady().then(async () => {
     s = await exec(`document.getElementById('aboutUpdateStatus').textContent`);
     check(s.includes('开发模式'), '开发模式提示', s);
 
-    // Tab 焦点循环:最后一个可聚焦元素按 Tab 回到关闭按钮;关闭按钮 Shift+Tab 回到最后一个。
+    // Tab 焦点循环:设置弹窗内最后一个可聚焦元素按 Tab 回到关闭按钮;关闭按钮 Shift+Tab 回到最后一个。
     const lastFocus = await exec(`(() => {
-        const items = [...document.querySelectorAll('#aboutModal button:not([disabled]), #aboutModal summary')]
+        const items = [...document.querySelectorAll('#settingsModal button:not([disabled]), #settingsModal summary')]
             .filter(el => el.getClientRects().length > 0);
         const last = items[items.length - 1];
         last.focus();
@@ -166,10 +169,10 @@ app.whenReady().then(async () => {
     })()`);
     await exec(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))`);
     s = await exec(`document.activeElement && document.activeElement.id`);
-    check(s === 'aboutClose', 'Tab 从末尾回到关闭按钮', lastFocus + ' -> ' + s);
+    check(s === 'settingsClose', 'Tab 从末尾回到关闭按钮', lastFocus + ' -> ' + s);
     await exec(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }))`);
     s = await exec(`document.activeElement && document.activeElement.id`);
-    check(s !== 'aboutClose' && s !== '', 'Shift+Tab 从关闭按钮回到末尾', s);
+    check(s !== 'settingsClose' && s !== '', 'Shift+Tab 从关闭按钮回到末尾', s);
 
     // 诊断内联反馈 + 剪贴板
     await exec(`window.App.copyDiagnostics()`);
@@ -190,15 +193,15 @@ app.whenReady().then(async () => {
     // Esc + 焦点恢复
     await exec(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`);
     await new Promise(r => setTimeout(r, 100));
-    s = await exec(`({ display: document.getElementById('aboutModal').style.display, focus: document.activeElement && document.activeElement.id })`);
-    check(s.display === 'none' && s.focus === 'btnAbout', 'Esc 关闭并恢复焦点', JSON.stringify(s));
+    s = await exec(`({ display: document.getElementById('settingsModal').style.display, focus: document.activeElement && document.activeElement.id })`);
+    check(s.display === 'none' && s.focus === 'btnSettings', 'Esc 关闭并恢复焦点', JSON.stringify(s));
 
     if (failures.length) {
-        console.error('\n关于页检查失败: ' + failures.length);
+        console.error('\n设置-关于区检查失败: ' + failures.length);
         failures.forEach(f => console.error(' - ' + f));
         app.exit(1);
     } else {
-        console.log('\n关于页检查全部通过');
+        console.log('\n设置-关于区检查全部通过');
         app.exit(0);
     }
 }).catch((e) => {

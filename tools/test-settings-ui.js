@@ -92,18 +92,36 @@ app.whenReady().then(async () => {
     }
     const exec = (expr) => win.webContents.executeJavaScript(expr);
 
-    // ── A：结构 —— 设置项在设置弹窗里，关于弹窗已瘦身 ──
+    // ── A：结构 —— 设置项在设置弹窗里；关于已并入设置,不再有独立的关于弹窗 ──
     const sA = await exec(`(() => {
         const inSettings = !!document.querySelector('#settingsModal #tfUpdateMirror');
         const inAbout = !!document.querySelector('#aboutModal #tfUpdateMirror');
         const hasGear = !!document.getElementById('btnSettings');
-        const aboutToSettings = !!document.querySelector('#aboutModal #btnAboutOpenSettings');
-        return { inSettings, inAbout, hasGear, aboutToSettings };
+        const hasAboutModal = !!document.getElementById('aboutModal');
+        const aboutInSettings = !!document.querySelector('#settingsModal #aboutSec');
+        return { inSettings, inAbout, hasGear, hasAboutModal, aboutInSettings };
     })()`);
     check(sA.hasGear, '工具栏有「设置」按钮', JSON.stringify(sA));
     check(sA.inSettings && !sA.inAbout,
-        '更新下载源已从「关于」搬到「设置」（同一 ID 只存在一份）', JSON.stringify(sA));
-    check(sA.aboutToSettings, '关于里保留跳转设置的入口', JSON.stringify(sA));
+        '更新下载源在「设置」里（同一 ID 只存在一份）', JSON.stringify(sA));
+    check(!sA.hasAboutModal && sA.aboutInSettings,
+        '关于已并入设置：无独立关于弹窗，设置里有「关于」区', JSON.stringify(sA));
+
+    // ── A2：预览画质开关（标准 1800 / 原图 1:1）──
+    const sA2 = await exec(`(() => {
+        const b = document.getElementById('btnPreviewQualityToggle');
+        return { has: !!b, label: b ? b.textContent : '' };
+    })()`);
+    check(sA2.has && sA2.label.includes('标准'),
+        '设置里有「预览画质」开关且默认为标准', JSON.stringify(sA2));
+    await exec(`window.App.applyPreviewQuality(true)`);
+    const fullMax = await exec(`window.App.displayMax`);
+    check(typeof fullMax === 'number' && fullMax > 1800,
+        '开启「原图 1:1」后预览上限高于默认 1800', String(fullMax));
+    await exec(`window.App.applyPreviewQuality(false)`);
+    const stdMax = await exec(`window.App.displayMax`);
+    check(stdMax === undefined || stdMax === null,
+        '切回「标准」后回落默认（displayMax 未设置）', String(stdMax));
 
     // ── B：未设置时显示「每次询问」，清除按钮禁用 ──
     await exec(`window.App.openSettings()`);
