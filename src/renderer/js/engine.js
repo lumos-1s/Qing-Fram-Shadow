@@ -130,20 +130,26 @@ function _renderToCanvasInner(app, compare) {
     const img = photoSrc(image);
     const cw0 = img.naturalWidth, ch0 = img.naturalHeight;
 
-    // 对比原图:只画照片本身,无边??
+    // 对比原图:只画照片本身,无边框
     if (compare) {
         const canvas = app.dom.canvas;
         canvas.width = cw0; canvas.height = ch0;
-        // 逻辑尺寸必须一起改：applyZoomStyle 用 _logW/_logH 算显示尺寸，
-        // 只改 backing 尺寸会让画布按上一帧的逻辑尺寸显示 —— 原图 6000px 被塞进
-        // 1200px 的框里，看起来就是"对比时莫名其妙缩到 15%"。
-        canvas._logW = cw0; canvas._logH = ch0;
+        // 逻辑尺寸必须和「带边框时的显示比例」一致：
+        // app._canvasScale 是上一次 setupCanvas 记下的 uiScale（基准坐标→逻辑像素），
+        // 照片在边框态里就是按这个比例缩到屏幕上的。对比态沿用同一个比例，
+        // 照片的屏幕尺寸就和边框里一模一样，只是边框消失。
+        const uiBase = (typeof app._canvasScale === 'number' && app._canvasScale > 0)
+            ? app._canvasScale
+            : Math.min(1, ((app.displayMax || 1800) / Math.max(1, cw0, ch0)));
+        canvas._logW = Math.max(1, Math.round(cw0 * uiBase));
+        canvas._logH = Math.max(1, Math.round(ch0 * uiBase));
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, cw0, ch0);
         ctx.drawImage(img, 0, 0, cw0, ch0);
-        // 画布尺寸变了，缩放必须重算（否则显示尺寸还按旧画布算）
-        if (typeof app.fitZoom === 'function') app.fitZoom();
-        else app.applyZoomStyle();
+        // 这里**绝不能**调 fitZoom：它会按「原图尺寸」重算 zoom 并写进 this.zoom，
+        // 松手回到边框态后，画布按这个 zoom 显示小得多的逻辑宽度（1800×0.13≈240px），
+        // 用户看到的就是「对比一下，加过边框的图变小了」。只重新套用当前 zoom 即可。
+        if (typeof app.applyZoomStyle === 'function') app.applyZoomStyle();
         return;
     }
 
