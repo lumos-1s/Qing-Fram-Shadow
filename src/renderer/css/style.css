@@ -1042,6 +1042,9 @@ input[type=color]::-webkit-color-swatch {
     color: var(--surface); background: var(--primary);
     border-radius: 6px; padding: 1px 5px; vertical-align: middle;
 }
+/* 编辑蒙版时收起混色器：混色器只作用于整张照片、不跟蒙版走（蒙版层不带 mix），
+   留在面板里会让人以为它能单独调蒙版内的颜色。取消选中蒙版即恢复。 */
+#grpGrade.editing-mask ~ #grpMix { display: none; }
 
 /* 细节/校准/混色器/颜色分级组共用同一套「已调整」徽章 */
 #grpDet.grade-on .pg-title, #grpCal.grade-on .pg-title,

@@ -1555,13 +1555,16 @@
                 if (act) {
                     const pr = this._photoRect;
                     // 相框/卡片管线现在也会上报照片矩形，pr 为空只剩「还没渲染完」一种情况
-                    tip.textContent = pr ? ({
+                    const how = pr ? ({
                         linear: '拖线身整体移动、拖两端点改过渡；空白处拖一下可重画',
                         radial: '拖内部移动；拖四个方块手柄单独调长轴/短轴，拖边缘等比缩放；拖外侧圆点旋转（Shift 15°吸附）；外面拖出新椭圆',
                         brush: '按住涂抹；按住 Alt 或右键涂抹 = 擦除',
                         lum: '按亮度自动选区，调下面的暗部/亮部阈值',
                         color: '在画布上点一下取色，再调色相/容差；灰和近白黑不会被选中'
                     })[act.type] : '蒙版叠加层还没准备好，稍等片刻再试';
+                    // 编辑蒙版时混色器会被收起（CSS：#grpGrade.editing-mask ~ #grpMix）——
+                    // 它只作用于整张照片、不跟蒙版走，不说一句用户会以为混色器丢了
+                    tip.textContent = how + '；混色器只作用于整张照片，编辑蒙版时已暂时收起';
                 }
             }
             const badge = $('grpMask');
