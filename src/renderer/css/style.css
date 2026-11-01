@@ -1425,6 +1425,28 @@ html.dark .icon-pool .icon-cell {
 }
 .about-mirror-input:focus { outline: none; border-color: var(--primary); }
 .about-mirror-hint { min-height: 15px; margin-top: 4px; }
+
+/* 设置:分区面板（默认导出位置 / 更新下载源）。关于弹窗只留版本与诊断，设置项集中到这里 */
+.settings-card { width: 560px; max-width: 92vw; max-height: 86vh; display: flex; flex-direction: column; }
+.settings-body { overflow-y: auto; min-height: 0; font-size: var(--fs-13); line-height: 1.7; color: var(--text); }
+.settings-sec { padding: 13px 0; border-bottom: 1px solid var(--border); }
+.settings-sec:first-child { padding-top: 2px; }
+.settings-sec:last-child { padding-bottom: 0; border-bottom: none; }
+.settings-sec-title { margin-bottom: 9px; font-size: var(--fs-12); font-weight: 700; color: var(--text-2); letter-spacing: .02em; }
+.settings-row { display: flex; gap: 12px; align-items: flex-start; }
+.settings-label { flex: 0 0 92px; padding-top: 6px; font-size: var(--fs-12); color: var(--text-3); }
+.settings-control { flex: 1 1 auto; min-width: 0; }
+.settings-path {
+    display: block; padding: 6px 9px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg-soft);
+    font-size: var(--fs-12); line-height: 1.5; color: var(--text);
+    overflow-wrap: anywhere;
+}
+/* 未设置时是「每次询问」这种说明性文字，降一档颜色区分于真实路径 */
+.settings-path.muted { color: var(--text-3); }
+.settings-btns { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+.settings-hint { margin-top: 8px; font-size: var(--fs-11); line-height: 1.6; color: var(--text-3); }
+.settings-hint code { background: var(--surface-2); border-radius: 4px; padding: 1px 4px; font-size: var(--fs-11); color: var(--text-2); }
 .about-details {
     margin-top: var(--sp-2-5); padding: 9px 11px; border: 1px solid var(--border);
     border-radius: 10px; background: var(--bg-soft);

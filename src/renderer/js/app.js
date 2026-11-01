@@ -2953,6 +2953,11 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         });
         bindBtn('btnCheckUpdate', () => this.checkUpdates());
         bindBtn('btnAbout', () => this.openAbout());
+        bindBtn('btnSettings', () => this.openSettings());
+        bindBtn('settingsClose', () => this.closeSettings());
+        bindBtn('btnAboutOpenSettings', () => { this.closeAbout(); this.openSettings(); });
+        bindBtn('btnPickExportDir', () => this.chooseDefaultExportDir());
+        bindBtn('btnClearExportDir', () => this.clearDefaultExportDir());
         bindBtn('aboutClose', () => this.closeAbout());
         bindBtn('btnAboutCheck', () => this.checkUpdatesFromAbout());
         bindBtn('btnSaveUpdateMirror', () => this.saveUpdateMirror());
@@ -2970,11 +2975,20 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         Object.entries(aboutLinks).forEach(([id, url]) => bindBtn(id, () => this.openExternal(url)));
         const aboutModal = $('aboutModal');
         if (aboutModal) aboutModal.addEventListener('click', (e) => { if (e.target === aboutModal) this.closeAbout(); });
-        // 关于弹窗的键盘闭环:Esc 关闭,Tab 在弹窗内循环(关闭后焦点回到触发按钮)。
+        const settingsModal = $('settingsModal');
+        if (settingsModal) settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) this.closeSettings(); });
+        // 关于/设置的键盘闭环:Esc 关闭,Tab 在弹窗内循环(关闭后焦点回到触发按钮)。
+        // 两个弹窗不共存,判定时设置优先(从关于点「设置」会先关关于再开设置)。
         document.addEventListener('keydown', (e) => {
-            const m = $('aboutModal');
+            const sm = $('settingsModal');
+            const am = $('aboutModal');
+            const m = (sm && sm.style.display !== 'none') ? sm : am;
             if (!m || m.style.display === 'none') return;
-            if (e.key === 'Escape') { e.preventDefault(); this.closeAbout(); return; }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                if (m === sm) this.closeSettings(); else this.closeAbout();
+                return;
+            }
             if (e.key === 'Tab') this.trapFocus(m, e);
         });
         bindBtn('btnIntroDone', () => this.closeIntro());
@@ -3870,12 +3884,12 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
             if (opts && opts.select && el.select) el.select();
         }, 0);
     },
-    // 从更新横幅「下载慢？」直接跳到下载源设置:打开关于弹窗并把光标放进输入框,
-    // 省得用户自己去关于页找(这个输入框原本藏得很深)。
+    // 从更新横幅「下载慢？」直接跳到下载源设置:打开设置弹窗并把光标放进输入框,
+    // 省得用户自己去设置里找(这个输入框原本藏在关于页里)。
     async openAboutMirror() {
-        await this.openAbout({ focus: 'tfUpdateMirror', select: true });
+        await this.openSettings({ focus: 'tfUpdateMirror', select: true });
     },
-    // 把 Tab 焦点限制在弹窗内;关闭后由 closeAbout 还给触发按钮。
+    // 把 Tab 焦点限制在弹窗内;关闭后由 closeAbout / closeSettings 还给触发按钮。
     trapFocus(container, e) {
         const selector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
         const items = Array.from(container.querySelectorAll(selector)).filter(el => {
@@ -3886,7 +3900,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         });
         if (!items.length) {
             e.preventDefault();
-            const card = container.querySelector('.about-card');
+            const card = container.querySelector('.about-card, .settings-card');
             if (card) card.focus();
             return;
         }
@@ -3913,6 +3927,74 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         this._aboutReturnFocus = null;
         const target = (back && back !== document.body && document.contains(back)) ? back : this.$('btnAbout');
         if (target && typeof target.focus === 'function') setTimeout(() => target.focus({ preventScroll: true }), 0);
+    },
+
+    /* ══ 设置（默认导出位置 / 更新下载源） ══ */
+    async openSettings(opts) {
+        this._settingsReturnFocus = document.activeElement;
+        await this.refreshSettingsExportDir();
+        this.syncUpdateMirrorField();
+        const m = this.$('settingsModal');
+        if (m) m.style.display = 'flex';
+        const focusId = (opts && opts.focus) || 'settingsClose';
+        setTimeout(() => {
+            const el = this.$(focusId);
+            if (!el) return;
+            if (opts && opts.focus) { try { el.scrollIntoView({ block: 'center' }); } catch (e) { /* 忽略 */ } }
+            el.focus({ preventScroll: !!(opts && opts.focus) });
+            if (opts && opts.select && el.select) el.select();
+        }, 0);
+    },
+
+    closeSettings() {
+        const m = this.$('settingsModal');
+        if (m) m.style.display = 'none';
+        const back = this._settingsReturnFocus;
+        this._settingsReturnFocus = null;
+        // 从「关于」里的入口进来时，返回焦点是已经隐藏的关于页按钮 —— 它不可见，不能还回去
+        const visible = !!(back && back !== document.body && document.contains(back) && back.getClientRects().length);
+        const target = visible ? back : this.$('btnSettings');
+        if (target && typeof target.focus === 'function') setTimeout(() => target.focus({ preventScroll: true }), 0);
+    },
+
+    // 回显「默认导出位置」。不缓存：刚选完目录/刚清空都要立刻反映到面板上。
+    async refreshSettingsExportDir() {
+        const api = window.qingframe;
+        let dir = '';
+        try {
+            const p = (api && api.getPrefs) ? await api.getPrefs() : null;
+            dir = (p && typeof p.defaultExportDir === 'string') ? p.defaultExportDir : '';
+        } catch (_) { dir = ''; }
+        this._defaultExportDir = dir;
+        const pathEl = this.$('setExportDirPath');
+        if (pathEl) {
+            pathEl.textContent = dir || '每次询问';
+            pathEl.classList.toggle('muted', !dir);
+            pathEl.title = dir || '导出时弹出系统保存框，并记住上次选择的文件夹';
+        }
+        const clearBtn = this.$('btnClearExportDir');
+        if (clearBtn) clearBtn.disabled = !dir;
+    },
+
+    // 选一个固定文件夹当默认导出位置。存进 prefs 后，主进程 pick-export-location 就不再弹框。
+    async chooseDefaultExportDir() {
+        const api = window.qingframe;
+        if (!api || !api.pickDefaultExportDir) { this.setStatus('当前版本不支持设置默认导出位置'); return; }
+        const r = await api.pickDefaultExportDir().catch(() => null);
+        if (!r || r.canceled) return;
+        if (!r.ok) { this.setStatus(r.error || '设置默认导出位置失败'); return; }
+        await this.refreshSettingsExportDir();
+        this.setStatus('默认导出位置：' + r.dir);
+    },
+
+    // 清空＝回到「每次导出都问」。空串在主线程序列化后仍是 ''，validDir('') 为 false。
+    async clearDefaultExportDir() {
+        const api = window.qingframe;
+        if (!api || !api.savePrefs) return;
+        const r = await api.savePrefs({ defaultExportDir: '' }).catch(() => null);
+        if (!r || r.ok === false) { this.setStatus('取消失败，请重试'); return; }
+        await this.refreshSettingsExportDir();
+        this.setStatus('导出时将询问保存位置');
     },
 
     // 新手引导:首次启动展示 3 步上手,点"开始使用"后记 localStorage,不再弹出

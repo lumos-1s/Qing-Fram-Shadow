@@ -268,7 +268,11 @@ window.App = Object.assign(window.App || {}, {
             const m = aborted
                 ? `已取消导出：完成 ${okCount}${failCount ? `，失败 ${failCount}` : ''}`
                 : `导出完成：成功 ${okCount}${failCount ? `，失败 ${failCount}` : ''}${useBaseCount ? `（${useBaseCount} 张沿用当前设计）` : ''}`;
-            this.setStatus(m);
+            // 设了「默认导出位置」时不再弹保存框,状态栏补一句落到哪个文件夹,否则用户不知道文件去哪了
+            const destDir = loc && (loc.mode === 'dir' ? loc.dir
+                : (loc.filePath ? String(loc.filePath).replace(/[\\/][^\\/]+$/, '') : ''));
+            const destName = destDir ? String(destDir).split(/[\\/]/).filter(Boolean).pop() : '';
+            this.setStatus(!aborted && destName ? `${m} · 已存到 ${destName}` : m);
         } finally {
             if (btnCancel) btnCancel.style.display = 'none';
             delete this.uiDprOverride;

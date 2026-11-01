@@ -148,6 +148,7 @@
                     <span class="ico-moon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 9.2A6 6 0 0 1 6.8 2.5a6 6 0 1 0 6.7 6.7Z"/></svg></span>
                 </button>
                 <button id="btnCheckUpdate" class="tbtn icon" title="检查软件更新"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5v7"/><path d="M4.8 6.5 8 9.7l3.2-3.2"/><path d="M2.5 12.5h11"/></svg></button>
+                <button id="btnSettings" class="tbtn icon" title="设置（默认导出位置 / 更新下载源）"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 4.6h11"/><path d="M2.5 11.4h11"/><circle cx="6.2" cy="4.6" r="1.7"/><circle cx="9.8" cy="11.4" r="1.7"/></svg></button>
                 <button id="btnAbout" class="tbtn icon" title="关于 清框影（版本信息 / 检查更新 / 诊断日志）"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v3.6"/><path d="M8 4.6v.3"/></svg></button>
                 <div class="sep"></div>
                 <div class="account" id="accountArea">
@@ -1484,6 +1485,49 @@
         </div>
     </div>
 
+    <!-- ═══ 设置弹窗（默认导出位置 / 更新下载源） ═══ -->
+    <div id="settingsModal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <div class="modal-card settings-card" tabindex="-1">
+            <div class="modal-header">
+                <span class="modal-title" id="settingsTitle">设置</span>
+                <button id="settingsClose" class="modal-close" title="关闭" aria-label="关闭设置窗口">&times;</button>
+            </div>
+            <div class="modal-body settings-body">
+                <section class="settings-sec">
+                    <div class="settings-sec-title">导出</div>
+                    <div class="settings-row">
+                        <div class="settings-label">默认导出位置</div>
+                        <div class="settings-control">
+                            <code class="settings-path" id="setExportDirPath">每次询问</code>
+                            <div class="settings-btns">
+                                <button class="mini-btn primary" id="btnPickExportDir" type="button">选择文件夹</button>
+                                <button class="mini-btn" id="btnClearExportDir" type="button">改回每次询问</button>
+                            </div>
+                            <div class="settings-hint">设置后导出的照片会直接写进这个文件夹，不再弹出保存框；重名文件自动加 <code>_1</code>、<code>_2</code>，不会覆盖已有照片。</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="settings-sec">
+                    <div class="settings-sec-title">更新</div>
+                    <!-- 更新下载源：清单始终来自 GitHub（校验用），这里只换二进制下载地址 -->
+                    <div class="about-mirror">
+                        <label for="tfUpdateMirror" class="about-mirror-label" title="留空=GitHub 直连。可填镜像前缀（如 https://ghproxy.net/{url}）或自建反代地址；下载完仍按 GitHub 清单里的 sha512 校验">更新下载源</label>
+                        <input id="tfUpdateMirror" class="about-mirror-input" type="text" spellcheck="false" autocomplete="off"
+                               placeholder="留空 = GitHub 直连；例：https://ghproxy.net/{url}" />
+                        <button id="btnSaveUpdateMirror" class="mini-btn" type="button">保存</button>
+                    </div>
+                    <div id="aboutMirrorHint" class="about-status about-mirror-hint" role="status" aria-live="polite"></div>
+                    <div class="about-status about-mirror-hint" style="opacity:.75">
+                        常见公共镜像（第三方，速度与可用性随网络变化，可随时清空回直连）：
+                        <code>https://ghproxy.net/{url}</code> · <code>https://gh-proxy.com/{url}</code> · <code>https://ghfast.top/{url}</code><br />
+                        也可以填自建反代的前缀；留空则直连 GitHub。下载完一律按 GitHub 清单里的 sha512 校验，对不上会丢弃重下。
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══ 关于弹窗(版本信息 / 检查更新 / 诊断日志) ═══ -->
     <div id="aboutModal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" aria-describedby="aboutTagline">
         <div class="modal-card about-card" tabindex="-1">
@@ -1514,18 +1558,11 @@
                     <button class="about-link" id="aboutUpdateAction" type="button" style="display:none"></button>
                 </div>
 
-                <!-- 更新下载源：清单始终来自 GitHub（校验用），这里只换二进制下载地址 -->
-                <div class="about-mirror">
-                    <label for="tfUpdateMirror" class="about-mirror-label" title="留空=GitHub 直连。可填镜像前缀（如 https://ghproxy.net/{url}）或自建反代地址；下载完仍按 GitHub 清单里的 sha512 校验">更新下载源</label>
-                    <input id="tfUpdateMirror" class="about-mirror-input" type="text" spellcheck="false" autocomplete="off"
-                           placeholder="留空 = GitHub 直连；例：https://ghproxy.net/{url}" />
-                    <button id="btnSaveUpdateMirror" class="mini-btn" type="button">保存</button>
-                </div>
-                <div id="aboutMirrorHint" class="about-status about-mirror-hint" role="status" aria-live="polite"></div>
-                <div class="about-status about-mirror-hint" style="opacity:.75">
-                    常见公共镜像（第三方，速度与可用性随网络变化，可随时清空回直连）：
-                    <code>https://ghproxy.net/{url}</code> · <code>https://gh-proxy.com/{url}</code> · <code>https://ghfast.top/{url}</code><br />
-                    也可以填自建反代的前缀；留空则直连 GitHub。下载完一律按 GitHub 清单里的 sha512 校验，对不上会丢弃重下。
+                <!-- 下载源等偏「设置」的内容挪到独立设置弹窗，关于只留版本/更新/诊断 -->
+                <div class="about-status about-mirror-hint">
+                    默认导出位置、更新下载源在
+                    <button class="about-link" id="btnAboutOpenSettings" type="button">设置</button>
+                    里调整。
                 </div>
 
                 <details class="about-details">

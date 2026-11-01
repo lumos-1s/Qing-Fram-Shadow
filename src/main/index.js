@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 const zlib = require('zlib');
 const { createStateStore } = require('./state');
+const { safeLeafName, safeExportName, autoExportTarget, EXPORT_EXTS } = require('./export-path');
 const { normalizeMirror, mirrorUrlFor, downloadVerified, releaseAssetUrl } = require('./update-mirror');
 const { importLogoPack } = require('./logo-pack');
 
@@ -71,17 +72,7 @@ const allowImagePath = (p) => {
     } catch (e) { return null; }
 };
 
-// 文件名只允许作为"单个名字"使用:去掉目录、控制字符、Windows 保留名与末尾点/空格。
-// 导出链路的 filename/subdir 来自 .qfs 等不可信输入,必须在主进程再收一次口。
-function safeLeafName(name, fallback) {
-    let s = path.basename(String(name == null ? '' : name));
-    // eslint-disable-next-line no-control-regex
-    s = s.replace(/[\x00-\x1f<>:"/\\|?*]/g, '_').replace(/[. ]+$/g, '').trim();
-    if (!s || s === '.' || s === '..') s = (fallback === undefined) ? 'file' : fallback;
-    const stem = s.replace(/\.[^.]*$/, '');
-    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(stem)) s = '_' + s;
-    return s;
-}
+// 文件名清洗 / 单图落点判定在 ./export-path.js（纯函数，可离线单测）
 // 导出位置令牌:只有经过系统保存框确认过的路径才能被 write-export-files 使用。
 // 渲染层即使被注入,也不能直接传一个任意路径让主进程写文件。
 const approvedExportLocations = new Map();
@@ -105,12 +96,6 @@ const isTrustedFrame = (event) => {
 };
 const BLOCKED = { ok: false, error: '不允许的调用来源' };
 
-const EXPORT_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
-function safeExportName(name, fallback) {
-    let s = safeLeafName(name, fallback);
-    if (!EXPORT_EXTS.has(path.extname(s).toLowerCase())) s += '.png';
-    return s;
-}
 function resolveInside(root, candidate) {
     const base = path.resolve(root);
     const dest = path.resolve(base, String(candidate || ''));
@@ -1562,8 +1547,19 @@ ipcMain.handle('save-images-batch', async (_e, files) => {
 });
 
 // 先选好保存位置再导出:多文件选目录,单文件选文件(带默认文件名)
-ipcMain.handle('pick-export-location', async (_e, { count, hintName }) => {
+// 用户在「设置 → 默认导出位置」里指定过文件夹时直接落进去、不再弹框（ask=true 可临时改为询问）。
+ipcMain.handle('pick-export-location', async (_e, payload) => {
+    const { count, hintName, ask } = payload || {};
     const st = loadState();
+    const prefDir = (st.prefs && validDir(st.prefs.defaultExportDir)) ? st.prefs.defaultExportDir : null;
+    if (prefDir && !ask) {
+        const auto = autoExportTarget(prefDir, count, hintName, { validDir, freeFilePath });
+        if (auto) {
+            // lastExportDir 也同步一下：用户之后清掉默认位置，保存框仍从这里开始
+            saveState({ lastExportDir: prefDir });
+            return approveExportLocation(auto);
+        }
+    }
     const dir0 = validDir(st.lastExportDir) ? st.lastExportDir : undefined;
     if (count > 1) {
         const res = await dialog.showOpenDialog({
@@ -1591,11 +1587,29 @@ ipcMain.handle('pick-export-location', async (_e, { count, hintName }) => {
     // 用户手敲文件名没带扩展名时,按默认导出格式补全,避免写出无法打开的无后缀文件
     let fp = filePath;
     if (!/\.[a-zA-Z0-9]{1,5}$/.test(fp)) {
-        const ext0 = (hintName.match(/\.[^.]+$/) || ['.png'])[0];
+        // 用清洗后的 hint：未传 hintName 时 raw 值可能是 undefined，.match 会抛错
+        const ext0 = (hint.match(/\.[^.]+$/) || ['.png'])[0];
         fp += ext0;
     }
     saveState({ lastExportDir: path.dirname(fp) });
     return approveExportLocation({ mode: 'file', filePath: fp });
+});
+
+// 「设置 → 默认导出位置」：选一个固定文件夹存进 prefs。
+// 存的是用户亲自在系统框里选的目录，所以之后 autoExportTarget 直接复用是安全的。
+ipcMain.handle('pick-default-export-dir', async (event) => {
+    if (!isTrustedFrame(event)) return BLOCKED;
+    const st = loadState();
+    const cur = (st.prefs && validDir(st.prefs.defaultExportDir)) ? st.prefs.defaultExportDir : undefined;
+    const res = await dialog.showOpenDialog({
+        title: '选择默认导出文件夹',
+        defaultPath: cur,
+        properties: ['openDirectory', 'createDirectory']
+    });
+    if (res.canceled || !res.filePaths.length) return { canceled: true };
+    const dir = res.filePaths[0];
+    saveState({ prefs: { defaultExportDir: dir } });
+    return { ok: true, dir };
 });
 
 // 把已渲染好的导出数据写入选好的位置。
