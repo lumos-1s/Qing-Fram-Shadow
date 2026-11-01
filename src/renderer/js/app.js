@@ -266,6 +266,7 @@ window.App = {
             if (p && typeof p.keepGps === 'boolean' && this.dom.chkKeepGps) this.dom.chkKeepGps.checked = p.keepGps;
             if (this.dom.chkKeepGps) this.dom.chkKeepGps.disabled = !(this.dom.chkKeepExif && this.dom.chkKeepExif.checked);
             if (p && typeof p.fontScale === 'number' && p.fontScale > 0) this.applyFontScale(p.fontScale);
+            if (p && (p.theme === 'dark' || p.theme === 'light')) this.applyTheme(p.theme);
         } catch (_) {}
     },
 
@@ -3001,6 +3002,8 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
             slFontScale.addEventListener('change', () => this._saveFontScale());
         }
         if (btnFontScaleReset) btnFontScaleReset.addEventListener('click', () => { this.applyFontScale(1); this._saveFontScale(); });
+        const btnThemeToggle = $('btnThemeToggle');
+        if (btnThemeToggle) btnThemeToggle.addEventListener('click', () => this.toggleTheme());
         bindBtn('btnPickExportDir', () => this.chooseDefaultExportDir());
         bindBtn('btnClearExportDir', () => this.clearDefaultExportDir());
         bindBtn('aboutClose', () => this.closeAbout());

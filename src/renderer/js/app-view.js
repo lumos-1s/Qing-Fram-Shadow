@@ -315,8 +315,23 @@ window.App = Object.assign(window.App || {}, {
     },
 
     toggleTheme() {
+        const isDark = !document.documentElement.classList.contains('dark');
+        const theme = isDark ? 'dark' : 'light';
+        this.applyTheme(theme);
+        // 持久化:下次启动沿用当前主题。主进程对 prefs 做字段级合并,单独存 theme 不会冲掉
+        // fontScale / exportQuality 等其它偏好(见 main/state.js saveState)。
+        if (window.qingframe && window.qingframe.savePrefs) {
+            window.qingframe.savePrefs({ theme }).catch(() => {});
+        }
+        return isDark;
+    },
+
+    // 应用主题:theme 为 'dark' | 'light'。启动恢复与手动切换统一走这里,并同步设置里的开关标签。
+    applyTheme(theme) {
         const root = document.documentElement;
-        root.classList.toggle('dark');
+        root.classList.toggle('dark', theme === 'dark');
+        const btn = document.getElementById('btnThemeToggle');
+        if (btn) btn.textContent = (theme === 'dark') ? '当前：深色（点此切浅色）' : '当前：浅色（点此切深色）';
     },
 
     /* ── 用户资料(仅本地,用于签名/头像) ── */
