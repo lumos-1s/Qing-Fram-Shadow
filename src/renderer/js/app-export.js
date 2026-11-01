@@ -583,6 +583,39 @@ window.App = Object.assign(window.App || {}, {
     },
 
     // ── 更新下载源(镜像)：清单与校验值始终来自 GitHub，这里只换二进制下载地址 ──
+    // 下拉预设与输入框共用同一个值：下拉=快捷选择，输入框=可查看/手改的真实地址。
+    MIRROR_CUSTOM: '__custom__',
+    // 把「已存的镜像地址」映射回下拉框：命中预设就选中它，空=直连，其余=自定义。
+    // 保存后主进程可能做归一化（r.mirror 与输入值不同），所以读值与保存后都要回调这里。
+    _syncMirrorSelect(value) {
+        const sel = document.getElementById('selUpdateMirror');
+        if (!sel) return;
+        const v = (value || '').trim();
+        let hit = false;
+        for (const opt of sel.options) {
+            if (opt.value && opt.value !== this.MIRROR_CUSTOM && opt.value === v) { sel.value = opt.value; hit = true; break; }
+        }
+        if (!hit) sel.value = v ? this.MIRROR_CUSTOM : '';
+    },
+    // 手动改输入框：下拉跟着回到对应项（改到无法识别的值就落到「自定义」）。
+    onMirrorInput() {
+        const el = document.getElementById('tfUpdateMirror');
+        this._syncMirrorSelect(el ? el.value : '');
+    },
+    // 下拉选中：现成镜像直接填入并保存，省去「选完还要手填再保存」；
+    // 选「自定义」不保存，只把光标交给输入框，等用户填完自己点保存。
+    onMirrorSelectChange() {
+        const sel = document.getElementById('selUpdateMirror');
+        const el = document.getElementById('tfUpdateMirror');
+        if (!sel || !el) return;
+        if (sel.value === this.MIRROR_CUSTOM) {
+            el.focus();
+            if (el.select) el.select();
+            return;
+        }
+        el.value = sel.value;
+        this.saveUpdateMirror();
+    },
     async syncUpdateMirrorField() {
         const el = document.getElementById('tfUpdateMirror');
         const hint = document.getElementById('aboutMirrorHint');
@@ -590,6 +623,7 @@ window.App = Object.assign(window.App || {}, {
         try {
             const p = (window.qingframe && window.qingframe.getPrefs) ? await window.qingframe.getPrefs() : null;
             el.value = (p && p.updateMirror) || '';
+            this._syncMirrorSelect(el.value);
             if (hint) {
                 hint.textContent = el.value ? '当前走镜像下载；校验值仍取自 GitHub 清单' : '当前直连 GitHub';
                 hint.className = 'about-status about-mirror-hint';
@@ -605,6 +639,9 @@ window.App = Object.assign(window.App || {}, {
         if (!hint) return;
         if (r && r.ok) {
             el.value = r.mirror || '';
+            // 主进程可能做归一化(去空格/补尾斜杠等)，r.mirror 未必等于刚提交的值，
+            // 所以按返回值重设输入框并回同步下拉，避免下拉停在「自定义」而值其实命中预设。
+            this._syncMirrorSelect(el.value);
             hint.textContent = r.mirror ? '已保存：下次下载走该镜像（校验值仍取自 GitHub）' : '已清空：恢复 GitHub 直连';
             hint.className = 'about-status about-mirror-hint ok';
         } else {

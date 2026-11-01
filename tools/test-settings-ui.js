@@ -123,6 +123,30 @@ app.whenReady().then(async () => {
     check(stdMax === undefined || stdMax === null,
         '切回「标准」后回落默认（displayMax 未设置）', String(stdMax));
 
+    // ── A3：更新下载源下拉（预设镜像 / 直连 / 自定义）──
+    // 只测纯同步函数 _syncMirrorSelect，不碰 setUpdateMirror 的 IPC（那需要主进程桩）。
+    const sA3 = await exec(`(() => {
+        const sel = document.getElementById('selUpdateMirror');
+        const tf = document.getElementById('tfUpdateMirror');
+        if (!sel || !tf) return { has: false };
+        const vals = [...sel.options].map(o => o.value);
+        window.App._syncMirrorSelect('https://ghfast.top/{url}');
+        const hitPreset = sel.value;
+        window.App._syncMirrorSelect('https://my-proxy.example/{url}');
+        const hitCustom = sel.value;
+        window.App._syncMirrorSelect('');
+        const hitDirect = sel.value;
+        return { has: true, vals, hitPreset, hitCustom, hitDirect };
+    })()`);
+    check(sA3.has && sA3.vals.includes('') && sA3.vals.includes('__custom__')
+        && sA3.vals.filter(v => v && v !== '__custom__').length >= 3,
+        '更新下载源有下拉：含「直连」「自定义」与至少 3 个预设镜像', JSON.stringify(sA3.vals));
+    check(sA3.hitPreset === 'https://ghfast.top/{url}',
+        '已存地址命中预设时下拉选中该预设', sA3.hitPreset);
+    check(sA3.hitCustom === '__custom__' && sA3.hitDirect === '',
+        '未识别的地址落到「自定义」，空值回到「直连」',
+        JSON.stringify({ c: sA3.hitCustom, d: sA3.hitDirect }));
+
     // ── B：未设置时显示「每次询问」，清除按钮禁用 ──
     await exec(`window.App.openSettings()`);
     await sleep(80);

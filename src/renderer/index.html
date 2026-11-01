@@ -1533,14 +1533,14 @@
                                 <span class="settings-scale-val" id="lblFontScale">100%</span>
                                 <button class="mini-btn" id="btnFontScaleReset" type="button" title="恢复默认 100%">恢复默认</button>
                             </div>
-                            <div class="settings-hint">放大界面字号与内边距（80%–140%），字号和按钮会一起变宽。仅影响显示，不改变导出尺寸。</div>
+<!--                            <div class="settings-hint">放大界面字号与内边距（80%–140%），字号和按钮会一起变宽。仅影响显示，不改变导出尺寸。</div>-->
                         </div>
                     </div>
                     <div class="settings-row">
                         <div class="settings-label">主题</div>
                         <div class="settings-control">
                             <button class="mini-btn" id="btnThemeToggle" type="button">当前：浅色（点此切深色）</button>
-                            <div class="settings-hint">深色 / 浅色，选择会记住，下次启动沿用。</div>
+                            <div class="settings-hint"></div>
                         </div>
                     </div>
                     <div class="settings-row">
@@ -1563,18 +1563,21 @@
                         <label for="tfUpdateMirror" class="settings-label" title="留空=GitHub 直连。可填镜像前缀（如 https://ghproxy.net/{url}）或自建反代地址；下载完仍按 GitHub 清单里的 sha512 校验">更新下载源</label>
                         <div class="settings-control">
                             <div class="settings-mirror">
+                                <select id="selUpdateMirror" class="inline-select mirror-select" title="选一个现成镜像即可，或选「自定义」自己填地址" aria-label="更新下载源预设">
+                                    <option value="">直连 GitHub</option>
+                                    <option value="https://ghproxy.net/{url}">ghproxy.net</option>
+                                    <option value="https://gh-proxy.com/{url}">gh-proxy.com</option>
+                                    <option value="https://ghfast.top/{url}">ghfast.top</option>
+                                    <option value="__custom__">自定义…</option>
+                                </select>
                                 <input id="tfUpdateMirror" class="about-mirror-input" type="text" spellcheck="false" autocomplete="off"
                                        placeholder="留空 = GitHub 直连；例：https://ghproxy.net/{url}" />
                                 <button id="btnSaveUpdateMirror" class="mini-btn" type="button">保存</button>
                             </div>
                             <div id="aboutMirrorHint" class="about-status about-mirror-hint" role="status" aria-live="polite"></div>
                             <div class="settings-hint">
-                                常见公共镜像（第三方，速度与可用性随网络变化，可随时清空回直连）
-                                <span class="mirror-list">
-                                    <code>https://ghproxy.net/{url}</code>
-                                    <code>https://gh-proxy.com/{url}</code>
-                                    <code>https://ghfast.top/{url}</code>
-                                </span>
+                                镜像是第三方服务，速度与可用性随网络变化，可随时改回直连。
+                                <code>{url}</code> 是占位符，会替换成真实下载地址；下载完仍按 GitHub 清单里的 sha512 校验，对不上会丢弃重下。
                             </div>
                         </div>
                     </div>

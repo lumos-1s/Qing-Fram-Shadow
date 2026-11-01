@@ -1502,8 +1502,10 @@ html.dark .icon-pool .icon-cell {
     font-weight: 600; color: var(--text-2);
 }
 .settings-hint-em { margin-top: calc(2px * var(--font-scale)); }
-/* 镜像地址改成可换行的 chip 列表，窄窗下不会挤成一长行再错乱折行 */
-.mirror-list { display: flex; flex-wrap: wrap; gap: calc(3px * var(--font-scale)) var(--sp-1-5); margin-top: calc(3px * var(--font-scale)); }
+/* 镜像预设下拉：复用 .inline-select 保证与其它下拉同款，这里只管宽度 ——
+   按内容收缩，剩下的宽度都留给地址输入框，避免长地址被挤没。 */
+.mirror-select { flex: 0 1 auto; min-width: calc(104px * var(--font-scale)); }
+.mirror-select option { color: var(--text); }
 /* 同组里的次级按钮拉到等宽，避免「选择文件夹 / 改回每次询问」宽窄不一显得散 */
 .settings-btns .mini-btn { min-width: calc(92px * var(--font-scale)); text-align: center; }
 .about-details {

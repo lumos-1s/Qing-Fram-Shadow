@@ -3038,6 +3038,11 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         bindBtn('btnClearExportDir', () => this.clearDefaultExportDir());
         bindBtn('btnAboutCheck', () => this.checkUpdatesFromAbout());
         bindBtn('btnSaveUpdateMirror', () => this.saveUpdateMirror());
+        // 更新下载源：下拉与输入框双向联动（见 app-export.js onMirrorSelectChange / onMirrorInput）
+        const selUpdateMirror = $('selUpdateMirror');
+        if (selUpdateMirror) selUpdateMirror.addEventListener('change', () => this.onMirrorSelectChange());
+        const tfUpdateMirror = $('tfUpdateMirror');
+        if (tfUpdateMirror) tfUpdateMirror.addEventListener('input', () => this.onMirrorInput());
         bindBtn('btnAboutIntro', () => this.showIntroAgain());
         bindBtn('aboutUpdateAction', () => this.aboutUpdateActionClick());
         const repo = 'https://github.com/lumos-1s/Qing-Fram-Shadow';
