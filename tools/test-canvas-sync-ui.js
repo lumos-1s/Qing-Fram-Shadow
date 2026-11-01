@@ -135,7 +135,8 @@ async function main() {
         A.template.canvasSync = 1;
         A.refreshUI();
         A.scheduleRender(true);
-        await new Promise((r) => setTimeout(r, 600));
+        await A.flushRender();
+        await new Promise((r) => setTimeout(r, 120));
         const cv = A.dom.canvas;
         const pr = A._photoRect || {};
         const t = A.template;
@@ -165,7 +166,8 @@ async function main() {
         b.checked = false;
         A.syncModelFromUI();
         A.scheduleRender(true);
-        await new Promise((r) => setTimeout(r, 600));
+        await A.flushRender();
+        await new Promise((r) => setTimeout(r, 120));
         const cv = A.dom.canvas;
         const pr = A._photoRect || {};
         const t = A.template;
