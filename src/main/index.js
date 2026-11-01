@@ -1447,6 +1447,9 @@ ipcMain.handle('read-clipboard-image', async () => {
 });
 
 ipcMain.handle('read-exif', (_e, filePath) => {
+    // 与其他敏感处理器对齐：只允许主框架调用，避免被（理论上不存在的）子框架借 EXIF 读取
+    // 任意图片元数据（含可能携带的 GPS）。主窗口本身即受信帧，不会误伤正常读取。
+    if (!isTrustedFrame(_e)) return {};
     const p = String(filePath || '');
     // 草稿恢复时先读 EXIF 再交给 <img>:这里顺带把路径登记进 qflocal 白名单。
     // 非图片扩展名/超大图直接拒绝,避免 read-exif 变成任意文件探测或解码炸弹入口。
