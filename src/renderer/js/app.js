@@ -2991,11 +2991,8 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
             if (hint) hint.style.display = 'none';
             gbox.style.display = 'none';
         });
-        bindBtn('btnCheckUpdate', () => this.checkUpdates());
-        bindBtn('btnAbout', () => this.openAbout());
         bindBtn('btnSettings', () => this.openSettings());
         bindBtn('settingsClose', () => this.closeSettings());
-        bindBtn('btnAboutOpenSettings', () => { this.closeAbout(); this.openSettings(); });
         const slFontScale = $('slFontScale'), btnFontScaleReset = $('btnFontScaleReset');
         if (slFontScale) {
             slFontScale.addEventListener('input', () => this.applyFontScale(parseFloat(slFontScale.value)));
@@ -3006,10 +3003,9 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         if (btnThemeToggle) btnThemeToggle.addEventListener('click', () => this.toggleTheme());
         bindBtn('btnPickExportDir', () => this.chooseDefaultExportDir());
         bindBtn('btnClearExportDir', () => this.clearDefaultExportDir());
-        bindBtn('aboutClose', () => this.closeAbout());
         bindBtn('btnAboutCheck', () => this.checkUpdatesFromAbout());
         bindBtn('btnSaveUpdateMirror', () => this.saveUpdateMirror());
-        bindBtn('btnAboutIntro', () => { this.closeAbout(); this.showIntroAgain(); });
+        bindBtn('btnAboutIntro', () => this.showIntroAgain());
         bindBtn('aboutUpdateAction', () => this.aboutUpdateActionClick());
         const repo = 'https://github.com/lumos-1s/Qing-Fram-Shadow';
         const aboutLinks = {
@@ -3021,23 +3017,19 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
             btnAboutPrivacy: repo + '/blob/main/PRIVACY.md',
         };
         Object.entries(aboutLinks).forEach(([id, url]) => bindBtn(id, () => this.openExternal(url)));
-        const aboutModal = $('aboutModal');
-        if (aboutModal) aboutModal.addEventListener('click', (e) => { if (e.target === aboutModal) this.closeAbout(); });
         const settingsModal = $('settingsModal');
         if (settingsModal) settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) this.closeSettings(); });
-        // 关于/设置的键盘闭环:Esc 关闭,Tab 在弹窗内循环(关闭后焦点回到触发按钮)。
-        // 两个弹窗不共存,判定时设置优先(从关于点「设置」会先关关于再开设置)。
+        // 设置弹窗的键盘闭环:Esc 关闭,Tab 在弹窗内循环(关闭后焦点回到触发按钮)。
+        // 关于已并入设置,不再有独立的关于弹窗需要判定。
         document.addEventListener('keydown', (e) => {
             const sm = $('settingsModal');
-            const am = $('aboutModal');
-            const m = (sm && sm.style.display !== 'none') ? sm : am;
-            if (!m || m.style.display === 'none') return;
+            if (!sm || sm.style.display === 'none') return;
             if (e.key === 'Escape') {
                 e.preventDefault();
-                if (m === sm) this.closeSettings(); else this.closeAbout();
+                this.closeSettings();
                 return;
             }
-            if (e.key === 'Tab') this.trapFocus(m, e);
+            if (e.key === 'Tab') this.trapFocus(sm, e);
         });
         bindBtn('btnIntroDone', () => this.closeIntro());
         const introModal = $('introModal');
@@ -3898,9 +3890,9 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         if (intro) intro.textContent = text;
     },
 
-    // 打开"关于"弹窗并填充版本/系统信息
-    async openAbout(opts) {
-        this._aboutReturnFocus = document.activeElement;
+    // 填充「关于」区(现已并入设置弹窗最底部):版本 / 系统 / 数据目录,并复位诊断与更新状态。
+    // 只填数据、不弹窗 —— 打开设置时由 openSettings 调用。
+    async refreshAboutInfo() {
         const api = window.qingframe;
         let info = {};
         try { if (api && api.getAppInfo) info = (await api.getAppInfo()) || {}; } catch (e) {}
@@ -3919,25 +3911,13 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         this.updateStatsText();
         this._setAboutDiagStatus('');
         this.syncAboutUpdateState();
-        this.syncUpdateMirrorField();
-        const m = this.$('aboutModal');
-        if (m) m.style.display = 'flex';
-        // 默认聚焦关闭按钮；从「下载慢？」进来时改聚焦下载源输入框（并全选，方便直接覆盖）
-        const focusId = (opts && opts.focus) || 'aboutClose';
-        setTimeout(() => {
-            const el = this.$(focusId);
-            if (!el) return;
-            if (opts && opts.focus) { try { el.scrollIntoView({ block: 'center' }); } catch (e) { /* 忽略 */ } }
-            el.focus({ preventScroll: !!(opts && opts.focus) });
-            if (opts && opts.select && el.select) el.select();
-        }, 0);
     },
     // 从更新横幅「下载慢？」直接跳到下载源设置:打开设置弹窗并把光标放进输入框,
-    // 省得用户自己去设置里找(这个输入框原本藏在关于页里)。
+    // 省得用户自己去设置里找(输入框在设置「更新」区)。
     async openAboutMirror() {
         await this.openSettings({ focus: 'tfUpdateMirror', select: true });
     },
-    // 把 Tab 焦点限制在弹窗内;关闭后由 closeAbout / closeSettings 还给触发按钮。
+    // 把 Tab 焦点限制在弹窗内;关闭后由 closeSettings 把焦点还给触发按钮。
     trapFocus(container, e) {
         const selector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
         const items = Array.from(container.querySelectorAll(selector)).filter(el => {
@@ -3968,19 +3948,13 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         if (!r || !r.ok) this.setStatus('打开链接失败：' + ((r && r.message) || '未知原因'));
         return r || { ok: false, message: '打开链接失败' };
     },
-    closeAbout() {
-        const m = this.$('aboutModal');
-        if (m) m.style.display = 'none';
-        const back = this._aboutReturnFocus;
-        this._aboutReturnFocus = null;
-        const target = (back && back !== document.body && document.contains(back)) ? back : this.$('btnAbout');
-        if (target && typeof target.focus === 'function') setTimeout(() => target.focus({ preventScroll: true }), 0);
-    },
 
-    /* ══ 设置（默认导出位置 / 更新下载源） ══ */
+    /* ══ 设置（默认导出位置 / 更新下载源 / 关于） ══ */
     async openSettings(opts) {
         this._settingsReturnFocus = document.activeElement;
         await this.refreshSettingsExportDir();
+        // 关于区已并入设置最底部,打开设置时顺带把版本/系统信息填上
+        await this.refreshAboutInfo();
         this.syncUpdateMirrorField();
         const m = this.$('settingsModal');
         if (m) m.style.display = 'flex';
@@ -3999,7 +3973,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         if (m) m.style.display = 'none';
         const back = this._settingsReturnFocus;
         this._settingsReturnFocus = null;
-        // 从「关于」里的入口进来时，返回焦点是已经隐藏的关于页按钮 —— 它不可见，不能还回去
+        // 返回焦点可能是一个已被隐藏的按钮(如从横幅入口进来),它不可见就不能还回去
         const visible = !!(back && back !== document.body && document.contains(back) && back.getClientRects().length);
         const target = visible ? back : this.$('btnSettings');
         if (target && typeof target.focus === 'function') setTimeout(() => target.focus({ preventScroll: true }), 0);

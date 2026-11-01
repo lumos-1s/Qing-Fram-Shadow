@@ -1427,6 +1427,8 @@ html.dark .icon-pool .icon-cell {
 /* 关于:品牌头 + 快捷键 / 诊断 / 许可 / 免责声明 */
 .about-card { width: 600px; max-width: 92vw; max-height: 86vh; display: flex; flex-direction: column; }
 .about-body { overflow-y: auto; min-height: 0; font-size: var(--fs-13); line-height: 1.75; color: var(--text); }
+/* 关于区搬进设置弹窗后,滚动交给 settings-body 统一处理,避免嵌套双层滚动条 */
+.settings-card .about-body { overflow: visible; }
 .about-hero { display: flex; align-items: center; gap: 14px; }
 .about-logo {
     width: 56px; height: 56px; flex: 0 0 auto; border-radius: 14px;
