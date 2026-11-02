@@ -277,11 +277,16 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         g.fillStyle = '#ffffff';
         g.fillRect(0, 0, w, h);
         g.drawImage(img, size, size);
-        const date = dateYMD();
-        const m = measureText(g, date, fs, true);
+        const date = (S && S.polaroidCaption) ? S.polaroidCaption : dateYMD();
+        let fs2 = fs;
+        const m = measureText(g, date, fs2, true);
+        // 自定义文字可能很长:超出白条宽度则按比例缩字号
+        if (m.w > w * 0.9 && fs2 > 8) {
+            fs2 = Math.max(8, Math.floor(fs2 * (w * 0.9) / m.w));
+        }
         const tx = Math.floor((w - m.w) / 2);
         const ty = ih + size + Math.floor((bottom - m.height) / 2) + m.ascent;
-        drawText(g, date, tx, ty, fs, 'rgb(160,160,160)', true);
+        drawText(g, date, tx, ty, fs2, 'rgb(160,160,160)', true);
     }
     function styleDoubleLine(img, size, g, iw, ih) {
         const outer = size, gap = Math.max(4, Math.floor(size / 3)), inner = size - gap;
@@ -5755,7 +5760,7 @@ const w = natW;
     }
 
     // ══ 拍立得手写风 ══
-    function stylePolaroidHand(img, size, g, iw, ih) {
+    function stylePolaroidHand(img, size, g, iw, ih, S) {
         const border = Math.max(24, Math.round(iw * 0.06));
         const bottomPad = Math.max(60, Math.round(iw * 0.2));
         const w = iw + border * 2, h = ih + border + bottomPad;
@@ -5770,10 +5775,14 @@ const w = natW;
         // styleDims 与本函数 border/bottomPad 两处口径不同的历史差异),不会溢出画布。
         const bandH = h - (border + ih);
         const dateFs = Math.max(18, Math.round(bandH * 0.25));
-        const dateTxt = new Date().toLocaleDateString('zh-CN');
+        const dateTxt = (S && S.polaroidCaption) ? S.polaroidCaption : new Date().toLocaleDateString('zh-CN');
+        let hfs = dateFs;
+        g.font = 'italic ' + hfs + 'px "Comic Sans MS", cursive';
+        const hw = g.measureText(dateTxt).width;
+        if (hw > w * 0.7 && hfs > 10) hfs = Math.max(10, Math.floor(hfs * (w * 0.7) / hw));
         const baseY = border + ih + Math.round(bandH * 0.55);
         g.fillStyle = '#333';
-        g.font = 'italic ' + dateFs + 'px "Comic Sans MS", cursive';
+        g.font = 'italic ' + hfs + 'px "Comic Sans MS", cursive';
         g.textAlign = 'center';
         g.save();
         g.translate(w / 2, baseY);
@@ -7778,7 +7787,7 @@ const w = natW;
             INK_WASH: styleInkWash, CYANOTYPE: styleCyanotype,
             OIL_BRUSH: styleOilBrush, PRESSED_FLOWER: stylePressedFlower,
             WAX_SEAL: styleWaxSeal, PRISMATIC: stylePrismatic,
-            CYBER_GLITCH: styleCyberGlitch, POLAROID_HAND: stylePolaroidHand,
+            CYBER_GLITCH: styleCyberGlitch, POLAROID_HAND: (img, size, g, iw, ih, S) => stylePolaroidHand(img, size, g, iw, ih, S),
             TORN_JOURNAL: styleTornJournal, CARD_3D: styleCard3D,
             LIQUID_GLASS: styleLiquidGlass,
             COMIC_PANEL: styleComicPanel, POP_COMIC: stylePopComic, NEWSPAPER: styleNewspaper,

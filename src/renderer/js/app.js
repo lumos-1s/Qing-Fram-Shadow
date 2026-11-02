@@ -90,6 +90,7 @@ window.App = {
                 if (s.paramScale) this.template.paramScale = s.paramScale;
                 if (s.liquidGlassSize) this.template.liquidGlassSize = s.liquidGlassSize;
                 if (s.liquidGlassDate != null) this.template.liquidGlassDate = s.liquidGlassDate;
+                if (typeof s.polaroidCaption === 'string') this.template.polaroidCaption = s.polaroidCaption;
                 // 用户显式记忆过「背景模糊默认开/关」时，它优先于旧草稿里的单次值。
                 if (typeof this.applyBgBlurDefault === 'function') this.applyBgBlurDefault(this.template);
                 this.refreshUI();
@@ -591,6 +592,9 @@ window.App = {
         // 签名输入
         const inpSig = document.getElementById('inpSignature');
         if (inpSig) inpSig.addEventListener('input', () => { this.template.userSignature = inpSig.value; this.onSettingChanged(); });
+        // 拍立得底部文字输入
+        const inpPC = document.getElementById('inpPolaroidCaption');
+        if (inpPC) inpPC.addEventListener('input', () => { this.template.polaroidCaption = inpPC.value; this.onSettingChanged(); });
         const cbF = document.getElementById('cbSignFont');
         if (cbF) cbF.addEventListener('change', () => { this.template.signFont = cbF.value; this.onSettingChanged(); });
         const cbC = document.getElementById('cbSignColor');
@@ -1460,6 +1464,7 @@ window.App = {
         this.template.paramPosition = $('cbParamPosition') ? $('cbParamPosition').value : 'CENTER';
         this.template.paramFontSize = $('slParamFontSize') ? parseInt($('slParamFontSize').value, 10) : 33;
         this.template.userSignature = $('inpSignature') ? $('inpSignature').value : '';
+        this.template.polaroidCaption = $('inpPolaroidCaption') ? $('inpPolaroidCaption').value : '';
         this.template.paramType = $('cbParamType') ? parseInt($('cbParamType').value, 10) : 0;
         this.syncManualExif();
 
@@ -1793,6 +1798,7 @@ window.App = {
             }
             if ($('chkGlassDate')) $('chkGlassDate').checked = this.template.liquidGlassDate !== 0;
             if ($('inpSignature')) $('inpSignature').value = this.template.userSignature || '';
+            if ($('inpPolaroidCaption')) $('inpPolaroidCaption').value = this.template.polaroidCaption || '';
             if ($('cbSignFont')) $('cbSignFont').value = this.template.signFont || 'cursive';
             if ($('cbSignColor')) $('cbSignColor').value = this.template.signColor || '#555';
             if ($('chkSignModel')) $('chkSignModel').checked = !!(this.template.signIncludeModel);
