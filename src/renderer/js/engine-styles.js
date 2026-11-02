@@ -3536,10 +3536,10 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
             }
         }
         const barMid = barY + barH / 2;
-        // 左:品牌型号,白条内垂直居中,字体与右侧参数横条一致(monospace)
+        // 左:品牌型号,白条内垂直居中,字体与右侧参数横条一致(monospace),加粗避免显得细
         const bX = pad + 12;
         const bBaseline = barMid + Math.round(fsB * 0.28);
-        drawTextL(g, brandTxt, bX, bBaseline, brandInkColor, fsB, true, false, 0);
+        drawTextL(g, brandTxt, bX, bBaseline, brandInkColor, fsB, true, true, 0);
         // 右栏:照片提取主色色卡 + 拍摄参数,整体垂直居中,参数与色块等宽
         const colors = extractPalette(img, 8);
         const cardH = Math.max(6, Math.round(fsB * 0.3));
