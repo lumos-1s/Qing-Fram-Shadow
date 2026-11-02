@@ -3408,22 +3408,26 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
         const bX = pad + 12;
         const bBaseline = barY + Math.round(fsB * 0.82);
         drawTextL(g, brandTxt, bX, bBaseline, 'rgb(25,25,25)', fsB, false, false, 0);
-        // 色卡:品牌下方一排 8 个彩色小色块
+        // 右侧两栏:上栏 8 块彩色色卡横排右对齐,下栏拍摄参数右对齐
         const cardH = Math.max(6, Math.round(fsB * 0.32));
         const cardW = Math.round(cardH * 1.7);
         const gap = Math.max(3, Math.round(fsB * 0.12));
-        const cardY = barY + Math.round(fsB * 1.42);
         const CARD = ['#E14B3A', '#E8893C', '#DFC33C', '#6E9E4B', '#3F9E8E', '#3E6FA3', '#5B5EA6', '#9A5EA6'];
+        const cardsW = CARD.length * cardW + (CARD.length - 1) * gap;
+        const cardY = barY + Math.round(fsB * 0.6);
+        let cx = w - pad - 12 - cardsW;
         for (let i = 0; i < CARD.length; i++) {
             g.fillStyle = CARD[i];
-            g.fillRect(bX + i * (cardW + gap), cardY, cardW, cardH);
+            g.fillRect(cx, cardY, cardW, cardH);
+            cx += cardW + gap;
         }
         // 右下参数:顺序对齐参考图 23mm f/1.8 1/846s ISO50
         const ss = (cam.shutter || '').endsWith('s') ? cam.shutter : (cam.shutter || '') + 's';
         const ps = cam.focal + '  ' + cam.aperture + '  ' + ss + '  ' + cam.iso;
         if (String(ps).trim()) {
             const pm = textMetrics(g, ps, fp, true, false, 0);
-            drawTextL(g, ps, w - pad - 12 - pm.w, bBaseline, 'rgb(35,35,35)', fp, true, false, 0);
+            const pBaseline = barY + Math.round(fsB * 1.75);
+            drawTextL(g, ps, w - pad - 12 - pm.w, pBaseline, 'rgb(35,35,35)', fp, true, false, 0);
         }
     }
     function styleImpFrosted(img, size, g, iw, ih, S) {
