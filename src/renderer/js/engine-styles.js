@@ -4767,6 +4767,8 @@ const w = natW;
                 return clampP(Number.isFinite(v) && v > 0 ? v : 1, 0.5, 2);
             })(),
             glassDateShow: t.liquidGlassDate !== 0,
+            // 拍立得底部自定义文字(留空=显示默认日期)
+            polaroidCaption: String(t.polaroidCaption || ''),
         };
     }
 
