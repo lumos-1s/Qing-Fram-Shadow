@@ -3391,9 +3391,122 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
             }
         }
     }
+    // ══ 色卡提取 ══ 从照片提取 5 个主色,照片下方深色条内显示色块+色码
+    const _paletteCache = new WeakMap();
+    function _sqDist(a, b) {
+        const dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
+        return dr * dr + dg * dg + db * db;
+    }
+    function extractPalette(img, n) {
+        const cached = _paletteCache.get(img);
+        if (cached && cached.n === n) return cached.pal;
+        const sw = 64;
+        const sc = document.createElement('canvas');
+        sc.width = sw;
+        sc.height = Math.max(1, Math.round(sw * (img.height / Math.max(1, img.width))));
+        const sctx = sc.getContext('2d', { willReadFrequently: true });
+        sctx.drawImage(img, 0, 0, sw, sc.height);
+        let data = null;
+        try { data = sctx.getImageData(0, 0, sw, sc.height).data; } catch (e) { data = null; }
+        const k = n || 5;
+        const fallback = ['#333333', '#666666', '#999999', '#bbbbbb', '#dddddd'];
+        if (!data) return fallback.slice(0, k);
+        const pts = [];
+        for (let i = 0; i < data.length; i += 4) {
+            if (data[i + 3] > 40) pts.push([data[i], data[i + 1], data[i + 2]]);
+        }
+        if (pts.length === 0) return fallback.slice(0, k);
+        if (pts.length <= k) {
+            const pal = pts.map(c => '#' + c.map(v => v.toString(16).padStart(2, '0')).join(''));
+            while (pal.length < k) pal.push('#888888');
+            _paletteCache.set(img, { n: n, pal: pal });
+            return pal;
+        }
+        const runK = (centers) => {
+            const assign = new Array(pts.length).fill(0);
+            for (let it = 0; it < 14; it++) {
+                for (let p = 0; p < pts.length; p++) {
+                    let b = 0, bd = Infinity;
+                    for (let c = 0; c < centers.length; c++) { const d = _sqDist(pts[p], centers[c]); if (d < bd) { bd = d; b = c; } }
+                    assign[p] = b;
+                }
+                const sums = Array.from({ length: centers.length }, () => [0, 0, 0, 0]);
+                for (let p = 0; p < pts.length; p++) { sums[assign[p]][0] += pts[p][0]; sums[assign[p]][1] += pts[p][1]; sums[assign[p]][2] += pts[p][2]; sums[assign[p]][3]++; }
+                let moved = false;
+                for (let c = 0; c < centers.length; c++) {
+                    if (sums[c][3]) {
+                        const nc = [Math.round(sums[c][0] / sums[c][3]), Math.round(sums[c][1] / sums[c][3]), Math.round(sums[c][2] / sums[c][3])];
+                        if (nc[0] !== centers[c][0] || nc[1] !== centers[c][1] || nc[2] !== centers[c][2]) moved = true;
+                        centers[c] = nc;
+                    }
+                }
+                if (!moved) break;
+            }
+            return assign;
+        };
+        // 初始种子:最远点法(确定性,避免大面积单一色被拆成多个相近簇)
+        const centers = [];
+        centers.push(pts[0].slice());
+        for (let c = 1; c < k; c++) {
+            let bestP = 0, bestD = -1;
+            for (let p = 0; p < pts.length; p++) {
+                let md = Infinity;
+                for (const ct of centers) { const d = _sqDist(pts[p], ct); if (d < md) md = d; }
+                if (md > bestD) { bestD = md; bestP = p; }
+            }
+            centers.push(pts[bestP].slice());
+        }
+        runK(centers);
+        // 去重合并:两中心距离过近则用离其余中心最远的点替换其一并重新收敛
+        for (let pass = 0; pass < 5; pass++) {
+            let dup = -1, dup2 = -1;
+            for (let a = 0; a < k && dup < 0; a++) {
+                for (let b = a + 1; b < k && dup < 0; b++) {
+                    if (_sqDist(centers[a], centers[b]) < 676) { dup = a; dup2 = b; }
+                }
+            }
+            if (dup < 0) break;
+            let bestP = 0, bestD = -1;
+            for (let p = 0; p < pts.length; p++) {
+                let md = Infinity;
+                for (let c = 0; c < k; c++) { if (c !== dup2) { const d = _sqDist(pts[p], centers[c]); if (d < md) md = d; } }
+                if (md > bestD) { bestD = md; bestP = p; }
+            }
+            centers[dup2] = pts[bestP].slice();
+            runK(centers);
+        }
+        const pal = centers.map(c => '#' + c.map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join(''));
+        _paletteCache.set(img, { n: n, pal: pal });
+        return pal;
+    }
+    function styleColorPalette(img, size, g, iw, ih) {
+        const pad = Math.max(30, Math.round(iw * 0.03));
+        const barH = Math.max(104, Math.round(iw * 0.12));
+        const w = iw + pad * 2, h = pad + ih + barH;
+        g.fillStyle = '#f6f4ee'; g.fillRect(0, 0, w, h);
+        g.drawImage(img, pad, pad, iw, ih);
+        const by = pad + ih;
+        g.fillStyle = '#ffffff'; g.fillRect(0, by, w, barH);
+        const colors = extractPalette(img, 5);
+        const dotD = Math.round(barH * 0.44);
+        const cy = by + Math.round(barH * 0.36);
+        const gap = Math.max(40, Math.round(iw * 0.12));
+        const totalW = colors.length * dotD + (colors.length - 1) * gap;
+        let x = (w - totalW) / 2 + dotD / 2;
+        g.textAlign = 'center';
+        for (const c of colors) {
+            g.beginPath(); g.arc(x, cy, dotD / 2, 0, Math.PI * 2);
+            g.fillStyle = c; g.fill();
+            g.lineWidth = 1; g.strokeStyle = 'rgba(0,0,0,0.18)'; g.stroke();
+            g.fillStyle = '#1a1a1a';
+            g.font = Math.max(12, Math.round(dotD * 0.36)) + 'px Consolas, monospace';
+            g.fillText('#FF' + c.slice(1).toUpperCase(), x, cy + Math.round(dotD * 0.78));
+            x += dotD + gap;
+        }
+    }
     function styleHasselblad(img, size, g, iw, ih, S) {
-        // OPPO 哈苏水印:白底相框 + 底部白条。左下品牌文字(可输入任意文字,留空回落照片品牌型号),
-        // 品牌下方一排彩色色卡;右下拍摄参数(focal + aperture + shutter + ISO)。
+        // OPPO 哈苏水印:白底相框 + 底部白条。左侧品牌型号(可输入任意文字,留空回落照片识别型号)垂直居中,
+        // 右侧两栏整体垂直居中:上栏色块(从照片提取主色),下栏拍摄参数(与色块等宽,字号自适应)。
         const pad = Math.max(14, Math.floor(size / 2));
         const fp = autoExifSize(S.paramFs, iw);
         const fsB = Math.max(17, Math.round(fp * 1.35));
@@ -3405,29 +3518,40 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
         const cam = S.cam;
         const brandTxt = String((S && S.hassyCaption) || '').trim()
             || ((prettyBrand(cam.brand) + (cam.model ? ' ' + cam.model : '')).trim() || 'OPPO');
+        const barMid = barY + barH / 2;
+        // 左:品牌型号,白条内垂直居中
         const bX = pad + 12;
-        const bBaseline = barY + Math.round(fsB * 0.82);
+        const bBaseline = barMid + Math.round(fsB * 0.28);
         drawTextL(g, brandTxt, bX, bBaseline, 'rgb(25,25,25)', fsB, false, false, 0);
-        // 右侧两栏:上栏 8 块彩色色卡横排右对齐,下栏拍摄参数右对齐
-        const cardH = Math.max(6, Math.round(fsB * 0.32));
+        // 右栏:照片提取主色色卡 + 拍摄参数,整体垂直居中,参数与色块等宽
+        const colors = extractPalette(img, 8);
+        const cardH = Math.max(6, Math.round(fsB * 0.3));
         const cardW = Math.round(cardH * 1.7);
         const gap = Math.max(3, Math.round(fsB * 0.12));
-        const CARD = ['#E14B3A', '#E8893C', '#DFC33C', '#6E9E4B', '#3F9E8E', '#3E6FA3', '#5B5EA6', '#9A5EA6'];
-        const cardsW = CARD.length * cardW + (CARD.length - 1) * gap;
-        const cardY = barY + Math.round(fsB * 0.6);
+        const cardsW = colors.length * cardW + (colors.length - 1) * gap;
+        const ss = (cam.shutter || '').endsWith('s') ? cam.shutter : (cam.shutter || '') + 's';
+        const ps = cam.focal + '  ' + cam.aperture + '  ' + ss + '  ' + cam.iso;
+        let pFs = fp, pm = null;
+        if (String(ps).trim()) {
+            const pm0 = textMetrics(g, ps, fp, true, false, 0);
+            if (pm0.w > 0 && Math.abs(pm0.w - cardsW) > 2) {
+                pFs = Math.max(11, Math.min(Math.round(fp * 1.6), Math.round(fp * cardsW / pm0.w)));
+            }
+            pm = textMetrics(g, ps, pFs, true, false, 0);
+        }
+        const gapV = Math.max(6, Math.round(fsB * 0.22));
+        const groupH = cardH + gapV + (pm ? pFs : 0);
+        const groupTop = Math.round(barMid - groupH / 2);
+        const cardY = groupTop;
         let cx = w - pad - 12 - cardsW;
-        for (let i = 0; i < CARD.length; i++) {
-            g.fillStyle = CARD[i];
+        for (let i = 0; i < colors.length; i++) {
+            g.fillStyle = colors[i];
             g.fillRect(cx, cardY, cardW, cardH);
             cx += cardW + gap;
         }
-        // 右下参数:顺序对齐参考图 23mm f/1.8 1/846s ISO50
-        const ss = (cam.shutter || '').endsWith('s') ? cam.shutter : (cam.shutter || '') + 's';
-        const ps = cam.focal + '  ' + cam.aperture + '  ' + ss + '  ' + cam.iso;
-        if (String(ps).trim()) {
-            const pm = textMetrics(g, ps, fp, true, false, 0);
-            const pBaseline = barY + Math.round(fsB * 1.75);
-            drawTextL(g, ps, w - pad - 12 - pm.w, pBaseline, 'rgb(35,35,35)', fp, true, false, 0);
+        if (pm) {
+            const pBaseline = groupTop + cardH + gapV + Math.round(pFs * 0.78);
+            drawTextL(g, ps, w - pad - 12 - pm.w, pBaseline, 'rgb(35,35,35)', pFs, true, false, 0);
         }
     }
     function styleImpFrosted(img, size, g, iw, ih, S) {
@@ -6473,119 +6597,7 @@ const w = natW;
         g.restore();
     }
 
-    // ══ 色卡提取 ══ 从照片提取 5 个主色,照片下方深色条内显示色块+色码
-    const _paletteCache = new WeakMap();
-    function _sqDist(a, b) {
-        const dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
-        return dr * dr + dg * dg + db * db;
-    }
-    function extractPalette(img, n) {
-        const cached = _paletteCache.get(img);
-        if (cached) return cached;
-        const sw = 64;
-        const sc = document.createElement('canvas');
-        sc.width = sw;
-        sc.height = Math.max(1, Math.round(sw * (img.height / Math.max(1, img.width))));
-        const sctx = sc.getContext('2d', { willReadFrequently: true });
-        sctx.drawImage(img, 0, 0, sw, sc.height);
-        let data = null;
-        try { data = sctx.getImageData(0, 0, sw, sc.height).data; } catch (e) { data = null; }
-        const k = n || 5;
-        const fallback = ['#333333', '#666666', '#999999', '#bbbbbb', '#dddddd'];
-        if (!data) return fallback.slice(0, k);
-        const pts = [];
-        for (let i = 0; i < data.length; i += 4) {
-            if (data[i + 3] > 40) pts.push([data[i], data[i + 1], data[i + 2]]);
-        }
-        if (pts.length === 0) return fallback.slice(0, k);
-        if (pts.length <= k) {
-            const pal = pts.map(c => '#' + c.map(v => v.toString(16).padStart(2, '0')).join(''));
-            while (pal.length < k) pal.push('#888888');
-            _paletteCache.set(img, pal);
-            return pal;
-        }
-        const runK = (centers) => {
-            const assign = new Array(pts.length).fill(0);
-            for (let it = 0; it < 14; it++) {
-                for (let p = 0; p < pts.length; p++) {
-                    let b = 0, bd = Infinity;
-                    for (let c = 0; c < centers.length; c++) { const d = _sqDist(pts[p], centers[c]); if (d < bd) { bd = d; b = c; } }
-                    assign[p] = b;
-                }
-                const sums = Array.from({ length: centers.length }, () => [0, 0, 0, 0]);
-                for (let p = 0; p < pts.length; p++) { sums[assign[p]][0] += pts[p][0]; sums[assign[p]][1] += pts[p][1]; sums[assign[p]][2] += pts[p][2]; sums[assign[p]][3]++; }
-                let moved = false;
-                for (let c = 0; c < centers.length; c++) {
-                    if (sums[c][3]) {
-                        const nc = [Math.round(sums[c][0] / sums[c][3]), Math.round(sums[c][1] / sums[c][3]), Math.round(sums[c][2] / sums[c][3])];
-                        if (nc[0] !== centers[c][0] || nc[1] !== centers[c][1] || nc[2] !== centers[c][2]) moved = true;
-                        centers[c] = nc;
-                    }
-                }
-                if (!moved) break;
-            }
-            return assign;
-        };
-        // 初始种子:最远点法(确定性,避免大面积单一色被拆成多个相近簇)
-        const centers = [];
-        centers.push(pts[0].slice());
-        for (let c = 1; c < k; c++) {
-            let bestP = 0, bestD = -1;
-            for (let p = 0; p < pts.length; p++) {
-                let md = Infinity;
-                for (const ct of centers) { const d = _sqDist(pts[p], ct); if (d < md) md = d; }
-                if (md > bestD) { bestD = md; bestP = p; }
-            }
-            centers.push(pts[bestP].slice());
-        }
-        runK(centers);
-        // 去重合并:两中心距离过近则用离其余中心最远的点替换其一并重新收敛
-        for (let pass = 0; pass < 5; pass++) {
-            let dup = -1, dup2 = -1;
-            for (let a = 0; a < k && dup < 0; a++) {
-                for (let b = a + 1; b < k && dup < 0; b++) {
-                    if (_sqDist(centers[a], centers[b]) < 676) { dup = a; dup2 = b; }
-                }
-            }
-            if (dup < 0) break;
-            let bestP = 0, bestD = -1;
-            for (let p = 0; p < pts.length; p++) {
-                let md = Infinity;
-                for (let c = 0; c < k; c++) { if (c !== dup2) { const d = _sqDist(pts[p], centers[c]); if (d < md) md = d; } }
-                if (md > bestD) { bestD = md; bestP = p; }
-            }
-            centers[dup2] = pts[bestP].slice();
-            runK(centers);
-        }
-        const pal = centers.map(c => '#' + c.map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join(''));
-        _paletteCache.set(img, pal);
-        return pal;
-    }
-    function styleColorPalette(img, size, g, iw, ih) {
-        const pad = Math.max(30, Math.round(iw * 0.03));
-        const barH = Math.max(104, Math.round(iw * 0.12));
-        const w = iw + pad * 2, h = pad + ih + barH;
-        g.fillStyle = '#f6f4ee'; g.fillRect(0, 0, w, h);
-        g.drawImage(img, pad, pad, iw, ih);
-        const by = pad + ih;
-        g.fillStyle = '#ffffff'; g.fillRect(0, by, w, barH);
-        const colors = extractPalette(img, 5);
-        const dotD = Math.round(barH * 0.44);
-        const cy = by + Math.round(barH * 0.36);
-        const gap = Math.max(40, Math.round(iw * 0.12));
-        const totalW = colors.length * dotD + (colors.length - 1) * gap;
-        let x = (w - totalW) / 2 + dotD / 2;
-        g.textAlign = 'center';
-        for (const c of colors) {
-            g.beginPath(); g.arc(x, cy, dotD / 2, 0, Math.PI * 2);
-            g.fillStyle = c; g.fill();
-            g.lineWidth = 1; g.strokeStyle = 'rgba(0,0,0,0.18)'; g.stroke();
-            g.fillStyle = '#1a1a1a';
-            g.font = Math.max(12, Math.round(dotD * 0.36)) + 'px Consolas, monospace';
-            g.fillText('#FF' + c.slice(1).toUpperCase(), x, cy + Math.round(dotD * 0.78));
-            x += dotD + gap;
-        }
-    }
+
 
     // ══ 签名纪念 ══
     function styleSignature(img, size, g, iw, ih, S, cwO, chO) {
