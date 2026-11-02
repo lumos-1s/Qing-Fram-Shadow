@@ -7696,10 +7696,12 @@ const w = natW;
         const modelFs = lgFitFont(g, model, 7.5 * scale, 400, leftMaxW, step);
 
         const h1 = 23 * scale, h2 = 17 * scale;
-        // 日期关闭时参数行单独垂直居中;日期显示时维持「参数+日期」两行整体居中
-        const blockTop = geo.top + capH / 2 - (showDate ? (h1 + h2) : h1) / 2;
-        const base1 = blockTop + 0.75 * h1;
-        const base2 = blockTop + h1 + 0.7 * h2;
+        // 左列品牌+型号两行始终整体居中;右列日期关闭时参数单行垂直居中、开启时与左列对齐
+        const blockTopL = geo.top + capH / 2 - (h1 + h2) / 2;
+        const baseL1 = blockTopL + 0.75 * h1;
+        const baseL2 = blockTopL + h1 + 0.7 * h2;
+        const baseR1 = showDate ? baseL1 : geo.top + capH / 2 - h1 / 2 + 0.75 * h1;
+        const baseR2 = showDate ? baseL2 : 0;
 
         g.textAlign = 'left';
         g.textBaseline = 'alphabetic';
@@ -7707,12 +7709,12 @@ const w = natW;
         if (brand) {
             g.font = '700 ' + brandFs + 'px ' + LG_FONT;
             g.fillStyle = '#ffffff';
-            g.fillText(brand.toUpperCase(), leftX, base1);
+            g.fillText(brand.toUpperCase(), leftX, baseL1);
         }
         if (model) {
             g.font = '400 ' + modelFs + 'px ' + LG_FONT;
             g.fillStyle = 'rgba(255,255,255,0.957)';
-            g.fillText(model, leftX, base2);
+            g.fillText(model, leftX, baseL2);
         }
 
         if (wantsLogo) {
@@ -7732,11 +7734,11 @@ const w = natW;
 
         g.font = '700 ' + textFs + 'px ' + LG_FONT;
         g.fillStyle = '#ffffff';
-        g.fillText(paramText, rightX, base1);
+        g.fillText(paramText, rightX, baseR1);
         g.font = '400 ' + dateFs + 'px ' + LG_FONT;
         g.fillStyle = 'rgba(255,255,255,0.957)';
         if (showDate) {
-            g.fillText(dateText, rightX, base2);
+            g.fillText(dateText, rightX, baseR2);
         }
     }
 
