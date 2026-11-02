@@ -4761,6 +4761,7 @@ const w = natW;
                 const v = Number(t.liquidGlassSize);
                 return clampP(Number.isFinite(v) && v > 0 ? v : 1, 0.5, 2);
             })(),
+            glassDateShow: t.liquidGlassDate !== 0,
         };
     }
 
@@ -7672,12 +7673,16 @@ const w = natW;
         const step = 0.25 * scale;
         const maxRightW = Math.max(1, (capW - padX * 2) * 0.45);
         const textFs = lgFitFont(g, paramText, 11 * scale, 700, maxRightW, step);
-        const dateFs = lgFitFont(g, dateText, 8 * scale, 400, maxRightW, step);
+        const showDate = !!(S && S.glassDateShow);
+        const dateFs = showDate ? lgFitFont(g, dateText, 8 * scale, 400, maxRightW, step) : 0;
         g.font = '700 ' + textFs + 'px ' + LG_FONT;
         const textW = g.measureText(paramText).width;
-        g.font = '400 ' + dateFs + 'px ' + LG_FONT;
-        const dateW = g.measureText(dateText).width;
-        const rightW = Math.min(maxRightW, Math.max(textW, dateW));
+        let dateW = 0;
+        if (showDate) {
+            g.font = '400 ' + dateFs + 'px ' + LG_FONT;
+            dateW = g.measureText(dateText).width;
+        }
+        const rightW = showDate ? Math.min(maxRightW, Math.max(textW, dateW)) : Math.min(maxRightW, textW);
         const rightX = geo.right - padX - rightW;
         const dividerX = rightX - 6 * scale;
         // APK 无论 logo 位图是否存在,都按 24dp 预留中间 logo 槽(见 drawContent 的 f6/f11),
@@ -7691,7 +7696,8 @@ const w = natW;
         const modelFs = lgFitFont(g, model, 7.5 * scale, 400, leftMaxW, step);
 
         const h1 = 23 * scale, h2 = 17 * scale;
-        const blockTop = geo.top + capH / 2 - (h1 + h2) / 2;
+        // 日期关闭时参数行单独垂直居中;日期显示时维持「参数+日期」两行整体居中
+        const blockTop = geo.top + capH / 2 - (showDate ? (h1 + h2) : h1) / 2;
         const base1 = blockTop + 0.75 * h1;
         const base2 = blockTop + h1 + 0.7 * h2;
 
@@ -7729,7 +7735,9 @@ const w = natW;
         g.fillText(paramText, rightX, base1);
         g.font = '400 ' + dateFs + 'px ' + LG_FONT;
         g.fillStyle = 'rgba(255,255,255,0.957)';
-        g.fillText(dateText, rightX, base2);
+        if (showDate) {
+            g.fillText(dateText, rightX, base2);
+        }
     }
 
     const draw = {

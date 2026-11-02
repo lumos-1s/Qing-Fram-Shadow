@@ -238,6 +238,8 @@
         // 玻璃条大小:只有 LIQUID_GLASS 有底部玻璃条,其余风格显示这一行等于一个死滑块。
         // 这是 DECLARED 而非 MEASURED —— 它改的是"风格专属语义",像素差实测分不出来。
         v.rowGlassSize = s === 'LIQUID_GLASS';
+        // 玻璃条「显示日期」:只有 LIQUID_GLASS 玻璃条上有日期行,其余风格没有可关的对象
+        v.rowGlassDate = s === 'LIQUID_GLASS';
         // 五个数值滑块:实测决定。旧实现里 CARD_3D 无条件盖掉的几行,在实测口径下
         // 已被上面各自的判定吸收,故这里不需要额外的 is3d 分支。
         for (const d of DIMS) v[d.row] = has(s, d.key);

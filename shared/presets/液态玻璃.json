@@ -57,5 +57,6 @@
   "photoFrameStyle": "LIQUID_GLASS",
   "photoFrameBorderSize": 100,
   "blurIntensity": 50,
-  "brandLogo": 1
+  "brandLogo": 1,
+  "liquidGlassDate": 1
 }

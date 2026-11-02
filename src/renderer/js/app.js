@@ -89,6 +89,7 @@ window.App = {
                 if (s.brandLogo != null) this.template.brandLogo = s.brandLogo;
                 if (s.paramScale) this.template.paramScale = s.paramScale;
                 if (s.liquidGlassSize) this.template.liquidGlassSize = s.liquidGlassSize;
+                if (s.liquidGlassDate != null) this.template.liquidGlassDate = s.liquidGlassDate;
                 // 用户显式记忆过「背景模糊默认开/关」时，它优先于旧草稿里的单次值。
                 if (typeof this.applyBgBlurDefault === 'function') this.applyBgBlurDefault(this.template);
                 this.refreshUI();
@@ -1439,6 +1440,7 @@ window.App = {
 
         this.template.canvasRatio = $('cbCanvasRatio') ? $('cbCanvasRatio').value : 'original';
         this.template.canvasSync = $('cbCanvasSync') ? ($('cbCanvasSync').checked ? 1 : 0) : (this.template.canvasSync || 0);
+        this.template.liquidGlassDate = $('chkGlassDate') ? ($('chkGlassDate').checked ? 1 : 0) : (this.template.liquidGlassDate !== 0 ? 1 : 0);
         const gm = $('slGlobalMargin') ? parseInt($('slGlobalMargin').value, 10) / 100 : 1;
         m.globalMargin = gm;
         this.applyGlobalMargin(gm, false);
@@ -1789,6 +1791,7 @@ window.App = {
                 $('slGlassSize').value = gsz;
                 this.updateLabel('lblGlassSize', gsz + '%');
             }
+            if ($('chkGlassDate')) $('chkGlassDate').checked = this.template.liquidGlassDate !== 0;
             if ($('inpSignature')) $('inpSignature').value = this.template.userSignature || '';
             if ($('cbSignFont')) $('cbSignFont').value = this.template.signFont || 'cursive';
             if ($('cbSignColor')) $('cbSignColor').value = this.template.signColor || '#555';
@@ -2917,7 +2920,7 @@ window.App = {
         }
 
         // 复选框 -> onSettingCommit
-        const chks = ['cbCornerLock', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq', 'cbCanvasSync'];
+        const chks = ['cbCornerLock', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq', 'cbCanvasSync', 'chkGlassDate'];
         chks.forEach(id => {
             const el = $(id);
             if (el) el.addEventListener('change', () => this.onSettingCommit());

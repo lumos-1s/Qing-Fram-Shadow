@@ -134,7 +134,36 @@ async () => {
         hZero > 20 && near(hZero, base100, 0.05) && near(hJunk, base100, 0.05),
         hZero + ' / ' + hJunk, base100 + ' / ' + base100);
 
+    // ⑦ 玻璃条「显示日期」行:液态玻璃显示、其它风格隐藏
+    const rowDateShown = () => {
+        const el = document.getElementById('rowGlassDate');
+        return !!el && window.getComputedStyle(el).display !== 'none';
+    };
+    const dShown = rowDateShown();
+    App.template.photoFrameStyle = 'SIMPLE';
+    App.refreshUI();
+    const dSimple = rowDateShown();
+    App.template.photoFrameStyle = 'LIQUID_GLASS';
+    App.refreshUI();
+    add('液态玻璃显示「显示日期」、其它风格隐藏', dShown && !dSimple,
+        '液态玻璃=' + dShown + ' / SIMPLE=' + dSimple, 'true / false');
+
+    // ⑧ 关闭日期:模型写入、渲染不崩、玻璃条高度不变(日期行不占玻璃条高度)
+    const chkD = document.getElementById('chkGlassDate');
+    chkD.checked = false;
+    App.syncModelFromUI();
+    App.scheduleRender(true);
+    const hNoDate = await settle();
+    add('关闭日期写入模型', App.template.liquidGlassDate === 0, String(App.template.liquidGlassDate), '0');
+    add('关闭日期后玻璃条高度不变', near(hNoDate, h100, 0.06), hNoDate, h100);
+    chkD.checked = true;
+    App.syncModelFromUI();
+    App.scheduleRender(true);
+    await settle();
+    add('重新开启日期恢复显示', App.template.liquidGlassDate === 1, String(App.template.liquidGlassDate), '1');
+
     return { out, canvas: cv.width + 'x' + cv.height };
+
 }
 `;
 
