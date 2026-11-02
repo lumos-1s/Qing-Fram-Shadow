@@ -3391,6 +3391,41 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
             }
         }
     }
+    function styleHasselblad(img, size, g, iw, ih, S) {
+        // OPPO 哈苏水印:白底相框 + 底部白条。左下品牌文字(可输入任意文字,留空回落照片品牌型号),
+        // 品牌下方一排彩色色卡;右下拍摄参数(focal + aperture + shutter + ISO)。
+        const pad = Math.max(14, Math.floor(size / 2));
+        const fp = autoExifSize(S.paramFs, iw);
+        const fsB = Math.max(17, Math.round(fp * 1.35));
+        const barH = Math.max(64, Math.round(fsB * 2.6));
+        const barY = ih + pad;
+        const w = iw + pad * 2, h = ih + pad + barH;
+        g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+        g.drawImage(img, pad, pad);
+        const cam = S.cam;
+        const brandTxt = String((S && S.hassyCaption) || '').trim()
+            || ((prettyBrand(cam.brand) + (cam.model ? ' ' + cam.model : '')).trim() || 'OPPO');
+        const bX = pad + 12;
+        const bBaseline = barY + Math.round(fsB * 0.82);
+        drawTextL(g, brandTxt, bX, bBaseline, 'rgb(25,25,25)', fsB, false, false, 0);
+        // 色卡:品牌下方一排 8 个彩色小色块
+        const cardH = Math.max(6, Math.round(fsB * 0.32));
+        const cardW = Math.round(cardH * 1.7);
+        const gap = Math.max(3, Math.round(fsB * 0.12));
+        const cardY = barY + Math.round(fsB * 1.42);
+        const CARD = ['#E14B3A', '#E8893C', '#DFC33C', '#6E9E4B', '#3F9E8E', '#3E6FA3', '#5B5EA6', '#9A5EA6'];
+        for (let i = 0; i < CARD.length; i++) {
+            g.fillStyle = CARD[i];
+            g.fillRect(bX + i * (cardW + gap), cardY, cardW, cardH);
+        }
+        // 右下参数:顺序对齐参考图 23mm f/1.8 1/846s ISO50
+        const ss = (cam.shutter || '').endsWith('s') ? cam.shutter : (cam.shutter || '') + 's';
+        const ps = cam.focal + '  ' + cam.aperture + '  ' + ss + '  ' + cam.iso;
+        if (String(ps).trim()) {
+            const pm = textMetrics(g, ps, fp, true, false, 0);
+            drawTextL(g, ps, w - pad - 12 - pm.w, bBaseline, 'rgb(35,35,35)', fp, true, false, 0);
+        }
+    }
     function styleImpFrosted(img, size, g, iw, ih, S) {
         // 横版:左侧文字区,右侧照片
         const gm = S.globalMargin || 1;
@@ -4769,6 +4804,8 @@ const w = natW;
             glassDateShow: t.liquidGlassDate !== 0,
             // 拍立得底部自定义文字(留空=显示默认日期)
             polaroidCaption: String(t.polaroidCaption || ''),
+            // 哈苏水印品牌文字(留空回落照片品牌型号)
+            hassyCaption: String(t.hassyCaption || '').trim(),
         };
     }
 
@@ -4979,6 +5016,11 @@ const w = natW;
                 const pfs = Math.max(10, Math.round(autoExifSize((S ? S.paramFs : 12), iw)));
                 const pbottom = Math.max(size * 3, Math.round(pfs * 2.6));
                 return { w: iw + size * 2, h: ih + size + pbottom };
+            }
+            case 'HASSELBLAD': {
+                const hbFs = Math.max(17, Math.round(autoExifSize((S ? S.paramFs : 12), iw) * 1.35));
+                const hbBar = Math.max(64, Math.round(hbFs * 2.6));
+                return { w: iw + size * 2, h: ih + size + hbBar };
             }
             case 'DROP_SHADOW': {
                 const offset = Math.max(8, Math.floor(size / 2));
@@ -7760,6 +7802,7 @@ const w = natW;
             GRADIENT: styleGradient, DROP_SHADOW: styleDropShadow,
             BLUR_CLASSIC: styleBlurClassic, BLUR_DATE: styleBlurDate,
             WM_CLASSIC: styleWmClassic, WM_SINGLE: styleWmSingle, WM_BRAND_LOGO: styleWmBrandLogo, WM_AI: styleWmAi,
+            HASSELBLAD: styleHasselblad,
             IMP_FROSTED: styleImpFrosted, IMP_CLASSIC: styleImpClassic, XIAOMI_IMP: styleXiaomiImp,
             CARD_LEICA: styleCardLeica, CARD_LOGO_PARAM: styleCardLogoParam, CARD_PURE_LOGO: styleCardPureLogo,
             CARD_SIMPLE: styleCardSimple, CARD_IMMERSION: styleCardImmersion,
