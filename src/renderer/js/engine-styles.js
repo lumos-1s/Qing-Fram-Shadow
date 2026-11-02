@@ -5165,7 +5165,10 @@ const w = natW;
             case 'HASSELBLAD': {
                 const hbFs = Math.max(17, Math.round(autoExifSize((S ? S.paramFs : 12), iw) * 1.35));
                 const hbBar = Math.max(64, Math.round(hbFs * 2.6));
-                return { w: iw + size * 2, h: ih + size + hbBar };
+                // 尺寸必须与 styleHasselblad 同源:实际绘制用 pad=size/2(左右/顶部),底部 barH
+                // 旧版此处用 size*2/size,画布比内容右侧/底部各多出 size/2 透明区,补边后两边不对称
+                const hp = Math.max(14, Math.floor(size / 2));
+                return { w: iw + hp * 2, h: ih + hp + hbBar };
             }
             case 'DROP_SHADOW': {
                 const offset = Math.max(8, Math.floor(size / 2));
