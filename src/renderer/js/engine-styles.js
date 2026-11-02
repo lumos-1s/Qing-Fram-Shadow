@@ -3516,13 +3516,30 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
         g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
         g.drawImage(img, pad, pad);
         const cam = S.cam;
-        const brandTxt = String((S && S.hassyCaption) || '').trim()
-            || ((prettyBrand(cam.brand) + (cam.model ? ' ' + cam.model : '')).trim() || 'OPPO');
+        const detected = prettyBrand(cam.brand);
+        const typed = String((S && S.hassyCaption) || '').trim();
+        const brandTxt = typed
+            || ((detected + (cam.model ? ' ' + cam.model : '')).trim() || 'OPPO');
+        // 品牌色:输入文字与照片识别品牌一致时,自动使用该品牌品牌色
+        let brandInkColor = 'rgb(25,25,25)';
+        if (typed && detected) {
+            const du = detected.toUpperCase(), tu = typed.toUpperCase();
+            if (tu === du || tu.indexOf(du) === 0 || du.indexOf(tu) === 0) {
+                const phoneInk = {
+                    OPPO: '#00a862', VIVO: '#415fff', HUAWEI: '#d0021b', HONOR: '#7a6cf0',
+                    APPLE: '#333333', GOOGLE: '#4285f4', ONEPLUS: '#eb0028', SAMSUNG: '#1428a0',
+                    REDMI: '#ff6900', XIAOMI: '#ff6900', REALME: '#e6a800', MOTOROLA: '#0068c7',
+                    NUBIA: '#b91a3a', ASUS: '#0052a5', NOKIA: '#124191', MEIZU: '#0080ff',
+                    LG: '#d0021b', TECNO: '#5c2d91', INFINIX: '#e60012'
+                };
+                brandInkColor = phoneInk[du] || brandInk(detected, false);
+            }
+        }
         const barMid = barY + barH / 2;
-        // 左:品牌型号,白条内垂直居中
+        // 左:品牌型号,白条内垂直居中,字体与右侧参数横条一致(monospace)
         const bX = pad + 12;
         const bBaseline = barMid + Math.round(fsB * 0.28);
-        drawTextL(g, brandTxt, bX, bBaseline, 'rgb(25,25,25)', fsB, false, false, 0);
+        drawTextL(g, brandTxt, bX, bBaseline, brandInkColor, fsB, true, false, 0);
         // 右栏:照片提取主色色卡 + 拍摄参数,整体垂直居中,参数与色块等宽
         const colors = extractPalette(img, 8);
         const cardH = Math.max(6, Math.round(fsB * 0.3));
