@@ -54,11 +54,18 @@ const OLD_REDSEAL = 'c459dfe8';
 // 照片圆角裁剪矩形恒为 (dx,dy,img.width,img.height),imgScale≠1 时裁错照片边缘。
 // 修复参数个数后渲染回到正确状态,指纹与「模糊底不透明修复」那一版重新一致(红章 imgScale=1,不受影响):
 // 纪念 6e89016 / 牛皮纸 109ac51 / 蓝晒 76728d95 / 黑金 570f2528 / 红章 4709ec04。
+// 2026-11-06 复核:上面这批常量(642cbbf 写下)与实际渲染一直不符。在 642cbbf 本身上跑,
+// 四个变体出的是 cd2748a0 / 29472f4e / 79eac143 / 4891d949,与写进 FROZEN 的值不同 ——
+// 即那次把改到一半时的值写了进去,提交后没复跑。证据:从 642cbbf(11-01 18:11) 经 v0.1.23
+// (f7ae314)、b6feda4 一直到 0.1.24 的 HEAD,跨越画幅同步 / 调色对齐 LR / 锐化 GL 化 /
+// 阴影场改键 / drawImage 尺寸换算 五个改动面,四个变体的指纹逐字节相同 —— 画面极其稳定,
+// 错的只是常量。用 --shot 目检五个变体(照片落位、齿孔、票题、日期、红章几何)均正常,
+// 故按实测重采。以后要动这几个数,先 --shot 看图再采 --hash。
 const FROZEN = {
-    '纪念邮票': '6e89016',
-    '牛皮纸邮票': '109ac51',
-    '蓝晒邮票': '76728d95',
-    '黑金邮票': '570f2528',
+    '纪念邮票': 'cd2748a0',
+    '牛皮纸邮票': '29472f4e',
+    '蓝晒邮票': '79eac143',
+    '黑金邮票': '4891d949',
 };
 
 const MEASURE = (presetObj, extra) => `(async () => {
@@ -97,8 +104,16 @@ const MEASURE = (presetObj, extra) => `(async () => {
     // 整幅最小 alpha:模糊底不外扩/不叠两遍时,四周会留下 alpha<255 的半透明带(修之前实测 min 131)
     let alphaMin = 255;
     for (let i = 3; i < d.length; i += 4) { if (d[i] < alphaMin) { alphaMin = d[i]; if (alphaMin === 0) break; } }
+    // 目检用:--shot 时顺手把画面缩到 760 宽带回来,重采指纹前先看一眼有没有画歪
+    let shot = null;
+    if (window.__QFS_SHOT) {
+        const sc = document.createElement('canvas');
+        const k = 760 / W; sc.width = Math.round(W * k); sc.height = Math.round(H * k);
+        sc.getContext('2d').drawImage(cv, 0, 0, sc.width, sc.height);
+        shot = sc.toDataURL('image/png');
+    }
     window.Date = RD;
-    return { W, H, fp, alphaMin, data: null };
+    return { W, H, fp, alphaMin, data: shot };
 })()`;
 
 // 红章几何体检(在渲染进程里算,避免把 16MB 像素搬回来)
@@ -215,7 +230,7 @@ const SEAL_SCAN = (presetObj, extra, withAvatar) => `(async () => {
 function finish(code) { app.exit(code || 0); }
 
 app.whenReady().then(async () => {
-    const mode = process.argv.includes('--hash') ? 'hash' : 'check';
+    const mode = process.argv.includes('--hash') ? 'hash' : (process.argv.includes('--shot') ? 'shot' : 'check');
     protocol.handle('qflocal', (req) => {
         try { const u = new URL(req.url); const p = u.searchParams.get('p'); if (!p || !fs.existsSync(p)) return new Response('NF', { status: 404 }); return net.fetch(pathToFileURL(p).href); }
         catch (e) { return new Response('NF', { status: 404 }); }
@@ -242,6 +257,44 @@ app.whenReady().then(async () => {
             const r2 = await win.webContents.executeJavaScript(MEASURE(preset(n)));
             console.log(`  '${n}': '${r1.fp}',   // ${r1.W}x${r1.H}${r1.fp === r2.fp ? '' : '  ← 两次渲染不一致!'}`);
         }
+        finish(0);
+        return;
+    }
+
+    if (mode === 'shot') {
+        await win.webContents.executeJavaScript('window.__QFS_SHOT = true');
+        const shots = [];
+        for (const n of NAMES) {
+            const r = await win.webContents.executeJavaScript(MEASURE(preset(n)));
+            shots.push({ n, url: r.data, W: r.W, H: r.H, fp: r.fp });
+        }
+        const url = await win.webContents.executeJavaScript(`(async () => {
+            const S = ${JSON.stringify(shots)};
+            const CW = 520, pad = 12, head = 26, cols = 2;
+            const ch = Math.round(CW * S[0].H / S[0].W);
+            const rows = Math.ceil(S.length / cols);
+            const cv = document.createElement('canvas');
+            cv.width = pad + cols * (CW + pad);
+            cv.height = pad + rows * (head + ch + pad);
+            const g = cv.getContext('2d');
+            g.fillStyle = '#1a1a1a'; g.fillRect(0, 0, cv.width, cv.height);
+            for (let i = 0; i < S.length; i++) {
+                const cx = pad + (i % cols) * (CW + pad);
+                const cy = pad + Math.floor(i / cols) * (head + ch + pad);
+                g.fillStyle = '#f0d9a8'; g.font = 'bold 15px sans-serif';
+                g.fillText(S[i].n, cx, cy + 17);
+                const im = new Image();
+                await new Promise(r => { im.onload = r; im.onerror = r; im.src = S[i].url; });
+                g.drawImage(im, cx, cy + head, CW, ch);
+            }
+            return cv.toDataURL('image/png');
+        })()`);
+        const outDir = path.join(ROOT, 'tools', 'out');
+        fs.mkdirSync(outDir, { recursive: true });
+        const out = path.join(outDir, 'stamp-sheet.png');
+        fs.writeFileSync(out, Buffer.from(url.split(',')[1], 'base64'));
+        for (const s of shots) console.log(`  ${s.n}: ${s.W}x${s.H}  fp=${s.fp}`);
+        console.log('已生成 ' + path.relative(ROOT, out));
         finish(0);
         return;
     }
