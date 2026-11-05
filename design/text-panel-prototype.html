@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<title>文字面板原型 · 基座 + 槽位</title>
+<style>
+    :root {
+        --bg: #181B1A; --panel: #1C201E; --surface: #222725; --surface-2: #262C29;
+        --border: #2C312E; --border-strong: #3C433F;
+        --text: #E8EAE6; --text-2: #A5ACA5; --text-3: #909890;
+        --primary: #3DD9B0; --warn: #E0A458;
+    }
+    [data-theme="light"] {
+        --bg: #EFEBE2; --panel: #F4F6F2; --surface: #FFFFFF; --surface-2: #F0F3EE;
+        --border: #E2DCCE; --border-strong: #CBC4B2;
+        --text: #232724; --text-2: #525752; --text-3: #666B64;
+        --primary: #129E78; --warn: #B4762A;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+        margin: 0; background: var(--bg); color: var(--text);
+        font: 13px/1.45 -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+        display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+    }
+    header {
+        display: flex; align-items: center; gap: 14px; padding: 12px 18px;
+        border-bottom: 1px solid var(--border); background: var(--panel);
+    }
+    header h1 { font-size: 14px; margin: 0; font-weight: 700; letter-spacing: .3px; }
+    header .hint { color: var(--text-3); font-size: 12px; }
+    header .spacer { flex: 1; }
+    .icon-btn {
+        border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
+        border-radius: 9px; padding: 5px 10px; cursor: pointer; font-size: 12px;
+    }
+    .icon-btn:hover { border-color: var(--border-strong); color: var(--text); }
+
+    main { display: grid; grid-template-columns: 236px 1fr 408px; min-height: 0; }
+
+    /* ── 左栏 ── */
+    aside { border-right: 1px solid var(--border); padding: 14px; overflow: auto; }
+    .sec-title {
+        font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+        color: var(--text-3); margin: 4px 0 8px;
+    }
+    .style-item {
+        display: flex; align-items: center; gap: 8px; padding: 9px 10px; margin-bottom: 6px;
+        border: 1px solid var(--border); border-radius: 11px; background: var(--surface);
+        cursor: pointer; transition: border-color .15s;
+    }
+    .style-item:hover { border-color: var(--border-strong); }
+    .style-item.on { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+    .style-item .n { flex: 1; font-size: 12.5px; }
+    .style-item .c { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+    .style-item.on .c { color: var(--primary); }
+
+    .toggle-row {
+        display: flex; align-items: center; gap: 8px; padding: 10px; margin: 10px 0 4px;
+        border: 1px solid var(--border); border-radius: 11px; background: var(--surface);
+    }
+    .toggle-row .n { flex: 1; font-size: 12.5px; }
+    .switch { position: relative; width: 36px; height: 20px; flex: 0 0 auto; }
+    .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+    .switch i {
+        position: absolute; inset: 0; border-radius: 20px; background: var(--border-strong);
+        transition: background .18s;
+    }
+    .switch i::after {
+        content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+        border-radius: 50%; background: #fff; transition: transform .18s;
+    }
+    .switch input:checked + i { background: var(--primary); }
+    .switch input:checked + i::after { transform: translateX(16px); }
+
+    .stat { margin-top: 14px; padding: 11px; border-radius: 11px; background: var(--surface-2); }
+    .stat .line { display: flex; justify-content: space-between; font-size: 12px; margin: 3px 0; color: var(--text-2); }
+    .stat .line b { color: var(--text); font-variant-numeric: tabular-nums; }
+    .stat .line b.good { color: var(--primary); }
+    .stat .note { font-size: 11px; color: var(--text-3); margin-top: 8px; line-height: 1.5; }
+
+    /* ── 中栏预览 ── */
+    .stage { display: flex; align-items: center; justify-content: center; padding: 22px; min-width: 0; }
+    .photo {
+        position: relative; width: min(100%, 620px); aspect-ratio: 3 / 2; border-radius: 6px;
+        background:
+            radial-gradient(120% 90% at 20% 15%, #6d7f96 0%, #4a5c74 38%, #33404f 70%, #262f3a 100%);
+        box-shadow: 0 18px 48px rgba(0,0,0,.45); overflow: hidden;
+    }
+    [data-theme="light"] .photo { box-shadow: 0 18px 42px rgba(60,50,30,.22); }
+    .photo.light {
+        background: radial-gradient(120% 90% at 22% 16%, #ffffff 0%, #f4f2ec 46%, #e4e0d5 100%);
+    }
+    .photo.light::after { background: linear-gradient(to top, rgba(0,0,0,.06), rgba(0,0,0,0) 38%); }
+    .photo.light .stage-hint { color: rgba(0,0,0,.42); }
+    .photo::after {
+        content: ""; position: absolute; inset: 0;
+        background: linear-gradient(to top, rgba(0,0,0,.42), rgba(0,0,0,0) 38%);
+        pointer-events: none;
+    }
+    .wm {
+        position: absolute; left: 0; right: 0; bottom: 22px; z-index: 2;
+        display: flex; flex-direction: column; gap: 4px; align-items: center;
+        padding: 0 26px; pointer-events: none;
+    }
+    .wm .slot { white-space: pre; line-height: 1.18; }
+    .stage-hint {
+        position: absolute; bottom: 10px; left: 0; right: 0; text-align: center;
+        color: rgba(255,255,255,.55); font-size: 11px;
+    }
+
+    /* ── 右栏面板 ── */
+    .side { border-left: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+    .side-head {
+        display: flex; align-items: center; gap: 8px; padding: 12px 14px;
+        border-bottom: 1px solid var(--border); flex: 0 0 auto;
+    }
+    .side-head .t { font-size: 13px; font-weight: 700; }
+    .side-head .badge {
+        margin-left: auto; font-size: 11px; color: var(--primary); border: 1px solid var(--primary);
+        border-radius: 20px; padding: 1px 8px; font-variant-numeric: tabular-nums;
+    }
+    .side-body { padding: 6px 14px 24px; overflow: auto; min-height: 0; }
+
+    .pg-title {
+        font-size: 13px; font-weight: 700; padding: 14px 2px 6px; letter-spacing: .5px;
+        display: flex; align-items: center; gap: 7px;
+    }
+    .pg-title::before { content: ""; width: 4px; height: 13px; border-radius: 2px; background: var(--primary); }
+    .pg-title .sub { font-size: 11px; font-weight: 400; color: var(--text-3); margin-left: auto; }
+
+    .row {
+        display: flex; align-items: center; gap: 8px; padding: 6px 9px; margin: 4px 0;
+        background: var(--surface); border: 1px solid var(--border); border-radius: 11px;
+        transition: border-color .15s;
+    }
+    .row:hover { border-color: var(--border-strong); }
+    .row label { flex: 0 0 62px; color: var(--text-2); font-size: 12px; }
+    .row select, .row input[type="text"] {
+        flex: 1; min-width: 0; background: var(--surface-2); color: var(--text);
+        border: 1px solid var(--border); border-radius: 7px; padding: 3px 6px; font-size: 12px;
+    }
+    .row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--primary); }
+    .row input[type="color"] {
+        width: 30px; height: 22px; padding: 0; border: 1px solid var(--border);
+        border-radius: 6px; background: none; cursor: pointer;
+    }
+    .row .val { flex: 0 0 46px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .row .chk { accent-color: var(--primary); width: 15px; height: 15px; }
+
+    .slot-head {
+        display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin: 5px 0;
+        background: var(--surface); border: 1px solid var(--border); border-radius: 11px;
+        cursor: pointer; user-select: none;
+    }
+    .slot-head:hover { border-color: var(--border-strong); }
+    .slot-head.open { border-color: var(--border-strong); border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; }
+    .slot-head .caret {
+        width: 12px; color: var(--text-3); font-size: 10px; transition: transform .15s; flex: 0 0 auto;
+    }
+    .slot-head.open .caret { transform: rotate(90deg); }
+    .slot-head .nm { font-size: 12.5px; font-weight: 600; }
+    .slot-head .sum {
+        margin-left: auto; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums;
+        max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .slot-head .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); flex: 0 0 auto; }
+    .slot-head .dot.off { background: var(--border-strong); }
+    .slot-body {
+        margin: -1px 0 6px; padding: 8px 9px 4px; border: 1px solid var(--border);
+        border-top: none; border-radius: 0 0 11px 11px; background: var(--surface-2);
+    }
+    .slot-body .row { background: var(--surface); }
+
+    .expert-note {
+        margin: 10px 2px 0; font-size: 11px; color: var(--text-3); line-height: 1.55;
+    }
+    .expert-note b { color: var(--warn); font-weight: 600; }
+    .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+    <h1>文字面板原型</h1>
+    <span class="hint">基座 + 语义槽位 · 只影响这个页面，不写任何软件数据</span>
+    <span class="spacer"></span>
+    <button class="icon-btn" id="btnTheme">切换主题</button>
+    <button class="icon-btn" id="btnReset">恢复默认</button>
+</header>
+
+<main>
+    <aside>
+        <div class="sec-title">预设风格</div>
+        <div id="styleList"></div>
+
+        <div class="toggle-row">
+            <span class="n">专家模式</span>
+            <label class="switch"><input type="checkbox" id="chkExpert" /><i></i></label>
+        </div>
+
+        <div class="stat">
+            <div class="line"><span>当前面板可见</span><b id="stNow">0</b></div>
+            <div class="line"><span>全部展开</span><b id="stAll">0</b></div>
+            <div class="line"><span>现有实现</span><b id="stOld">0</b></div>
+            <div class="note" id="stNote"></div>
+        </div>
+    </aside>
+
+    <section class="stage">
+        <div class="photo">
+            <div class="wm" id="wm"></div>
+            <div class="stage-hint">预览只演示各槽的字体差异，不代表实际版式</div>
+        </div>
+    </section>
+
+    <section class="side">
+        <div class="side-head">
+            <span class="t">文字</span>
+            <span class="badge" id="rowBadge">0 行</span>
+        </div>
+        <div class="side-body">
+            <div class="pg-title">全局<span class="sub">所有预设共用</span></div>
+            <div id="globalRows"></div>
+
+            <div class="pg-title">本预设<span class="sub">随预设保存，槽可单独覆盖</span></div>
+            <div id="presetRows"></div>
+
+            <div class="pg-title">本风格槽位<span class="sub" id="slotCount"></span></div>
+            <div id="slotRows"></div>
+
+            <div class="expert-note" id="expertNote"></div>
+        </div>
+    </section>
+</main>
+
+<script>
+'use strict';
+
+const FONTS = ['Courier New', 'Arial', 'Georgia', 'Times New Roman', 'Trebuchet MS', 'Consolas', 'Microsoft YaHei'];
+const WEIGHTS = [['300', '细'], ['400', '常规'], ['600', '中粗'], ['700', '粗']];
+const DEFAULT_BASE = { font: 'Courier New', size: 30, color: '#ffffff', subColor: '#d9d9d9' };
+
+const STYLES = {
+    xm: {
+        name: '联名水印', old: 29, base: { size: 30, color: '#ffffff', subColor: '#d9d9d9' },
+        slots: [
+            { id: 'brand', label: '品牌字标', text: 'XIAOMI', scale: 1.15, weight: 700, tracking: 2.4, color: '#ffffff', show: 1 },
+            { id: 'params', label: '主文案', text: 'Photo by XIAOMI 14 Ultra', scale: 0.9, weight: 600, tracking: 0, color: '#ffffff', show: 1 },
+            { id: 'sub', label: '副文案', text: 'CLASSIC · CUSTOM', scale: 0.82, weight: 400, tracking: 0.8, color: '#d9d9d9', show: 1 }
+        ]
+    },
+    apple: {
+        name: '苹果信息卡', old: 27, preview: 'light', base: { size: 25, color: '#1d1d1f', subColor: '#86868b' },
+        slots: [
+            { id: 'brand', label: '品牌', text: 'SONY', scale: 1.05, weight: 600, tracking: 0.6, color: '#1d1d1f', show: 1 },
+            { id: 'model', label: '型号', text: 'ILCE-7CM2', scale: 1.0, weight: 600, tracking: 0.4, color: '#1d1d1f', show: 1 },
+            { id: 'params', label: '参数', text: '35mm  f/2.8  1/200s  ISO100', scale: 0.92, weight: 400, tracking: 0, color: '#86868b', show: 1 },
+            { id: 'date', label: '日期', text: '2026.11.04', scale: 0.92, weight: 400, tracking: 0, color: '#86868b', show: 1 }
+        ]
+    },
+    strip: {
+        name: '参数横条', old: 16, base: { size: 28, color: '#ffffff', subColor: '#9a9a9a' },
+        slots: [
+            { id: 'brand', label: '标签行', text: 'CAMERA   FOCAL   APERTURE   ISO', scale: 0.7, weight: 400, tracking: 2.2, color: '#9a9a9a', show: 1 },
+            { id: 'params', label: '数值行', text: 'SONY   35mm   f/2.8   100', scale: 1.0, weight: 600, tracking: 0.3, color: '#ffffff', show: 1 }
+        ]
+    },
+    hassy: {
+        name: '哈苏水印', old: 16, base: { size: 29, color: '#ffffff', subColor: '#d9d9d9' },
+        slots: [
+            { id: 'brand', label: '品牌', text: 'HASSELBLAD', scale: 1.1, weight: 600, tracking: 3.2, color: '#ffffff', show: 1 },
+            { id: 'params', label: '参数', text: 'X2D 100C · 55mm · f/3.5', scale: 0.85, weight: 400, tracking: 0.2, color: '#d9d9d9', show: 1 }
+        ]
+    },
+    simple: {
+        name: '极简细线', old: 14, base: { size: 26, color: '#ffffff', subColor: '#cfcfcf' },
+        slots: [
+            { id: 'params', label: '参数行', text: '35mm · f/2.8 · 1/200s', scale: 1, weight: 400, tracking: 1.2, color: '#ffffff', show: 1 }
+        ]
+    }
+};
+
+const saved = (() => { try { return JSON.parse(localStorage.getItem('qf-text-panel-proto') || 'null'); } catch (_) { return null; } })();
+const state = {
+    style: (saved && saved.style) || 'xm',
+    expert: !!(saved && saved.expert),
+    theme: (saved && saved.theme) || 'dark',
+    base: Object.assign({}, DEFAULT_BASE, (saved && saved.base) || {}),
+    slots: (saved && saved.slots) || {},
+    open: (saved && saved.open) || {}
+};
+
+function slotsOf(id) {
+    const def = STYLES[id].slots;
+    const bag = state.slots[id] || (state.slots[id] = {});
+    return def.map(d => {
+        const cur = bag[d.id] || (bag[d.id] = {});
+        return Object.assign({}, d, {
+            font: cur.font !== undefined ? cur.font : '',
+            scale: cur.scale !== undefined ? cur.scale : d.scale,
+            weight: cur.weight !== undefined ? cur.weight : d.weight,
+            tracking: cur.tracking !== undefined ? cur.tracking : d.tracking,
+            color: cur.color !== undefined ? cur.color
+                : ((d.id === 'sub' || d.id === 'date') ? state.base.subColor : state.base.color),
+            show: cur.show !== undefined ? cur.show : d.show
+        });
+    });
+}
+function patchSlot(id, slotId, key, value) {
+    const bag = state.slots[id] || (state.slots[id] = {});
+    const cur = bag[slotId] || (bag[slotId] = {});
+    cur[key] = value;
+}
+
+const $ = (sel) => document.querySelector(sel);
+const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+
+function fontOf(slot) { return slot.font || state.base.font; }
+function sizeOf(slot) { return Math.max(8, Math.round(state.base.size * slot.scale)); }
+
+function save() {
+    try { localStorage.setItem('qf-text-panel-proto', JSON.stringify(state)); } catch (_) { }
+}
+
+/* ── 左栏风格列表 ── */
+function renderStyles() {
+    const box = $('#styleList');
+    box.innerHTML = '';
+    for (const [id, s] of Object.entries(STYLES)) {
+        const item = el('div', 'style-item' + (state.style === id ? ' on' : ''));
+        item.appendChild(el('span', 'n', s.name));
+        item.appendChild(el('span', 'c', s.old + ' 行'));
+        item.addEventListener('click', () => {
+            state.style = id;
+            const b = STYLES[id].base || {};
+            if (b.size) state.base.size = b.size;
+            if (b.color) state.base.color = b.color;
+            if (b.subColor) state.base.subColor = b.subColor;
+            renderAll(); save();
+        });
+        box.appendChild(item);
+    }
+}
+
+/* ── 基座 ── */
+function renderBase() {
+    let box = $('#globalRows');
+    box.innerHTML = '';
+
+    const rFont = el('div', 'row');
+    rFont.appendChild(el('label', null, '字体'));
+    const sel = el('select');
+    FONTS.forEach(f => {
+        const o = el('option', null, f); o.value = f;
+        if (f === state.base.font) o.selected = true;
+        sel.appendChild(o);
+    });
+    sel.addEventListener('change', () => { state.base.font = sel.value; renderSide(); save(); });
+    rFont.appendChild(sel);
+    box.appendChild(rFont);
+
+    box = $('#presetRows');
+    box.innerHTML = '';
+
+    const rSize = el('div', 'row');
+    rSize.appendChild(el('label', null, '字号'));
+    const rg = el('input'); rg.type = 'range'; rg.min = '16'; rg.max = '56'; rg.value = String(state.base.size);
+    const v = el('span', 'val', state.base.size + 'px');
+    rg.addEventListener('input', () => {
+        state.base.size = Number(rg.value);
+        v.textContent = state.base.size + 'px';
+        updateSums(); renderPreview(); save();
+    });
+    rSize.appendChild(rg); rSize.appendChild(v);
+    box.appendChild(rSize);
+
+    const rColor = el('div', 'row');
+    rColor.appendChild(el('label', null, '主色'));
+    const c1 = el('input'); c1.type = 'color'; c1.value = state.base.color;
+    c1.addEventListener('input', () => { state.base.color = c1.value; renderSide(); save(); });
+    rColor.appendChild(c1);
+    const c2 = el('input'); c2.type = 'color'; c2.value = state.base.subColor;
+    c2.addEventListener('input', () => { state.base.subColor = c2.value; renderSide(); save(); });
+    rColor.appendChild(el('span', 'val', '副色'));
+    rColor.appendChild(c2);
+    box.appendChild(rColor);
+}
+
+/* ── 槽位 ── */
+function slotSummary(s) {
+    return `${fontOf(s)} · ${sizeOf(s)}px · ${s.weight}${s.tracking ? ' · ' + s.tracking.toFixed(1) + 'px' : ''}`;
+}
+
+function renderSlots() {
+    const box = $('#slotRows');
+    box.innerHTML = '';
+    const list = slotsOf(state.style);
+    $('#slotCount').textContent = list.length + ' 个';
+
+    list.forEach(s => {
+        const isOpen = !!state.open[state.style + ':' + s.id] || state.expert;
+        const head = el('div', 'slot-head' + (isOpen ? ' open' : ''));
+        head.appendChild(el('span', 'caret', '▶'));
+        head.appendChild(el('span', 'dot' + (s.show ? '' : ' off')));
+        head.appendChild(el('span', 'nm', s.label));
+        head.appendChild(el('span', 'sum', slotSummary(s) + (s.font ? '' : ' · 继承')));
+        head.addEventListener('click', () => {
+            const key = state.style + ':' + s.id;
+            state.open[key] = !isOpen;
+            renderSlots(); renderStats(); save();
+        });
+        box.appendChild(head);
+
+        if (!isOpen) return;
+        const body = el('div', 'slot-body');
+
+        // 字体(继承 / 覆盖)
+        const r1 = el('div', 'row');
+        r1.appendChild(el('label', null, '字体'));
+        const fs = el('select');
+        const oInherit = el('option', null, '继承基座（' + state.base.font + '）');
+        oInherit.value = '';
+        fs.appendChild(oInherit);
+        FONTS.forEach(f => { const o = el('option', null, f); o.value = f; if (f === s.font) o.selected = true; fs.appendChild(o); });
+        fs.addEventListener('change', () => { patchSlot(state.style, s.id, 'font', fs.value); renderSide(); save(); });
+        r1.appendChild(fs);
+        body.appendChild(r1);
+
+        // 字号(相对基座)
+        const r2 = el('div', 'row');
+        r2.appendChild(el('label', null, '字号'));
+        const rg = el('input'); rg.type = 'range'; rg.min = '40'; rg.max = '220'; rg.value = String(Math.round(s.scale * 100));
+        const v2 = el('span', 'val', Math.round(s.scale * 100) + '%');
+        rg.addEventListener('input', () => {
+            patchSlot(state.style, s.id, 'scale', Number(rg.value) / 100);
+            v2.textContent = rg.value + '%';
+            updateSums(); renderPreview(); save();
+        });
+        r2.appendChild(rg); r2.appendChild(v2);
+        body.appendChild(r2);
+
+        // 颜色
+        const r3 = el('div', 'row');
+        r3.appendChild(el('label', null, '颜色'));
+        const c = el('input'); c.type = 'color'; c.value = s.color;
+        c.addEventListener('input', () => { patchSlot(state.style, s.id, 'color', c.value); renderPreview(); save(); });
+        r3.appendChild(c);
+        r3.appendChild(el('span', 'val', s.color.toUpperCase()));
+        body.appendChild(r3);
+
+        // 字重
+        const r4 = el('div', 'row');
+        r4.appendChild(el('label', null, '字重'));
+        const ws = el('select');
+        WEIGHTS.forEach(([val, nm]) => { const o = el('option', null, nm + ' ' + val); o.value = val; if (String(s.weight) === val) o.selected = true; ws.appendChild(o); });
+        ws.addEventListener('change', () => { patchSlot(state.style, s.id, 'weight', Number(ws.value)); renderSide(); save(); });
+        r4.appendChild(ws);
+        body.appendChild(r4);
+
+        // 字距
+        const r5 = el('div', 'row');
+        r5.appendChild(el('label', null, '字距'));
+        const rt = el('input'); rt.type = 'range'; rt.min = '0'; rt.max = '12'; rt.step = '0.2'; rt.value = String(s.tracking);
+        const v5 = el('span', 'val', s.tracking.toFixed(1) + 'px');
+        rt.addEventListener('input', () => {
+            patchSlot(state.style, s.id, 'tracking', Number(rt.value));
+            v5.textContent = Number(rt.value).toFixed(1) + 'px';
+            updateSums(); renderPreview(); save();
+        });
+        r5.appendChild(rt); r5.appendChild(v5);
+        body.appendChild(r5);
+
+        // 显示
+        const r6 = el('div', 'row');
+        r6.appendChild(el('label', null, '显示'));
+        const chk = el('input'); chk.type = 'checkbox'; chk.className = 'chk'; chk.checked = !!s.show;
+        chk.addEventListener('change', () => { patchSlot(state.style, s.id, 'show', chk.checked ? 1 : 0); renderSide(); save(); });
+        r6.appendChild(chk);
+        r6.appendChild(el('span', 'val', s.show ? '开' : '关'));
+        body.appendChild(r6);
+
+        box.appendChild(body);
+    });
+}
+
+function updateSums() {
+    const list = slotsOf(state.style);
+    const heads = document.querySelectorAll('#slotRows .slot-head');
+    heads.forEach((h, i) => {
+        const s = list[i];
+        if (!s) return;
+        h.querySelector('.sum').textContent = slotSummary(s) + (s.font ? '' : ' · 继承');
+    });
+}
+
+/* ── 预览 ── */
+function renderPreview() {
+    const wm = $('#wm');
+    wm.innerHTML = '';
+    slotsOf(state.style).forEach(s => {
+        if (!s.show) return;
+        const d = el('div', 'slot', s.text);
+        d.style.fontFamily = '"' + fontOf(s) + '", monospace';
+        d.style.fontSize = sizeOf(s) + 'px';
+        d.style.color = s.color;
+        d.style.fontWeight = String(s.weight);
+        d.style.letterSpacing = s.tracking + 'px';
+        wm.appendChild(d);
+    });
+    if (!wm.children.length) wm.appendChild(el('div', 'slot', '（所有文字已隐藏）'));
+}
+
+/* ── 统计 ── */
+function renderStats() {
+    const list = slotsOf(state.style);
+    const openCount = list.filter(s => state.open[state.style + ':' + s.id] || state.expert).length;
+    // 基座 3 行(字体/字号/配色) + 每槽 1 行摘要 + 展开的槽 6 项
+    const visible = 3 + list.length + openCount * 6;
+    const all = 3 + list.length * 7;
+    $('#stNow').textContent = visible + ' 行';
+    $('#stAll').textContent = all + ' 项';
+    $('#stOld').textContent = STYLES[state.style].old + ' 行';
+    $('#rowBadge').textContent = visible + ' 行';
+    $('#stNote').innerHTML = visible <= STYLES[state.style].old
+        ? '默认状态比现有实现更薄，展开后才是一对一的完整控制。'
+        : '<b>已有槽展开</b>：展开的槽会记住，下次打开保持这个深度。';
+    $('#expertNote').innerHTML = state.expert
+        ? '<b>专家模式已开</b>：所有槽展开成完整控件。仍可单独折叠。'
+        : '点任一槽标题展开：字体 / 字号 / 颜色 / 字重 / 字距 / 显示 六项独立。';
+}
+
+function renderSide() {
+    renderBase();
+    renderSlots();
+    renderStats();
+    renderPreview();
+}
+
+function renderAll() {
+    const ph = document.querySelector('.photo');
+    if (ph) ph.classList.toggle('light', STYLES[state.style].preview === 'light');
+    renderStyles();
+    renderSide();
+    $('#chkExpert').checked = state.expert;
+    document.documentElement.setAttribute('data-theme', state.theme);
+}
+
+$('#chkExpert').addEventListener('change', (e) => {
+    state.expert = e.target.checked;
+    renderSlots(); renderStats(); save();
+});
+$('#btnTheme').addEventListener('click', () => {
+    state.theme = state.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', state.theme);
+    save();
+});
+$('#btnReset').addEventListener('click', () => {
+    state.base = Object.assign({}, DEFAULT_BASE);
+    state.slots = {};
+    state.open = {};
+    state.expert = false;
+    $('#chkExpert').checked = false;
+    renderAll(); save();
+});
+
+renderAll();
+</script>
+</body>
+</html>

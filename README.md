@@ -53,11 +53,11 @@
 
 **清框影 QingFramShadow** 是一款 Windows 桌面照片加框工具。它把「边框」当成一张可编辑的画布：先选一款边框定下气质，再调整边距、圆角、纹理、光影、Logo、相机参数与签名，最后按原图尺寸或指定尺寸导出。
 
-- **想让照片快速成片的人**：87 款边框直接套用，右侧参数实时预览。
+- **想让照片快速成片的人**：90 款边框直接套用，右侧参数实时预览。
 - **在意画质与隐私的人**：Canvas 2D 本地渲染，照片不上传，不登录。
 - **需要成批出图的人**：样式记忆、批量导入、同步到选中，一次导出。
 
-> **English** — A Windows desktop app for framing photos locally: 87 presets, 92 frame styles, live frame/light/logo/EXIF controls, reusable templates, collage, grid slicing and batch export. No account, no uploads.
+> **English** — A Windows desktop app for framing photos locally: 90 presets, 95 frame styles, live frame/light/logo/EXIF controls, reusable templates, collage, grid slicing and batch export. No account, no uploads.
 
 <a id="whats-new"></a>
 ## 最近更新 · What's New
@@ -96,8 +96,8 @@
 <a id="features"></a>
 ## 核心功能 · Features
 
-- **87 款内置边框 · 92 种风格** — 杂志、拍立得、撕纸、胶带、邮票、报纸、胶片、渐变卡、漫画分镜、3D 卡、签名纪念与头像叠加，以及自动取色边框等快速预设；选中即套用，再继续微调。
-- **边框墙启动页** — 启动即进入 87 张边框封面墙，方向键、滚轮或拖动浏览，点击直接套用并进入编辑；支持用自定义照片替换封面。
+- **90 款内置边框 · 95 种风格** — 杂志、拍立得、撕纸、胶带、邮票、报纸、胶片、渐变卡、漫画分镜、3D 卡、签名纪念与头像叠加，以及自动取色边框等快速预设；选中即套用，再继续微调。
+- **边框墙启动页** — 启动即进入 90 张边框封面墙，方向键、滚轮或拖动浏览，点击直接套用并进入编辑；支持用自定义照片替换封面。支持「本图预览」：用当前照片实时渲染每款边框，随时可切回内置/自定义封面。
 - **参数实时可调** — 圆角、边距、照片缩放/偏移、内/外阴影、描边、投影、画布比例、纹理/渐变填充，改动即时反馈。
 - **背景模糊默认偏好** — 在「跟随边框 / 默认开 / 默认关」之间切换，换边框或重启后仍记住选择。
 - **分区编辑台** — 左侧边框显示与边框墙一致的封面缩略图，墙上换封面会同步到工作台；右侧按「画布 / 文字 / 边框 / 调色 / Logo / 样式」分区，拼图与切图归入工具行（原「光影」的暗角/漏光/颗粒已并入调色页签的「氛围」分区）；滑块旁可输入精确数值，双击参数名、数字框或滑轨本身即可复位该行，按住 Shift 拖动可微调；左右侧栏可收起、拖宽并记住上次宽度；多选照片后自动浮出批量操作条。
@@ -113,7 +113,7 @@
 - **导出** — PNG / JPEG / WebP，质量可调；原图、1080、2048、4096、8192px；选好位置后渲染写入，默认原图尺寸。
 - **全本地** — 无需登录、不上传照片；照片、EXIF 与样式都留在本机。
 
-> **English** — 87 presets and 92 frame styles for magazine, polaroid, torn paper, tape, stamp, newspaper, film, gradient, comic, 3D card, signature and avatar layouts; a preset-wall launcher; live frame, shadow, texture and light controls; remembered background-blur defaults; basic per-photo grading (exposure, contrast, saturation, temperature, tint, highlight, shadow); preset thumbnails, split canvas/text panels, exact numeric slider input, double-click row reset and Shift fine-tuning; collapsible resizable side panels; logo/EXIF/signature layers; `.qfs` and `.json` templates; collage, grid slicing, batch export and an immersive photo-wall presentation with wheel navigation; PNG/JPEG/WebP up to 8192px. Everything local.
+> **English** — 90 presets and 95 frame styles for magazine, polaroid, torn paper, tape, stamp, newspaper, film, gradient, comic, 3D card, signature and avatar layouts; a preset-wall launcher; live frame, shadow, texture and light controls; remembered background-blur defaults; basic per-photo grading (exposure, contrast, saturation, temperature, tint, highlight, shadow); preset thumbnails, split canvas/text panels, exact numeric slider input, double-click row reset and Shift fine-tuning; collapsible resizable side panels; logo/EXIF/signature layers; `.qfs` and `.json` templates; collage, grid slicing, batch export and an immersive photo-wall presentation with wheel navigation; PNG/JPEG/WebP up to 8192px. Everything local.
 
 <a id="preset-gallery"></a>
 ## 预设效果 · Preset Gallery
@@ -126,7 +126,7 @@
   <sub>六种预设的真实渲染 · 示例照片为项目自绘的黄昏湖面<br>Six real engine renders · sample photo: a self-drawn dusk lake</sub>
 </p>
 
-87 款边框覆盖复古胶片、拍立得、邮票、报纸、杂志、撕纸、胶带、漫画、签名、拼图等方向；每款边框都能继续改边距、圆角、纹理、光影与文字。六张预设图都由引擎实际渲染，不是手工绘制的模拟效果，也没有使用图库或用户照片。
+90 款边框覆盖复古胶片、拍立得、邮票、报纸、杂志、撕纸、胶带、漫画、签名、拼图等方向；每款边框都能继续改边距、圆角、纹理、光影与文字。六张预设图都由引擎实际渲染，不是手工绘制的模拟效果，也没有使用图库或用户照片。
 
 <a id="quick-start"></a>
 ## 快速开始 · Quick Start
@@ -179,7 +179,7 @@ npm run gen:wall
 
 没放照片的分类继续用 `tools/preset-wall.config.json` 里 `tagSamples` 指定的默认示例图，也可以直接改这个文件调整映射。只想换某一两张预设的封面、不想重新生成时，把图片放进应用数据目录的 `wall-covers/<预设名>.webp`（启动页「换封面」按钮会打开这个目录），重启应用生效。
 
-生成器默认把封面长边压到 560px（配置里的 `coverMax`，或命令行 `--max`），87 张合计约 3MB。
+生成器默认把封面长边压到 560px（配置里的 `coverMax`，或命令行 `--max`），90 张合计约 3MB。
 
 > **English** — Drop photos named after a category into `design/preset-wall-samples/` (e.g. `个性.jpg`), then run `npm run gen:wall`. Categories without an override keep the default sample from `tools/preset-wall.config.json`. For one-off cover changes, put an image in `wall-covers/<preset>.webp` via the in-app “换封面” button and restart.
 
@@ -207,11 +207,11 @@ npm run gen:wall
 │  └─ renderer/      # 渲染进程：UI 与 Canvas 渲染引擎
 │                    #   renderer: UI and Canvas rendering engine
 ├─ shared/
-│  ├─ presets/       # 87 款内置边框（JSON 描述）
-│  │                 #   87 built-in preset templates (JSON)
+│  ├─ presets/       # 90 款内置边框（JSON 描述）
+│  │                 #   90 built-in preset templates (JSON)
 │  ├─ textures/      # 纹理素材 / texture assets (10)
-│  └─ brandlogos/    # 本机品牌 Logo 素材，不随发行版分发
-│                    #   local-only brand logos, excluded from distribution
+│  └─ brandlogos/    # 空占位：第三方厂商 Logo 不进仓库，运行时只读用户数据目录
+│                    #   placeholder only; logos live in userData and are never shipped
 ├─ assets/readme/    # README 头图、界面截图与预设效果墙
 ├─ tools/            # 构建、校验与 Electron 测试辅助脚本
 ├─ tests/            # 单元 / 视觉回归等测试
@@ -278,13 +278,13 @@ npm run verify:pkg    # 另加安装包核验：Setup.exe 体积与 latest.yml �
 
 代码采用 [MIT](./LICENSE) 许可。该许可仅覆盖 `src/` 下的源代码与 `shared/presets/` 中的原创模板；`shared/brandlogos/` 与 `shared/textures/` 中的素材不适用，其权利归各自权利人所有。
 
-- **品牌 Logo**：`shared/brandlogos/` 是本机素材，**不在版本库中**，也不随安装包分发。全新克隆缺少该目录时软件照常运行，只是「品牌 Logo」选择组为空、「按品牌自动配 Logo」不生效；相关素材需自行准备。品牌名称与图形仅用于标识照片的拍摄设备，本软件与任何品牌无授权或合作关系。
+- **品牌 Logo**：第三方厂商 Logo **不在仓库、也不在安装包内**。软件运行时只读用户数据目录 `%APPDATA%\qingframe-web\brandlogos`（用「Logo → 导入 Logo 素材包」自行导入）。全新克隆或全新安装时该目录为空，软件照常运行，只是「品牌 Logo」选择组为空、「按品牌自动配 Logo」不生效。品牌名称与图形仅用于标识照片的拍摄设备，本软件与任何品牌无授权或合作关系。
 - **纹理素材**：`shared/textures/` 中的纹理不适用 MIT 许可，权利归各自权利人所有。
 - **README 示例图**：示例照片为项目自绘的合成图；界面截图与预设效果由真实应用渲染，未使用图库或用户照片。
 
 详见 [`THIRD-PARTY-ASSETS.md`](./THIRD-PARTY-ASSETS.md)。
 
-> **English** — MIT covers the source code under `src/` and the original presets under `shared/presets/`. Brand logos are local-only: not tracked by git and excluded from installers; a fresh clone runs fine without them. Assets under `shared/textures/` are third-party material. See `THIRD-PARTY-ASSETS.md`.
+> **English** — MIT covers the source code under `src/` and the original presets under `shared/presets/`. Third-party brand logos are never shipped: they are neither in the repo nor in installers, and are only read at runtime from the user-data directory (imported by the user); a fresh clone runs fine without them. Assets under `shared/textures/` are third-party material. See `THIRD-PARTY-ASSETS.md`.
 
 ---
 

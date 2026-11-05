@@ -145,7 +145,11 @@ const NEW_ROWS = new Set(['rowCornerRadius', 'rowGlobalMargin', 'rowImgScale', '
     'rowElTextDir', 'rowElTextSpacing',
     'rowElTextContent', 'rowElTextFont', 'rowElTextSize', 'rowElTextColor', 'rowElSize',
     'rowElTextWeight', 'rowElTextStroke', 'rowElTextStrokeWidth',
-    'rowElTextShadow', 'rowElTextShadowBlur', 'rowElTextShadowOffset']);
+    'rowElTextShadow', 'rowElTextShadowBlur', 'rowElTextShadowOffset',
+    // 2026-11 苹果信息卡专属组(CARD_APPLE):晚于冻结基线,按新增行记账
+    'rowAppleHint', 'rowAppleDate', 'rowAppleFont', 'rowAppleShow',
+    'rowAppleModelSize', 'rowAppleParamSize', 'rowAppleDateSize',
+    'rowAppleLogoSize', 'rowAppleLogoOpacity', 'rowAppleLineWidth', 'rowAppleColors']);
 
 function drawKeys() {
     const src = fs.readFileSync(ENGINE, 'utf8');

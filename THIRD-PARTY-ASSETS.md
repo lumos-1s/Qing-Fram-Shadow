@@ -14,19 +14,28 @@ Copyright (c) 2026 lumos-1s），适用 MIT 许可。
 
 ## 2. 品牌 Logo 图形不适用 MIT
 
-`shared/brandlogos/` 目录中的全部图形文件**不在 MIT 许可范围内**，也不随本软件的
-发行版一起分发（见 `package.json` 中 `build.files` 的 `!shared/brandlogos/**` 排除项）。
+第三方品牌 Logo **不存放在本仓库内**。软件运行时只从用户数据目录读取：
+
+```
+%APPDATA%\qingframe-web\brandlogos      (Windows)
+~/Library/Application Support/qingframe-web/brandlogos   (macOS)
+```
+
+该目录由用户自行导入（「Logo → 导入 Logo 素材包」），全新克隆或全新安装时为空，
+软件照常运行，只是「品牌 Logo」选择组为空、「按品牌自动配 Logo」不生效。
+
+工程目录下可选的 `shared/brandlogos/` 仅作本地开发占位，已被 `.gitignore` 忽略，
+并被 `package.json` 的 `build.files` 中 `!shared/brandlogos/**` 排除出发行版；
+`tools/verify-dist.js` 会在打包链路里扫描 app.asar，发现任何 Logo 即中止发布。
 
 这些图形涉及的**商标权与美术作品著作权归各自权利人所有**
-（Canon、Nikon、SONY、FUJIFILM、Leica、Hasselblad、RED、Apple、Samsung、Xiaomi 等，
-详见该目录下的文件名）。
+（Canon、Nikon、SONY、FUJIFILM、Leica、Hasselblad、RED、Apple、Samsung、Xiaomi 等）。
 
 - 这些图形**仅用于在成品照片上标识该照片的拍摄设备**（依据照片 EXIF 中的品牌信息），
   属于对商标的指示性使用；
 - 本软件为个人独立开发，**与上述任何品牌均无授权、合作、赞助或隶属关系**；
 - 本软件**不代表**任何品牌方，也未获得任何品牌方的认可或授权；
-- 该目录仅供**本地开发与个人使用**。如需对外分发含品牌 Logo 的版本，请自行取得
-  相应权利人的许可，或移除该目录。
+- 若你要对外分发含品牌 Logo 的版本，请自行取得相应权利人的许可。
 
 ## 3. 纹理素材
 
@@ -36,7 +45,7 @@ Copyright (c) 2026 lumos-1s），适用 MIT 许可。
 
 ## 4. 内置模板
 
-`shared/presets/` 目录中的 80 个模板为本项目原创的 JSON 参数描述，适用 MIT 许可。
+`shared/presets/` 目录中的 90 个模板为本项目原创的 JSON 参数描述，适用 MIT 许可。
 （模板中不内嵌任何第三方图形。）
 
 ---
@@ -56,13 +65,15 @@ Copyright (c) 2026 lumos-1s），适用 MIT 许可。
 ## English Summary
 
 - **Code** (`src/`, MIT License): free to use under the terms of `LICENSE`.
-- **`shared/brandlogos/`**: trademarks and artwork belong to their respective owners.
-  Not covered by the MIT License. Excluded from distributed builds via
-  `build.files` (`!shared/brandlogos/**`). Provided for local development and personal
-  use only — these marks are rendered solely to indicate the camera that took a photo,
-  based on its EXIF metadata. This software is an independent personal project and is
-  **not affiliated with, authorized by, sponsored by, or endorsed by** any of the brands
-  referenced.
+- **Brand logos**: trademarks and artwork belong to their respective owners.
+  **No brand logo ships with this repository or the installers.** At runtime the app
+  reads `brandlogos/` inside the user-data directory only, populated by the user via
+  「Import logo pack」. `shared/brandlogos/` in the project tree is optional, git-ignored,
+  and excluded from builds via `build.files` (`!shared/brandlogos/**`); `tools/verify-dist.js`
+  scans the packaged app.asar and aborts the release if any logo is found. Marks are
+  rendered solely to indicate the camera that took a photo, based on its EXIF metadata.
+  This software is an independent personal project and is **not affiliated with,
+  authorized by, sponsored by, or endorsed by** any of the brands referenced.
 - **`shared/textures/`**: not covered by the MIT License; rights belong to their
   respective owners. Verify the source and licensing of these assets before public
   distribution.
