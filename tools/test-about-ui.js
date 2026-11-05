@@ -116,6 +116,10 @@ app.whenReady().then(async () => {
             packageType: document.getElementById('aboutPackageType').textContent,
             system: document.getElementById('aboutRuntimePlatform').textContent,
             stats: document.getElementById('aboutStatsText').textContent,
+            // 期望值按运行时数据现算:边框数由本用例塞的占位决定,风格数来自真实 StyleCaps,
+            // 写死会在每次新增边框/风格时误报(本版新增 3 个预设就红在这)。
+            statsExpect: (window.App.presets ? window.App.presets.length : 0) + ' 款边框、'
+                + (window.StyleCaps && window.StyleCaps.MEASURED ? Object.keys(window.StyleCaps.MEASURED).length : 0) + ' 种风格',
             icon: { complete: image.complete, w: image.naturalWidth },
             shortcuts: [...document.querySelectorAll('.about-shortcuts .about-keys')].map(x => x.textContent).join(' '),
             note: document.querySelector('.about-note').textContent,
@@ -132,7 +136,7 @@ app.whenReady().then(async () => {
     check(state.version.includes('Windows x64') && state.version.includes('安装版'), '版本行含平台/安装类型', state.version);
     check(state.packageType === '安装版', '安装类型行', state.packageType);
     check(state.system.includes('10.0.22631'), '系统行含 Windows 版本', state.system);
-    check(state.stats === '87 款边框、92 种风格', '动态边框/风格数量', state.stats);
+    check(state.stats === state.statsExpect && state.stats !== '0 款边框、0 种风格', '动态边框/风格数量', state.stats + '  期望: ' + state.statsExpect);
     check(state.icon.complete && state.icon.w > 0, '关于页图标加载', JSON.stringify(state.icon));
     check(state.shortcuts.includes('CtrlShiftZ'), '快捷键包含 Ctrl+Shift+Z');
     check(state.note.includes('无修饰键') || state.note.includes('保留给文本编辑'), '输入框快捷键说明已修正');
