@@ -109,7 +109,11 @@
     "test:gesturescale": "node tools/run-electron.js tools/test-gesture-scale.js",
     "test:undo": "node tools/run-electron.js tools/test-undo-image.js",
     "test:canvassync": "node tools/run-electron.js tools/test-canvas-sync-ui.js",
-    "test:shadowgl": "node tools/run-electron.js tools/shadow-gl-check.js"
+    "test:shadowgl": "node tools/run-electron.js tools/shadow-gl-check.js",
+    "test:fieldreuse": "node tools/run-electron.js tools/field-reuse-check.js",
+    "test:sharpen:gl": "node tools/run-electron.js tools/sharpen-gl-check.js",
+    "test:lowres": "node tools/run-electron.js tools/lowres-frame-check.js",
+    "test:lowres:legacy": "node tools/run-electron.js tools/lowres-frame-check.js --legacy"
   },
   "author": "Qingframe",
   "license": "MIT",

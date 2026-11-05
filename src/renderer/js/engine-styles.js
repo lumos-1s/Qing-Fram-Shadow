@@ -239,6 +239,16 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         return out;
     }
 
+    // 9 参数的「画照片某个区域」：源矩形是按 natural 坐标写的，但拖动时 photoSrc
+    // 给的是 1600px 的降采样烘焙画布 —— 直接传会超界，Chrome 按边界裁掉一块，
+    // 玻璃条/漫画格里的照片就变成放大的一角。这里按「位图/自然」比把源矩形缩回去。
+    function drawPhotoRegion(ctx, img, natW, natH, sx, sy, sw, sh, dx, dy, dw, dh) {
+        const isBmp = !window.QFS_LEGACY_PHOTO_DRAW && !!(img && img.tagName === 'CANVAS');
+        const kx = isBmp ? Math.max(1, img.width) / Math.max(1, natW) : 1;
+        const ky = isBmp ? Math.max(1, img.height) / Math.max(1, natH) : 1;
+        ctx.drawImage(img, sx * kx, sy * ky, sw * kx, sh * ky, dx, dy, dw, dh);
+    }
+
     // ── 阶段一核心风格(纯几何/颜色,无相机无 Logo)──
     function styleSimple(img, size, g, iw, ih) {
         g.fillStyle = '#ffffff';
@@ -6667,7 +6677,7 @@ const w = natW;
                 const cvs = document.createElement('canvas');
                 cvs.width = cw; cvs.height = ch;
                 const cx = cvs.getContext('2d');
-                cx.drawImage(img, c * cw, r * ch, cw, ch, 0, 0, cw, ch);
+                drawPhotoRegion(cx, img, iw, ih, c * cw, r * ch, cw, ch, 0, 0, cw, ch);
                 const dr2 = Math.max(2, Math.round(cw * 0.004));
                 cx.fillStyle = 'rgba(0,0,0,0.18)';
                 for (let py = 0; py < ch; py += dr2 * 3) {
@@ -8135,7 +8145,7 @@ const w = natW;
         const sx = Math.max(0, bx0), sy = Math.max(0, by0);
         const ex = Math.min(iw, bx1), ey = Math.min(ih, by1);
         if (ex > sx && ey > sy) {
-            pg.drawImage(img, sx, sy, ex - sx, ey - sy,
+            drawPhotoRegion(pg, img, iw, ih, sx, sy, ex - sx, ey - sy,
                 (sx - bx0) * cap, (sy - by0) * cap, (ex - sx) * cap, (ey - sy) * cap);
         }
 
@@ -8407,11 +8417,12 @@ const w = natW;
                 out = newCanvas(targetW, targetH);
                 const g = out.getContext('2d');
                 g.imageSmoothingEnabled = true;
-                // 劫持 drawImage 做两件事：
+                // 劫持 drawImage 做三件事：
                 //  ① 画照片时套用 cornerConfig 圆角（原有行为）
                 //  ② 记下照片在这张离屏画布上的矩形（基准坐标）—— 蒙版叠加层靠它
                 //    把指针换算成「照片内坐标」。相框有 60 多款、各自排版，逐款上报
                 //    不现实，统一在「画照片」这一次调用上抓最省事也最准。
+                //  ③ 把「按位图尺寸画」换算成「按原图尺寸画」——见下面的 natW/downX。
                 const cc = t.cornerConfig || {};
                 const photoTl = cc.cornerRadiusTL || 0, photoTr = cc.cornerRadiusTR || 0;
                 const photoBl = cc.cornerRadiusBL || 0, photoBr = cc.cornerRadiusBR || 0;
@@ -8419,15 +8430,42 @@ const w = natW;
                 const hasPhotoRound = photoRAll > 0 || photoTl > 0 || photoTr > 0 || photoBl > 0 || photoBr > 0;
                 const photoRound = photoRAll > 0 ? photoRAll : Math.min(photoTl, photoTr, photoBl, photoBr);
                 const origDrawImage = g.drawImage.bind(g);
+                // 拖动滑块时 photoSrc 返回的是 1600px 的降采样烘焙画布（app-grade 的
+                // low 档），它的 width 只有原图的 1/3.7，但上游版式（iw/ih、size、pad、
+                // 各种百分比）全是按 naturalWidth 算的。60 多款相框样式里有 100 多处
+                // drawImage(img, x, y) —— 3 参数形式按**位图实际尺寸**落笔，于是照片被
+                // 画成 27% 大小贴在左上角，松手补全分辨率才跳回来（用户实测：
+                // 「每拖一次滑块画面就缩到左上角」）。
+                // 这里统一把「画照片」这一次调用换算成 natural 尺寸：样式代码一行不用改，
+                // 正常全分辨率源时 downX/downY 恒为 1，落笔参数与原来逐字节一致。
+                const natW = Math.max(1, img.naturalWidth || img.width || 1);
+                const natH = Math.max(1, img.naturalHeight || img.height || 1);
+                // 测试用：把换算关掉，复现「拖滑块照片缩到左上角」的旧行为
+                // （npm run test:lowres 会带 QF_LOWRES_LEGACY=1 验一次，确认用例真能抓到）
+                const legacyDraw = !!window.QFS_LEGACY_PHOTO_DRAW;
+                const isBmpCanvas = !legacyDraw && !!(img && img.tagName === 'CANVAS');
+                const downX = isBmpCanvas ? Math.max(1, img.width) / natW : 1;
+                const downY = isBmpCanvas ? Math.max(1, img.height) / natH : 1;
                 g.drawImage = function(src, ...args) {
                     if (src !== img) { origDrawImage(src, ...args); return; }
-                    let dx = 0, dy = 0, dw = img.width, dh = img.height;
+                    let dx = 0, dy = 0;
+                    let dw = legacyDraw ? (img.width || natW) : natW;
+                    let dh = legacyDraw ? (img.height || natH) : natH;
                     // ⚠ args 不含 src:三/五/九参数形式的 rest 长度是 2/4/8。
                     //   这里曾经写成 3/5/9,永远不命中 → 恒走默认值 (0,0,img.width,img.height),
                     //   所有相框风格的蒙版范围都按"原图铺满画布"定位(照片越偏离画布原点错得越狠)。
                     if (args.length === 2) { dx = args[0]; dy = args[1]; }
                     else if (args.length === 4) { dx = args[0]; dy = args[1]; dw = args[2]; dh = args[3]; }
                     else if (args.length === 8) { dx = args[4]; dy = args[5]; dw = args[6]; dh = args[7]; }
+                    // 真正落笔。3 参数要补成 5 参数（否则按位图尺寸画）；9 参数的
+                    // 源矩形是按 natural 坐标写的，要按降采样比缩回位图坐标。
+                    const put = () => {
+                        if (args.length === 2) origDrawImage(img, dx, dy, dw, dh);
+                        else if (args.length === 8) {
+                            origDrawImage(img, args[0] * downX, args[1] * downY,
+                                args[2] * downX, args[3] * downY, dx, dy, dw, dh);
+                        } else origDrawImage(img, ...args);
+                    };
                     // 模糊铺底画的也是同一张 img，但它是背景不是照片本身：
                     // 带 filter 的那次跳过，否则蒙版会按整张画布定位。
                     if (!photoRect && (!g.filter || g.filter === 'none') && dw > 0 && dh > 0) {
@@ -8445,12 +8483,12 @@ const w = natW;
                         } catch (_) { /* 拿不到变换就按原矩形 */ }
                         photoRect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
                     }
-                    if (!hasPhotoRound || !(dw > 0 && dh > 0)) { origDrawImage(src, ...args); return; }
+                    if (!hasPhotoRound || !(dw > 0 && dh > 0)) { put(); return; }
                     g.save();
                     if (photoRound > 0 && g.roundRect) {
                         g.beginPath(); g.roundRect(dx, dy, dw, dh, photoRound); g.clip();
                     }
-                    origDrawImage(src, ...args);
+                    put();
                     g.restore();
                 };
                 if (blurMode) draw(img, size, g, iw, ih, S, targetW, targetH);
