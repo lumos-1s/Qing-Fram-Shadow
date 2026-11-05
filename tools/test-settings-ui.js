@@ -50,7 +50,9 @@ ipcMain.handle('list-textures', () => []);
 ipcMain.handle('list-templates', () => []);
 ipcMain.handle('get-user', () => null);
 ipcMain.handle('get-app-info', () => ({
-    version: '0.1.23', electron: '31', chrome: '126', node: '20',
+    // 必须跟着 package.json 走：这条用例断言「运行版本 == changelog 最新一条时亮未读红点」,
+    // 版本号写死的话每次发版都会误报（0.1.24 发版时红在这里）。
+    version: require('../package.json').version, electron: '31', chrome: '126', node: '20',
     platform: 'win32', arch: 'x64', packaged: true, portable: false,
     userData: process.env.TEMP, appPath: ROOT
 }));
