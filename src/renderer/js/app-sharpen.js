@@ -11,8 +11,14 @@
  * 好处是能拿到带符号的浮点高通，也能做真正的边缘蒙版（masking）——
  * 而「保护平滑区域」正是锐化最容易出问题的地方（天空、皮肤、噪点）。
  *
- * 顺序：调用方在颜色表之后、阴影之前调用。LR 是在色调映射之前锐化，
- * 但我们的色调是逐通道 LUT，且实测对齐用的是最终像素，放在表后面更好控。
+ * 注意：这个文件现在是**兜底与像素基准**。硬件 GPU 可用时，app-color-grade.js
+ * 的 sharpenCanvas() 会用同一套公式跑三趟 pass（横/纵高斯 + 合成），23MP 实测
+ * 1064ms → ~100ms；两条路径用 tools/sharpen-gl-check.js 卡在最大差 ≤3 级。
+ * 软件 GL（swiftshader）上 GPU 反而更慢，那边会主动回退到这里。
+ *
+ * 顺序：在颜色表与阴影之后、蒙版合成完之后调用一次（见 app-grade.js bake）。
+ * LR 是在色调映射之前锐化，但我们的色调是逐通道 LUT，且实测对齐用的是最终像素，
+ * 放在表后面更好控。
  */
 (function () {
     'use strict';
@@ -121,9 +127,15 @@
             }
             for (let x = 0; x < W; x++) {
                 let s = 0;
-                const lo = x - r < 0 ? 0 : x - r;
-                const hi = x + r >= W ? W - 1 : x + r;
-                for (let i = lo; i <= hi; i++) s += row[i] * k[i - x + r];
+                // 边界按**复制边缘像素**处理（索引钳制），不能把越界的抽头直接丢掉：
+                // 丢掉等于核权重和 <1，离边 r 像素内会被压暗，最终在照片四周留下
+                // 一圈亮边（r=5 时边缘能亮 +70 级）。GPU 通道的 CLAMP_TO_EDGE 就是
+                // 这个语义，两边必须一致。
+                for (let i = -r; i <= r; i++) {
+                    let xi = x + i;
+                    xi = xi < 0 ? 0 : (xi >= W ? W - 1 : xi);
+                    s += row[xi] * k[i + r];
+                }
                 A[base + x] = s;
             }
         }
@@ -175,9 +187,12 @@
                 const dst = (y - sy0) * W;
                 for (let x = 0; x < W; x++) {
                     let s = 0;
-                    const lo = y - r < 0 ? 0 : y - r;
-                    const hi = y + r >= H ? H - 1 : y + r;
-                    for (let i = lo; i <= hi; i++) s += A[i * W + x] * k[i - y + r];
+                    // 同横向：钳制索引（复制边缘），不丢抽头
+                    for (let i = -r; i <= r; i++) {
+                        let yi = y + i;
+                        yi = yi < 0 ? 0 : (yi >= H ? H - 1 : yi);
+                        s += A[yi * W + x] * k[i + r];
+                    }
                     B[dst + x] = s;
                 }
             }

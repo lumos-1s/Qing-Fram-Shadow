@@ -230,7 +230,10 @@
         if (key) {
             for (let i = 0; i < _fieldCache.length; i++) {
                 const e = _fieldCache[i];
-                if (e.key === key && e.W === W && e.H === H) {
+                // 不再要求 W/H 完全相等：场的格数按「短边/384」推导，同一张图在
+                // 1600 与 23MP 上分别是 800×534 与 591×394，归一化坐标下是同一个
+                // 场。键里已经带了长宽比，尺寸不同只是像素密度不同（见 fitField）。
+                if (e.key === key) {
                     if (i > 0) { _fieldCache.splice(i, 1); _fieldCache.unshift(e); }
                     _fstat.hits++;
                     return e.f;
@@ -244,6 +247,53 @@
             while (_fieldCache.length > FIELD_KEEP) _fieldCache.pop();
         }
         return f;
+    }
+
+    // 把场的格点重采样到本次画布应有的格数。
+    //
+    // 场是归一化覆盖整幅画面的低频栅格；复用另一分辨率的场时，格数（lw/lh）与
+    // 本次画布对不上。下游（CPU 的 (x+0.5)/scale 与 shader 的 uv*W/scale）都按
+    // scale = 源像素/格点 换算，所以这里必须把它真的重采样成目标格数，而不是
+    // 直接换个尺寸用 —— 否则 1600 的场铺到 23MP 上只会用到左边 1/4。
+    //
+    // 双线性、按格心对齐；每个目标尺寸的结果挂在源场对象上（通常只会有一个
+    // 目标尺寸，内存 ~3MB）。场是平滑的，重采样误差远小于 1 级像素。
+    function fitField(f, W, H) {
+        const scale = Math.max(1, Math.floor(Math.min(W, H) / 384));
+        const lw = Math.ceil(W / scale), lh = Math.ceil(H / scale);
+        if (f.lw === lw && f.lh === lh) return f;
+        const tag = lw + 'x' + lh;
+        if (f.fit && f.fit[tag]) return f.fit[tag];
+        const a = new Float32Array(lw * lh), b = new Float32Array(lw * lh);
+        const sx = f.lw / lw, sy = f.lh / lh;
+        const sx0 = new Int32Array(lw), sx1 = new Int32Array(lw), swx = new Float32Array(lw);
+        for (let x = 0; x < lw; x++) {
+            let fx = (x + 0.5) * sx - 0.5;
+            fx = fx < 0 ? 0 : (fx > f.lw - 1 ? f.lw - 1 : fx);
+            const i0 = fx | 0;
+            sx0[x] = i0;
+            sx1[x] = i0 + 1 < f.lw ? i0 + 1 : i0;
+            swx[x] = fx - i0;
+        }
+        for (let y = 0; y < lh; y++) {
+            let fy = (y + 0.5) * sy - 0.5;
+            fy = fy < 0 ? 0 : (fy > f.lh - 1 ? f.lh - 1 : fy);
+            const j0 = fy | 0, j1 = j0 + 1 < f.lh ? j0 + 1 : j0, wy = fy - j0;
+            const r0 = j0 * f.lw, r1 = j1 * f.lw, dst = y * lw;
+            for (let x = 0; x < lw; x++) {
+                const i0 = sx0[x], i1 = sx1[x], wx = swx[x];
+                const A0 = f.a[r0 + i0] * (1 - wx) + f.a[r0 + i1] * wx;
+                const A1 = f.a[r1 + i0] * (1 - wx) + f.a[r1 + i1] * wx;
+                const B0 = f.b[r0 + i0] * (1 - wx) + f.b[r0 + i1] * wx;
+                const B1 = f.b[r1 + i0] * (1 - wx) + f.b[r1 + i1] * wx;
+                a[dst + x] = A0 + (A1 - A0) * wy;
+                b[dst + x] = B0 + (B1 - B0) * wy;
+            }
+        }
+        const out = { a, b, lw, lh, scale, key: f.key, W, H };
+        if (!f.fit) f.fit = {};
+        f.fit[tag] = out;
+        return out;
     }
 
     // 把这次要施加的阴影算成「一份数据、两种用法」：
@@ -269,7 +319,8 @@
             return img.data;
         };
 
-        const f = cachedField(key, canvas, W, H, pixels);
+        const fRaw = cachedField(key, canvas, W, H, pixels);
+        const f = fRaw && fitField(fRaw, W, H);
         if (!f) return null;
         if (needPixels) pixels();     // 调用方要就地改像素，必须拿到 imageData
 

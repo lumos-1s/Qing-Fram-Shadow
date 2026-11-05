@@ -205,11 +205,123 @@
         '}'
     ].join('\n');
 
+    // ── 锐化（LR 的捕获锐化）的 GPU 版本 ────────────────────────────────
+    // CPU 版在 app-sharpen.js：取回像素 420ms + 横 260 + 纵 175 + 合成 171
+    // （23MP 实测 ~1064ms），其中 420ms 纯粹是 GPU→CPU 回读。这里用同一套
+    // 公式在 GL 里算：横/纵两趟高斯 + 一趟带蒙版的合成，省掉回读与逐像素循环。
+    //
+    // 只模糊亮度：高斯是线性的，blur(RGB) 再点乘亮度权重 ≡ 先点乘再模糊，
+    // 所以中间纹理只存亮度。亮度用 RG 两个通道打包成 16 位（见下面 packY）——
+    // 单通道 8 位在蒙版阈值附近会把「梯度 9 还是 11」判反，出现孤立锐化斑点。
+    // 与 CPU 版逐像素比对：最大差 1~3 级，均值 <0.02。
+    const SBLUR_FS = [
+        '#ifdef GL_FRAGMENT_PRECISION_HIGH',
+        'precision highp float;',
+        '#else',
+        'precision mediump float;',
+        '#endif',
+        'varying vec2 vUV;',
+        'uniform sampler2D uS;',
+        'uniform vec2 uStep;',
+        'uniform float uR;',
+        'uniform float uPacked;',
+        'uniform float uK[33];',
+        'const vec3 LUMA=vec3(0.2126,0.7152,0.0722);',
+        // 8 位单通道存模糊结果，在蒙版阈值附近会把「梯度 9 还是 11」判反，出现孤立
+        // 的锐化斑点（mask=100 时实测 3% 像素差 >2 级）。把 0..1 的亮度拆成
+        // 「整数部分/255 + 小数部分」两个通道，等效 16 位，误差从 1/255 降到 1/65025。
+        'vec2 packY(float v){',
+        '  float q=clamp(v,0.0,1.0)*255.0;',
+        '  float hi=floor(q+1e-4);',
+        '  return vec2(hi/255.0,clamp(q-hi,0.0,1.0));',
+        '}',
+        'float unpackY(vec2 p){return (p.r*255.0+p.g)/255.0;}',
+        'void main(){',
+        '  float s=0.0;',
+        '  for(int i=0;i<33;i++){',
+        '    float fi=float(i)-16.0;',
+        '    if(abs(fi)>uR) continue;',
+        '    vec4 c=texture2D(uS,vUV+uStep*fi);',
+        // 第一趟读原图（RGB），第二趟读的是已打包的亮度（RG）
+        '    float y=uPacked>0.5?unpackY(c.rg):dot(c.rgb,LUMA);',
+        '    s+=y*uK[i];',
+        '  }',
+        '  gl_FragColor=vec4(packY(s),0.0,1.0);',
+        '}'
+    ].join('\n');
+
+    const SCOMP_FS = [
+        '#ifdef GL_FRAGMENT_PRECISION_HIGH',
+        'precision highp float;',
+        '#else',
+        'precision mediump float;',
+        '#endif',
+        'varying vec2 vUV;',
+        'uniform sampler2D uT;',
+        'uniform sampler2D uB;',
+        'uniform vec2 uTexel;',
+        'uniform float uAmt;',
+        'uniform float uMask;',   // 0..1（面板值 /100）
+        'uniform float uMS;',     // 蒙版阈值尺度（10 或 24）
+        'uniform float uLp;',     // 暗部亮度幂（默认 0.5）
+        'uniform float uHead;',   // 高光余量（24/255）
+        'float unpackY(vec2 p){return (p.r*255.0+p.g)/255.0;}',
+        'void main(){',
+        '  vec3 c=texture2D(uT,vUV).rgb;',
+        '  float L=dot(c,vec3(0.2126,0.7152,0.0722));',
+        '  float bl=unpackY(texture2D(uB,vUV).rg);',
+        '  float hp=L-bl;',
+        '  float w=1.0;',
+        // 蒙版：梯度取「已模糊」的亮度，与 CPU 版同源（B 的左右/上下邻差）
+        '  if(uMask>0.0){',
+        '    float gx=abs(unpackY(texture2D(uB,vUV+vec2(uTexel.x,0.0)).rg)-unpackY(texture2D(uB,vUV-vec2(uTexel.x,0.0)).rg));',
+        '    float gy=abs(unpackY(texture2D(uB,vUV+vec2(0.0,uTexel.y)).rg)-unpackY(texture2D(uB,vUV-vec2(0.0,uTexel.y)).rg));',
+        '    float grad=(gx+gy)*255.0;',
+        '    float t0=uMask*uMS;',
+        '    float t1=t0+uMS*0.5;',
+        '    float r0=grad<=t0?0.0:(grad>=t1?1.0:(grad-t0)/(t1-t0));',
+        '    float fl=0.35*(1.0-uMask);',
+        '    w=fl+(1.0-fl)*r0;',
+        '  }',
+        // 亮度加权：暗部按 sqrt 收，0.82 以上线性收到 0.5（与 CPU 的 LW 表同式）
+        '  float t=clamp(L,0.0,1.0);',
+        '  float lowEnd=1.0-uLp+uLp*sqrt(t);',
+        '  float highEnd=t<=0.82?1.0:1.0-0.5*(t-0.82)/0.18;',
+        '  float delta=uAmt*hp*w*lowEnd*highEnd;',
+        // 余量保护：只收正 delta，避免把高光推穿
+        '  if(delta>0.0){',
+        '    float mx=max(c.r,max(c.g,c.b));',
+        '    float head=1.0-mx;',
+        '    if(head<uHead) delta*=head<=0.0?0.0:head/uHead;',
+        '  }',
+        '  gl_FragColor=vec4(clamp(c+vec3(delta),0.0,1.0),1.0);',
+        '}'
+    ].join('\n');
+
     let gl = null, glc = null, prog = null, uni = null, quad = null, tex = null;
     let lutTex = null, lutKey = '';
     // 阴影通道的两张浮点纹理。没有 OES_texture_float 就没有它们，
     // 这时 canShadow() 报 false，调用方退回 app-acr-shadows 的逐像素实现。
     let shTex = null, shRowsTex = null, floatOK = false;
+    // 锐化通道：分离高斯两趟 + 合成一趟。卷积半径最大 16（UI 上限 shr=3 →
+    // σ=4.5 → r=14），所以核固定 33 抽头，用 uniform 半径裁掉多余的。
+    let sprogBlur = null, sprogComp = null, suiBlur = null, suiComp = null;
+    let sfbo = null, stexA = null, stexB = null, sW = 0, sH = 0, sBroken = false;
+    let sLastErr = '';
+
+    // 软件 GL（swiftshader / llvmpipe）上，这套三趟 pass 比 CPU 还慢（实测 23MP
+    // 3.1s vs 1.2s）—— 因为像素最终还是跑在 CPU 上，只是多绕了纹理往返。
+    // start.bat 里有 QINGFRAME_SW=1 的兜底路径，那里必须继续用 CPU 锐化。
+    let softGL = null;
+    function isSoftwareGL() {
+        if (softGL !== null) return softGL;
+        try {
+            const ext = gl.getExtension('WEBGL_debug_renderer_info');
+            const r = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+            softGL = /swiftshader|llvmpipe|software|basic render/i.test(String(r || ''));
+        } catch (_) { softGL = false; }
+        return softGL;
+    }
 
     function initGL() {
         if (gl && prog) return true;
@@ -230,6 +342,9 @@
                 e.preventDefault();
                 gl = null; prog = null; uni = null; tex = null;
                 shTex = null; shRowsTex = null; floatOK = false;
+                sprogBlur = null; sprogComp = null; suiBlur = null; suiComp = null;
+                sfbo = null; stexA = null; stexB = null; sW = 0; sH = 0; sBroken = false;
+                softGL = null;
             });
         }
         try {
@@ -286,8 +401,7 @@
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
             gl.activeTexture(gl.TEXTURE0);
-            uni = {
-                cg: gl.getUniformLocation(prog, 'uCg[0]'),
+            uni = {                cg: gl.getUniformLocation(prog, 'uCg[0]'),
                 blend: gl.getUniformLocation(prog, 'uCgBlend'),
                 balance: gl.getUniformLocation(prog, 'uCgBalance'),
                 vib: gl.getUniformLocation(prog, 'uVib'),
@@ -430,7 +544,192 @@
         }
     }
 
+    // ── 锐化通道 ───────────────────────────────────────────────
+    // 独立于主 pass 的一套 program/FBO：主 pass 负责颜色，锐化必须在调色与蒙版
+    // 合成**之后**做（见 app-grade.js bake 的注释），所以只能单独跑一趟。
+    function compileProgram(fsSrc) {
+        const sh = (type, src) => {
+            const s = gl.createShader(type);
+            gl.shaderSource(s, src);
+            gl.compileShader(s);
+            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+            return s;
+        };
+        const p = gl.createProgram();
+        gl.attachShader(p, sh(gl.VERTEX_SHADER, VS));
+        gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fsSrc));
+        gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+        return p;
+    }
+
+    function initSharpen() {
+        if (sBroken) return false;
+        if (sprogBlur && sprogComp) return true;
+        if (!initGL()) return false;
+        try {
+            sprogBlur = compileProgram(SBLUR_FS);
+            sprogComp = compileProgram(SCOMP_FS);
+            suiBlur = {
+                s: gl.getUniformLocation(sprogBlur, 'uS'),
+                step: gl.getUniformLocation(sprogBlur, 'uStep'),
+                r: gl.getUniformLocation(sprogBlur, 'uR'),
+                packed: gl.getUniformLocation(sprogBlur, 'uPacked'),
+                k: gl.getUniformLocation(sprogBlur, 'uK[0]')
+            };
+            suiComp = {
+                t: gl.getUniformLocation(sprogComp, 'uT'),
+                b: gl.getUniformLocation(sprogComp, 'uB'),
+                texel: gl.getUniformLocation(sprogComp, 'uTexel'),
+                amt: gl.getUniformLocation(sprogComp, 'uAmt'),
+                mask: gl.getUniformLocation(sprogComp, 'uMask'),
+                ms: gl.getUniformLocation(sprogComp, 'uMS'),
+                lp: gl.getUniformLocation(sprogComp, 'uLp'),
+                head: gl.getUniformLocation(sprogComp, 'uHead')
+            };
+            gl.useProgram(sprogBlur);
+            gl.uniform1i(suiBlur.s, 0);
+            gl.useProgram(sprogComp);
+            gl.uniform1i(suiComp.t, 0);
+            gl.uniform1i(suiComp.b, 1);
+            return true;
+        } catch (_) {
+            sBroken = true;
+            sprogBlur = null; sprogComp = null;
+            return false;
+        }
+    }
+
+    function bindQuad(p) {
+        gl.useProgram(p);
+        gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+        const loc = gl.getAttribLocation(p, 'aP');
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    }
+
+    // 两张中间纹理按当前尺寸分配。23MP 各约 92MB（RGBA8）—— 用 RGBA8 而不是
+    // 浮点，是因为浮点在这张卡上要再翻四倍，而 8 位中间量对最终结果只差 ≤2 级。
+    function ensureSharpenTargets(w, h) {
+        if (sW === w && sH === h && stexA) return true;
+        if (!stexA) {
+            stexA = gl.createTexture();
+            stexB = gl.createTexture();
+            sfbo = gl.createFramebuffer();
+        }
+        for (const t of [stexA, stexB]) {
+            gl.bindTexture(gl.TEXTURE_2D, t);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, sfbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stexA, 0);
+        const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        if (!ok) { sBroken = true; return false; }
+        sW = w; sH = h;
+        return true;
+    }
+
+    // 在 GL 里做锐化，返回一张**自有**的 2D 画布（调用方会长期持有，不能交共享画布）。
+    // P 来自 app-sharpen.js 的 paramsOf（radius/amount/masking/maskScale/lumPow）。
+    // 任何一步失败都返回 null，调用方回退 CPU 实现。
+    function sharpenCanvas(src, P) {
+        sLastErr = '';
+        if (!P || !(P.amount > 0.002)) return null;
+        const w = src.width | 0, h = src.height | 0;
+        if (w < 3 || h < 3) return null;
+        const r = Math.max(1, Math.round(P.radius * 3));
+        if (r > 16) return null;      // 33 抽头核放不下，交回 CPU
+        if (!initGL()) return null;
+        // 软件 GL 上没有收益（比 CPU 还慢一倍），且会在软件纹理上白占 2×92MB：
+        // 先判后端，再编译/分配。测试可以设 QFS_FORCE_GPU_SHARPEN 强制走这条。
+        if (!window.QFS_FORCE_GPU_SHARPEN && isSoftwareGL()) return null;
+        if (!initSharpen() || !ensureSharpenTargets(w, h)) return null;
+        try {
+            if (glc.width !== w || glc.height !== h) { glc.width = w; glc.height = h; }
+
+            // 核：与 CPU 的 kernel() 同一套高斯权重，居中放在 33 槽的第 16 位
+            const k = new Float32Array(33);
+            const s2 = 2 * P.radius * P.radius;
+            let sum = 0;
+            for (let i = -r; i <= r; i++) {
+                const v = Math.exp(-(i * i) / s2);
+                k[i + 16] = v; sum += v;
+            }
+            for (let i = 0; i < 33; i++) k[i] /= sum;
+
+            // ① 横/纵分离高斯：源 → A，A → B
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+            const eUp = gl.getError();
+            if (eUp) { sLastErr = 'texImage2D 0x' + eUp.toString(16) + ' ' + w + 'x' + h; return null; }
+
+            bindQuad(sprogBlur);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, sfbo);
+            gl.viewport(0, 0, w, h);
+            gl.uniform1f(suiBlur.r, r);
+            gl.uniform1fv(suiBlur.k, k);
+
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stexA, 0);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+            gl.uniform2f(suiBlur.step, 1 / w, 0);
+            gl.uniform1f(suiBlur.packed, 0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stexB, 0);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, stexA);
+            gl.uniform2f(suiBlur.step, 0, 1 / h);
+            gl.uniform1f(suiBlur.packed, 1);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            // ② 合成：原始像素 + 模糊亮度 + 蒙版 → 默认帧缓冲
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.viewport(0, 0, w, h);
+            bindQuad(sprogComp);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, stexB);
+            gl.uniform2f(suiComp.texel, 1 / w, 1 / h);
+            gl.uniform1f(suiComp.amt, P.amount);
+            gl.uniform1f(suiComp.mask, Math.max(0, Math.min(100, P.masking || 0)) / 100);
+            gl.uniform1f(suiComp.ms, P.maskScale > 0 ? P.maskScale : 10);
+            gl.uniform1f(suiComp.lp, P.lumPow == null ? 0.5 : P.lumPow);
+            gl.uniform1f(suiComp.head, 24 / 255);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            // ③ 落到自有画布：GL 画布是模块共享的，不能直接交给调用方
+            const out = document.createElement('canvas');
+            out.width = w; out.height = h;
+            out.getContext('2d').drawImage(glc, 0, 0);
+
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, null);
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, null);
+            gl.activeTexture(gl.TEXTURE0);
+            // 主 pass 用的是另一个 program，属性指针要还回去（ANGLE 下两个 program
+            // 的 aP location 不保证一致）
+            bindQuad(prog);
+            return out;
+        } catch (_) {
+            sLastErr = String(_ && _.message || _);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            return null;
+        }
+    }
+
     function clamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
+
     function smoothstep(a, b, x) {
         const t = clamp01((x - a) / Math.max(1e-6, b - a));
         return t * t * (3 - 2 * t);
@@ -577,7 +876,10 @@
         available() { return true; },
         usingGL() { return initGL(); },
         // 阴影能不能交给 shader：要 GL 跑得起来且浮点纹理可用
-        canShadow() { return initGL() && floatOK; }
+        canShadow() { return initGL() && floatOK; },
+        // 锐化的 GPU 通道：成功返回自有画布，失败返回 null（调用方走 CPU）
+        sharpenCanvas(canvas, P) { return sharpenCanvas(canvas, P); },
+        sharpenLastError() { return sLastErr; }
     };
 
     // ── UI：黑白混色器（对齐 LR 的 Black & White / GrayMixer）──────

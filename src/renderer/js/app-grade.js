@@ -856,7 +856,13 @@
         const C = window.QfsCurve;
         const sig = (C && C.curveActive(p.curve)) ? C.curveSignature(p.curve) : '-';
         const n = (v) => Number(v) || 0;
-        const parts = [id, tw, th, n(p.exp), n(p.temp), n(p.tint), n(p.con), n(p.hi),
+        // 尺寸只进「长宽比」，不进像素数：场本身是 384 格的低频栅格（1600px 上是
+        // 800×534，23MP 上只有 591×394），同一张图同一套色调参数下两者信息量几乎
+        // 一样。以前把 tw/th 原样写进键，松手补全分辨率时必然 miss，于是又把 23MP
+        // 整幅重扫了一遍（实测 ~600ms）。裁切/旋转会替换 im.el（id 变了），所以
+        // 这里不必靠像素数兜底；长宽比只防「同一张源图被渲染成不同画幅」。
+        const ar = th > 0 ? (tw / th) : 0;
+        const parts = [id, ar.toFixed(3), n(p.exp), n(p.temp), n(p.tint), n(p.con), n(p.hi),
             n(p.white), n(p.black), n(p.gam), sig,
             p.cb ? JSON.stringify(p.cb) : '', p.gm ? JSON.stringify(p.gm) : '',
             p.det ? JSON.stringify(p.det) : ''];
@@ -1034,15 +1040,27 @@
         // 肉眼几乎看不出差别，但这一刀实测要 76ms，正好卡在每帧 200ms 的手感上。
         // 全分辨率档与导出照常锐化 —— 该有画质的地方一点没少。
         const doSharpen = maxEdge !== LOW_EDGE;
-        if (doSharpen && window.QfsSharpen && window.QfsSharpen.paramsOf(p.det, Math.max(tw, th), Math.max(W, H))) {
-            const sc = document.createElement('canvas');
-            sc.width = tw; sc.height = th;
-            const sg = sc.getContext('2d');
-            if (sg) {
-                sg.drawImage(cur, 0, 0);
-                window.QfsSharpen.applyCanvas(sc, p.det, Math.max(tw, th), Math.max(W, H));
-                cur = sc;
+        const shP = (doSharpen && window.QfsSharpen)
+            ? window.QfsSharpen.paramsOf(p.det, Math.max(tw, th), Math.max(W, H)) : null;
+        if (shP) {
+            // 先走 shader：23MP 实测 CPU 版 1064ms（其中 420ms 是把 GPU 画布读回
+            // 来的代价），GL 只上传一次 + 两趟高斯 + 一趟合成。sharpenCanvas
+            // 返回自有画布；不可用（无 GL / 半径超出 33 抽头核）时返回 null。
+            let sc = null;
+            if (window.QfsColor && window.QfsColor.sharpenCanvas) {
+                sc = window.QfsColor.sharpenCanvas(cur, shP);
             }
+            if (!sc) {
+                sc = document.createElement('canvas');
+                sc.width = tw; sc.height = th;
+                const sg = sc.getContext('2d');
+                if (!sg) sc = null;
+                else {
+                    sg.drawImage(cur, 0, 0);
+                    window.QfsSharpen.applyCanvas(sc, p.det, Math.max(tw, th), Math.max(W, H));
+                }
+            }
+            if (sc) cur = sc;
         }
 
         // canvas 没有 naturalWidth/naturalHeight，但引擎里到处用它算 fit / 比例 /
