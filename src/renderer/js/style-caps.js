@@ -52,7 +52,6 @@
     const OVERLAY_STYLES = ['OVERLAY_PARAM_LEFT', 'OVERLAY_PARAM_RIGHT', 'OVERLAY_PARAM_BOTTOM'];
     const BLUR_STYLES = ['BLUR_CLASSIC', 'BLUR_DATE'];
     const IMPRESSION_STYLES = ['IMP_FROSTED', 'OVERLAY_PARAM_LEFT', 'OVERLAY_PARAM_RIGHT', 'OVERLAY_PARAM_BOTTOM', 'CARD_LOGO_PARAM'];
-    const WM_PARAM_STYLES = ['FUJI_WM', 'FUJI_WM_BRAND'];
     const WM_BRAND_STYLES = ['FUJI_WM_BRAND', 'DARK_BRAND_ONLY'];
     const BOTTOM_BAR_STYLES = ['SIGNATURE', 'SIGN_PARAM', 'AVATAR_MEMO'];
     const BRAND_LOGO_STYLES = [
@@ -61,7 +60,8 @@
         'CARD_LEICA', 'CARD_LOGO_PARAM', 'CARD_PURE_LOGO', 'CARD_SIMPLE', 'CARD_IMMERSION',
         'FUJI_WM_BRAND', 'DARK_BRAND_ONLY', 'OVERLAY_LOGO_BOTTOM',
         'SIGN_PARAM', 'SIGN_BLUR', 'BLUR_CLASSIC', 'BLUR_DATE',
-        'FUJI_WHITE', 'COLOR_CLASSIC', 'ART_CARD', 'PARAM_CREDIT', 'LIQUID_GLASS'
+        'FUJI_WHITE', 'COLOR_CLASSIC', 'ART_CARD', 'PARAM_CREDIT', 'LIQUID_GLASS', 'CARD_APPLE',
+        'XIAOMI_LEICA'
     ];
 
     // 非风格引擎路径(路线2 卡片 bgBlurEnable / 路线3 图层模板)的能力。
@@ -86,6 +86,7 @@
         BOARDING_PASS: { cr: true, isc: true },
         BURNED_EDGE: { cr: true },
         CARD_3D: { cr: true },
+        CARD_APPLE: { pf: true, cr: true, isc: true },
         CARD_IMMERSION: { pf: true },
         CARD_LEICA: { pf: true, cr: true },
         CARD_LOGO_PARAM: { pf: true },
@@ -165,12 +166,16 @@
         WM_CLASSIC: { pf: true, cr: true },
         WM_SINGLE: { pf: true, cr: true },
         XIAOMI_IMP: { pf: true, cr: true },
+        XIAOMI_LEICA: { cr: true },
     };
     // ── 生成区 END ──
 
     // 某风格是否具备某能力。未知风格(非 draw 映射表内,即卡片/图层路径)回落到 PATH_FALLBACK。
     function has(style, dimKey) {
-        const m = MEASURED[style];
+        const s = String(style || '').toUpperCase();
+        // 苹果信息卡:照片上/左/右贴边,没有「四周留白」这个维度 → 边距大小不适用
+        if (s === 'CARD_APPLE' && dimKey === 'gm') return false;
+        const m = MEASURED[s];
         if (m) return !!m[dimKey];
         return !!PATH_FALLBACK[dimKey];
     }
@@ -205,7 +210,6 @@
     function computeVisibleRows(s) {
         const isPersonal = PERSONAL_STYLES.indexOf(s) >= 0;
         const isOverlay = OVERLAY_STYLES.indexOf(s) >= 0;
-        const isBlur = BLUR_STYLES.indexOf(s) >= 0;
         const isLogoParam = s === 'CARD_LOGO_PARAM';
         const isBottomBar = BOTTOM_BAR_STYLES.indexOf(s) >= 0;
 
@@ -234,8 +238,12 @@
         // 预设默认就是满幅原图 + 底部水印,避免用户在右侧误开模糊后还要找回来关。
         v.rowBgBlur = isPersonal || isOverlay || isLogoParam || s === 'PARAM_CREDIT';
         v.rowBrandSize = IMPRESSION_STYLES.indexOf(s) >= 0 || WM_BRAND_STYLES.indexOf(s) >= 0;
-        v.rowParamScale = IMPRESSION_STYLES.indexOf(s) >= 0 || isBlur || WM_PARAM_STYLES.indexOf(s) >= 0;
-        v.rowBrandLogo = BRAND_LOGO_STYLES.indexOf(s) >= 0;
+        // 「参数缩放」与「参数字号」都在改同一行字的最终大小(引擎里是相乘),属于重复控件。
+        // 统一收口到「参数字号」:预设里的 paramScale 仍然生效(保持各预设有自己的比例),
+        // 但不再露滑块,面板每个风格少一行、也不再有两个旋钮拧同一个数。
+        v.rowParamScale = false;
+        // 苹果信息卡有自己的「显示 Logo」开关和品牌/型号文本,不再复用通用品牌行
+        v.rowBrandLogo = BRAND_LOGO_STYLES.indexOf(s) >= 0 && s !== 'CARD_APPLE';
         // 玻璃条大小:只有 LIQUID_GLASS 有底部玻璃条,其余风格显示这一行等于一个死滑块。
         // 这是 DECLARED 而非 MEASURED —— 它改的是"风格专属语义",像素差实测分不出来。
         v.rowGlassSize = s === 'LIQUID_GLASS';
@@ -245,6 +253,40 @@
         v.rowPolaroidCaption = s === 'POLAROID' || s === 'POLAROID_HAND';
         // 哈苏水印品牌文字:仅 HASSELBLAD 底部有品牌行
         v.rowHassyCaption = s === 'HASSELBLAD';
+        // 苹果信息卡专属:文本内容 / 分区显隐 / 字号 / Logo / 竖线 / 配色。
+        // 这是一整组 DECLARED 行(像素实测分不出"某个开关是否被读"),只在 CARD_APPLE 显形。
+        const isApple = s === 'CARD_APPLE';
+        v.rowAppleHint = isApple;
+        v.rowAppleDate = isApple;    // 仅日期可自定义(品牌/型号/参数统一由下方相机参数驱动)
+        v.rowAppleFont = isApple;
+        v.rowAppleShow = isApple;    // 6 个显示开关合成一行胶囊
+        v.rowAppleModelSize = isApple;
+        v.rowAppleParamSize = isApple;
+        v.rowAppleDateSize = isApple;
+        v.rowAppleLogoSize = isApple;
+        v.rowAppleLogoOpacity = isApple;
+        v.rowAppleLineWidth = isApple;
+        v.rowAppleColors = isApple;  // 4 个颜色合成一行色块
+        // 联名水印专属:文本 / 显隐 / 对齐 / 字号 / Logo / 渐变 / 配色。
+        // Logo 选择与「参数字号」走通用行(已加入 BRAND_LOGO_STYLES、字号由引擎实测),不另开重复入口。
+        const isXm = s === 'XIAOMI_LEICA';
+        v.rowXmHint = isXm;
+        v.rowXmText1 = isXm;         // 品牌字标 + 主文案(均留空 = 自动)
+        v.rowXmText2 = isXm;         // 副文案(留空 = 不显示)
+        v.rowXmPartner = isXm;       // 联名 Logo(留空 = 跟随相机品牌)
+        v.rowXmShow = isXm;          // 竖线 / 底部渐变
+        v.rowXmAlign = isXm;         // 左下 / 底部居中 / 右下
+        v.rowXmFont = isXm;          // 字体(默认 Arial,与参数横条同款)
+        v.rowXmBrandSize = isXm;
+        v.rowXmBrandTrack = isXm;    // 字标字距(槽级)
+        v.rowXmLineWeight = isXm;    // 文案字重(槽级)
+        v.rowXmLineSize = isXm;
+        v.rowXmLogoSize = isXm;
+        v.rowXmLogoOpacity = isXm;
+        v.rowXmLogoColor = isXm;     // Logo 上色 / 原色
+        v.rowXmPad = isXm;           // 水印离边缘的距离
+        v.rowXmScrim = isXm;         // 渐变强度
+        v.rowXmColors = isXm;        // 主文字 / 副文字 / 竖线
         // 五个数值滑块:实测决定。旧实现里 CARD_3D 无条件盖掉的几行,在实测口径下
         // 已被上面各自的判定吸收,故这里不需要额外的 is3d 分支。
         for (const d of DIMS) v[d.row] = has(s, d.key);

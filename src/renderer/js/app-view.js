@@ -31,7 +31,10 @@ window.App = Object.assign(window.App || {}, {
         if (!canvas.width) return;
         const stage = this.dom.stage;
         const sw = stage.clientWidth - 8, sh = Math.max(60, stage.clientHeight - 8);
-        const z = Math.min(sw / canvas.width, sh / canvas.height);
+        // 用「显示逻辑尺寸」而不是画布像素:手势低清预览时 canvas.width 会临时变小,
+        // 拿它算缩放会让画面突然放大;正常态两者相等,行为不变。
+        const cw = canvas._logW || canvas.width, ch = canvas._logH || canvas.height;
+        const z = Math.min(sw / cw, sh / ch);
         this.panX = 0; this.panY = 0;
         this.setZoom(Math.max(0.1, z));
         // 视图回到「适应」状态:窗口尺寸变化时自动重算(app.js 的 ResizeObserver 读这个标志)

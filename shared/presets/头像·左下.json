@@ -57,7 +57,7 @@
   "photoFrameBorderSize": 100,
   "blurIntensity": 50,
   "userSignature": "",
-  "signFont": "cursive",
+  "signFont": "Courier New",
   "signColor": "#ffffff",
   "avatarScale": 0.85,
   "avatarShow": 1,

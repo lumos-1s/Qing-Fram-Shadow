@@ -1139,6 +1139,8 @@ window.App = Object.assign(window.App || {}, {
         this.normalizeTemplate();
         this.saveCurrentTemplate();
         this.refreshUI();
+        // 换模板必须重新适配;苹果信息卡的"只变高不 fit"豁免不能把换模板也吃掉
+        this._forceFitNext = true;
         this.scheduleRender(true);
     },
 

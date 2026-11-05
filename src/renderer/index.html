@@ -352,7 +352,7 @@
 
                     <!-- ══ Tab2 文字 / 信息 ══ -->
                     <div class="tab-panel" id="panel-text">
-                        <div class="param-group" id="grpCustomText">
+<div class="param-group" id="grpCustomText">
                             <div class="pg-title collapsible">自定义文字</div>
                             <button class="mini-btn block" id="btnAddFreeText" aria-pressed="false" title="点一下按钮进入添加模式，再在画布上双击你要放字的位置；双击已有文字改内容，拖四角缩放，拖顶部圆点旋转">＋ 添加文字（双击画布放置）</button>
                             <div class="el-status" id="txtStyleStatus">未选中文字</div>
@@ -524,6 +524,205 @@
                         </div>
 
                         <div class="param-group">
+                            <div class="pg-title collapsible">苹果信息卡</div>
+                            <div class="hint-box" id="rowAppleHint" style="display:none;">文本留空 = 自动识别；左侧固定使用参数水印衬线字体，右侧字体可选。</div>
+
+                            <div class="param-row" id="rowAppleDate" style="display:none;">
+                                <label>日期</label>
+                                <input type="text" id="tfAppleDate" class="ctl-tx" placeholder="留空 = 当前日期时间" title="留空自动用当前日期时间，如 2024.07.10 14:35:17" />
+                            </div>
+                            <div class="param-row" id="rowAppleFont" style="display:none;">
+                                <label>参数字体</label>
+                                <select id="cbAppleFont" class="ctl-sel">
+                                    <option value="Trebuchet MS">Trebuchet MS（人文）</option>
+                                    <option value="Segoe UI">Segoe UI（系统）</option>
+                                    <option value="Microsoft YaHei">微软雅黑</option>
+                                    <option value="PingFang SC">苹方</option>
+                                    <option value="Helvetica">Helvetica</option>
+                                    <option value="Arial">Arial</option>
+                                    <option value="Georgia">Georgia（衬线）</option>
+                                    <option value="Times New Roman">Times New Roman</option>
+                                    <option value="Book Antiqua">Book Antiqua</option>
+                                    <option value="Bodoni MT">Bodoni MT</option>
+                                    <option value="Consolas">Consolas（等宽）</option>
+                                    <option value="Courier New">Courier New</option>
+                                    <option value="Arial Black">Arial Black</option>
+                                </select>
+                            </div>
+
+                            <div class="param-row" id="rowAppleShow" style="display:none;">
+                                <label>显示</label>
+                                <div class="apple-chips">
+                                    <label class="apple-chip" title="显示左侧相机品牌"><input type="checkbox" id="chkAppleShowBrand" class="ctl-chk" checked /><span>品牌</span></label>
+                                    <label class="apple-chip" title="显示左侧相机型号"><input type="checkbox" id="chkAppleShowModel" class="ctl-chk" checked /><span>型号</span></label>
+                                    <label class="apple-chip" title="显示右侧拍摄参数"><input type="checkbox" id="chkAppleShowParams" class="ctl-chk" checked /><span>参数</span></label>
+                                    <label class="apple-chip" title="显示右侧日期时间"><input type="checkbox" id="chkAppleShowDate" class="ctl-chk" checked /><span>日期</span></label>
+                                    <label class="apple-chip" title="显示右侧品牌 Logo"><input type="checkbox" id="chkAppleShowLogo" class="ctl-chk" checked /><span>Logo</span></label>
+                                    <label class="apple-chip" title="显示 Logo 与文字之间的竖线"><input type="checkbox" id="chkAppleShowLine" class="ctl-chk" checked /><span>竖线</span></label>
+                                </div>
+                            </div>
+
+                            <div class="param-row" id="rowAppleModelSize" style="display:none;">
+                                <label>型号字号</label>
+                                <input type="range" id="slAppleModelSize" class="ctl-rng" min="50" max="250" step="5" value="100" />
+                                <span class="pval" id="lblAppleModelSize"></span>
+                            </div>
+                            <div class="param-row" id="rowAppleParamSize" style="display:none;">
+                                <label>参数字号</label>
+                                <input type="range" id="slAppleParamSize" class="ctl-rng" min="50" max="250" step="5" value="100" />
+                                <span class="pval" id="lblAppleParamSize"></span>
+                            </div>
+                            <div class="param-row" id="rowAppleDateSize" style="display:none;">
+                                <label>日期字号</label>
+                                <input type="range" id="slAppleDateSize" class="ctl-rng" min="50" max="250" step="5" value="100" />
+                                <span class="pval" id="lblAppleDateSize"></span>
+                            </div>
+                            <div class="param-row" id="rowAppleLogoSize" style="display:none;">
+                                <label>Logo 大小</label>
+                                <input type="range" id="slAppleLogoSize" class="ctl-rng" min="30" max="300" step="5" value="100" />
+                                <span class="pval" id="lblAppleLogoSize"></span>
+                            </div>
+                            <div class="param-row" id="rowAppleLogoOpacity" style="display:none;">
+                                <label>Logo 不透明度</label>
+                                <input type="range" id="slAppleLogoOpacity" class="ctl-rng" min="0" max="100" step="1" value="60" />
+                                <span class="pval" id="lblAppleLogoOpacity"></span>
+                            </div>
+                            <div class="param-row" id="rowAppleLineWidth" style="display:none;">
+                                <label>竖线粗细</label>
+                                <input type="range" id="slAppleLineWidth" class="ctl-rng" min="20" max="500" step="5" value="100" />
+                                <span class="pval" id="lblAppleLineWidth"></span>
+                            </div>
+
+                            <div class="param-row" id="rowAppleColors" style="display:none;">
+                                <label>配色</label>
+                                <div class="apple-colors">
+                                    <label class="apple-color" title="主文字颜色"><input type="color" id="cpAppleText" class="ctl-cl" value="#1d1d1f" /><span>主文字</span></label>
+                                    <label class="apple-color" title="次要文字颜色"><input type="color" id="cpAppleSub" class="ctl-cl" value="#86868b" /><span>次要</span></label>
+                                    <label class="apple-color" title="竖线颜色"><input type="color" id="cpAppleLine" class="ctl-cl" value="#d2d2d7" /><span>竖线</span></label>
+                                    <label class="apple-color" title="信息条底色"><input type="color" id="cpAppleBarBg" class="ctl-cl" value="#ffffff" /><span>条底</span></label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="param-group">
+                            <div class="pg-title collapsible">联名水印</div>
+                            <div class="hint-box" id="rowXmHint" style="display:none;">品牌字标与主文案留空 = 自动识别相机品牌型号；Logo 与品牌大小由「品牌显示」「参数字号」统一控制。</div>
+
+                            <div class="param-row" id="rowXmText1" style="display:none;">
+                                <label>字标/文案</label>
+                                <div class="apple-pair">
+                                    <input type="text" id="tfXmBrand" class="ctl-tx" placeholder="品牌字标 留空自动" title="如 XIAOMI；留空自动取相机品牌大写" />
+                                    <input type="text" id="tfXmLine1" class="ctl-tx" placeholder="主文案 留空自动" title="如 Photo by Xiaomi 13；留空自动生成" />
+                                </div>
+                            </div>
+                            <div class="param-row" id="rowXmText2" style="display:none;">
+                                <label>副文案</label>
+                                <input type="text" id="tfXmLine2" class="ctl-tx" placeholder="如 Leica custom 徕卡定制；留空不显示" />
+                            </div>
+                            <div class="param-row" id="rowXmPartner" style="display:none;">
+                                <label>联名 Logo</label>
+                                <input type="text" id="tfXmPartner" class="ctl-tx" placeholder="留空跟随相机品牌；也可填素材池里的品牌名" title="从品牌 Logo 素材池按名称取图；留空则跟随照片的相机品牌" />
+                            </div>
+
+                            <div class="param-row" id="rowXmShow" style="display:none;">
+                                <label>显示</label>
+                                <div class="apple-chips">
+                                    <label class="apple-chip" title="显示 Logo 与文案之间的细竖线"><input type="checkbox" id="chkXmShowDiv" class="ctl-chk" checked /><span>竖线</span></label>
+                                    <label class="apple-chip" title="底部黑色渐变，保证白字在亮图上可读"><input type="checkbox" id="chkXmShowScrim" class="ctl-chk" checked /><span>渐变</span></label>
+                                </div>
+                            </div>
+
+                            <div class="param-row" id="rowXmAlign" style="display:none;">
+                                <label>位置</label>
+                                <select id="cbXmAlign" class="ctl-sel">
+                                    <option value="0">左下</option>
+                                    <option value="1" selected>底部居中</option>
+                                    <option value="2">右下</option>
+                                </select>
+                            </div>
+
+                            <div class="param-row" id="rowXmFont" style="display:none;">
+                                <label>字体</label>
+                                <select id="cbXmFont" class="ctl-sel">
+                                    <option value="Courier New" selected>Courier New（等宽 · 默认）</option>
+                                    <option value="Arial">Arial（参数横条同款）</option>
+                                    <option value="Trebuchet MS">Trebuchet MS（人文）</option>
+                                    <option value="Segoe UI">Segoe UI（系统）</option>
+                                    <option value="Microsoft YaHei">微软雅黑</option>
+                                    <option value="PingFang SC">苹方</option>
+                                    <option value="Helvetica">Helvetica</option>
+                                    <option value="Georgia">Georgia（衬线）</option>
+                                    <option value="Times New Roman">Times New Roman</option>
+                                    <option value="Book Antiqua">Book Antiqua</option>
+                                    <option value="Bodoni MT">Bodoni MT</option>
+                                    <option value="Consolas">Consolas（等宽）</option>
+                                    <option value="Arial Black">Arial Black</option>
+                                </select>
+                            </div>
+
+                            <div class="param-row" id="rowXmBrandSize" style="display:none;">
+                                <label>字标字号</label>
+                                <input type="range" id="slXmBrandSize" class="ctl-rng" min="40" max="300" step="5" value="100" />
+                                <span class="pval" id="lblXmBrandSize"></span>
+                            </div>
+                            <div class="param-row" id="rowXmLineSize" style="display:none;">
+                                <label>文案字号</label>
+                                <input type="range" id="slXmLineSize" class="ctl-rng" min="40" max="300" step="5" value="100" />
+                                <span class="pval" id="lblXmLineSize"></span>
+                            </div>
+                            <div class="param-row" id="rowXmBrandTrack" style="display:none;">
+                                <label>字标字距</label>
+                                <input type="range" id="slXmBrandTrack" class="ctl-rng" min="0" max="50" step="1" value="16" />
+                                <span class="pval" id="lblXmBrandTrack"></span>
+                            </div>
+                            <div class="param-row" id="rowXmLineWeight" style="display:none;">
+                                <label>文案字重</label>
+                                <select id="cbXmLineWeight" class="ctl-sel">
+                                    <option value="300">细 300</option>
+                                    <option value="400">常规 400</option>
+                                    <option value="600" selected>中粗 600</option>
+                                    <option value="700">粗 700</option>
+                                </select>
+                            </div>
+                            <div class="param-row" id="rowXmLogoSize" style="display:none;">
+                                <label>Logo 大小</label>
+                                <input type="range" id="slXmLogoSize" class="ctl-rng" min="30" max="300" step="5" value="100" />
+                                <span class="pval" id="lblXmLogoSize"></span>
+                            </div>
+                            <div class="param-row" id="rowXmLogoOpacity" style="display:none;">
+                                <label>Logo 不透明度</label>
+                                <input type="range" id="slXmLogoOpacity" class="ctl-rng" min="0" max="100" step="1" value="100" />
+                                <span class="pval" id="lblXmLogoOpacity"></span>
+                            </div>
+                            <div class="param-row" id="rowXmLogoColor" style="display:none;">
+                                <label>Logo 颜色</label>
+                                <div class="apple-chips" style="align-items:center;gap:8px">
+                                    <input type="color" id="cpXmLogo" class="ctl-cl" value="#ffffff" title="给单色 Logo 上色；彩色标（如徕卡红圆）建议勾选「原色」" style="width:26px;height:22px;padding:1px;border-radius:6px" />
+                                    <label class="apple-chip" title="保留素材本身颜色"><input type="checkbox" id="chkXmLogoRaw" class="ctl-chk" checked /><span>原色</span></label>
+                                </div>
+                            </div>
+                            <div class="param-row" id="rowXmPad" style="display:none;">
+                                <label>边距</label>
+                                <input type="range" id="slXmPad" class="ctl-rng" min="40" max="300" step="5" value="100" />
+                                <span class="pval" id="lblXmPad"></span>
+                            </div>
+                            <div class="param-row" id="rowXmScrim" style="display:none;">
+                                <label>渐变强度</label>
+                                <input type="range" id="slXmScrim" class="ctl-rng" min="0" max="100" step="1" value="45" />
+                                <span class="pval" id="lblXmScrim"></span>
+                            </div>
+
+                            <div class="param-row" id="rowXmColors" style="display:none;">
+                                <label>配色</label>
+                                <div class="apple-colors">
+                                    <label class="apple-color" title="字标与主文案颜色"><input type="color" id="cpXmText" class="ctl-cl" value="#ffffff" /><span>主文字</span></label>
+                                    <label class="apple-color" title="副文案颜色"><input type="color" id="cpXmSub" class="ctl-cl" value="#d9d9d9" /><span>副文字</span></label>
+                                    <label class="apple-color" title="竖线颜色"><input type="color" id="cpXmDiv" class="ctl-cl" value="#ffffff" /><span>竖线</span></label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="param-group">
                             <div class="pg-title collapsible">签名 / 头像</div>
                             <div class="param-row" id="rowCreditMode" style="display:none;">
                                 <label>署名内容</label>
@@ -539,6 +738,7 @@
                             <div class="param-row" id="rowSignFont" style="display:none;">
                                 <label>签名字体</label>
                                 <select id="cbSignFont" class="ctl-sel">
+                                    <option value="Courier New" selected>Courier New（等宽 · 默认）</option>
                                     <option value="Arial">Arial无衬线</option>
                                     <option value="Georgia">Georgia衬线</option>
                                     <option value="cursive">手写斜体</option>
@@ -1219,6 +1419,26 @@
                         <div class="param-group" id="grpDet">
                             <div class="pg-title collapsible">细节</div>
                             <div class="param-row">
+                                <label>锐化</label>
+                                <input type="range" id="slDetShp" class="ctl-rng" min="0" max="150" step="1" value="0" />
+                                <span class="pval" id="lblDetShp">0</span>
+                            </div>
+                            <div class="param-row">
+                                <label>锐化半径</label>
+                                <input type="range" id="slDetShr" class="ctl-rng" min="0.3" max="3" step="0.1" value="1" />
+                                <span class="pval" id="lblDetShr">1.0</span>
+                            </div>
+                            <div class="param-row">
+                                <label>锐化细节</label>
+                                <input type="range" id="slDetShd" class="ctl-rng" min="0" max="100" step="1" value="25" />
+                                <span class="pval" id="lblDetShd">+25</span>
+                            </div>
+                            <div class="param-row">
+                                <label>锐化蒙版</label>
+                                <input type="range" id="slDetShm" class="ctl-rng" min="0" max="100" step="1" value="0" />
+                                <span class="pval" id="lblDetShm">0</span>
+                            </div>
+                            <div class="param-row">
                                 <label>清晰度</label>
                                 <input type="range" id="slDetClar" class="ctl-rng" min="-100" max="100" step="1" value="0" />
                                 <span class="pval" id="lblDetClar">0</span>
@@ -1661,7 +1881,7 @@
                             </div>
                         </div>
 
-                        <div class="about-desc"><span id="aboutStatsText">87 款边框、92 种风格</span>、EXIF 参数识别、拼图与批量导出，全本地渲染。</div>
+                        <div class="about-desc"><span id="aboutStatsText">90 款边框、95 种风格</span>、EXIF 参数识别、拼图与批量导出，全本地渲染。</div>
 
                         <div class="about-actions">
                             <button class="mini-btn primary" id="btnAboutCheck" title="检查是否有新版本">检查更新</button>
@@ -1757,7 +1977,7 @@
             </div>
             <div class="modal-body" style="line-height:1.9;font-size:13px;color:var(--text);">
                 <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">三步上手，全程本地处理，照片与设置不上传。</div>
-                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>① 选择边框</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">启动即进入边框墙：现成边框直接套用（<span id="introStatsText">87 款边框</span>），点卡片即可开始编辑</div></div>
+                <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>① 选择边框</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">启动即进入边框墙：现成边框直接套用（<span id="introStatsText">90 款边框</span>），点卡片即可开始编辑</div></div>
                 <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:10px;"><b>② 导入照片</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">进入编辑后点「导入照片 / 导入文件夹」，或直接把图片、文件夹拖进窗口；也支持 Ctrl+V 粘贴截图</div></div>
                 <div class="intro-step" style="background:var(--bg-soft,#f2f4f3);border:1px solid var(--border,#dfe4e1);border-radius:10px;padding:12px 14px;margin-bottom:6px;"><b>③ 调参导出</b><div style="font-size:12px;color:var(--text-dim);margin-top:2px;">右侧调整参数 / 签名 / Logo / 品牌水印，满意后点「导出」</div></div>
             </div>
@@ -1921,6 +2141,8 @@
                     </div>
                 </div>
                 <div class="pw-head-acts">
+                    <button id="pwPhoto" class="pw-skip pw-photo" type="button" hidden
+                            title="用当前照片实时预览所有预设（点击卡片套用）">本图预览</button>
                     <button id="pwCovers" class="pw-skip" type="button" title="批量换封面：打开封面文件夹。只换一张的话，把鼠标移到卡片上点右上角「换封面」，或右键卡片">换封面</button>
                     <button id="pwSkip" class="pw-skip" type="button" title="跳过，直接进入工作台">进入工作台</button>
                 </div>
@@ -1978,6 +2200,8 @@
     <script src="js/app-preset-wall.js"></script>
     <script src="js/app-crop.js"></script>
     <script src="js/app-acr.js"></script>
+    <script src="js/app-acr-shadows.js"></script>
+    <script src="js/app-sharpen.js"></script>
     <script src="js/app-grade.js"></script>
     <script src="js/app-xmp.js"></script>
     <script src="js/app-curve.js"></script>

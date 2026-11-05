@@ -883,6 +883,36 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
     line-height: 1.4; font-family: inherit;
 }
 .param-row textarea.ctl-tx:focus { border-color: var(--primary); }
+
+/* ── 苹果信息卡:把「显隐 / 配色」压成紧凑行 ── */
+/* 显示项:一行胶囊开关,自动换行 */
+.apple-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-1-5); flex: 1; min-width: 0; }
+.param-row .apple-chips .apple-chip {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px;
+    padding: calc(2px * var(--font-scale)) calc(5px * var(--font-scale));
+    border: 1px solid var(--border-strong); border-radius: 999px;
+    background: var(--surface); color: var(--text-3);
+    font-size: var(--fs-10); line-height: 1.2; cursor: pointer; user-select: none;
+    transition: border-color .12s, background .12s, color .12s;
+}
+.param-row .apple-chips .apple-chip:hover { border-color: var(--primary); }
+.param-row .apple-chips .apple-chip:has(input:checked) {
+    border-color: var(--primary); background: var(--primary-soft); color: var(--primary-text);
+}
+.param-row .apple-chips .apple-chip .ctl-chk {
+    width: 12px; height: 12px; border-radius: 4px; background-size: 8px;
+}
+/* 「显示」标签让位给胶囊,7 个开关尽量两行排完 */
+#rowAppleShow > label { flex: 0 0 36px; }
+/* 配色:一行色块 + 小字标签 */
+.apple-colors { display: flex; flex-wrap: wrap; gap: var(--sp-1); flex: 1; min-width: 0; }
+.param-row .apple-colors .apple-color {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px;
+    color: var(--text-3); font-size: var(--fs-10); cursor: pointer; user-select: none;
+}
+.param-row .apple-colors .apple-color .ctl-cl {
+    flex: 0 0 auto; width: 21px; height: 20px; padding: 1px; border-radius: 6px;
+}
 /* 画布内文字编辑器：定位/尺寸/字体由 app-elements._positionTextEditor 按画布实时算，
    这里只管观感。用 fixed 是为了不被 panel/stage 的 overflow 裁掉。 */
 .canvas-text-editor {
@@ -2344,6 +2374,14 @@ body.editing #canvasPane { flex: 1 1 auto; }
     font-size: var(--fs-12); padding: calc(6px * var(--font-scale)) calc(14px * var(--font-scale)); cursor: pointer; transition: border-color .15s ease, background .15s ease;
 }
 .pw-skip:hover { border-color: rgba(220,186,121,.55); background: rgba(255,255,255,.08); }
+.pw-skip[hidden] { display: none; }
+/* 「本图预览」是开关：开着时别把按钮做成不可点击的常亮状态 */
+.pw-skip.is-on {
+    border-color: rgba(220,186,121,.62);
+    background: rgba(220,186,121,.17);
+    color: var(--brand-gold-ink);
+}
+.pw-skip.is-on:hover { background: rgba(220,186,121,.24); }
 /* 右侧控件群（浏览方式 / 操作 / 窗口控制）：与左侧品牌各占一半宽度（都是 flex 1 1 0），
    标题才能落在窗口正中。旧写法是 .pw-head-meta{flex:1} —— 那只是在「剩余空间」里居中，
    而右侧控件约 576px、品牌仅约 73px，标题会整体偏左一大截、右边空出一片。
@@ -2549,6 +2587,8 @@ body.platform-darwin .pw-winbtns { display: none; }
 .pw-tile:focus-within .pw-tile-coverbtn { opacity: 1; transform: none; pointer-events: auto; }
 /* 封面编辑模式：入口常显，点卡片任意位置都能换（不用瞄准小按钮） */
 .pw-grid.pw-cover-mode .pw-tile-coverbtn { opacity: 1; transform: none; pointer-events: auto; }
+/* 本图预览模式：卡片显示的是当前照片的成品预览，封面按钮先藏起来，避免误改封面 */
+.pw-grid.pw-photo-mode .pw-tile-coverbtn { display: none; }
 .pw-tile-coverbtn:hover {
     background: rgba(220,186,121,.94); border-color: rgba(220,186,121,.94); color: #1a1e22;
 }

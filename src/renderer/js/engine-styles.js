@@ -370,7 +370,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         g.fillStyle = 'rgba(107,53,34,0.62)';
         g.fillText('EST. 1974', w / 2, h - Math.round(frame * 0.47));
         g.fillStyle = ink;
-        g.font = '700 ' + Math.max(8, Math.round(frame * 0.13)) + 'px Arial, sans-serif';
+        g.font = '700 ' + Math.max(8, Math.round(frame * 0.13)) + 'px "Courier New", monospace';
         g.fillText('V I N T A G E', w / 2, h - Math.round(frame * 0.30));
         g.restore();
     }
@@ -813,7 +813,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         // 刊头区
         const cxm = w / 2;
         g.fillStyle = '#9a9aa5';
-        g.font = '600 ' + Math.max(10, Math.round(topBar * 0.16)) + 'px "Arial", sans-serif';
+        g.font = '600 ' + Math.max(10, Math.round(topBar * 0.16)) + 'px "Courier New", monospace';
         g.textAlign = 'center'; g.textBaseline = 'middle';
         g.fillText('THE WEEKLY PHOTO JOURNAL', cxm, pad + Math.round(topBar * 0.22));
         g.fillStyle = '#f2f0e8';
@@ -833,7 +833,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         g.lineWidth = 1;
         g.beginPath(); g.moveTo(0, bb); g.lineTo(w, bb); g.stroke();
         g.fillStyle = '#c8c8d0';
-        g.font = '700 ' + Math.max(10, Math.round(botBar * 0.28)) + 'px "Arial", sans-serif';
+        g.font = '700 ' + Math.max(10, Math.round(botBar * 0.28)) + 'px "Courier New", monospace';
         g.textAlign = 'left'; g.textBaseline = 'middle';
         g.fillText('VOL.08 — 2026', pad, bb + Math.round(botBar / 2));
         g.textAlign = 'right';
@@ -860,7 +860,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         // 刊头区
         const cxm = w / 2;
         g.fillStyle = '#8a8578';
-        g.font = '600 ' + Math.max(9, Math.round(topBar * 0.17)) + 'px "Arial", sans-serif';
+        g.font = '600 ' + Math.max(9, Math.round(topBar * 0.17)) + 'px "Courier New", monospace';
         g.textAlign = 'center'; g.textBaseline = 'middle';
         g.fillText('PARIS · SPRING 2026', cxm, pad + Math.round(topBar * 0.20));
         g.fillStyle = '#141414';
@@ -874,7 +874,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         g.stroke();
         // 底部
         g.fillStyle = '#141414';
-        g.font = '700 ' + Math.max(9, Math.round(botBar * 0.30)) + 'px "Arial", sans-serif';
+        g.font = '700 ' + Math.max(9, Math.round(botBar * 0.30)) + 'px "Courier New", monospace';
         g.textAlign = 'left'; g.textBaseline = 'middle';
         g.fillText('THE BEST MOMENTS', pad, h - Math.round(botBar / 2));
         g.textAlign = 'right';
@@ -897,7 +897,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         g.textAlign = 'left'; g.textBaseline = 'middle';
         g.fillText('MAGAZINE', pad, pad + Math.round(topBar * 0.42));
         g.fillStyle = '#777777';
-        g.font = '600 ' + Math.max(9, Math.round(topBar * 0.22)) + 'px "Arial", sans-serif';
+        g.font = '600 ' + Math.max(9, Math.round(topBar * 0.22)) + 'px "Courier New", monospace';
         g.textAlign = 'right';
         g.fillText('VOL.16 · 2026', w - pad, pad + Math.round(topBar * 0.35));
         // 页眉双线
@@ -913,7 +913,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         g.drawImage(img, px, py);
         // 页脚
         g.fillStyle = '#999999';
-        g.font = '600 ' + Math.max(8, Math.round(botBar * 0.26)) + 'px "Arial", sans-serif';
+        g.font = '600 ' + Math.max(8, Math.round(botBar * 0.26)) + 'px "Courier New", monospace';
         g.textAlign = 'center'; g.textBaseline = 'middle';
         g.fillText('THE PHOTO ESSAY — CONTINUED ON P.14', w / 2, h - Math.round(botBar / 2));
     }
@@ -979,7 +979,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
         g.textBaseline = 'alphabetic'; g.textAlign = 'left'; g.fillStyle = '#f4f0e4';
         g.fillText('VHS', logoX + Math.round(logoFs * 0.28), logoBase);
         const subFs = Math.max(7, Math.round(topH * 0.14));
-        g.font = 'bold ' + subFs + 'px Arial, sans-serif';
+        g.font = 'bold ' + subFs + 'px "Courier New", monospace';
         g.fillStyle = 'rgba(220,215,200,0.55)';
         g.fillText('VIDEO CASSETTE', logoX + Math.round(logoFs * 0.28), logoBase + Math.round(subFs * 1.45));
 
@@ -1345,7 +1345,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
             const availW = iw - inset * 2 - (hasAv ? avatarR * 2 + gapA : 0);
             const fit = sigBody
                 ? fitSignText(g, sigBody, Math.max(12, Math.round(sigH * 0.34 * ((S && S.signSize) || 1))),
-                    (S && S.signFont) || 'Comic Sans MS', availW)
+                    (S && S.signFont) || 'Courier New', availW)
                 : { fs: 0, text: '' };
             const sigWS = fit.text ? g.measureText(fit.text).width : 0;
             const totalW = (hasAv ? avatarR * 2 : 0) + (hasAv && sigWS ? gapA : 0) + sigWS;
@@ -1601,7 +1601,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
             const availW = iw - inset * 2 - (hasAv ? avatarR * 2 + gapA : 0);
             const fit = sigBody
                 ? fitSignText(g, sigBody, Math.max(12, Math.round(sigH * 0.36 * ((S && S.signSize) || 1))),
-                    (S && S.signFont) || 'Comic Sans MS', availW)
+                    (S && S.signFont) || 'Courier New', availW)
                 : { fs: 0, text: '' };
             const sigWS = fit.text ? g.measureText(fit.text).width : 0;
             const totalW = (hasAv ? avatarR * 2 : 0) + (hasAv && sigWS ? gapA : 0) + sigWS;
@@ -1772,7 +1772,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
     // ⚠ 必须放在 IIFE 顶层:邮票等风格是 IIFE 顶层的函数声明,而头像系列在 renderPhotoFrame
     //   内部声明 —— 放在 renderPhotoFrame 里会导致顶层风格引用不到它(渲染整体回退成原图)。
     function fitSignText(g, text, fs, fontFamily, maxW) {
-        const family = fontFamily || 'Comic Sans MS';
+        const family = fontFamily || 'Courier New';
         const setFont = (s) => { g.font = 'italic ' + s + 'px "' + family + '", cursive'; };
         let str = String(text == null ? '' : text);
         setFont(fs);
@@ -2112,7 +2112,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
                 const rowY = footerY + textH * 0.76;
                 const gapA = Math.max(8, Math.round(avatarR * 0.25));
                 const availW = iw - insetX * 2 - (hasAv ? avatarR * 2 + gapA : 0);
-                const fit = sigBody ? fitSignText(g, sigBody, Math.round(fFs * ((S && S.signSize) || 1)), (S && S.signFont) || 'Comic Sans MS', availW) : { text: '' };
+                const fit = sigBody ? fitSignText(g, sigBody, Math.round(fFs * ((S && S.signSize) || 1)), (S && S.signFont) || 'Courier New', availW) : { text: '' };
                 const sigWS = fit.text ? g.measureText(fit.text).width : 0;
                 const totalW = (hasAv ? avatarR * 2 : 0) + (hasAv && sigWS ? gapA : 0) + sigWS;
                 let px = faceC - totalW / 2;
@@ -2148,7 +2148,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
                 const sigBody = hasSig ? String(S.userSignature) : '';
                 const avatarR = Math.round(textH * 0.22 * ((S && S.avatarScale) || 1));
                 const sigFs = Math.round(fFs * ((S && S.signSize) || 1));
-                g.font = 'italic ' + sigFs + 'px "' + ((S && S.signFont) || 'Comic Sans MS') + '", cursive';
+                g.font = 'italic ' + sigFs + 'px "' + ((S && S.signFont) || 'Courier New') + '", cursive';
                 g.fillStyle = (S && S.signColor) || '#2f2a24';
                 const sigW = sigBody ? g.measureText(sigBody).width : 0;
                 const sigY = footerY + textH * 0.34;
@@ -2506,7 +2506,7 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
             const availW = tw - inset * 2 - (hasAv ? avatarR * 2 + gapA : 0);
             const fit = sigBody
                 ? fitSignText(g, sigBody, Math.max(12, Math.round(sigH * 0.30 * ((S && S.signSize) || 1))),
-                    (S && S.signFont) || 'Comic Sans MS', availW)
+                    (S && S.signFont) || 'Courier New', availW)
                 : { fs: 0, text: '' };
             const sigWS = fit.text ? g.measureText(fit.text).width : 0;
             const totalW = (hasAv ? avatarR * 2 : 0) + (hasAv && sigWS ? gapA : 0) + sigWS;
@@ -2809,7 +2809,7 @@ AV_OVERLAY:63,
 AV_OVERLAY_TR:64,
 AV_OVERLAY_BR:65,
 AV_OVERLAY_BC:66,
-AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:71, PHOTO_CREDIT:72, PARAM_CREDIT:73 };
+AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:71, PHOTO_CREDIT:72, PARAM_CREDIT:73, CARD_APPLE:74, XIAOMI_LEICA:75 };
     const MASK48 = 0xffffffffffffn, MULT = 0x5deece66dn, INC = 0xbn;
     function javaRandom(seed64) {
         let s = (BigInt(seed64) ^ MULT) & MASK48;
@@ -2892,12 +2892,13 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
         let b, m;
         if (['CARD_LEICA','CARD_LOGO_PARAM','CARD_IMMERSION','OVERLAY_LOGO_BOTTOM'].includes(styleName)) { b='LEICA'; m='M10-P'; }
         else if (['FUJI_WHITE','OVERLAY_PARAM_BOTTOM','PARAM_STRIP'].includes(styleName)) { b='FUJIFILM'; m='X-T5'; }
-        else if (['XIAOMI_IMP','IMP_FROSTED','IMP_CLASSIC'].includes(styleName)) { b='XIAOMI'; m='14 Ultra'; }
+        else if (['XIAOMI_IMP','IMP_FROSTED','IMP_CLASSIC','XIAOMI_LEICA'].includes(styleName)) { b='XIAOMI'; m='14 Ultra'; }
         else if (['ART_CARD','COLOR_CLASSIC','COLOR_REFINED'].includes(styleName)) { b='GFX'; m='100S'; }
         else if (['WM_CLASSIC','WM_SINGLE','WM_BRAND_LOGO','WM_AI','BLUR_CLASSIC','BLUR_DATE','OVERLAY_PARAM_LEFT'].includes(styleName)) { b='SONY'; m='A7 IV'; }
         else if (styleName === 'CARD_PURE_LOGO') { b='LEICA'; m='Q3'; }
         else if (styleName === 'PARAM_CREDIT') { b='CANON'; m='ILCE-7CM2'; }
         else if (['CARD_SIMPLE','PARAM_TOP_LEFT','PARAM_BOTTOM_LEFT','OVERLAY_PARAM_RIGHT'].includes(styleName)) { b='CANON'; m='EOS R5'; }
+        else if (styleName === 'CARD_APPLE') { b='Apple'; m='iPhone'; }
         else return { brand: '', model: '', focal: '', aperture: '', iso: '', shutter: '' };
         return { brand: b, model: m, focal: f(), aperture: a(), iso: i(), shutter: s() };
     }
@@ -3499,7 +3500,7 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
             g.fillStyle = c; g.fill();
             g.lineWidth = 1; g.strokeStyle = 'rgba(0,0,0,0.18)'; g.stroke();
             g.fillStyle = '#1a1a1a';
-            g.font = Math.max(12, Math.round(dotD * 0.36)) + 'px Consolas, monospace';
+            g.font = Math.max(12, Math.round(dotD * 0.36)) + 'px "Courier New", monospace';
             g.fillText('#FF' + c.slice(1).toUpperCase(), x, cy + Math.round(dotD * 0.78));
             x += dotD + gap;
         }
@@ -3734,6 +3735,452 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
         if (!(S.brandLogo === 2 && brandLw)) drawBrandText(g2, brand, brandX + (S.brandLogo === 2 ? 0 : brandLw), baseY, bf, brandInk(brand, false), 0);
         if (pf && pl) drawTextL(g2, pl, w - pad - pm.w, baseY, 'rgb(120,120,120)', pf, true, false, 0);
     }
+    // ══ 苹果信息卡:白底 + 照片 + 底部设备信息条 ──
+    //   左:设备型号(粗体近黑,如「iPhone 18 Pro Max」);右:品牌 Logo(灰) + 拍摄参数(灰)。
+    //   照片与信息条之间一道 Apple 风细分隔线(#d2d2d7);四周白边,照片与信息条居中于白色画布。
+    // ── 苹果信息卡(CARD_APPLE):所有可自定义项 ──
+    // 空串 = 自动:品牌/型号取自 EXIF(manualExif 优先),参数取自相机参数,日期取当前时间。
+    // 其余字段缺省时用下面的中性默认值;脏值一律夹到合法区间,绝不把 NaN 带进画布。
+    // 字体白名单:只用系统自带、Win/mac 都常见的字体;模板里的脏值一律回落到默认。
+    const APPLE_CARD_FONTS = ['Trebuchet MS', 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', 'Helvetica', 'Arial',
+        'Georgia', 'Times New Roman', 'Book Antiqua', 'Bodoni MT', 'Courier New', 'Courier New', 'Arial Black'];
+    const APPLE_CARD_FONT_DEFAULT = 'Trebuchet MS';
+    function appleCardCfg(a) {
+        a = (a && typeof a === 'object') ? a : {};
+        const str = (v) => (typeof v === 'string' ? v.trim() : '');
+        const num = (v, d, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : d; };
+        const on = (v, d) => (v == null ? d : (Number(v) ? 1 : 0));
+        const hex = (v, d) => (/^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? String(v) : d);
+        const font = (v) => {
+            const s = String(v || '').trim();
+            return APPLE_CARD_FONTS.indexOf(s) >= 0 ? s : APPLE_CARD_FONT_DEFAULT;
+        };
+        return {
+            dateText: str(a.dateText),
+            showBrand: on(a.showBrand, 1), showModel: on(a.showModel, 1),
+            showParams: on(a.showParams, 1), showDate: on(a.showDate, 1),
+            showLogo: on(a.showLogo, 1), showLine: on(a.showLine, 1),
+            modelScale: num(a.modelScale, 1, 0.4, 3),
+            paramScale: num(a.paramScale, 1, 0.4, 3), dateScale: num(a.dateScale, 1, 0.4, 3),
+            logoScale: num(a.logoScale, 1, 0.3, 3),
+            logoOpacity: num(a.logoOpacity, 60, 0, 100),
+            lineScale: num(a.lineScale, 1, 0.2, 5),
+            fontFamily: font(a.fontFamily),
+            textColor: hex(a.textColor, '#1d1d1f'),
+            subColor: hex(a.subColor, '#86868b'),
+            lineColor: hex(a.lineColor, '#d2d2d7'),
+            barBg: hex(a.barBg, '#ffffff'),
+        };
+    }
+    function appleCardText(S, A) {
+        const cam = (S && S.cam) || {};
+        const exif = (S && S.exif) || {};
+        // 品牌/型号/参数统一由下方「相机参数(自动识别)」的品牌/型号/焦距/光圈/ISO/快门驱动,
+        // 不再在苹果卡里另开一套覆盖输入(那是重复的第二事实来源)。仅日期没有对应 EXIF 字段,可自定义。
+        const brand = (cam.brand || '').trim() || ((exif.make || '').trim()) || '';
+        const model = ((exif.model || '').trim()) || cam.model || 'iPhone';
+        const params = (S && S.useExif) ? exifLine(cam) : '';
+        const date = A.dateText || dateTimeYMD();
+        return { brand, model: String(model).trim(), params, date };
+    }
+    function cardAppleMetrics(iw, size, paramFs, A, T) {
+        const base = Math.max(15, Math.round(autoExifSize(paramFs, iw) * 0.5));
+        const fModel = Math.max(9, Math.round(base * A.modelScale));
+        // 品牌与型号同字号;品牌只靠颜色/字重区分层级
+        const fBrand = fModel;
+        const fParam = Math.max(9, Math.round(base * 0.82 * A.paramScale));
+        // 日期与参数同字号(只保留各自的缩放滑块做微调)
+        const fDate = Math.max(8, Math.round(base * 0.82 * A.dateScale));
+        const gapRD = Math.round(fParam * 0.3);
+        const hasBrand = A.showBrand && !!T.brand;
+        const hasModel = A.showModel && !!T.model;
+        // 品牌与型号同一排:行高取两者较大者,不再上下叠加
+        const leftH = (hasBrand || hasModel) ? Math.max(hasBrand ? fBrand : 0, hasModel ? fModel : 0) : 0;
+        const rightH = (A.showParams && T.params ? fParam : 0)
+            + ((A.showParams && T.params) && (A.showDate && T.date) ? gapRD : 0)
+            + (A.showDate && T.date ? fDate : 0);
+        // 默认 logo 再小一半:滑块 100% = 原先的 50%
+        const logoH = A.showLogo ? Math.round(Math.max(fParam * 1.3, fModel * 0.95) * A.logoScale) : 0;
+        const innerH = Math.max(leftH, rightH, logoH, 1);
+        // 底部白边:在「内容 + 上下留白」基础上再放大 1.5 倍(用户要求再宽 0.5 倍)
+        const capH = Math.round((innerH + Math.max(32, innerH * 0.82)) * 1.5);
+        return { fBrand, fModel, fParam, fDate, gapRD, logoH, capH };
+    }
+    function styleCardApple(img, size, g, iw, ih, S) {
+        const A = appleCardCfg(S.appleCard);
+        const T = appleCardText(S, A);
+        const M = cardAppleMetrics(iw, size, S.paramFs, A, T);
+        const capH = M.capH;
+        // 上/左/右贴边:照片直接顶到画布边缘,只有底部一条白色信息条
+        const w = iw;
+        const h = ih + capH;
+        const FONT = "'" + A.fontFamily + "', 'Segoe UI', Arial, sans-serif";
+        const meas = (txt, fs, bold) => {
+            if (!txt) return 0;
+            g.font = (bold ? 'bold ' : '') + fs + 'px ' + FONT;
+            return g.measureText(txt).width;
+        };
+        // 左侧品牌/型号:沿用「相机参数水印」品牌行的衬线字体(Times New Roman / Georgia),
+        // 与参数水印保持同一套气质;右侧参数/日期仍跟随面板「字体」下拉。
+        const measL = (txt, fs, bold) => {
+            if (!txt) return 0;
+            g.font = brandFont(fs, bold ? 700 : 400);
+            return g.measureText(txt).width;
+        };
+
+        // 背景:与信息条同色(图片缩放<100% / 圆角露出的也是这个颜色)
+        g.fillStyle = A.barBg;
+        g.fillRect(0, 0, w, h);
+
+        // 照片:上/左/右贴边;支持图片缩放(居中缩放,超出画布部分自然裁切)
+        const sc = Math.max(0.2, S.imgScale || 1);
+        const dw = Math.round(iw * sc), dh = Math.round(ih * sc);
+        const dx = Math.round((iw - dw) / 2), dy = Math.round((ih - dh) / 2);
+        g.drawImage(img, dx, dy, dw, dh);
+
+        const sepY = ih;                            // 信息条顶边 = 照片下沿
+        const cy = sepY + capH / 2;                 // 信息条竖直中心
+        g.textBaseline = 'alphabetic';
+        g.letterSpacing = '0px';
+
+        // 信息条底色(底部白边)
+        g.fillStyle = A.barBg;
+        g.fillRect(0, sepY, iw, capH);
+
+        // 信息条内边距:文字不贴画布边缘(条内留白,不是外框)
+        const innerPad = Math.max(10, Math.round(capH * 0.2));
+        const leftX = innerPad;
+        const rightEdge = iw - innerPad;
+
+        // ── 左:品牌 + 型号 同一排(过长整体缩字号,不挤到右侧) ──
+        const hasBrand = A.showBrand && !!T.brand;
+        const hasModel = A.showModel && !!T.model;
+        const maxLeftW = Math.max(30, iw * 0.56 - innerPad);
+        let fBrandD = M.fBrand, fModelD = M.fModel;
+        const brandGap = () => ((hasBrand && hasModel) ? Math.max(4, Math.round(Math.max(fBrandD, fModelD) * 0.32)) : 0);
+        const comboW = () => (hasBrand ? measL(T.brand, fBrandD, false) : 0)
+            + brandGap()
+            + (hasModel ? measL(T.model, fModelD, true) : 0);
+        // 同一排后整体变宽:按比例缩字号
+        let lscale = 1;
+        for (;;) {
+            if (comboW() <= maxLeftW || lscale <= 0.35) break;
+            lscale -= 0.03;
+            fModelD = Math.max(9, Math.round(M.fModel * lscale));
+            fBrandD = Math.max(8, Math.round(M.fBrand * lscale));
+        }
+        const leftTextW = comboW();
+        const lineFs = Math.max(hasBrand ? fBrandD : 0, hasModel ? fModelD : 0, 1);
+        const baseY = cy + Math.round(lineFs * 0.35); // 品牌与型号共用一条基线
+        g.textAlign = 'left';
+        let cursorX = leftX;
+        if (hasBrand) {
+            g.font = brandFont(fBrandD, 400);
+            g.fillStyle = A.subColor;
+            g.fillText(T.brand, cursorX, baseY);
+            cursorX += measL(T.brand, fBrandD, false) + brandGap();
+        }
+        if (hasModel) {
+            g.font = brandFont(fModelD, 700);
+            g.fillStyle = A.textColor;
+            g.fillText(T.model, cursorX, baseY);
+        }
+
+        // ── 右:大 logo + 竖线 + 参数/日期(同字号两行) ──
+        const hasP = A.showParams && !!T.params;
+        const hasD = A.showDate && !!T.date;
+        const hasText = hasP || hasD;
+        const showLine = A.showLine && hasText;
+        let logoImg = null;
+        if (A.showLogo && S.brandLogoImg && S.brandLogoImg.complete && S.brandLogoImg.naturalWidth) logoImg = S.brandLogoImg;
+
+        const gapText = hasText ? Math.round(M.fModel * 0.5) : 0;   // 竖线 ↔ 文字
+        const gapLogo = Math.round(M.fModel * 0.6);                 // logo ↔ 竖线
+        let maxRightW = iw - innerPad * 2 - leftTextW - Math.round(M.fModel * 0.8);
+        if (maxRightW < iw * 0.28) maxRightW = iw * 0.28;
+
+        // 按可用宽度缩放右块(字号 + logo),避免溢出/与左块重叠
+        let scale = 1, fp = M.fParam, fd = M.fDate, lh = M.logoH, lw = 0, textW = 0;
+        for (;;) {
+            fp = Math.max(8, Math.round(M.fParam * scale));
+            fd = Math.max(7, Math.round(M.fDate * scale));
+            const pW = hasP ? meas(T.params, fp, true) : 0;
+            const dW = hasD ? meas(T.date, fd, false) : 0;
+            textW = Math.max(pW, dW);
+            lh = Math.round(M.logoH * scale);
+            lw = logoImg ? Math.round(lh * (logoImg.naturalWidth / logoImg.naturalHeight)) : 0;
+            let blockW = textW;
+            if (showLine) blockW += gapText;
+            if (lw) blockW += (showLine ? gapLogo : (hasText ? gapText : 0)) + lw;
+            if (scale <= 0.3 || blockW <= maxRightW) break;
+            scale -= 0.05;
+        }
+
+        const textLeft = rightEdge - textW;
+        const lineX = textLeft - gapText - 0.5;
+        const logoRight = showLine ? (lineX - gapLogo) : (textLeft - (hasText ? gapText : 0));
+        const logoX = logoRight - lw;
+        const logoY = cy - lh / 2;
+        const gapRD = Math.round(fp * 0.3);
+        const rightH = (hasP ? fp : 0) + (hasP && hasD ? gapRD : 0) + (hasD ? fd : 0);
+
+        // 大 logo(不透明度可调,默认 60% 呈灰阶观感)
+        if (logoImg) {
+            g.save();
+            g.globalAlpha = A.logoOpacity / 100;
+            g.drawImage(logoImg, logoX, logoY, lw, lh);
+            g.restore();
+        }
+        // 竖细分隔线(颜色/粗细可调)
+        if (showLine) {
+            const lineH = Math.min(lh || rightH, rightH) * 0.72;
+            g.strokeStyle = A.lineColor;
+            g.lineWidth = Math.max(0.5, Math.max(1, iw / 1000) * A.lineScale);
+            g.beginPath();
+            g.moveTo(lineX + 0.5, cy - lineH / 2);
+            g.lineTo(lineX + 0.5, cy + lineH / 2);
+            g.stroke();
+        }
+
+        // 右文字(右对齐):参数粗黑在上,日期小灰在下
+        let ty = cy - rightH / 2;
+        g.textAlign = 'right';
+        if (hasP) {
+            g.font = 'bold ' + fp + 'px ' + FONT;
+            g.fillStyle = A.textColor;
+            g.fillText(T.params, rightEdge, ty + fp);
+            ty += fp + gapRD;
+        }
+        if (hasD) {
+            g.font = fd + 'px ' + FONT;
+            g.fillStyle = A.subColor;
+            g.fillText(T.date, rightEdge, ty + fd);
+        }
+    }
+    // ══ 联名水印(XIAOMI_LEICA):照片铺满画布,联名水印直接压在照片下沿 ──
+    //   左:品牌字标(加粗 + 拉开字距,如 XIAOMI)→ 品牌 Logo(如 Leica 红圆标)→ 细竖线 →
+    //   右:两行文案(上「Photo by Xiaomi 13」亮,下「Leica custom 徕卡定制」暗)。
+    // ── 全部可自定义项 ──
+    // 品牌字标/两行文案留空 = 自动:品牌大写取相机参数(手动 EXIF 优先),主文案 = Photo by 品牌 型号。
+    // Logo 走通用「品牌显示」下拉(0 仅文字 / 1 文字+Logo / 2 仅Logo / 3 都不显示)与品牌 Logo 池,
+    // 不在这里另开一套 Logo 选择;字号基准走通用「参数字号」滑块(autoExifSize),同样不重复造轮子。
+    function xmLeicaCfg(a) {
+        a = (a && typeof a === 'object') ? a : {};
+        const str = (v) => (typeof v === 'string' ? v.trim() : '');
+        const num = (v, d, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : d; };
+        const on = (v, d) => (v == null ? d : (Number(v) ? 1 : 0));
+        const hex = (v, d) => (/^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? String(v) : d);
+        const font = (v) => {
+            const s = String(v || '').trim();
+            return APPLE_CARD_FONTS.indexOf(s) >= 0 ? s : 'Courier New';
+        };
+        return {
+            brandText: str(a.brandText),          // 空 = 自动(相机品牌大写)
+            line1: str(a.line1),                  // 空 = 自动 Photo by 品牌 型号
+            line2: str(a.line2),                  // 空 = 不显示第二行
+            partnerBrand: str(a.partnerBrand),    // 空 = Logo 跟随相机品牌;填品牌名(如 Leica)画联名 Logo
+            showDiv: on(a.showDiv, 1),            // Logo/字标 与文案之间的细竖线
+            showScrim: on(a.showScrim, 1),        // 底部黑色渐变(保证白字可读)
+            align: num(a.align, 1, 0, 2),         // 0 左下 1 底部居中(默认,同联名水印官方版式) 2 右下
+            brandScale: num(a.brandScale, 1, 0.4, 3),
+            brandTracking: num(a.brandTracking, 0.16, 0, 0.5),   // 字标字距(× 字号)
+            lineWeight: num(a.lineWeight, 600, 300, 700),        // 主文案字重
+            lineScale: num(a.lineScale, 1, 0.4, 3),
+            logoScale: num(a.logoScale, 1, 0.3, 3),
+            logoOpacity: num(a.logoOpacity, 100, 0, 100),
+            logoColor: hex(a.logoColor, ''),   // 单色 Logo 上色;空 = 原色
+            logoRaw: on(a.logoRaw, 1),          // 勾选「原色」时忽略 logoColor
+            padScale: num(a.padScale, 1, 0.4, 3),
+            scrim: num(a.scrim, 45, 0, 100),
+            fontFamily: font(a.fontFamily),
+            textColor: hex(a.textColor, '#ffffff'),
+            subColor: hex(a.subColor, '#d9d9d9'),
+            divColor: hex(a.divColor, '#ffffff'),
+        };
+    }
+    function xmLeicaText(S, A) {
+        const cam = (S && S.cam) || {};
+        const exif = (S && S.exif) || {};
+        const brandRaw = ((cam.brand || '').trim() || (exif.make || '').trim() || 'XIAOMI').toUpperCase();
+        const brand = (A.brandText || brandRaw).toUpperCase();
+        const model = ((exif.model || '').trim()) || String(cam.model || '').trim();
+        const line1 = A.line1 || ('Photo by ' + brand + (model ? ' ' + model : ''));
+        return { brand, line1, line2: A.line2 };
+    }
+    // 字体栈:等宽族要落到 monospace,否则中文回退到系统无衬线后字距会塌
+    function xmLeicaFontOf(A, fs, weight) {
+        const w = weight === true ? 'bold ' : (typeof weight === 'number' && weight > 0 ? weight + ' ' : '');
+        const mono = /courier|consolas|mono/i.test(A.fontFamily);
+        const stack = mono ? "'Courier New', Consolas, monospace" : "'Segoe UI', Arial, sans-serif";
+        return w + fs + "px '" + A.fontFamily + "', " + stack;
+    }
+    // 单色 Logo 上色:把图当 alpha 蒙版,用 source-in 填充目标色。
+    // 彩色标(如徕卡红圆)会被整块覆盖成单色,所以面板默认勾「原色」,由用户决定要不要上色。
+    const LOGO_TINT_CACHE = new WeakMap();
+    function tintLogo(img, w, h, color) {
+        let m = LOGO_TINT_CACHE.get(img);
+        if (!m) { m = new Map(); LOGO_TINT_CACHE.set(img, m); }
+        const key = w + 'x' + h + '|' + color;
+        const hit = m.get(key);
+        if (hit) return hit;
+        const cv = document.createElement('canvas');
+        cv.width = Math.max(1, w); cv.height = Math.max(1, h);
+        const cg = cv.getContext('2d');
+        cg.drawImage(img, 0, 0, cv.width, cv.height);
+        cg.globalCompositeOperation = 'source-in';
+        cg.fillStyle = color;
+        cg.fillRect(0, 0, cv.width, cv.height);
+        if (m.size > 12) m.delete(m.keys().next().value);
+        m.set(key, cv);
+        return cv;
+    }
+
+    function styleXiaomiLeica(img, size, g, iw, ih, S) {
+        const A = xmLeicaCfg(S.xmLeica);
+        const T = xmLeicaText(S, A);
+        // 照片铺满画布(水印直接压图,无边框)
+        g.drawImage(img, 0, 0, iw, ih);
+
+        // 字号基准直接按画布宽度算,不再挂全局「参数字号」:本风格不显示相机参数行,
+        // 若再吃一次 paramFs,面板上「参数字号」与「文案字号」就成了两个都在改字号的滑块(重复)。
+        // 系数 0.0125 等价于旧行为 paramFs=30 时的 autoExifSize*0.5,默认视觉不变。
+        const base = Math.max(13, Math.round(iw * 0.0125));
+        const fL1 = Math.max(9, Math.round(base * 0.9 * A.lineScale));       // 主文案
+        const fL2 = Math.max(8, Math.round(fL1 * 0.82));                     // 副文案
+        const fBrand = Math.max(11, Math.round(base * 1.15 * A.brandScale)); // 品牌字标
+        const gapL = Math.max(3, Math.round(fL1 * 0.38));                    // 两行文案间距
+
+        // 品牌显示走通用下拉:S.brandLogo 0 仅文字 / 1 文字+Logo / 2 仅Logo / 3 都不显示
+        const mode = Number(S.brandLogo || 0);
+        // Logo 来源:填了联名品牌(如 Leica)用联名 Logo,否则跟随相机品牌
+        const logoSrc = (A.partnerBrand && S.xmPartnerImg && S.xmPartnerImg.complete && S.xmPartnerImg.naturalWidth)
+            ? S.xmPartnerImg : S.brandLogoImg;
+        const logoImg = ((mode === 1 || mode === 2) && logoSrc
+            && logoSrc.complete && logoSrc.naturalWidth) ? logoSrc : null;
+        const showBrandText = mode !== 2 && mode !== 3 && !!T.brand;
+        const hasText = !!T.line1 || !!T.line2;
+        const showDiv = A.showDiv && hasText && (showBrandText || !!logoImg);
+
+        const meas = (txt, fs, bold, track) => {
+            if (!txt) return 0;
+            g.font = xmLeicaFontOf(A, fs, bold);
+            g.letterSpacing = (track ? Math.max(0, Math.round(fs * A.brandTracking)) : 0) + 'px';
+            const w = g.measureText(txt).width;
+            g.letterSpacing = '0px';
+            return w;
+        };
+
+        // 整块过宽时等比缩字号,绝不溢出画布
+        let scale = 1, fb = fBrand, f1 = fL1, f2 = fL2, logoH = 0;
+        const logoH0 = logoImg ? Math.round((mode === 2 ? fBrand * 1.05 : Math.max(fBrand, f1) * 0.95) * A.logoScale) : 0;
+        const padBase = Math.max(12, Math.round(iw * 0.045));
+        for (;;) {
+            fb = Math.max(9, Math.round(fBrand * scale));
+            f1 = Math.max(8, Math.round(fL1 * scale));
+            f2 = Math.max(7, Math.round(fL2 * scale));
+            logoH = Math.round(logoH0 * scale);
+            const brandW = showBrandText ? meas(T.brand, fb, true, true) : 0;
+            const logoW = logoImg ? Math.round(logoH * logoImg.naturalWidth / logoImg.naturalHeight) : 0;
+            const textW = Math.max(T.line1 ? meas(T.line1, f1, A.lineWeight, false) : 0,
+                T.line2 ? meas(T.line2, f2, 400, false) : 0);
+            const gapB = (showBrandText && (logoImg || showDiv || hasText)) ? Math.round(fb * 0.55) : 0;
+            const gapLg = (logoImg && (showDiv || hasText)) ? Math.round(fb * 0.5) : 0;
+            const gapD = showDiv ? Math.round(fb * 0.55) : 0;
+            const total = brandW + gapB + logoW + gapLg + (showDiv ? Math.max(1, Math.round(iw / 900)) + gapD : 0) + textW;
+            const maxW = iw - padBase * 2 * A.padScale;
+            if (total <= maxW || scale <= 0.3) {
+                // 命中可用宽度,记录布局数据
+                return xmDraw();
+            }
+            scale -= 0.04;
+        }
+
+        function xmDraw() {
+            const pad = Math.round(padBase * A.padScale);
+            const brandW = showBrandText ? meas(T.brand, fb, true, true) : 0;
+            const logoW = logoImg ? Math.round(logoH * logoImg.naturalWidth / logoImg.naturalHeight) : 0;
+            const w1 = T.line1 ? meas(T.line1, f1, A.lineWeight, false) : 0;
+            const w2 = T.line2 ? meas(T.line2, f2, 400, false) : 0;
+            const textW = Math.max(w1, w2);
+            const divW = showDiv ? Math.max(1, Math.round(iw / 900)) : 0;
+            const gapB = (showBrandText && (logoImg || showDiv || hasText)) ? Math.round(fb * 0.55) : 0;
+            const gapLg = (logoImg && (showDiv || hasText)) ? Math.round(fb * 0.5) : 0;
+            const gapD = showDiv ? Math.round(fb * 0.55) : 0;
+            const total = brandW + gapB + logoW + gapLg + (showDiv ? divW + gapD : 0) + textW;
+
+            // 对齐:0 左下 / 1 底部居中 / 2 右下
+            let x0 = pad;
+            if (A.align === 1) x0 = Math.round((iw - total) / 2);
+            else if (A.align === 2) x0 = iw - pad - total;
+            x0 = Math.max(pad, x0);
+
+            // 块高度与垂直中心:取 字标/Logo/两行文案 的最大者
+            const textH = (T.line1 ? f1 : 0) + (T.line1 && T.line2 ? gapL : 0) + (T.line2 ? f2 : 0);
+            const brandH = showBrandText ? Math.round(fb * 0.78) : 0;
+            const blockH = Math.max(brandH, logoH, textH, 1);
+            const cy = ih - pad - blockH / 2;
+
+            // 底部黑色渐变(scrim):从块上方一段距离渐入,保证白字在亮图上可读
+            if (A.showScrim && A.scrim > 0) {
+                const gradH = Math.max(blockH + pad * 2, ih * 0.22);
+                const g0 = g.createLinearGradient(0, ih - gradH, 0, ih);
+                const a = Math.min(0.92, A.scrim / 100 * 0.85);
+                g0.addColorStop(0, 'rgba(0,0,0,0)');
+                g0.addColorStop(1, 'rgba(0,0,0,' + a.toFixed(3) + ')');
+                g.fillStyle = g0;
+                g.fillRect(0, ih - gradH, iw, gradH);
+            }
+
+            g.textBaseline = 'alphabetic';
+            g.textAlign = 'left';
+            let cx = x0;
+            // 品牌字标:加粗 + 拉开字距
+            if (showBrandText) {
+                g.font = xmLeicaFontOf(A, fb, true);
+                g.letterSpacing = Math.max(0, Math.round(fb * A.brandTracking)) + 'px';
+                g.fillStyle = A.textColor;
+                g.fillText(T.brand, cx, cy + Math.round(fb * 0.36));
+                g.letterSpacing = '0px';
+                cx += brandW + gapB;
+            }
+            // 品牌 Logo(复用品牌池,透明度可调)
+            if (logoImg) {
+                g.save();
+                g.globalAlpha = A.logoOpacity / 100;
+                const logoDraw = (!A.logoRaw && A.logoColor)
+                    ? tintLogo(logoImg, logoW, logoH, A.logoColor)
+                    : logoImg;
+                g.drawImage(logoDraw, cx, Math.round(cy - logoH / 2), logoW, logoH);
+                g.restore();
+                cx += logoW + gapLg;
+            }
+            // 细竖线
+            if (showDiv) {
+                const divH = Math.max(textH, Math.round(f1 * 1.2)) * 0.92;
+                g.strokeStyle = A.divColor;
+                g.globalAlpha = 0.85;
+                g.lineWidth = divW;
+                g.beginPath();
+                g.moveTo(cx + divW / 2, cy - divH / 2);
+                g.lineTo(cx + divW / 2, cy + divH / 2);
+                g.stroke();
+                g.globalAlpha = 1;
+                cx += divW + gapD;
+            }
+            // 两行文案:主亮副暗
+            const ty = cy - textH / 2;
+            if (T.line1) {
+                g.font = xmLeicaFontOf(A, f1, A.lineWeight);
+                g.fillStyle = A.textColor;
+                g.fillText(T.line1, cx, ty + Math.round(f1 * 0.8));
+            }
+            if (T.line2) {
+                g.font = xmLeicaFontOf(A, f2, 400);
+                g.fillStyle = A.subColor;
+                g.fillText(T.line2, cx, ty + (T.line1 ? f1 + gapL : 0) + Math.round(f2 * 0.8));
+            }
+        }
+    }
     function styleCardLogoParam(img, size, g, iw, ih, S, cwO, chO) {
         const pad = Math.max(28, Math.floor(size * 3 / 5));
         const arc = Math.max(12, Math.floor(size / 4));
@@ -3754,7 +4201,7 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
             const bw = g.measureText(brandTxt).width + ls * Math.max(0, brandTxt.length - 1);
             let tw = bw;
             if (hasModel) {
-                g.font = 'bold ' + fs + "px 'Consolas', 'Courier New', monospace";
+                g.font = 'bold ' + fs + "px 'Courier New', 'Courier New', monospace";
                 g.letterSpacing = 0;
                 tw += gap + g.measureText(modelTxt).width + ls * Math.max(0, modelTxt.length - 1);
             }
@@ -3826,7 +4273,7 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
         g.shadowBlur = 0;
         g.letterSpacing = 0;
         if (hasModel) {
-            g.font = 'bold ' + f1 + "px 'Consolas', 'Courier New', monospace";
+            g.font = 'bold ' + f1 + "px 'Courier New', 'Courier New', monospace";
             g.letterSpacing = ls;
             g.fillStyle = textColor;
             g.fillText(modelTxt, sx + (onlyLogo ? (bw + gapT) : (lw2 + bw + gapT)), y1);
@@ -4730,7 +5177,7 @@ const w = natW;
     // 其他会出现相机品牌的风格也复用这一套,避免「Canon」在一个预设里是红衬线、
     // 在另一个预设里变成白色无衬线。
     const BRAND_SERIF = '"Times New Roman", Georgia, serif';
-    const BRAND_SANS = '"Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif';
+    const BRAND_SANS = '"Courier New", Arial, "PingFang SC", "Microsoft YaHei", sans-serif';
 
     function prettyBrand(brand) {
         const raw = String(brand == null ? '' : brand).trim();
@@ -4865,6 +5312,10 @@ const w = natW;
         const rawPf = t.paramFontSize != null ? t.paramFontSize : 35;
         const autoPf = Math.max(20, Math.min(64, Math.round(Math.min(iw, ih) / 45)));
         const cam = cameraFor(styleName, iw, ih, exif);
+        // 苹果信息卡:品牌/型号/参数统一由下方「相机参数(自动识别)」驱动(单一事实来源)
+        const appleCfg = (t.appleCard && typeof t.appleCard === 'object') ? t.appleCard : {};
+        // 联名水印:同样复用相机参数识别;Logo 走通用品牌 Logo 池
+        const xmCfg = (t.xmLeica && typeof t.xmLeica === 'object') ? t.xmLeica : {};
         // 等效焦距(可选,cbFocalEq → t.focalEq):只认 EXIF 里相机写好的
         // FocalLengthIn35mmFilm(0xA405)。勾选后相机焦距直接显示换算值(35mm → 53mm),
         // 不再并列实际焦距;没有这个标签就保持实际焦距,不按机型猜画幅。
@@ -4894,10 +5345,29 @@ const w = natW;
                 brandLogoImg = im;
             }
         }
+        // 联名水印:联名 Logo。填了 partnerBrand(如 Leica)就按联名品牌从同一个 Logo 池取图,
+        // 覆盖「Logo 跟随相机品牌」的默认行为;没填就与其它风格一样用相机品牌 Logo。
+        let xmPartnerImg = null;
+        if ((brandLogoVal === 1 || brandLogoVal === 2) && xmCfg.partnerBrand) {
+            const hitXm = brandLogoEntry(app, xmCfg.partnerBrand, brandLogoPref(app, styleName, Number(t.signBgBlur || 0), xmCfg.partnerBrand));
+            if (hitXm && hitXm.dataUrl) {
+                let imXm = (app.logoImgCache && app.logoImgCache[hitXm.dataUrl]) || null;
+                if (!imXm) {
+                    imXm = window.qfsImage();
+                    imXm.onload = () => { try { if (app.scheduleRender) app.scheduleRender(true); } catch (e) {} };
+                    imXm.src = hitXm.dataUrl;
+                    if (app.logoImgCache) app.logoImgCache[hitXm.dataUrl] = imXm;
+                }
+                xmPartnerImg = imXm;
+            }
+        }
         return {
             size,
             exif,
             cam,
+            appleCard: appleCfg,
+            xmLeica: xmCfg,
+            xmPartnerImg,
             brandLogo: Number(t.brandLogo || 0),
             brandLogoImg,
             brandLogoData,
@@ -4920,7 +5390,7 @@ const w = natW;
             aiCapSizePct: clampP(t.aiCapSizePct != null ? t.aiCapSizePct : 100, 50, 200),
             aiCapTheme: clampP(t.aiCapTheme != null ? t.aiCapTheme : 0, 0, 2),
             userSignature: String(t.userSignature || '').trim(),
-            signFont: String(t.signFont || 'cursive'),
+            signFont: String(t.signFont || 'Courier New'),
             // 未设置就保持空串 —— 各风格用 `(S && S.signColor) || 风格色` 取自己的兜底色
             // （票面 ink、报纸 #2f2a24、照片浮层 #fff…）。旧行为统一填引擎默认 #555，
             // 把风格兜底全压死了：深色票面上签名亮度差不到 1.5:1，等于看不见。
@@ -5011,7 +5481,9 @@ const w = natW;
         const pool = cands.length ? cands : m;
         if (!pool.length) return null;
         const variantOf = l => {
-            const match = (l.name || '').toLowerCase().match(/[_-](white|black|color)$/);
+            // 名字带扩展名(如 Leica_Color.png),必须先去掉扩展名再锚定 $,
+            // 否则永远匹配不到变体,排序退化成字母序(Black 恒在前),与 brandLogoHasColor 的判定矛盾。
+            const match = (l.name || '').toLowerCase().replace(/\.(png|jpe?g|svg|gif|webp)$/i, '').match(/[_-](white|black|color)$/);
             return match ? match[1] : '';
         };
         const rank = l => {
@@ -5253,6 +5725,16 @@ const w = natW;
                 const bandH = fmH * 2 + Math.max(10, Math.floor(pad / 2));
                 return { w: iw + pad * 2, h: ih + pad + bandH };
             }
+            case 'CARD_APPLE': {
+                const A = appleCardCfg(S && S.appleCard);
+                const T = appleCardText(S || {}, A);
+                const M = cardAppleMetrics(iw, size, (S ? S.paramFs : 35), A, T);
+                // 上/左/右贴边,只有底部信息条
+                return { w: iw, h: ih + M.capH };
+            }
+            case 'XIAOMI_LEICA':
+                // 照片铺满画布,联名水印直接压在照片上,画布 = 原图尺寸
+                return { w: iw, h: ih };
             case 'COLOR_CLASSIC': {
                 const pfs = Math.max(10, Math.round(autoExifSize((S ? S.paramFs : 12), iw)));
                 const barH = Math.max(40, size, Math.round(pfs * 5 / 3)), pad = pad2(8);
@@ -5714,7 +6196,7 @@ const w = natW;
         g.fillStyle = accent;
         g.fillRect(pad, headerY - mark, mark, mark);
         g.fillStyle = muted;
-        g.font = '600 ' + headerFs + 'px Arial, sans-serif';
+        g.font = '600 ' + headerFs + 'px "Courier New", monospace';
         g.letterSpacing = Math.max(1, Math.round(headerFs * 0.18)) + 'px';
         g.textAlign = 'left';
         g.textBaseline = 'alphabetic';
@@ -5807,7 +6289,7 @@ const w = natW;
         g.textAlign = 'left';
         g.textBaseline = 'alphabetic';
         g.fillStyle = muted;
-        g.font = '600 ' + labelFs + 'px Arial, sans-serif';
+        g.font = '600 ' + labelFs + 'px "Courier New", monospace';
         g.letterSpacing = Math.max(1, Math.round(labelFs * 0.6)) + 'px';
         g.fillText('CAMERA', brandX, barY + Math.round(barH * 0.30));
         g.letterSpacing = '0px';
@@ -5877,7 +6359,7 @@ const w = natW;
             const valueFsFit = fitFont(g, stats[i].value, true, true, baseStatFs, colW * 0.82, 0);
             g.textAlign = 'left';
             g.fillStyle = muted;
-            g.font = '600 ' + statLabelFs + 'px Arial, sans-serif';
+            g.font = '600 ' + statLabelFs + 'px "Courier New", monospace';
             g.letterSpacing = statLabelTrack + 'px';
             g.fillText(stats[i].label, x, statLabelY);
             g.letterSpacing = '0px';
@@ -6146,7 +6628,7 @@ const w = natW;
         // 签名行(照片下方居中, 跟随右侧栏签名设置: userSignature/signFont/signColor/signSize)
         const sigStr3 = (S && S.userSignature) ? String(S.userSignature) : '';
         g.fillStyle = (S && S.signColor) || '#8a8a92';
-        g.font = 'italic ' + Math.round(iw * 0.02 * ((S && S.signSize) || 1)) + 'px "' + ((S && S.signFont) || 'Comic Sans MS') + '", cursive';
+        g.font = 'italic ' + Math.round(iw * 0.02 * ((S && S.signSize) || 1)) + 'px "' + ((S && S.signFont) || 'Courier New') + '", cursive';
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         g.fillText(sigStr3, cx + iw / 2, cy + m + ph + Math.round((ih - m * 2 - ph) / 2));
@@ -6645,7 +7127,7 @@ const w = natW;
         g.drawImage(img, pad, pad, iw, ih);
         g.restore();
         g.fillStyle = S.signBgBlur ? '#fff' : (S.signColor || '#555');
-        g.font = 'italic ' + Math.round(iw * 0.05 * (S.signSize || 1)) + 'px "' + (S.signFont || 'Comic Sans MS') + '", cursive';
+        g.font = 'italic ' + Math.round(iw * 0.05 * (S.signSize || 1)) + 'px "' + (S.signFont || 'Courier New') + '", cursive';
         g.textAlign = 'center';
         g.save();
         g.translate(natW / 2, pad + ih + Math.round(bottomH * 0.6));
@@ -6707,7 +7189,7 @@ const w = natW;
         }
         // 签名(头像右边;面板里关掉头像就顶回区块左缘,不留空档)
         g.fillStyle = S.signColor || '#444';
-        g.font = 'italic ' + Math.round(iw * 0.022 * (S.signSize || 1)) + 'px "' + (S.signFont || 'Comic Sans MS') + '", cursive';
+        g.font = 'italic ' + Math.round(iw * 0.022 * (S.signSize || 1)) + 'px "' + (S.signFont || 'Courier New') + '", cursive';
         g.textAlign = 'left';
         g.textBaseline = 'middle';
         g.fillText(S.userSignature || '', hasAv ? ax + avatarR + 12 : ax - avatarR, ay);
@@ -6739,7 +7221,7 @@ const w = natW;
         // 品牌:Times 衬线 + 品牌色 + 字距;型号:无衬线(同高度/同色),拼接与品牌保持在同一条基线上
         const gap = Math.round(fBrand * 0.3);
         const ls = Math.round(fBrand * 0.15);
-        const sansFont = 'bold ' + fBrand + "px 'Consolas', 'Courier New', monospace";
+        const sansFont = 'bold ' + fBrand + "px 'Courier New', 'Courier New', monospace";
         const brandW = (function () {
             g.font = brandFont(fBrand, 700);
             g.letterSpacing = 0;
@@ -6881,7 +7363,7 @@ const w = natW;
             g.beginPath(); g.arc(ax, ay, avatarR, 0, Math.PI * 2); g.stroke();
         }
         g.fillStyle = '#fff';
-        g.font = 'italic ' + Math.round(iw * 0.022 * (S.signSize || 1)) + 'px "' + (S.signFont || 'Comic Sans MS') + '", cursive';
+        g.font = 'italic ' + Math.round(iw * 0.022 * (S.signSize || 1)) + 'px "' + (S.signFont || 'Courier New') + '", cursive';
         g.textAlign = 'left';
         g.textBaseline = 'middle';
         g.fillText(S.userSignature || '', ax + avatarR + 12, ay);
@@ -6940,7 +7422,7 @@ const w = natW;
         g.restore();
         const barY = pad + ih;
         g.fillStyle = '#fff';
-        g.font = 'italic ' + Math.round(iw * 0.05 * (S.signSize || 1)) + 'px "' + (S.signFont || 'Comic Sans MS') + '", cursive';
+        g.font = 'italic ' + Math.round(iw * 0.05 * (S.signSize || 1)) + 'px "' + (S.signFont || 'Courier New') + '", cursive';
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         g.save();
@@ -6981,7 +7463,7 @@ const w = natW;
             g.beginPath(); g.arc(ax, ay, avatarR, 0, Math.PI * 2); g.stroke();
         }
         g.fillStyle = '#fff';
-        g.font = 'italic ' + Math.round(iw * 0.022 * (S.signSize || 1)) + 'px "' + (S.signFont || 'Comic Sans MS') + '", cursive';
+        g.font = 'italic ' + Math.round(iw * 0.022 * (S.signSize || 1)) + 'px "' + (S.signFont || 'Courier New') + '", cursive';
         g.textAlign = 'left';
         g.textBaseline = 'middle';
         g.fillText(S.userSignature || '', ax + avatarR + 16, ay);
@@ -7504,7 +7986,7 @@ const w = natW;
         g.fillStyle = S.signColor || '#fff';
         g.shadowColor = 'rgba(0,0,0,0.5)';
         g.shadowBlur = 3;
-        drawLine(line2Raw, fs2, "'Consolas', 'Courier New', monospace", ay2, iw / 2, maxW);
+        drawLine(line2Raw, fs2, "'Courier New', 'Courier New', monospace", ay2, iw / 2, maxW);
         // 品牌词单独绘制:与相机参数水印/其他预设一致的品牌衬线字与品牌色。
         const brandTxt = S.brandLogo === 3 ? '' : prettyBrand(brandRaw);
         const modelTxt = model;
@@ -7707,7 +8189,7 @@ const w = natW;
         return px;
     }
 
-    const LG_FONT = '"Segoe UI", "Helvetica Neue", Arial, "Microsoft YaHei", sans-serif';
+    const LG_FONT = '"Segoe UI", "Courier New", Arial, "Microsoft YaHei", sans-serif';
 
     function styleLiquidGlass(img, size, g, iw, ih, S) {
         const geo = liquidGlassGeom(iw, ih, S && S.glassSize);
@@ -7841,7 +8323,8 @@ const w = natW;
             HASSELBLAD: styleHasselblad,
             IMP_FROSTED: styleImpFrosted, IMP_CLASSIC: styleImpClassic, XIAOMI_IMP: styleXiaomiImp,
             CARD_LEICA: styleCardLeica, CARD_LOGO_PARAM: styleCardLogoParam, CARD_PURE_LOGO: styleCardPureLogo,
-            CARD_SIMPLE: styleCardSimple, CARD_IMMERSION: styleCardImmersion,
+            CARD_SIMPLE: styleCardSimple, CARD_IMMERSION: styleCardImmersion, CARD_APPLE: styleCardApple,
+            XIAOMI_LEICA: styleXiaomiLeica,
             OVERLAY_PARAM_LEFT: (img, size, g, iw, ih, S2, cwO, chO) => styleOverlayParams(img, size, g, iw, ih, S2, 0, cwO, chO),
             OVERLAY_PARAM_RIGHT: (img, size, g, iw, ih, S2, cwO, chO) => styleOverlayParams(img, size, g, iw, ih, S2, 1, cwO, chO),
             OVERLAY_PARAM_BOTTOM: (img, size, g, iw, ih, S2, cwO, chO) => styleOverlayParams(img, size, g, iw, ih, S2, 2, cwO, chO),
@@ -8000,9 +8483,34 @@ const w = natW;
             const upscaleTarget = (app.exportScale && app.exportScale > 0)
                 ? Math.min(8192, Math.max(1, app.exportScale))
                 : 0;
-            const finalScale = upscaleTarget
+            let finalScale = upscaleTarget
                 ? (upscaleTarget / longEdge)
                 : Math.min(1, displayMax / longEdge);
+            // 苹果信息卡的信息条是内容驱动的:字号/开关一变,画布就变高,长边从宽换成高,
+            // 比例整体变小,整张卡跟着缩一圈。这种「参数改变基尺寸」的缩放是错的,沿用上次比例。
+            // 宽度变了(裁切/旋转/换图)、换风格、导出都照常重算。
+            const PREVIEW_SCALE_BY_PHOTO = styleName === 'CARD_APPLE';
+            const prevBaseW = Number(app._canvasBaseW) || 0;
+            const prevScale = Number(app._canvasScale) || 0;
+            let frozenToPrev = false;
+            if (!upscaleTarget && !(app.uiDprOverride > 0) && PREVIEW_SCALE_BY_PHOTO && prevScale > 0
+                && app._fitStyleName === styleName && !app._forceFitNext
+                && Math.round(prevBaseW) === Math.round(out.width)) {
+                finalScale = prevScale;
+                frozenToPrev = true;
+            }
+
+            // ── 显示比例 ≠ 渲染比例 ──
+            // 手势期 beginGesture 会把 displayMax 压到 900 做低清预览。降清只该减少画布像素,
+            // 绝不能改变画面在屏幕上的尺寸:否则拖任意滑块的瞬间 canvas.width 变小 →
+            // applyZoomStyle 按逻辑尺寸算 CSS 宽度 → 照片缩一圈,松手再弹回(跳动缩小)。
+            // 所以显示比例一律按「手势前的 displayMax」算(与松手后完全一致),像素仍按当前 displayMax 渲。
+            // 注意不能拿 finalScale===prevScale 当判据:手势里第二帧就相等了,会漏掉。
+            let displayScale = finalScale;
+            if (!upscaleTarget && !frozenToPrev) {
+                const sizeMax = (app._gesture && app._gesturePrevMax != null) ? app._gesturePrevMax : displayMax;
+                displayScale = Math.min(1, sizeMax / longEdge);
+            }
 
             // 基准坐标 = out 的像素尺寸；_canvasScale 是基准→逻辑像素的比例（与 setupCanvas 同义）。
             // 蒙版叠加层靠这两个值 + _photoRect 把指针换算成照片内坐标，缺一个就拖不动。
@@ -8014,8 +8522,8 @@ const w = natW;
                 : null;
             canvas.width = Math.max(1, Math.round(out.width * finalScale));
             canvas.height = Math.max(1, Math.round(out.height * finalScale));
-            canvas._logW = canvas.width;
-            canvas._logH = canvas.height;
+            canvas._logW = Math.max(1, Math.round(out.width * displayScale));
+            canvas._logH = Math.max(1, Math.round(out.height * displayScale));
             const g = canvas.getContext('2d');
             g.setTransform(1, 0, 0, 1, 0, 0);
             g.clearRect(0, 0, canvas.width, canvas.height);

@@ -42,6 +42,17 @@ const _pwPanCfg = {
     }
 };
 window.App = Object.assign(window.App || {}, {
+    // 「本图预览」：用当前照片把每个预设离屏渲成缩略图。缓存按「当前图源 + 调色 + EXIF」失效，
+    // 切换无限/有限墙时只重贴缓存，不重新跑 88 次引擎。
+    _wallPhotoMode: false,
+    _wallPhotoRunning: false,
+    _wallPhotoToken: 0,
+    _wallPhotoDone: 0,
+    _wallPhotoTotal: 0,
+    _wallPhotoCache: null,
+    _wallPhotoElIds: null,
+    _wallPhotoElSeq: 0,
+
     initPresetWall() {
         if (this._wallBound) return;
         this._wallBound = true;
@@ -54,6 +65,7 @@ window.App = Object.assign(window.App || {}, {
             block: null,  // 周期网格块（90 格）
             sub: $('pwSub'),
             skip: $('pwSkip'),
+            photo: $('pwPhoto'),
             mode: $('pwMode'),
             rail: $('pwRail'),
             back: $('btnBackWall'),
@@ -62,12 +74,17 @@ window.App = Object.assign(window.App || {}, {
         if (!el.overlay) return;
 
         if (el.skip) el.skip.addEventListener('click', () => this.closePresetWall(true));
+        // 本图预览：用当前照片实时渲染整墙缩略图；没有照片时按钮隐藏。
+        if (el.photo) el.photo.addEventListener('click', () => this.toggleWallPhotoMode());
         // 换封面：一键进入"封面编辑模式"——所有卡片的「换封面」按钮直接摆出来，
         // 点任意卡片选图即可，不用记文件名，也不用靠悬停去猜入口。
         // 想批量替换整个文件夹的仍走右键菜单里的「打开封面文件夹」。
         const coversBtn = $('pwCovers');
         if (coversBtn) coversBtn.addEventListener('click', () => this.toggleWallCoverMode());
-        if (el.back) el.back.addEventListener('click', () => this.openPresetWall());
+        // 编辑页的「边框墙」按钮：**始终从封面进入**。
+        // 之前这里默认开「本图预览」，用户带着照片回墙时会看到满墙都是自己那张照片的缩略图，
+        // 第一反应是「我的预设墙图片被换了」——封面才是墙的身份，想看效果请点墙头「本图预览」。
+        if (el.back) el.back.addEventListener('click', () => this.openPresetWall(false));
         // 无限 / 有限 切换：一个委托监听，按钮状态由 syncWallModeUI 统一回写
         if (el.mode) {
             el.mode.addEventListener('click', (e) => {
@@ -526,6 +543,13 @@ window.App = Object.assign(window.App || {}, {
     wallSubText() {
         const data = window.PRESET_WALL;
         const n = (data && Array.isArray(data.items) && data.items.length) || 87;
+        if (this._wallPhotoMode) {
+            const done = Math.min(this._wallPhotoDone || 0, n);
+            if (this._wallPhotoRunning && done < n) {
+                return '当前照片 · 正在渲染 ' + done + '/' + n + ' …';
+            }
+            return n + ' 种预设 · 当前照片实时预览 · 点击卡片套用';
+        }
         return this.wallMode() === 'finite'
             ? n + ' 种预设 · 有限边界 · 点击卡片进入编辑'
             : n + ' 种预设 · 按住拖动浏览 · 点击卡片进入编辑';
@@ -932,6 +956,8 @@ window.App = Object.assign(window.App || {}, {
         const el = this._wallDom;
         if (!el || !el.grid) return;
         const next = typeof on === 'boolean' ? on : !this._coverMode;
+        // 两个模式互斥：本图预览的卡片显示的是当前照片，换封面会看不到效果。
+        if (next && this._wallPhotoMode) this.toggleWallPhotoMode(false);
         this._coverMode = next;
         el.grid.classList.toggle('pw-cover-mode', next);
         const btn = document.getElementById('pwCovers');
@@ -965,6 +991,10 @@ window.App = Object.assign(window.App || {}, {
     openWallCoverMenu(tile, x, y) {
         const name = this.wallTileName(tile);
         if (!name || typeof this.openCtx !== 'function') return;
+        if (this._wallPhotoMode) {
+            this.setStatus('「本图预览」中不换封面，先点顶部「看封面」切回封面模式');
+            return;
+        }
         const has = !!(this._wallCovers && this._wallCovers[name]);
         this.openCtx(x, y, [
             ['更换封面…', () => this.pickWallCoverFor(tile)],
@@ -1090,11 +1120,277 @@ window.App = Object.assign(window.App || {}, {
             if (custom) tile.dataset.customCover = '1';
             else delete tile.dataset.customCover;
             const want = custom && typeof this.coverUrl === 'function' ? this.coverUrl(custom) : (tile.dataset.cover || '');
+            if (this._wallPhotoMode) continue;   // 本图预览期间不能把成品缩略图换回封面
             if (!want || img.getAttribute('src') === want) continue;
             img.src = want;
             if (custom) applied++;
         }
         return applied;
+    },
+
+    // ── 当前照片预览 ──
+    // 当前图的「内容指纹」：同一张图换了调色/裁切/EXIF 都要重渲，否则用户看到的是旧照片。
+    // el 用 WeakMap 发稳定 id，调色改的是 grade 对象、裁切会换 el，两类变化都能捕获。
+    wallPhotoKey(im) {
+        if (!im || !im.el) return '';
+        if (!this._wallPhotoElIds) this._wallPhotoElIds = new WeakMap();
+        let id = this._wallPhotoElIds.get(im.el);
+        if (!id) {
+            id = ++this._wallPhotoElSeq;
+            this._wallPhotoElIds.set(im.el, id);
+        }
+        let grade = '', exif = '';
+        try { grade = JSON.stringify(im.grade || null); } catch (_) { grade = ''; }
+        try { exif = JSON.stringify(im.exif || null); } catch (_) { exif = ''; }
+        const src = String(im.el.src || '');
+        return [id, grade, exif, im.el.naturalWidth || 0, im.el.naturalHeight || 0,
+            src.length, src.slice(0, 80), src.slice(-80)].join('|');
+    },
+
+    // 用当前照片把单个预设离屏渲成缩略图。
+    // 这里临时借用主编辑器的 DOM/模板/图片状态，和 app-templates.js 的缩略图逻辑同源：
+    // 渲染会写 _photoRect / _canvasBaseW/H / _canvasScale，结束后必须逐项还原，
+    // 否则墙关掉后蒙版叠加层和撤销栈会按缩略图那次渲染的几何跑位。
+    _renderWallPhotoThumb(preset, im) {
+        if (!window.__render || !preset || !im || !im.el) return '';
+        if (!im.el.complete || !im.el.naturalWidth) return '';
+        const prev = {
+            canvas: this.dom.canvas,
+            displayMax: this.displayMax,
+            uiDprOverride: this.uiDprOverride,
+            exportScale: this.exportScale,
+            image: this.image,
+            template: this.template,
+            selectedEls: this.selectedEls,
+            photoRect: this._photoRect,
+            baseW: this._canvasBaseW, baseH: this._canvasBaseH, scale: this._canvasScale,
+            activePuzzleSlot: this._activePuzzleSlot,
+            previewUseOriginal: this._previewUseOriginal,
+            maskPreviewOriginal: this._maskPreviewOriginal
+        };
+        const cv = document.createElement('canvas');
+        cv.width = 1; cv.height = 1;
+        cv.style.cssText = 'position:absolute;left:-99999px;top:-99999px;visibility:hidden;pointer-events:none;';
+        try {
+            this.dom.canvas = cv;
+            // 和预设墙封面同为 560px 档；uiDprOverride=1 让输出像素不随 DPR 翻倍。
+            this.displayMax = 560;
+            this.uiDprOverride = 1;
+            if (this.exportScale !== undefined) delete this.exportScale;
+            this.image = im;
+            this.template = JSON.parse(JSON.stringify(preset));
+            // 挡住 renderToCanvas 末尾的 fitZoom 分支：缩略图尺寸变化不是主画布尺寸变化。
+            this.selectedEls = [{ kind: 'wall-preview', obj: {} }];
+            this._activePuzzleSlot = null;
+            this._previewUseOriginal = false;
+            this._maskPreviewOriginal = false;
+            if (this.template.puzzle && this.template.puzzle.enabled && window.__renderPuzzle) {
+                window.__renderPuzzle(this, false, true);
+            } else {
+                window.__render(this, false);
+            }
+            let src = '';
+            try { src = cv.toDataURL('image/webp', 0.82); } catch (_) { src = ''; }
+            if (!src || src.indexOf('data:image/webp') !== 0) {
+                try { src = cv.toDataURL('image/jpeg', 0.85); } catch (_) { src = ''; }
+            }
+            return src;
+        } catch (_) {
+            return '';
+        } finally {
+            this.image = prev.image;
+            this.template = prev.template;
+            this.selectedEls = prev.selectedEls;
+            this.dom.canvas = prev.canvas;
+            if (prev.displayMax === undefined) delete this.displayMax; else this.displayMax = prev.displayMax;
+            if (prev.uiDprOverride === undefined) delete this.uiDprOverride; else this.uiDprOverride = prev.uiDprOverride;
+            if (prev.exportScale === undefined) delete this.exportScale; else this.exportScale = prev.exportScale;
+            this._photoRect = prev.photoRect;
+            if (prev.baseW === undefined) delete this._canvasBaseW; else this._canvasBaseW = prev.baseW;
+            if (prev.baseH === undefined) delete this._canvasBaseH; else this._canvasBaseH = prev.baseH;
+            if (prev.scale === undefined) delete this._canvasScale; else this._canvasScale = prev.scale;
+            if (prev.activePuzzleSlot === undefined) delete this._activePuzzleSlot; else this._activePuzzleSlot = prev.activePuzzleSlot;
+            if (prev.previewUseOriginal === undefined) delete this._previewUseOriginal; else this._previewUseOriginal = prev.previewUseOriginal;
+            if (prev.maskPreviewOriginal === undefined) delete this._maskPreviewOriginal; else this._maskPreviewOriginal = prev.maskPreviewOriginal;
+        }
+    },
+
+    // 把一张已经渲染好的预览贴到所有同 idx 的卡片上（无限墙有 4 份拷贝）。
+    applyWallPhotoCover(idx, src) {
+        const grid = this._wallDom && this._wallDom.grid;
+        if (!grid || !src) return 0;
+        const id = String(idx);
+        let n = 0;
+        for (const tile of grid.querySelectorAll('.pw-tile')) {
+            if (tile.dataset.idx !== id) continue;
+            const img = tile.querySelector('.pw-tile-cover img');
+            if (!img) continue;
+            if (img.getAttribute('src') !== src) img.src = src;
+            tile.dataset.photoPreview = '1';
+            n++;
+        }
+        return n;
+    },
+
+    // 切换/重建墙后把缓存里的预览全部贴回来。不要在切模式时重跑引擎。
+    applyWallPhotoCovers() {
+        const cache = this._wallPhotoCache;
+        const grid = this._wallDom && this._wallDom.grid;
+        if (!this._wallPhotoMode || !cache || !grid) return;
+        for (const tile of grid.querySelectorAll('.pw-tile')) {
+            const src = cache.thumbs.get(String(tile.dataset.idx));
+            if (!src) continue;
+            const img = tile.querySelector('.pw-tile-cover img');
+            if (img && img.getAttribute('src') !== src) img.src = src;
+            tile.dataset.photoPreview = '1';
+        }
+    },
+
+    // 从本图预览切回封面：先把缓存里的自定义封面贴回，refreshWallCovers 再异步扫盘补差异。
+    restoreWallCovers() {
+        const grid = this._wallDom && this._wallDom.grid;
+        if (!grid) return;
+        for (const tile of grid.querySelectorAll('.pw-tile')) {
+            const img = tile.querySelector('.pw-tile-cover img');
+            if (!img) continue;
+            const name = this.wallTileName(tile);
+            const custom = name && this._wallCovers && this._wallCovers[name];
+            const want = (custom && typeof this.coverUrl === 'function')
+                ? this.coverUrl(custom)
+                : (tile.dataset.cover || '');
+            if (want && img.getAttribute('src') !== want) img.src = want;
+            delete tile.dataset.photoPreview;
+        }
+    },
+
+    // 按钮状态：有照片才显示；开着时文案变成「看封面」，让用户知道再点是切回去。
+    syncWallPhotoUI() {
+        const el = this._wallDom;
+        const grid = el && el.grid;
+        const btn = (el && el.photo) || document.getElementById('pwPhoto');
+        const has = !!(this.image && this.image.el);
+        if (!has && this._wallPhotoMode) {
+            this._wallPhotoMode = false;
+            this._wallPhotoToken++;
+            this._wallPhotoRunning = false;
+            if (grid) grid.classList.remove('pw-photo-mode');
+            this.restoreWallCovers();
+        }
+        const on = !!this._wallPhotoMode && has;
+        if (grid) grid.classList.toggle('pw-photo-mode', on);
+        if (!btn) return on;
+        btn.hidden = !has;
+        btn.classList.toggle('is-on', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        btn.textContent = on ? '看封面' : '本图预览';
+        btn.title = on
+            ? '正在用当前照片预览；点击切回预设封面'
+            : '用当前照片实时预览所有预设（点击卡片套用）';
+        return on;
+    },
+
+    // 开/关本图预览。on 省略时按当前状态取反；refresh=false 用于关墙时静默还原。
+    toggleWallPhotoMode(on, opts) {
+        const el = this._wallDom;
+        const grid = el && el.grid;
+        if (!el || !grid) return false;
+        const next = typeof on === 'boolean' ? on : !this._wallPhotoMode;
+        const has = !!(this.image && this.image.el);
+        if (next && !has) {
+            if (typeof this.setStatus === 'function') this.setStatus('先导入照片，才能用当前照片预览');
+            return false;
+        }
+        if (next && this._coverMode) this.toggleWallCoverMode(false);
+        if (next === this._wallPhotoMode) {
+            this.syncWallPhotoUI();
+            return next;
+        }
+        this._wallPhotoMode = next;
+        this._wallPhotoToken++;
+        this._wallPhotoRunning = false;
+        if (next) {
+            this.syncWallPhotoUI();
+            this.syncWallModeUI();
+            this.renderWallPhotoPreviews();
+        } else {
+            this._wallPhotoDone = 0;
+            this.restoreWallCovers();
+            this.syncWallPhotoUI();
+            this.syncWallModeUI();
+            if (!opts || opts.refresh !== false) this.refreshWallCovers(true);
+        }
+        return next;
+    },
+
+    // 后台批量渲染：每张之间让出一帧，渲染过程中用户仍然能拖动、点击卡片。
+    // 已经缓存过的预设不重新跑；切换无限/有限墙只会重贴缓存。
+    async renderWallPhotoPreviews() {
+        const el = this._wallDom;
+        const grid = el && el.grid;
+        if (!grid || !this._wallPhotoMode || !this._wallActive) return;
+        const im = this.image;
+        if (!im || !im.el) { this.toggleWallPhotoMode(false, { refresh: false }); return; }
+        if (!(this.presets || []).length && this._presetsReady) {
+            try { await this._presetsReady; } catch (_) { /* 加载失败就按缺预设处理 */ }
+        }
+        if (!this._wallPhotoMode || !this._wallActive) return;
+        const data = (typeof window.PRESET_WALL === 'object' && window.PRESET_WALL && Array.isArray(window.PRESET_WALL.items))
+            ? window.PRESET_WALL.items : [];
+        if (!data.length) return;
+        const key = this.wallPhotoKey(im);
+        if (!this._wallPhotoCache || this._wallPhotoCache.key !== key) {
+            this._wallPhotoCache = { key, thumbs: new Map() };
+        }
+        const cache = this._wallPhotoCache;
+        this.applyWallPhotoCovers();
+        const pending = data.filter((item) => !cache.thumbs.has(String(item && item.i)));
+        this._wallPhotoTotal = data.length;
+        this._wallPhotoDone = data.length - pending.length;
+        this._wallPhotoRunning = pending.length > 0;
+        this.updateWallPhotoProgress();
+        if (!pending.length) {
+            this._wallPhotoRunning = false;
+            this.updateWallPhotoProgress();
+            return;
+        }
+        const token = ++this._wallPhotoToken;
+        const presetKey = (s) => String(s || '').replace(/\.json$/i, '').trim();
+        const presets = this.presets || [];
+        for (const item of pending) {
+            if (token !== this._wallPhotoToken || !this._wallPhotoMode || !this._wallActive) return;
+            if (this.wallPhotoKey(this.image) !== key) break;
+            const id = String(item && item.i);
+            const preset = presets.find((p) => presetKey(p._fileName) === presetKey(item && item.preset));
+            if (preset) {
+                const src = this._renderWallPhotoThumb(preset, im);
+                if (src) {
+                    cache.thumbs.set(id, src);
+                    this.applyWallPhotoCover(id, src);
+                }
+            }
+            this._wallPhotoDone++;
+            this.updateWallPhotoProgress();
+            // 0ms 定时器让出主线程：88 次完整渲染连在一起会把墙冻住。
+            await new Promise((r) => setTimeout(r, 0));
+        }
+        if (token !== this._wallPhotoToken) return;
+        // 渲染期间用户切了图：当前缓存已经不对，立即按新图重开一轮。
+        if (this.wallPhotoKey(this.image) !== key) {
+            this._wallPhotoRunning = false;
+            this.renderWallPhotoPreviews();
+            return;
+        }
+        this._wallPhotoDone = data.length;
+        this._wallPhotoRunning = false;
+        this.updateWallPhotoProgress();
+    },
+
+    // 副标题里的进度只刷新文字，不重算墙布局。
+    updateWallPhotoProgress() {
+        const el = this._wallDom;
+        if (!el) return;
+        if (el.sub && this._wallPhotoMode) el.sub.textContent = this.wallSubText();
+        if (el.grid) el.grid.setAttribute('aria-busy', this._wallPhotoRunning ? 'true' : 'false');
     },
 
     // 渲染墙：无限墙 = 9×10 的周期块铺 2×2 份（87 张预设循环填充，槽位 i 映射 preset i % 87）；
@@ -1227,6 +1523,11 @@ window.App = Object.assign(window.App || {}, {
         // 重建后每个 tile 的 img 又回到内置封面：把用户自备的封面重新贴回来，
         // 否则「无限/有限」切一下，换过的封面就变回原样（要等下次开墙才回来）。
         this.refreshWallCovers();
+        // 本图预览模式下重建（无限/有限切换）不要回封面：先贴缓存，没渲染完的继续跑。
+        if (this._wallPhotoMode) {
+            this.applyWallPhotoCovers();
+            if (!this._wallPhotoRunning) this.renderWallPhotoPreviews();
+        }
     },
 
     // 方向键在磁贴墙中移动选中卡片：上下左右 ±1（周期内循环），选中卡片自动滚到视口中心
@@ -1339,12 +1640,22 @@ window.App = Object.assign(window.App || {}, {
         return true;
     },
 
-    // 打开预设墙（启动默认显示；工具栏「预设墙」按钮返回时调用）
-    openPresetWall() {
+    // 打开预设墙（启动默认显示；工具栏「边框墙」按钮返回时调用）
+    // photoMode=true：直接用当前照片渲染整墙；不传则沿用当前模式（启动时默认封面墙）。
+    openPresetWall(photoMode) {
         const el = this._wallDom;
         if (!el || !el.overlay) return;
         // 若正处在沉浸展示中，先退出，避免两个全屏层叠在一起
         if (this._immersionOpen && typeof this.closeImmersive === 'function') this.closeImmersive();
+        const hasImage = !!(this.image && this.image.el);
+        if (typeof photoMode === 'boolean') {
+            if (!photoMode) {
+                if (this._wallPhotoMode) this.toggleWallPhotoMode(false, { refresh: false });
+            } else {
+                this._wallPhotoMode = !!hasImage;
+            }
+        }
+        if (!hasImage) this._wallPhotoMode = false;
         this._wallActive = true;
         el.overlay.hidden = false;
         document.body.classList.add('wall-open');
@@ -1357,6 +1668,7 @@ window.App = Object.assign(window.App || {}, {
         this._wallOffsetX = 0;
         this._wallOffsetY = 0;
         this.syncWallModeUI();
+        this.syncWallPhotoUI();
         this.applyWallTransform();
         this.layoutWallTiles();
         // 回墙先把选中框落到「当前图正在用的预设」上：找回来不用满墙翻。
@@ -1377,6 +1689,10 @@ window.App = Object.assign(window.App || {}, {
         }
         // 每次开墙扫一次自定义封面（用户可能在别的窗口刚放好图）
         this.refreshWallCovers();
+        if (this._wallPhotoMode) {
+            this.applyWallPhotoCovers();
+            this.renderWallPhotoPreviews();
+        }
     },
 
     // 关闭预设墙进入编辑工作台
@@ -1385,6 +1701,10 @@ window.App = Object.assign(window.App || {}, {
         const el = this._wallDom;
         if (!el || !el.overlay) return;
         this._wallActive = false;
+        // 关墙即取消后台渲染，别让缩略图在用户开始编辑后继续借主状态。
+        this._wallPhotoToken++;
+        this._wallPhotoRunning = false;
+        if (this._wallPhotoMode) this.toggleWallPhotoMode(false, { refresh: false });
         // 下次开墙不该还停在"封面编辑模式"：按钮文案与副标题都要复原
         if (this._coverMode) this.toggleWallCoverMode(false);
         el.overlay.hidden = true;
