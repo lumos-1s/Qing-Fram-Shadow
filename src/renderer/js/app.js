@@ -1812,19 +1812,15 @@ window.App = {
         el.textContent = ((t.focalEq || 0) === 1 ? '已启用：' : '勾选后：') + actualText + ' → ' + converted;
     },
 
-    // EXIF 参数条状态提示:说明开关的真实作用范围。
-    // 相框风格(photoFrameStyle)由 engine-styles 自己画参数条,buildState.useExif 恒为 true,
-    // 不读取 decor.exifAutoText;只有通用图层/卡片模板走 engine.js 的 drawDecoration 时才生效。
+    // EXIF 参数条状态提示。
+    // 这一行只在「通用图层 / 卡片」边框下显示（相框风格由 engine-styles 自己画参数条，
+    // 勾了也没反应，见 updatePersonalVisibility 里的显隐）；engine.js 的 drawDecoration
+    // 在底部有文字时是原地换字，没有文字时才画条，提示得跟着这个行为说。
     updateExifTextHint() {
         const el = this.$('exifTextHint');
         if (!el) return;
         const t = this.template;
         if (!t) { el.textContent = ''; return; }
-        const pf = String(t.photoFrameStyle || '').toUpperCase();
-        if (pf && pf !== 'NONE') {
-            el.textContent = '仅对通用/卡片边框生效；当前相框边框的参数条由风格自身控制';
-            return;
-        }
         const decor = t.decorConfig || {};
         const lines = decor.textLines || [];
         const anchor = lines.find(l => l && l.text && String(l.text).trim() && (l.align === 'bottom' || l.align === 'exif'));
@@ -1843,8 +1839,8 @@ window.App = {
             let txt = String(anchor.text).trim();
             if (txt.length > 18) txt = txt.slice(0, 18) + '…';
             el.textContent = on
-                ? '已启用：底部“' + txt + '”已替换为 EXIF 参数条'
-                : '勾选后：底部“' + txt + '”会替换为 EXIF 参数条';
+                ? '已启用：底部“' + txt + '”已换成相机参数（字号沿用）'
+                : '勾选后：底部“' + txt + '”会换成照片的相机参数';
             return;
         }
         if (!hasExif) {
@@ -1893,6 +1889,13 @@ window.App = {
             // blurIntensity，所以这里按开关状态补展开，避免“开了模糊却调不了程度”。
             const show = (id === 'rowBgBlurInt' && blurOn && rows.rowBgBlur) ? true : rows[id];
             el.style.display = show ? '' : 'none';
+        }
+        // 「EXIF 参数条」只对通用图层/卡片边框有效：相框风格由 engine-styles 自己画参数条，
+        // 这一项勾了也不会变。按当前风格显隐，别让用户对着一个没反应的开关猜。
+        const exifRow = document.getElementById('rowExifText');
+        if (exifRow) {
+            const pf = String(this.template.photoFrameStyle || '').toUpperCase();
+            exifRow.style.display = (pf && pf !== 'NONE') ? 'none' : '';
         }
         this.syncEmptyGroups();
     },

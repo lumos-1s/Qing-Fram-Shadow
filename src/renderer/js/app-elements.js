@@ -87,8 +87,9 @@ window.App = Object.assign(window.App || {}, {
         return cv.width / lw;
     },
 
-    // 引擎的「EXIF 参数条」占位行：exifAutoText 开启时它不绘制（由 buildExifLines 现算现画），
-    // 因此也不该出现在元素列表/命中里，否则用户会选中一行看不见的字。
+    // 引擎的「EXIF 参数条」占位行：exifAutoText 开启时这行会被换成相机参数（原地换字，
+    // 字号/颜色沿用），因此在元素列表/命中里也按「原样文字」处理没有意义 ——
+    // 用户点到的会是看不见的原字。
     _isHiddenExifLine(el, decor) {
         if (!el || !el.text) return false;
         const d = decor || (this.template && this.template.decorConfig) || {};

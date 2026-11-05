@@ -1184,29 +1184,6 @@ function drawDraftText(ctx, template, cw, ch, scl) {
     if (d && d.text) drawTextLine(ctx, d, cw, ch, false, 0, 0, scl);
 }
 
-// 依据 decor.showExif 构建 EXIF 水印文字??web 特??保留)
-function buildExifLines(template, image) {
-    const d = template.decor || {};
-    if (d.showExif !== 'yes') return [];
-    const e = (image && image.exif) || {};
-    const parts = [
-        e.make && e.model ? `${e.make} ${e.model}` : (e.make || e.model),
-        e.shutter, e.aperture, e.iso, e.focal
-    ].filter(Boolean);
-    if (!parts.length) return [];
-    return [{
-        text: parts.join(' · '),
-        x: 0, y: 0,
-        fontSize: (d.exifSize || 14),
-        colorHex: (d.exifColor || '#FFFFFF').replace('#', ''),
-        opacity: 80,
-        align: 'bottom',
-        fontFamily: 'Microsoft YaHei',
-        fontWeight: 400,
-        autoContrast: 1,
-    }];
-}
-
 // 参数条数据源:逐字段「手动(含相机库填入)> 自动识别」。
 // 自动 EXIF 的品牌键名是 make、手动是 brand —— 原先这里整份二选一(hasManual ? manual : exif),
 // 结果:导入后没碰过参数输入框的照片,参数条里只剩型号没有品牌;而风格参数行(cameraFor)
@@ -1259,8 +1236,6 @@ function drawDecoration(ctx, decor, cw, ch, image, template, stripTop, scl) {
         if (textLine === editingText || textLine === skip) continue;
         drawTextLine(ctx, textLine, cw, ch, false, 0, 0, scl);
     }
-    const exifLines = buildExifLines({ decor }, image);
-    for (const line of exifLines) drawTextLine(ctx, line, cw, ch, false, 0, 0, scl);
     for (const sticker of (decor.stickers || [])) {
         if (!sticker.src || sticker === skip) continue;
         const tex = getElementBitmap(sticker.src);
@@ -1277,10 +1252,24 @@ function drawDecoration(ctx, decor, cw, ch, image, template, stripTop, scl) {
     if ((decor.cornerDecorEnable || 0) === 1) {
         drawCornerDecor(ctx, decor.cornerDecorType || 'line', decor.cornerDecorSize || 30, cw, ch);
     }
+    // 勾选「EXIF 参数条」时：
+    //   · 底部已经有文字行 → **原地换字**，字体/字号/颜色/字距全部沿用那一行。
+    //     换的只是内容：预设里的「Kodak Portra 400 · 35mm」变成照片真实的相机参数。
+    //     以前这里不分青红皂白画一条大字条：14px 的落款会被一行 40px+ 的字顶掉，
+    //     2000px 宽的成片上直接铺满整个底边，版式就坏了。
+    //   · 底部没有文字行 → 才在留白里画参数条（drawExifStrip）。
     if (exifOn) {
         const srcLine = exifLineIdx >= 0 ? lines[exifLineIdx] : null;
-        const text = exifParts.length ? exifParts.join(' · ') : (srcLine && srcLine.text);
-        if (text) drawExifStrip(ctx, String(text), stripTop, cw, ch);
+        if (srcLine) {
+            if (srcLine !== editingText && srcLine !== skip) {
+                // 没有可用的相机参数时把原字照常画回去 —— 勾上了却什么都没有，比不勾更糟
+                const text = exifParts.length ? exifParts.join(' · ') : srcLine.text;
+                drawTextLine(ctx, Object.assign({}, srcLine, { text }), cw, ch, false, 0, 0, scl);
+            }
+        } else {
+            const text = exifParts.length ? exifParts.join(' · ') : '';
+            if (text) drawExifStrip(ctx, text, stripTop, cw, ch);
+        }
     }
 }
 

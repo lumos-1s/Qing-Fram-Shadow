@@ -810,9 +810,9 @@
                             <div class="param-row"><label>ISO</label><input type="text" id="tfExifIso" class="ctl-tx" placeholder="ISO 400" /></div>
                             <div class="param-row"><label>快门</label><input type="text" id="tfExifShutter" class="ctl-tx" placeholder="1/125" /></div>
                             <div class="exif-line" id="exifLine" style="display:none"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="1" y="3.4" width="14" height="10" rx="2"/><circle cx="8" cy="8.4" r="3"/><path d="M4.4 3.4 5.2 1.6h5.6l.8 1.8"/></svg> <span id="exifLineText"></span></div>
-                            <div class="param-row chk-row">
+                            <div class="param-row chk-row" id="rowExifText">
                                 <label>EXIF 参数条</label>
-                                <input type="checkbox" id="cbExifText" class="ctl-chk" checked="checked" title="仅对通用图层边框和卡片边框生效：勾选后用相机 EXIF 参数替换底部文字；相框边框由风格自身绘制参数条，此开关不生效" />
+                                <input type="checkbox" id="cbExifText" class="ctl-chk" title="勾选后把底部的落款文字换成照片的相机参数（沿用那行的字体/字号/颜色）；没有底部文字时，在留白处画一条参数条" />
                                 <span class="pval-note" id="exifTextHint"></span>
                             </div>
                             <div class="param-row chk-row">
