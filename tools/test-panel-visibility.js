@@ -92,6 +92,14 @@ const HIDE_OK = new Set([
     'FOLD_CORNER/rowBgBlurInt', 'PINBOARD_TAPE/rowBgBlurInt', 'VHS_TAPE/rowBgBlurInt',
     'ALBUM_CORNER/rowBgBlurInt', 'MOVIE_TICKET/rowBgBlurInt', 'WATERCOLOR_BLEED/rowBgBlurInt',
     'POLAROID_HAND/rowBgBlurInt', 'TORN_JOURNAL/rowBgBlurInt',
+    // 2026-11「参数缩放」全局收口到「参数字号」(13ce471 起 style-caps.js 的 v.rowParamScale = false):
+    // 两个控件改的是同一个数(引擎里相乘),留着等于两个旋钮拧同一件事,面板每个风格还多一行。
+    // 预设里的 paramScale 仍然生效,只是不再露滑块 —— 产品判断,不是能力表退回。
+    // 冻结基线里这九款是露着的,其余风格当时就没露,所以净变化只有这九条。
+    'FUJI_WM/rowParamScale', 'FUJI_WM_BRAND/rowParamScale',
+    'BLUR_CLASSIC/rowParamScale', 'BLUR_DATE/rowParamScale', 'IMP_FROSTED/rowParamScale',
+    'CARD_LOGO_PARAM/rowParamScale', 'OVERLAY_PARAM_LEFT/rowParamScale',
+    'OVERLAY_PARAM_RIGHT/rowParamScale', 'OVERLAY_PARAM_BOTTOM/rowParamScale',
 ]);
 
 const SHOW_OK = new Set([
@@ -166,6 +174,17 @@ function drawKeys() {
     throw new Error('const draw = { 括号未配平');
 }
 
+// 重建基线时把「没测到」的 null 剔除，别让它写进参照（写进去会让下次比对把
+// 「元素不在」和「可见」判成放宽）
+function stripNull(out) {
+    const clean = {};
+    for (const s of Object.keys(out)) {
+        clean[s] = {};
+        for (const [k, v] of Object.entries(out[s])) if (v !== null) clean[s][k] = v;
+    }
+    return clean;
+}
+
 const CHECK = `
 async () => {
     const App = window.App;
@@ -180,8 +199,10 @@ async () => {
         const vis = {};
         for (const id of rowIds) {
             const el = document.getElementById(id);
-            if (!el) continue;
-            vis[id] = getComputedStyle(el).display !== 'none';
+            // 元素不存在要记 null 而不是跳过：跳过会让 vis[id] 变成 undefined，
+            // 比对时被当成「隐藏」，于是同一个脚本两次跑能得出完全不同的收紧集合
+            // （切样式时行元素会重建，撞上重建窗口就丢）。null 在比对里单独跳过。
+            vis[id] = el ? getComputedStyle(el).display !== 'none' : null;
         }
         out[s] = vis;
     }
@@ -234,7 +255,7 @@ app.whenReady().then(async () => {
     if (isUpdate || isUpdatePre) {
         const target = isUpdatePre ? SNAP_PRE : SNAP;
         fs.mkdirSync(path.dirname(target), { recursive: true });
-        fs.writeFileSync(target, JSON.stringify({ rowIds: got.rowIds, styles: got.out }, null, 1), 'utf8');
+        fs.writeFileSync(target, JSON.stringify({ rowIds: got.rowIds, styles: stripNull(got.out) }, null, 1), 'utf8');
         console.log(`[panel:update] ${isUpdatePre ? '冻结基线' : '当前基线'}已重建:${styles.length} 风格 × ${got.rowIds.length} 行 → ${path.relative(ROOT, target)}`);
         finish(0);
         return;
@@ -249,11 +270,13 @@ app.whenReady().then(async () => {
     }
     const base = JSON.parse(fs.readFileSync(refPath, 'utf8'));
 
-    const hide = [], show = [], missingRow = [], missingStyle = [], newRows = [];
+    const hide = [], show = [], missingRow = [], missingStyle = [], newRows = [], absent = [];
     for (const s of styles) {
         const b = base.styles[s], g = got.out[s];
         if (!b) { missingStyle.push(s); continue; }
         for (const id of got.rowIds) {
+            // 该样式下这一行没有 DOM（切样式时被重建，恰好吃到 window 里）—— 没测到就不算变化
+            if (g && g[id] === null) { absent.push(s + '/' + id); continue; }
             if (!(id in b)) {
                 if (NEW_ROWS.has(id)) newRows.push(id);
                 else missingRow.push(s + '/' + id);
@@ -268,6 +291,9 @@ app.whenReady().then(async () => {
 
     console.log(`== 面板显隐回归 (${isAudit ? 'audit · 对照 ' + refLabel : refLabel}) ==`);
     console.log(`  风格 ${styles.length} / 行 ${got.rowIds.length}`);
+    // 没测到的（该样式下这一行当时没有 DOM）不计入变化，但要显式报出来 ——
+    // 数量一大就说明这次测量本身不可信，别把「没测到」当成「没变化」。
+    if (absent.length) console.log(`  未测到(DOM 缺失，不计入变化) ${absent.length}: ${[...new Set(absent)].slice(0, 6).join(', ')}${absent.length > 6 ? '…' : ''}`);
     if (missingStyle.length) console.log(`  参照缺风格 ${missingStyle.length}: ${missingStyle.slice(0, 5).join(', ')}${missingStyle.length > 5 ? '…' : ''}`);
     if (missingRow.length) console.log(`  参照缺行 ${missingRow.length}: ${missingRow.slice(0, 5).join(', ')}${missingRow.length > 5 ? '…' : ''}`);
     if (newRows.length) console.log(`  新增行(冻结基线中不存在,按新增记账): ${[...new Set(newRows)].join(', ')}`);
