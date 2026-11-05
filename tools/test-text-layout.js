@@ -229,6 +229,9 @@ const SCENARIO = `
     // 会因字体度量/缩放取整差 1px 出现重影。顺带确认选中框/把手也收起，
     // 不然 textarea 边框 + 画布选中框就是两层虚线。
     A.scheduleRender(true);
+    // 读像素/读把手前必须等这一帧真正合成：固定 sleep 在繁忙机器上会早于 rAF
+    // 回调，读到的是上一帧（表现为「提交后白像素=0」「把手=null」）。fc25a82 同因。
+    await A.flushRender();
     await sleep(450);
     const mNew = M(newLine, CW, CH);
     const whitePixels = (m) => {
@@ -247,6 +250,7 @@ const SCENARIO = `
     const whiteEditing = whitePixels(mNew);
     const handlesHidden = A._rotHandle === null && !A._resizeHandles;
     A.commitTextEditor();
+    await A.flushRender();
     await sleep(200);
     const whiteCommitted = whitePixels(M(newLine, CW, CH));
     add(whiteEditing <= 5 && whiteCommitted > 100,
@@ -311,6 +315,7 @@ const SCENARIO = `
 
     A.selectedEls = [{ kind: 'text', obj: newLine }];
     A.scheduleRender(true);
+    await A.flushRender();
     await sleep(520);
     const hd = A._rotHandle;
     add(!!hd, '⑨ 选中文字后出现旋转把手', hd ? Math.round(hd.x) + ',' + Math.round(hd.y) : 'null');
