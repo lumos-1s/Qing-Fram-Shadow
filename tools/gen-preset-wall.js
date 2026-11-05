@@ -4,6 +4,10 @@
 //   node tools/run-electron.js tools/gen-preset-wall.js
 //   node tools/run-electron.js tools/gen-preset-wall.js --max 560 --quality 0.86
 //   node tools/run-electron.js tools/gen-preset-wall.js --samples D:\photos\wall
+//   node tools/run-electron.js tools/gen-preset-wall.js --only 哈苏水印,苹果信息卡   # 只补/更新这几张
+//
+// 默认是稳定模式：已有封面一律不重画，只给墙上还没有的预设补一张，顺序与 cNN 编号永不变化。
+// 只有整体重排重画（换样片集、改视觉基准）才加 --rebuild —— 它会把整墙重新编号。
 //
 // 之后想换照片：
 //   1) 推荐：把照片放进 design/preset-wall-samples/，文件名直接用分类名，例如「个性.jpg」。
@@ -72,6 +76,20 @@ function cliValue(name) {
 const CLI_SAMPLES = cliValue('--samples');
 const CLI_MAX = parseInt(cliValue('--max'), 10);
 const CLI_QUALITY = parseFloat(cliValue('--quality'));
+// --only 名称[,名称…]：补充/更新模式。只渲这几个预设：
+// 已在墙上的（按名称或 preset 文件名匹配）就地覆盖它的封面文件并更新 w/h；
+// 不在墙上的追加到末尾（i 续号、封面文件用下一个空闲 cNN）。其余条目与封面文件一律不动。
+// 用途：新增/重做一个预设后补封面，避免全量重渲把「烧进去的用户照片封面」冲掉。
+const CLI_ONLY = (() => {
+    const v = cliValue('--only');
+    return v ? v.split(/[,，、]/).map(s => s.trim()).filter(Boolean) : null;
+})();
+// --rebuild：显式要求「整墙重排」。只有换样片集/改视觉基准时才该用。
+// 默认行为已改为稳定模式（见下方 main 里的注释），因为按 presets 顺序整体重编号会让
+// 增删一个预设就导致整墙每张卡片指到别人的封面。
+const CLI_REBUILD = process.argv.includes('--rebuild');
+// 名称归一化：与 tools/bake-wall-covers.js 同一套规则，剔掉分隔符再比
+const normName = (n) => String(n || '').replace(/[\s·●•+\\-_—–]/g, '');
 const COVER_MAX = Number.isFinite(CLI_MAX) && CLI_MAX > 0 ? CLI_MAX : CONFIG.coverMax;
 const QUALITY = Number.isFinite(CLI_QUALITY) && CLI_QUALITY > 0 ? CLI_QUALITY : CONFIG.webpQuality;
 
@@ -132,12 +150,25 @@ ipcMain.handle('load-preset', (_event, name) => {
         return null;
     }
 });
+// 品牌 Logo 池:与主进程 list-logos 同源。厂商 Logo 是第三方素材,工程目录不再存放,
+// 统一从用户数据目录读(app.getPath('userData')/brandlogos,即 %APPDATA%/qingframe-web/brandlogos)。
+const WALL_LOGOS_DIR = path.join(
+    process.env.APPDATA || path.join(require('os').homedir(), 'AppData', 'Roaming'),
+    'qingframe-web', 'brandlogos'
+);
+const WALL_LOGO_EXTS = ['.png', '.jpg', '.jpeg', '.webp'];
+ipcMain.handle('list-logos', () => {
+    if (!fs.existsSync(WALL_LOGOS_DIR)) return [];
+    return fs.readdirSync(WALL_LOGOS_DIR).filter(n => WALL_LOGO_EXTS.includes(path.extname(n).toLowerCase()))
+        .map(n => ({ name: n, dataUrl: 'data:image/' + path.extname(n).slice(1) + ';base64,' +
+            fs.readFileSync(path.join(WALL_LOGOS_DIR, n)).toString('base64') }));
+});
 
 const EMPTY_LIST = () => [];
 const OK = () => ({ ok: true });
 const CANCEL = () => ({ canceled: true });
 
-for (const channel of ['list-logos', 'list-textures', 'list-templates']) {
+for (const channel of ['list-textures', 'list-templates']) {
     ipcMain.handle(channel, EMPTY_LIST);
 }
 for (const channel of [
@@ -169,22 +200,33 @@ function renderWallCover(options) {
         const preset = (window.App.presets || []).find(p => p._fileName === options.presetFile);
         if (!preset) { reject(new Error('missing preset: ' + options.presetFile)); return; }
         const img = new Image();
-        img.onload = () => {
+        img.onload = async () => {
             try {
-                const cv = document.createElement('canvas');
-                cv.width = 1; cv.height = 1;
-                const renderApp = {
-                    dom: { canvas: cv },
-                    image: { el: img, w: img.naturalWidth, h: img.naturalHeight, exif: {}, name: options.sampleKey },
-                    template: JSON.parse(JSON.stringify(preset)),
-                    displayMax: options.max || 560,
-                    uiDprOverride: 1,
-                    textures: [],
-                    selectedEls: [],
-                    applyZoomStyle() {},
-                    requestRender() {}
+                const makeApp = () => {
+                    const cv = document.createElement('canvas');
+                    cv.width = 1; cv.height = 1;
+                    const renderApp = {
+                        dom: { canvas: cv },
+                        image: { el: img, w: img.naturalWidth, h: img.naturalHeight, exif: {}, name: options.sampleKey },
+                        template: JSON.parse(JSON.stringify(preset)),
+                        displayMax: options.max || 560,
+                        uiDprOverride: 1,
+                        textures: [],
+                        selectedEls: [],
+                        logos: (window.App && window.App.logos) || [],  // 品牌 Logo 池
+                        logoImgCache: options.logoCache,                // 跨次渲染共享,Logo 异步加载后第二遍命中
+                        applyZoomStyle() {},
+                        requestRender() {}
+                    };
+                    return renderApp;
                 };
-                window.__render(renderApp, false);
+                window.__render(makeApp(), false);
+                // 品牌 Logo 按需异步加载:等一拍再渲一遍,封面里才有 Logo
+                // (本函数会被序列化到页面里执行,不能引用模块层的 sleep)
+                await new Promise((r) => setTimeout(r, 600));
+                const app2 = makeApp();
+                window.__render(app2, false);
+                const cv = app2.dom.canvas;
                 resolve({
                     dataUrl: cv.toDataURL('image/webp', options.quality || 0.86),
                     width: cv.width,
@@ -244,36 +286,108 @@ async function main() {
 
     const items = [];
     let bytes = 0;
-    for (let i = 0; i < presets.length; i++) {
-        const p = presets[i];
+    const logoCache = {};   // 全程共享:品牌 Logo 只加载一次
+    const renderOne = async (p) => {
         const sample = sampleForTag(p.tag);
         const cover = await exec(`window.__renderWallCover(${JSON.stringify({
             sampleKey: sample.key,
             presetFile: p.file,
             max: COVER_MAX,
             quality: QUALITY,
-            sampleData: sampleDataUrl(sample)
+            sampleData: sampleDataUrl(sample),
+            logoCache
         })})`);
-        const fname = 'c' + String(i).padStart(2, '0') + '.webp';
-        const buf = Buffer.from(cover.dataUrl.split(',')[1], 'base64');
-        fs.writeFileSync(path.join(COVER_DIR, fname), buf);
-        bytes += buf.length;
-        items.push({
-            i,
-            name: p.name,
-            tag: p.tag,
-            preset: String(p.file).replace(/\.json$/i, ''),
-            cover: 'assets/preset-wall/covers/' + fname,
-            w: cover.width,
-            h: cover.height
-        });
-        console.log('cover:', i, p.name, '|', p.tag, '|', sample.key, '|', cover.width + 'x' + cover.height, '|', (buf.length / 1024).toFixed(0) + 'KB');
-    }
+        return { sample, cover, buf: Buffer.from(cover.dataUrl.split(',')[1], 'base64') };
+    };
 
-    // 预设数量变少时清掉没人引用的旧封面，避免资源目录越滚越大
-    const keep = new Set(items.map(item => path.basename(item.cover)));
-    for (const file of fs.readdirSync(COVER_DIR)) {
-        if (/^c\d+\.webp$/i.test(file) && !keep.has(file)) fs.unlinkSync(path.join(COVER_DIR, file));
+    const presetBase = (f) => String(f).replace(/\.json$/i, '');
+    const readExisting = () => {
+        try {
+            const raw = fs.readFileSync(DATA_PATH, 'utf8');
+            const parsed = JSON.parse(raw.slice(raw.indexOf('{', raw.indexOf('window.PRESET_WALL = ')), raw.lastIndexOf('}') + 1));
+            return Array.isArray(parsed.items) ? parsed.items : [];
+        } catch (_) { return []; }   // 还没有数据文件就当空墙起
+    };
+
+    // 就地更新 / 追加：墙上已有的按名称覆盖它自己的那张封面文件，i 与文件名都不动；
+    // 新预设追加到末尾、i 续号、封面用下一个空闲 cNN。绝不整体重排。
+    const applyTargets = async (targets) => {
+        for (const p of targets) {
+            const { cover, buf } = await renderOne(p);
+            bytes += buf.length;
+            const idx = items.findIndex(it => normName(it.name) === normName(p.name) || normName(it.preset) === normName(presetBase(p.file)));
+            if (idx >= 0) {
+                const fname = path.basename(items[idx].cover);
+                fs.writeFileSync(path.join(COVER_DIR, fname), buf);
+                items[idx] = Object.assign({}, items[idx], {
+                    name: p.name, tag: p.tag, preset: presetBase(p.file),
+                    w: cover.width, h: cover.height
+                });
+                console.log('updated:', idx, p.name, '|', fname, '|', cover.width + 'x' + cover.height, '|', (buf.length / 1024).toFixed(0) + 'KB');
+            } else {
+                const used = new Set(items.map(it => path.basename(it.cover)));
+                let n = 0;
+                while (used.has('c' + String(n).padStart(2, '0') + '.webp')) n++;
+                const fname = 'c' + String(n).padStart(2, '0') + '.webp';
+                fs.writeFileSync(path.join(COVER_DIR, fname), buf);
+                items.push({
+                    i: items.length, name: p.name, tag: p.tag, preset: presetBase(p.file),
+                    cover: 'assets/preset-wall/covers/' + fname, w: cover.width, h: cover.height
+                });
+                console.log('added:', items.length - 1, p.name, '|', fname, '|', cover.width + 'x' + cover.height, '|', (buf.length / 1024).toFixed(0) + 'KB');
+            }
+        }
+    };
+
+    if (CLI_ONLY) {
+        // ── 补充/更新模式：只动 --only 点名的预设，其余条目与封面文件原样保留 ──
+        items.push(...readExisting());
+
+        const want = new Set(CLI_ONLY.map(normName));
+        const targets = presets.filter(p => want.has(normName(p.name)) || want.has(normName(presetBase(p.file))));
+        const missing = CLI_ONLY.filter(n => !targets.some(p => normName(p.name) === normName(n) || normName(presetBase(p.file)) === normName(n)));
+        for (const n of missing) console.warn('skip(未找到预设):', n);
+        if (!targets.length) { console.log('nothing to do'); app.exit(0); return; }
+
+        await applyTargets(targets);
+    } else if (!CLI_REBUILD && fs.existsSync(DATA_PATH)) {
+        // ── 默认稳定模式：已有封面一律不动，只给墙上还没有的预设补一张 ──
+        // 以前这里按 presets 顺序重新编号 cNN 并重画全部：只要新增/删除一个预设，后面的
+        // 编号整体平移，整墙每张卡片就会指到别人的封面（2026-11-04 的「整墙换图」事故）；
+        // 就算不增删，重画也会因为渲染链改动让整墙观感变样。
+        // 要重做某几张 → --only 名称；要整体重排重画 → --rebuild。
+        items.push(...readExisting());
+        const known = new Set();
+        for (const it of items) { known.add(normName(it.name)); known.add(normName(it.preset)); }
+        const fresh = presets.filter(p => !known.has(normName(p.name)) && !known.has(normName(presetBase(p.file))));
+        console.log('stable mode: keep', items.length, 'existing covers untouched,', fresh.length, 'new preset(s) to add');
+        if (!fresh.length) { console.log('nothing to do'); app.exit(0); return; }   // 零写入，连数据文件都不碰
+        await applyTargets(fresh);
+    } else {
+        // ── 重排模式（--rebuild 或首次生成）：按 presets 顺序重新编号 ──
+        for (let i = 0; i < presets.length; i++) {
+            const p = presets[i];
+            const { sample, cover, buf } = await renderOne(p);
+            const fname = 'c' + String(i).padStart(2, '0') + '.webp';
+            fs.writeFileSync(path.join(COVER_DIR, fname), buf);
+            bytes += buf.length;
+            items.push({
+                i,
+                name: p.name,
+                tag: p.tag,
+                preset: String(p.file).replace(/\.json$/i, ''),
+                cover: 'assets/preset-wall/covers/' + fname,
+                w: cover.width,
+                h: cover.height
+            });
+            console.log('cover:', i, p.name, '|', p.tag, '|', sample.key, '|', cover.width + 'x' + cover.height, '|', (buf.length / 1024).toFixed(0) + 'KB');
+        }
+
+        // 预设数量变少时清掉没人引用的旧封面，避免资源目录越滚越大（稳定/--only 模式不清理）
+        const keep = new Set(items.map(item => path.basename(item.cover)));
+        for (const file of fs.readdirSync(COVER_DIR)) {
+            if (/^c\d+\.webp$/i.test(file) && !keep.has(file)) fs.unlinkSync(path.join(COVER_DIR, file));
+        }
     }
 
     const data = { generatedAt: new Date().toISOString(), coverMax: COVER_MAX, quality: QUALITY, items };
