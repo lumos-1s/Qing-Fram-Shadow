@@ -899,8 +899,18 @@
         // 系数表没就绪时静默跳过——不能退回全局表，那正是要修掉的错误形状。
         const shAmt = Number(params.sh) || 0;
         const shOn = shAmt && window.QfsShadows && window.QfsShadows.ready();
+        let shData = null;
         if (shOn) {
-            window.QfsShadows.applyCanvas(c, shAmt, shadowKey(params, tw, th, src, !useLut));
+            const shKey = shadowKey(params, tw, th, src, !useLut);
+            // 优先交给 shader：场与系数上传成纹理，在 QfsColor 的 pass 里施加。
+            // 全分辨率 23MP 实测 1387ms → 十几毫秒，而且不再需要把整幅像素
+            // getImageData 出来（那是 92MB 的分配）；字段命中时连读像素都省了。
+            if (window.QfsColor && window.QfsColor.canShadow()) {
+                shData = window.QfsShadows.prepare(c, shAmt, shKey, false);
+            }
+            // 兜底：没有 WebGL / 没有浮点纹理时仍走逐像素。不能静默跳过 ——
+            // 跳过等于整片漏掉阴影，画面会突然变平。
+            if (!shData) window.QfsShadows.applyCanvas(c, shAmt, shKey);
         }
         // 后置 pass 的顺序（对齐 Compositor）：先几何（畸变重采样），再上三维颜色表，
         // 最后黑白（PS 的黑白混色器没有实测表，仍走公式）。
@@ -909,7 +919,7 @@
             || (!useLut && ((Number(params.vib) || 0) || cgActive(params.cg)))
             || (Number(params.det && params.det.dhz) || 0)) {
             const haze = (Number(params.det && params.det.dhz) || 0) ? acrHaze() : null;
-            const out = window.QfsColor && window.QfsColor.pass(c, params, tw, th, lut, haze);
+            const out = window.QfsColor && window.QfsColor.pass(c, params, tw, th, lut, haze, shData);
             if (out) {
                 // GL 通道返回的是 app-color-grade.js 里的**模块级共享画布**(glc，标了
                 // __qfsShared)。直接把它当成 im._grade.canvas，所有照片的烘焙结果就会指向
@@ -1019,9 +1029,12 @@
 
         // 锐化：蒙版合成完之后做一次，且必须落到**新画布**上 ——
         // cur 可能直接就是 slot.base 缓存，就地改会越叠越锐（每渲染一次再加一遍）。
-        // 参数先问一遍：低分辨率烘焙（拖动时的 1600px）会返回 null，不锐化，
-        // 这时连那张拷贝画布都不用建。
-        if (window.QfsSharpen && window.QfsSharpen.paramsOf(p.det, Math.max(tw, th), Math.max(W, H))) {
+        //
+        // 拖动中的 1600px 过渡档不锐化：它在松手 220ms 后就会被全分辨率档替换，
+        // 肉眼几乎看不出差别，但这一刀实测要 76ms，正好卡在每帧 200ms 的手感上。
+        // 全分辨率档与导出照常锐化 —— 该有画质的地方一点没少。
+        const doSharpen = maxEdge !== LOW_EDGE;
+        if (doSharpen && window.QfsSharpen && window.QfsSharpen.paramsOf(p.det, Math.max(tw, th), Math.max(W, H))) {
             const sc = document.createElement('canvas');
             sc.width = tw; sc.height = th;
             const sg = sc.getContext('2d');
@@ -1094,7 +1107,10 @@
             inp.addEventListener('change', () => {
                 clearTimeout(t);
                 apply(Number(inp.value) || 0);
-                self.rebuildGrade('full');
+                // 松手不同步烘全分辨率：那是 1~3 秒的主线程阻塞，正好压在松手那一帧，
+                // 界面会先僵住、再「啪」地变清晰。交给同一个防抖晚 80ms 再烘，
+                // 当前低清帧先画完，手感不断。
+                t = setTimeout(() => self.rebuildGrade('full'), 80);
             });
         };
 
@@ -1507,8 +1523,10 @@
                 });
                 s.addEventListener('change', () => {
                     clearTimeout(settle);
-                    this.setGrade({ [f.k]: Number(s.value) || 0 }, { full: true });
-                    syncThumb();
+                    // 同上：松手不立刻同步烘全分辨率，先让这一帧的低清结果画出去，
+                    // 80ms 后再在空闲时补全。syncThumb 也跟着这个时机走。
+                    this.setGrade({ [f.k]: Number(s.value) || 0 });
+                    settle = setTimeout(() => { this.rebuildGrade('full'); syncThumb(); }, 80);
                 });
             }
             const reset = $('btnGradeReset');

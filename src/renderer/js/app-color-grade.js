@@ -35,6 +35,28 @@
         'uniform float uDistort;',
         'uniform vec3 uHaze;',
         'uniform float uDehaze;',
+        // 阴影（ACR 的空间自适应版本）：场是低分辨率栅格纹理，系数是 x 上的一行三通道。
+        // 逐像素那套（app-acr-shadows.js applyCanvas）和这里共用同一份数据，
+        // 区别只是那边算 JS、这边算 GPU —— 全分辨率下 1387ms vs 十几毫秒。
+        'uniform sampler2D uShField;',
+        'uniform sampler2D uShRows;',
+        'uniform float uShOn;',
+        'uniform float uShPixW;',
+        'uniform float uShPixH;',
+        'uniform float uShLw;',
+        'uniform float uShLh;',
+        'uniform float uShScale;',
+        'uniform float uShXc;',
+        'uniform float uShXMax;',
+        'uniform float uShKeyOff;',
+        'uniform float uShInvStep;',
+        'vec3 s2l(vec3 c){',
+        '  return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));',
+        '}',
+        'vec3 l2s(vec3 c){',
+        '  c=max(c,vec3(0.0));',
+        '  return mix(c*12.92,1.055*pow(c,vec3(1.0/2.4))-0.055,step(vec3(0.0031308),c));',
+        '}',
         'vec3 rgb2hsv(vec3 c){',
         '  vec4 K=vec4(0.0,-1.0/3.0,2.0/3.0,-1.0);',
         '  vec4 p=mix(vec4(c.bg,K.wz),vec4(c.gb,K.xy),step(c.b,c.g));',
@@ -87,6 +109,37 @@
         '    uv=clamp(0.5+pp/vec2(uAspect,1.0),vec2(0.0),vec2(1.0));',
         '  }',
         '  vec3 c=texture2D(uT,uv).rgb;',
+        // 阴影：ACR 的空间自适应版本，必须在三维表**之前**（与 Camera Raw 的顺序一致）。
+        // 场纹理是「画布自上而下」的行序，而主纹理按 FLIP_Y 上传（v=0 落在画布底部），
+        // 所以这里要把 v 翻过来，否则整幅阴影会上下颠倒。
+        '  if(uShOn>0.5){',
+        '    vec3 lin=s2l(c);',
+        '    float lum=dot(lin,LUMA);',
+        '    if(lum>0.0001220703125){',
+        '      float level=log2(lum);',
+        '      vec2 fp=vec2(uv.x*uShPixW,(1.0-uv.y)*uShPixH)/uShScale-0.5;',
+        '      fp=clamp(fp,vec2(0.0),vec2(uShLw-1.0,uShLh-1.0));',
+        '      vec2 i0=floor(fp);',
+        '      vec2 ft=fp-i0;',
+        '      vec2 i1=min(i0+1.0,vec2(uShLw-1.0,uShLh-1.0));',
+        '      vec2 ta=(i0+0.5)/vec2(uShLw,uShLh);',
+        '      vec2 tb=(i1+0.5)/vec2(uShLw,uShLh);',
+        '      vec2 fa=mix(texture2D(uShField,ta).rg,texture2D(uShField,vec2(tb.x,ta.y)).rg,ft.x);',
+        '      vec2 fb=mix(texture2D(uShField,vec2(ta.x,tb.y)).rg,texture2D(uShField,tb).rg,ft.x);',
+        '      vec2 fld=mix(fa,fb,ft.y);',
+        '      float region=fld.x*level+fld.y;',
+        '      float detail=level-region;',
+        '      float xp=clamp((region-uShKeyOff)*uShInvStep,0.0,uShXMax);',
+        '      float c0=floor(xp);',
+        '      float ct=xp-c0;',
+        '      float c1=min(c0+1.0,uShXMax);',
+        '      vec3 q0=texture2D(uShRows,vec2((c0+0.5)/uShXc,0.5)).rgb;',
+        '      vec3 q1=texture2D(uShRows,vec2((c1+0.5)/uShXc,0.5)).rgb;',
+        '      vec3 co=mix(q0,q1,ct);',
+        '      float lift=co.x+co.y*max(detail,0.0)+co.z*min(detail,0.0);',
+        '      c=l2s(lin*exp2(lift));',
+        '    }',
+        '  }',
         '  if(uLutOn>0.5){',
         // 实测表路径：校准 / 饱和度 / 自然饱和度 / 混色器 / 颜色分级 全在这一张
         // 三维表里（它们都是跨通道操作，逐通道 LUT 和手写公式都学不像）。
@@ -154,6 +207,9 @@
 
     let gl = null, glc = null, prog = null, uni = null, quad = null, tex = null;
     let lutTex = null, lutKey = '';
+    // 阴影通道的两张浮点纹理。没有 OES_texture_float 就没有它们，
+    // 这时 canShadow() 报 false，调用方退回 app-acr-shadows 的逐像素实现。
+    let shTex = null, shRowsTex = null, floatOK = false;
 
     function initGL() {
         if (gl && prog) return true;
@@ -168,9 +224,12 @@
                     || glc.getContext('experimental-webgl', { preserveDrawingBuffer: true, antialias: false });
             } catch (_) { gl = null; }
             if (!gl) return false;
+            // 阴影的场/系数要按 float 上传，没有这个扩展就走 CPU 兜底
+            floatOK = !!gl.getExtension('OES_texture_float');
             glc.addEventListener('webglcontextlost', (e) => {
                 e.preventDefault();
                 gl = null; prog = null; uni = null; tex = null;
+                shTex = null; shRowsTex = null; floatOK = false;
             });
         }
         try {
@@ -209,6 +268,24 @@
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
             gl.activeTexture(gl.TEXTURE0);
+            // 阴影：场（RGBA float，rg = a,b）与系数行（RGBA float，1 行 × xc）。
+            // 两张都是 NEAREST —— 双线性在 shader 里手工做，坐标口径才能和 CPU 逐像素
+            // 那条路径完全一致（GPU 的 LINEAR 在纹素边界上的取整规则不一定相同）。
+            shTex = gl.createTexture();
+            gl.activeTexture(gl.TEXTURE2);
+            gl.bindTexture(gl.TEXTURE_2D, shTex);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            shRowsTex = gl.createTexture();
+            gl.activeTexture(gl.TEXTURE3);
+            gl.bindTexture(gl.TEXTURE_2D, shRowsTex);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.activeTexture(gl.TEXTURE0);
             uni = {
                 cg: gl.getUniformLocation(prog, 'uCg[0]'),
                 blend: gl.getUniformLocation(prog, 'uCgBlend'),
@@ -224,14 +301,29 @@
                 grid: gl.getUniformLocation(prog, 'uGrid'),
                 lut: gl.getUniformLocation(prog, 'uLut'),
                 haze: gl.getUniformLocation(prog, 'uHaze'),
-                dehaze: gl.getUniformLocation(prog, 'uDehaze')
+                dehaze: gl.getUniformLocation(prog, 'uDehaze'),
+                shOn: gl.getUniformLocation(prog, 'uShOn'),
+                shField: gl.getUniformLocation(prog, 'uShField'),
+                shRows: gl.getUniformLocation(prog, 'uShRows'),
+                shPixW: gl.getUniformLocation(prog, 'uShPixW'),
+                shPixH: gl.getUniformLocation(prog, 'uShPixH'),
+                shLw: gl.getUniformLocation(prog, 'uShLw'),
+                shLh: gl.getUniformLocation(prog, 'uShLh'),
+                shScale: gl.getUniformLocation(prog, 'uShScale'),
+                shXc: gl.getUniformLocation(prog, 'uShXc'),
+                shXMax: gl.getUniformLocation(prog, 'uShXMax'),
+                shKeyOff: gl.getUniformLocation(prog, 'uShKeyOff'),
+                shInvStep: gl.getUniformLocation(prog, 'uShInvStep')
             };
             gl.uniform1i(gl.getUniformLocation(prog, 'uT'), 0);
             gl.uniform1i(uni.lut, 1);
+            gl.uniform1i(uni.shField, 2);
+            gl.uniform1i(uni.shRows, 3);
             lutKey = '';
             return true;
         } catch (_) {
             gl = null; prog = null; uni = null; tex = null; lutTex = null;
+            shTex = null; shRowsTex = null;
             return false;
         }
     }
@@ -249,7 +341,7 @@
         return out;
     }
 
-    function passGL(src, p, w, h, lut, haze) {
+    function passGL(src, p, w, h, lut, haze, sh) {
         if (!initGL()) return null;
         try {
             if (glc.width !== w || glc.height !== h) { glc.width = w; glc.height = h; }
@@ -303,6 +395,34 @@
             const hz = haze || [1, 1, 1];
             gl.uniform3f(uni.haze, hz[0], hz[1], hz[2]);
             gl.uniform1f(uni.dehaze, dhz);
+            if (sh && floatOK) {
+                // 场是低分辨率栅格（长边约 384 格），一次上传几 MB 的浮点数据，
+                // 比 CPU 逐像素跑一遍快两个数量级。行序是「画布自上而下」，
+                // 所以上传前要临时关掉 FLIP_Y（这个开关是上下文级的）。
+                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+                gl.activeTexture(gl.TEXTURE2);
+                gl.bindTexture(gl.TEXTURE_2D, shTex);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, sh.lw, sh.lh, 0,
+                    gl.RGBA, gl.FLOAT, sh.fieldTex);
+                gl.activeTexture(gl.TEXTURE3);
+                gl.bindTexture(gl.TEXTURE_2D, shRowsTex);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, sh.xc, 1, 0,
+                    gl.RGBA, gl.FLOAT, sh.rowsTex);
+                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+                gl.activeTexture(gl.TEXTURE0);
+                gl.uniform1f(uni.shOn, 1);
+                gl.uniform1f(uni.shPixW, sh.W);
+                gl.uniform1f(uni.shPixH, sh.H);
+                gl.uniform1f(uni.shLw, sh.lw);
+                gl.uniform1f(uni.shLh, sh.lh);
+                gl.uniform1f(uni.shScale, sh.scale);
+                gl.uniform1f(uni.shXc, sh.xc);
+                gl.uniform1f(uni.shXMax, sh.xMax);
+                gl.uniform1f(uni.shKeyOff, sh.keyOff);
+                gl.uniform1f(uni.shInvStep, sh.invStep);
+            } else {
+                gl.uniform1f(uni.shOn, 0);
+            }
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             return glc;
         } catch (_) {
@@ -446,12 +566,18 @@
     }
 
     window.QfsColor = {
-        pass(src, p, w, h, lut, haze) {
-            const out = passGL(src, p, w, h, lut, haze);
-            return out || pass2d(src, p, w, h, haze);
+        pass(src, p, w, h, lut, haze, sh) {
+            const out = passGL(src, p, w, h, lut, haze, sh);
+            if (out) return out;
+            // GL 通道没成：阴影本来是在 shader 里施加的，这里补一次再走 2D 兜底，
+            // 否则这一帧会整片漏掉阴影（画面突然变平，像没调过色）。
+            if (sh && window.QfsShadows) window.QfsShadows.applyCanvas(src, sh.amount, sh.key);
+            return pass2d(src, p, w, h, haze);
         },
         available() { return true; },
-        usingGL() { return initGL(); }
+        usingGL() { return initGL(); },
+        // 阴影能不能交给 shader：要 GL 跑得起来且浮点纹理可用
+        canShadow() { return initGL() && floatOK; }
     };
 
     // ── UI：黑白混色器（对齐 LR 的 Black & White / GrayMixer）──────

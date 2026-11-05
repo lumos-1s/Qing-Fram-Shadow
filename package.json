@@ -108,7 +108,8 @@
     "test:xmpanel": "node tools/run-electron.js tools/test-xm-panel.js",
     "test:gesturescale": "node tools/run-electron.js tools/test-gesture-scale.js",
     "test:undo": "node tools/run-electron.js tools/test-undo-image.js",
-    "test:canvassync": "node tools/run-electron.js tools/test-canvas-sync-ui.js"
+    "test:canvassync": "node tools/run-electron.js tools/test-canvas-sync-ui.js",
+    "test:shadowgl": "node tools/run-electron.js tools/shadow-gl-check.js"
   },
   "author": "Qingframe",
   "license": "MIT",

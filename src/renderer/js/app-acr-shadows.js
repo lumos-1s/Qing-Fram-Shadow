@@ -222,7 +222,9 @@
     const _fieldCache = [];
     const FIELD_KEEP = 3;
     const _fstat = { calls: 0, hits: 0, misses: 0, keyed: 0, unkeyed: 0 };
-    function cachedField(key, canvas, d, W, H) {
+    // getData 是**惰性**的：字段命中时根本不需要整幅像素。GL 通道只在首帧/换参数时
+    // 才会走到 field()，其余帧连 getImageData（23MP 一次 92MB）都省了。
+    function cachedField(key, canvas, W, H, getData) {
         _fstat.calls++;
         if (key) _fstat.keyed++; else _fstat.unkeyed++;
         if (key) {
@@ -236,7 +238,7 @@
             }
         }
         _fstat.misses++;
-        const f = field(canvas, d, W, H);
+        const f = field(canvas, getData(), W, H);
         if (key && f) {
             _fieldCache.unshift({ key, W, H, f });
             while (_fieldCache.length > FIELD_KEEP) _fieldCache.pop();
@@ -244,26 +246,38 @@
         return f;
     }
 
-    // 在已经过色调（曝光/白平衡/对比度/高光/白/黑）的画布上就地施加阴影
-    // key：可选的内容凭据，用来复用引导滤波的场（见 cachedField）
-    function applyCanvas(canvas, amount, key) {
-        if (!S || !amount) return false;
+    // 把这次要施加的阴影算成「一份数据、两种用法」：
+    //   · GL 通道拿去当纹理（field 打包成 RGBA 浮点，rows 打包成 1×xc 的 RGB）；
+    //   · CPU 通道拿去逐像素循环（applyCanvas）。
+    // 两条路径共用同一份系数与场，像素口径才可能对得上。
+    //
+    // needPixels=false 时：字段命中就不取整幅像素，只返回纹理数据（拖动时的常态）。
+    function prepare(canvas, amount, key, needPixels) {
+        if (!S || !amount) return null;
         const W = canvas.width, H = canvas.height;
-        if (W < 2 || H < 2) return false;
+        if (W < 2 || H < 2) return null;
         const set = Math.max(W, H) >= S.normalFrom ? 1 : 0;
         const c = coefficients(amount, set);
-        if (!c) return false;
-        const g = canvas.getContext('2d', { willReadFrequently: true });
-        const img = g.getImageData(0, 0, W, H);
-        const d = img.data;
-        const f = cachedField(key, canvas, d, W, H);
-        if (!f) return false;
+        if (!c) return null;
 
+        let img = null, g = null;
+        const pixels = () => {
+            if (!img) {
+                g = canvas.getContext('2d', { willReadFrequently: true });
+                img = g.getImageData(0, 0, W, H);
+            }
+            return img.data;
+        };
+
+        const f = cachedField(key, canvas, W, H, pixels);
+        if (!f) return null;
+        if (needPixels) pixels();     // 调用方要就地改像素，必须拿到 imageData
+
+        // 档位之间按 k 双线性插值，得到三行（Δ / 上增益 / 下增益）在 x 上的采样
         const kp = Math.min(S.kCount - 1, Math.max(0, (f.key - S.kLow) / S.kStep));
-        const k0 = Math.min(S.kCount - 1, Math.floor(kp)), k1 = Math.min(k0 + 1, S.kCount - 1), kt = kp - k0;
+        const k0 = Math.min(S.kCount - 1, Math.floor(kp)), k1 = Math.min(S.kCount - 1, k0 + 1), kt = kp - k0;
         const xc = S.xCount, plane = xc * S.kCount;
-        const r0 = new Float32Array(xc), r1 = new Float32Array(xc), r2 = new Float32Array(xc);
-        const rows = [r0, r1, r2];
+        const rows = [new Float32Array(xc), new Float32Array(xc), new Float32Array(xc)];
         for (let t = 0; t < 3; t++) {
             const base = t * plane;
             for (let x = 0; x < xc; x++) {
@@ -271,14 +285,56 @@
                 rows[t][x] = v0 * (1 - kt) + v1 * kt;
             }
         }
-        const { tab, step } = gainTable(amount, set);
+
+        // 场打包成纹理：RGBA 浮点，rg = a,b。只在场本身更新时打一次，
+        // 之后每帧复用（场按 key 缓存在 _fieldCache 里，打包结果挂在它身上）。
+        if (!f.tex) {
+            const n = f.lw * f.lh, tex = new Float32Array(n * 4);
+            for (let i = 0; i < n; i++) {
+                tex[i * 4] = f.a[i];
+                tex[i * 4 + 1] = f.b[i];
+                tex[i * 4 + 3] = 1;
+            }
+            f.tex = tex;
+        }
+        if (!f.rows || f.rowsXc !== xc) {
+            f.rowsXc = xc;
+            f.rows = new Float32Array(xc * 4);
+        }
+        for (let x = 0; x < xc; x++) {
+            f.rows[x * 4] = rows[0][x];
+            f.rows[x * 4 + 1] = rows[1][x];
+            f.rows[x * 4 + 2] = rows[2][x];
+            f.rows[x * 4 + 3] = 1;
+        }
+
+        return {
+            amount, key, img, g, f, rows,
+            fieldTex: f.tex, rowsTex: f.rows,
+            W, H, set, lw: f.lw, lh: f.lh, scale: f.scale,
+            xc, xMax: xc - 1, keyOff: f.key + S.xLow, invStep: 1 / S.xStep
+        };
+    }
+
+    // 在已经过色调（曝光/白平衡/对比度/高光/白/黑）的画布上就地施加阴影
+    // key：可选的内容凭据，用来复用引导滤波的场（见 cachedField）
+    //
+    // 这是**兜底通道**：WebGL / 浮点纹理可用时走 QfsColor 的 shader（同一套场与系数），
+    // 全分辨率实测 1387ms → 十几毫秒；逐像素实现保留给无 GL 环境，也用来做像素比对。
+    function applyCanvas(canvas, amount, key) {
+        const P = prepare(canvas, amount, key, true);
+        if (!P) return false;
+        const d = P.img.data;
+        const f = P.f, W = P.W, H = P.H;
+        const { tab, step } = gainTable(amount, P.set);
         const dec = new Float32Array(256);
         for (let i = 0; i < 256; i++) {
             const e = i / 255;
             dec[i] = e <= 0.04045 ? e / 12.92 : Math.pow((e + 0.055) / 1.055, 2.4);
         }
         const A = f.a, B = f.b, lw = f.lw, lh = f.lh, sc = f.scale;
-        const xMax = xc - 1, invStep = 1 / S.xStep, keyOff = f.key + S.xLow;
+        const r0 = P.rows[0], r1 = P.rows[1], r2 = P.rows[2];
+        const xc = P.xc, xMax = P.xMax, invStep = P.invStep, keyOff = P.keyOff;
         const invJ = 1 / step, jMax = LIFT_STEPS - 1;
 
         // 每列的横向插值坐标与权重只算一次（原来是每像素一次除法 + 两次钳制）
@@ -327,7 +383,7 @@
                 d[p + 2] = tab[o0 + v2] + (tab[o1 + v2] - tab[o0 + v2]) * jt;
             }
         }
-        g.putImageData(img, 0, 0);
+        P.g.putImageData(P.img, 0, 0);
         return true;
     }
 
@@ -335,6 +391,8 @@
         ensure,
         ready: () => !!S,
         applyCanvas,
+        // GL 通道：把场与系数打包好交出去（不写画布），由 QfsColor 在 shader 里施加
+        prepare,
         field,
         coefficients: (amount, longSide) => {
             if (!S) return null;
