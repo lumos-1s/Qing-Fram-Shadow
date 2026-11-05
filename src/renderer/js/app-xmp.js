@@ -58,6 +58,18 @@
         { xmp: 'Dehaze', key: 'dhz', note: '去除薄雾' }
     ];
 
+    // ── 锐化（LR「细节」面板上半组 = 捕获锐化） ──
+    // 关键坑：Lightroom 写 XMP 时**省略等于默认值的字段**。这份预设里
+    // SharpenAmount 整个不存在，而 SharpenRadius=0.5 / Detail=60 / Masking=34
+    // 都在 —— 因为 40 正是 LR 的默认锐化量。把缺失当成 0 就等于不锐化，
+    // 和 LR 导出差一截，所以缺的字段一律按 LR 默认补：40 / 1.0 / 25 / 0。
+    const SHARPEN = [
+        { xmp: 'SharpenAmount', key: 'shp', min: 0, max: 150, dft: 40, note: '锐化量' },
+        { xmp: 'SharpenRadius', key: 'shr', min: 0.3, max: 3, dft: 1, step: 0.1, note: '锐化半径' },
+        { xmp: 'SharpenDetail', key: 'shd', min: 0, max: 100, dft: 25, note: '锐化细节' },
+        { xmp: 'SharpenEdgeMasking', key: 'shm', min: 0, max: 100, dft: 0, note: '锐化蒙版' }
+    ];
+
     // ── 校准（LR 相机校准，命名空间同为 crs:） ──
     const CAL = [
         { xmp: 'RedHue', key: 'rh', note: '红·色相' },
@@ -90,8 +102,8 @@
     ];
 
     // 常见但软件没有对应参数的 LR 字段（进 skipped，不硬塞）
-    const SKIP = ['Sharpness', 'SharpenAmount', 'SharpenRadius', 'SharpenDetail',
-        'SharpenEdgeMasking', 'NoiseReductionLuminance', 'NoiseReductionColor',
+    // 注意 Sharpen* 已经不在这里：它们映射到 det.shp/shr/shd/shm（见 SHARPEN）。
+    const SKIP = ['Sharpness', 'NoiseReductionLuminance', 'NoiseReductionColor',
         'NoiseReductionDetail', 'LuminanceSmoothing', 'ColorNoiseReduction',
         'PostCropVignetteAmount', 'PostCropVignetteMidpoint', 'PostCropVignetteFeather',
         'PostCropVignetteRoundness', 'PostCropVignetteStyle', 'PostCropVignetteHighlightContrast',
@@ -204,19 +216,7 @@
         return true;
     }
 
-    function curveAt(pts, x) {
-        if (!pts || !pts.length) return x;
-        if (x <= pts[0][0]) return pts[0][1];
-        if (x >= pts[pts.length - 1][0]) return pts[pts.length - 1][1];
-        for (let i = 1; i < pts.length; i++) {
-            if (x <= pts[i][0]) {
-                const a = pts[i - 1], b = pts[i];
-                const t = (x - a[0]) / Math.max(1e-6, b[0] - a[0]);
-                return a[1] + (b[1] - a[1]) * t;
-            }
-        }
-        return x;
-    }
+    // 点曲线不做采样/复合：原始控制点直接交给 app-curve.js 的单调三次插值。
 
     // LR 的「参数曲线」：4 个区域滑块 + 3 个分割点。真实预设里几乎全是
     // 这种曲线（ToneCurvePV2012 常常是空节点）。把每个区域滑块的权重放在
@@ -267,16 +267,6 @@
             pts.push([round2(x), round2(y)]);
         }
         return pts;
-    }
-
-    function composeCurve(pointPts, paramPts) {
-        const out = [];
-        for (let i = 0; i <= 16; i++) {
-            const x = i / 16;
-            const y = curveAt(pointPts, curveAt(paramPts, x));
-            out.push([round2(x), round2(y)]);
-        }
-        return out;
     }
 
     function readColorGrade(values) {
@@ -401,6 +391,30 @@
             det[f.key] = Math.round(clamp(v, -100, 100));
             push(applied, f.note);
         });
+
+        // 锐化（捕获锐化）。只在预设里确实出现任一 Sharpen* 时才动手：
+        // 纯调色预设（一个 Sharpen 字段都没有）在 LR 里也不改锐化，这里同样不动，
+        // 免得导入一个黑白预设把整张照片悄悄锐化一遍。
+        // 出现了就按 LR 的默认值补齐缺省项 —— LR 会省略等于默认值的字段，
+        // 这份预设正是 SharpenAmount 缺席（= 默认 40）而 Radius/Detail/Masking 在场。
+        const shpKeys = SHARPEN.filter((f) => {
+            const raw = values[f.xmp];
+            return !(raw === undefined || raw === null || raw === '');
+        });
+        if (shpKeys.length) {
+            const implied = [];
+            for (const f of SHARPEN) {
+                const raw = values[f.xmp];
+                const has = !(raw === undefined || raw === null || raw === '');
+                const v = has ? NUM(raw, NaN) : NaN;
+                if (!has) implied.push(f.note);
+                const val = Number.isFinite(v) ? v : f.dft;
+                const cl = clamp(val, f.min, f.max);
+                det[f.key] = f.step ? Math.round(cl / f.step) * f.step : Math.round(cl);
+            }
+            push(applied, '锐化 ' + det.shp + '/' + det.shr.toFixed(1)
+                + (implied.length ? '（' + implied.join('、') + '按 LR 默认）' : ''));
+        }
         if (Object.keys(det).length) patch.det = det;
 
         // 校准
@@ -453,8 +467,16 @@
         });
         const paramPts = parametricCurve(values);
         if (paramPts) {
-            curve.rgb = curve.rgb ? composeCurve(curve.rgb, paramPts) : paramPts;
-            push(applied, '参数曲线');
+            // ACR/LR 的曲线面板是「参数 / 点」两个页签，同一时刻只有一条曲线生效。
+            // XMP 里两条都会留着（另存预设时不会清空另一页），但只要存在非线性的点曲线，
+            // 渲染就只认点曲线——参数滑杆的值是失效残留。之前这里把两者复合，
+            // 等于给整张图多叠了一层提亮：25% 分位被抬 +20 级、饱和度掉 6 个点。
+            if (curve.rgb) {
+                push(skipped, '参数曲线(已有主曲线)');
+            } else {
+                curve.rgb = paramPts;
+                push(applied, '参数曲线');
+            }
         }
         if (Object.keys(curve).length) patch.curve = curve;
 

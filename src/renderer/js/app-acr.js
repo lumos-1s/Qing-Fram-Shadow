@@ -14,9 +14,11 @@
     const AVAL = [-100, -50, -25, 0, 25, 50, 100];      // 自适应档位的滑块值
 
     // 表区起点（与 Compositor 的 CameraRawTables.swift 布局一致）
+    // 236 起的「阴影区」不在这里读：ACR 的阴影是空间自适应的，已改由
+    // shared/acr/cr-shadows.bin + app-acr-shadows.js 承担（见下方 toneFix 的说明）。
     const WB_START = 0, EXPO_START = 81, WHITES_START = 102, BLACKS_START = 111,
         SAT_START = 120, VIB_START = 129, CON_START = 138, HI_START = 187,
-        SH_START = 236, MIXER_START = 285, CAL_START = 405, PARAM_START = 435,
+        MIXER_START = 285, CAL_START = 405, PARAM_START = 435,
         GRAD_START = 455, GRAD_LUM_START = 743;
 
     // 三维合成网格：Compositor 用 33（比 17 的表更细，合成本身几乎不增加模糊）。
@@ -166,26 +168,204 @@
         });
     }
 
-    // ── 对外：色调 stage 组（曝光→白平衡→对比度→高光→阴影→白→黑）──
-    // bright = { con, hi, sh } 三种亮度测度（0..255，缺省 128）
-    function toneStages(p, bright) {
+    // 白平衡表的**绿轴标定**。
+    // 表本身来自 ACR（Compositor 的 CameraRawTables），索引方式与 Swift 源码一致，
+    // 但实测 tint 方向对 G 的作用幅度是 Lightroom 的两倍：
+    //   LR 三档导出（tint=0/50/100，其余完全相同）实测斜率比
+    //   R 0.99 / B 0.95 / G **2.00**。
+    // 结果是 tint 一给，绿色被压掉双份，黄叶与暖墙整体转向品红（色相 −13°）。
+    // 这里把「相对中性」的 G 偏移折半，只动 tint 那条轴，R/B 不碰。
+    const WB_G_FIX = 0.5;
+
+    // WB stage 对中性灰的 G 响应（1 = 不偏），据此算出补偿增益。
+    // 注意不能拿「1」当基准：表里含着相机 as-shot 的基线，tint=0 时本身就偏离 1
+    // （实测偏到 0.88，若按 1 补会把整张图抬绿 14%）。基准取同温度下 tint=0 的那一列。
+    function neutralG(parts) {
+        if (!T || !parts || !parts.length) return 1;
+        const d = stageDiag(parts);
+        const mid = (T.size - 1) >> 1;
+        const g = d.g[mid] / 255;
+        return (g > 0.02 && g < 2) ? g : 1;
+    }
+    function wbGreenGain(wbParts, temp) {
+        if (!T || !wbParts || !wbParts.length) return 1;
+        const gNow = neutralG(wbParts);
+        const gZero = neutralG(whiteBalance(temp || 0, 0));
+        return 1 + WB_G_FIX * (1 - gNow / gZero);
+    }
+
+    // 单通道增益 stage（对角线，长度 = 表格尺寸，值域 0..255）
+    function gainDiag(gc) {
+        const size = T.size, out = { r: [], g: [], b: [] };
+        for (let i = 0; i < size; i++) {
+            const v = i / (size - 1) * 255;
+            out.r.push(v); out.g.push(v * gc); out.b.push(v);
+        }
+        return out;
+    }
+
+    // ── 通道平衡（整条 ACR 链的定标）─────────────────────────────────
+    // 曾经想用一条逐通道增益修掉「整体偏品红」：与 LR **自己的导出**逐块对拍
+    // （tools/patch-lab.js + tools/gain-fit.js），线性光下我们的 G 一律低 7~8%、
+    // R 低 3~4%，tint=0 与 tint=50 两次独立拟合还给出同一个数（ΔG 只差 0.02），
+    // 看着像链路固定偏置（等价于相机 Profile 缺了一条通道平衡）。
+    // ⚠ 实测结论：这条平衡**不该开**，已停用（常量留 1.0 备查）。
+    // 上一轮把「线性光下 G 低 7~8%」直接当成「画面偏品红」，用 G×1.095 去补。
+    // 但换到 Lab 口径复测（tools/bal-eval.js，全分辨率 5905×3937，对 LR 自己的导出）：
+    //     不开             ΔE 8.95   Δa +0.61   Δb +1.25
+    //     G1.025           ΔE 9.00   Δa +0.18   Δb +1.69
+    //     G1.050           ΔE 9.11   Δa −0.24   Δb +2.15
+    //     G1.095（原设置）  ΔE 9.44   Δa −1.06   Δb +2.98
+    // 误差随 G **单调上升**：加绿把 a* 从「偏正」推成「偏负」，同时把 b* 一路推高。
+    // 原因是线性光的逐通道比不等价于 Lab 的 a*——G 提上来 L 也跟着变，感知的红绿轴
+    // 并不同步。当时只看了线性光的数字，没在 Lab 上复核，是过冲。
+    // 副作用很显眼：这条挂在三维表末尾，任何走 ACR 链的画面都吃它，所以边框墙的
+    // 「本图预览」缩略图也会整片变样（用户看到的「封面墙全变了」就是这里）。
+    const ACR_BAL = { r: 1.0, g: 1.0, b: 1.0 };
+    const BAL_ON = ACR_BAL.r !== 1 || ACR_BAL.g !== 1 || ACR_BAL.b !== 1;
+    const BAL_LUT = (() => {
+        const toLin = (v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+        const toSrgb = (v) => (v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
+        const mk = (g) => {
+            const a = new Float32Array(256);
+            for (let i = 0; i < 256; i++) a[i] = 255 * toSrgb(Math.min(1, g * toLin(i / 255)));
+            return a;
+        };
+        return { r: mk(ACR_BAL.r), g: mk(ACR_BAL.g), b: mk(ACR_BAL.b) };
+    })();
+    // 平衡是**中低亮度**的定标（拟合用的六块：黄叶两块、墙、天光、路面、暗部，
+    // 全在中调以下）。一路乘到白点会出事：高光再乘 G×1.095，最亮 6% 的 Lab 色相
+    // 被推绿 +10°，G 比 LR 高 25 级，叶子缝里的天光就从金黄变成黄白。
+    // 所以按亮度淡出——L* 80 以下全量，L* 97 以上归零，中间平滑过渡。
+    const BAL_FADE = [0.60, 0.88];      // 线性光亮度
+    const BAL_LIN = (() => {
+        const a = new Float32Array(256);
+        for (let i = 0; i < 256; i++) {
+            const e = i / 255;
+            a[i] = e <= 0.04045 ? e / 12.92 : Math.pow((e + 0.055) / 1.055, 2.4);
+        }
+        return a;
+    })();
+    // ── 高光收口（顶端那段色阶复位）───────────────────────────────
+    // 逐像素拿「我们」和 LR 自己的导出比线性光亮度，按亮度分箱取比值中位数，
+    // 得到一条 k(Y)（tools/k-curve.js）：
+    //   Y 0.30~0.45  k≈1      中调已经对齐，不要碰
+    //   Y 0.55       k 0.95
+    //   Y 0.75       k 0.91
+    //   Y 0.85~0.93  k 0.89   ← 高光整体亮了约一成一
+    //   Y →1         k →1      纯白仍是纯白（两端都截断，不该压成灰）
+    // 表现就是叶子缝里的天光先于 LR 冲到白：最亮 6% 我们 238/227/192、LR 225/205/168，
+    // 差的那 13~24 级全在这一段。按亮度等比缩放（三通道同乘）不动机色相与彩度，
+    // 只把顶端色阶拉开，等价于「高光段多给一点对比」。
+    // 锚点第二列就是**乘数 k**（不是输出亮度），所以插值完直接存，不要再除 x
+    const HI_K_PTS = [[0, 1], [0.30, 1], [0.45, 0.962], [0.55, 0.948], [0.65, 0.936],
+        [0.75, 0.912], [0.85, 0.890], [0.92, 0.894], [1, 1]];
+    // 单调三次插值（Fritsch–Carlson）：锚点之间平滑、不会过冲，避免亮部出现台阶
+    const HI_K = (() => {
+        const pts = HI_K_PTS, n = pts.length;
+        const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+        const d = [], m = new Array(n).fill(0);
+        for (let i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
+        m[0] = d[0]; m[n - 1] = d[n - 2];
+        for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+        for (let i = 0; i < n - 1; i++) {
+            if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+            const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+            if (s > 9) { const t = 3 / Math.sqrt(s); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+        }
+        const out = new Float32Array(256);
+        for (let v = 0; v < 256; v++) {
+            const x = v / 255;
+            let i = 0;
+            while (i < n - 2 && x > xs[i + 1]) i++;
+            const h = xs[i + 1] - xs[i], t = (x - xs[i]) / h;
+            const t2 = t * t, t3 = t2 * t;
+            const y = (2 * t3 - 3 * t2 + 1) * ys[i] + (t3 - 2 * t2 + t) * h * m[i]
+                + (-2 * t3 + 3 * t2) * ys[i + 1] + (t3 - t2) * h * m[i + 1];
+            out[v] = Math.max(0.5, Math.min(1.2, y));
+        }
+        out[255] = 1;
+        return out;
+    })();
+    function toSrgbLin(v) {
+        if (v <= 0) return 0;
+        if (v >= 1) return 1;
+        return v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+    }
+    function hiRolloff(rgba, n) {
+        for (let i = 0; i < n; i++) {
+            const p = i * 4;
+            const r = rgba[p], g = rgba[p + 1], b = rgba[p + 2];
+            const y = 0.2126 * BAL_LIN[r] + 0.7152 * BAL_LIN[g] + 0.0722 * BAL_LIN[b];
+            if (y < 0.16) continue;                       // k=1 的区间，省掉一次查表
+            const k = HI_K[Math.round(y * 255)];
+            if (k > 0.999) continue;
+            const vr = Math.round(255 * toSrgbLin(BAL_LIN[r] * k));
+            const vg = Math.round(255 * toSrgbLin(BAL_LIN[g] * k));
+            const vb = Math.round(255 * toSrgbLin(BAL_LIN[b] * k));
+            rgba[p] = vr < 0 ? 0 : vr;
+            rgba[p + 1] = vg < 0 ? 0 : vg;
+            rgba[p + 2] = vb < 0 ? 0 : vb;
+        }
+    }
+
+    // 只能挂在**三维表的最后一步**：色调那条链的 pre() 是「亮度取对角线、色度取三维」，
+    // 逐通道增益属于色度，挂在滤镜里会被三维表的彩度顶掉（还会被 pre 的反解算两遍）。
+    function balanceApply(rgba, n) {
+        const lo = BAL_FADE[0], span = BAL_FADE[1] - BAL_FADE[0];
+        for (let i = 0; i < n; i++) {
+            const p = i * 4;
+            const r = rgba[p], g = rgba[p + 1], b = rgba[p + 2];
+            const y = 0.2126 * BAL_LIN[r] + 0.7152 * BAL_LIN[g] + 0.0722 * BAL_LIN[b];
+            let t = (y - lo) / span;
+            if (t <= 0) {
+                rgba[p] = Math.round(BAL_LUT.r[r]);
+                rgba[p + 1] = Math.round(BAL_LUT.g[g]);
+                rgba[p + 2] = Math.round(BAL_LUT.b[b]);
+                continue;
+            }
+            if (t >= 1) continue;                     // 高光端不补：原样输出
+            const w = 1 - t * t * (3 - 2 * t);        // smoothstep 淡出
+            rgba[p] = Math.round(r + (BAL_LUT.r[r] - r) * w);
+            rgba[p + 1] = Math.round(g + (BAL_LUT.g[g] - g) * w);
+            rgba[p + 2] = Math.round(b + (BAL_LUT.b[b] - b) * w);
+        }
+    }
+
+    // ── 色调 stage 组（曝光→白平衡→对比度→高光→白→黑，ACR 顺序）──
+    // 返回「stage 权重组」列表，供两条路复用：灰轴对角线（CSS 滤镜）与三维（补彩度）。
+    function toneParts(p, bright) {
         if (!T) return null;
         bright = bright || {};
         const bc = bright.con == null ? 128 : bright.con;
         const bh = bright.hi == null ? 128 : bright.hi;
-        const bs = bright.sh == null ? 128 : bright.sh;
-        const stages = {};
-        if (p.exp) stages.exp = stageDiag(exposure(Math.max(-5, Math.min(5, p.exp))));
-        if (p.temp || p.tint) stages.wb = stageDiag(whiteBalance(p.temp || 0, p.tint || 0));
-        if (p.con) stages.con = stageDiag(adaptive(CON_START, p.con, bc));
-        if (p.hi) stages.hi = stageDiag(adaptive(HI_START, p.hi, bh));
-        if (p.sh) stages.sh = stageDiag(adaptive(SH_START, p.sh, bs));
-        if (p.white) stages.white = stageDiag(plain(WHITES_START, p.white));
-        if (p.black) stages.black = stageDiag(plain(BLACKS_START, p.black));
-        if (!Object.keys(stages).length) return null;
-        // 按键序组合成一条复合对角线（ACR 顺序）
-        const order = ['exp', 'wb', 'con', 'hi', 'sh', 'white', 'black'];
-        const chain = order.map((k) => stages[k]).filter(Boolean);
+        const parts = [];
+        if (p.exp) parts.push({ k: 'exp', s: exposure(Math.max(-5, Math.min(5, p.exp))) });
+        if (p.temp || p.tint) parts.push({ k: 'wb', s: whiteBalance(p.temp || 0, p.tint || 0) });
+        if (p.con) parts.push({ k: 'con', s: adaptive(CON_START, p.con, bc) });
+        if (p.hi) parts.push({ k: 'hi', s: adaptive(HI_START, p.hi, bh) });
+        // 阴影**不在这里**：ACR 的阴影是空间自适应的（同一个 −30，只压暗「比周围更暗
+        // 且低于全图参考亮度」的区域），灰轴对角线只能做「全图暗部一起压」。改由
+        // app-acr-shadows.js 在色调之后单独跑一遍。
+        if (p.white) parts.push({ k: 'white', s: plain(WHITES_START, p.white) });
+        if (p.black) parts.push({ k: 'black', s: plain(BLACKS_START, p.black) });
+        return parts.length ? parts : null;
+    }
+
+    // 对外：色调的灰轴对角线（每通道 256 级），给 CSS 滤镜用
+    function toneStages(p, bright) {
+        const parts = toneParts(p, bright);
+        if (!parts) return null;
+        const chain = [];
+        for (let i = 0; i < parts.length; i++) {
+            chain.push(stageDiag(parts[i].s));
+            // 绿轴补偿必须紧跟白平衡，不能挪到链尾（后面还有对比度/高光/白/黑，
+            // 放到末尾会连高光端一起乘，白点被推过 255）
+            if (parts[i].k === 'wb') {
+                const gc = wbGreenGain(parts[i].s, p.temp);
+                if (Math.abs(gc - 1) > 0.002) chain.push(gainDiag(gc));
+            }
+        }
         const d = chain.length === 1 ? chain[0] : composeDiags(chain);
         return { r: toLut256(d.r), g: toLut256(d.g), b: toLut256(d.b) };
     }
@@ -254,7 +434,9 @@
 
     // 把一组 stage 依次作用到 grid³ 网格上：每级一次三线性采样。
     // 表存的是**绝对输出色**（level + 累计增量），所以合成就是 f_n(…f_1(c))。
-    function compose3d(partsList, grid) {
+    // pre：可选的起点映射（输入网格点 → 起始颜色）。色调的三维补偿用它把
+    // 「CSS 滤镜已经按对角线改过的颜色」先还原成真实的三维结果。
+    function compose3d(partsList, grid, pre, bal) {
         const n = grid * grid * grid;
         const cur = new Float32Array(n * 3);
         const lv = new Float32Array(grid);
@@ -263,7 +445,12 @@
         for (let bi = 0; bi < grid; bi++) {
             for (let gi = 0; gi < grid; gi++) {
                 for (let ri = 0; ri < grid; ri++, q += 3) {
-                    cur[q] = lv[ri]; cur[q + 1] = lv[gi]; cur[q + 2] = lv[bi];
+                    if (pre) {
+                        const c = pre(lv[ri], lv[gi], lv[bi]);
+                        cur[q] = c[0]; cur[q + 1] = c[1]; cur[q + 2] = c[2];
+                    } else {
+                        cur[q] = lv[ri]; cur[q + 1] = lv[gi]; cur[q + 2] = lv[bi];
+                    }
                 }
             }
         }
@@ -309,9 +496,120 @@
                 }
             }
         }
+        // bal 里的高光收口是**引擎级定标**，会作用到每一张走 ACR 链的画面，
+        // 包括边框墙的「本图预览」缩略图。通道平衡默认关闭（见 ACR_BAL 的说明）。
+        // _noBalance 只给 tools/ 下的标定脚本开，用来量这两级到底把画面推了多少。
+        const noBal = typeof window !== 'undefined' && window.QfsAcr && window.QfsAcr._noBalance;
+        if (bal && !noBal) {
+            if (BAL_ON) balanceApply(rgba, n);
+            hiRolloff(rgba, n);
+        }
         return { grid, rgba };
     }
+    // 三线性采样一张已合成的 grid³ 表（纹理布局：x = 蓝*grid + 红，y = 绿）
+    function sampleTable(t, r, g, b) {
+        const G = t.grid, S = G - 1, A = t.rgba;
+        const x = Math.min(S, Math.max(0, r) * S / 255);
+        const y = Math.min(S, Math.max(0, g) * S / 255);
+        const z = Math.min(S, Math.max(0, b) * S / 255);
+        const i0 = Math.min(S - 1, Math.floor(x)), j0 = Math.min(S - 1, Math.floor(y)), k0 = Math.min(S - 1, Math.floor(z));
+        const fx = x - i0, fy = y - j0, fz = z - k0;
+        const at = (ri, gi, bi) => ((gi * G + bi) * G + ri) * 4;
+        const out = [0, 0, 0];
+        for (let ch = 0; ch < 3; ch++) {
+            const c00 = A[at(i0, j0, k0) + ch] * (1 - fx) + A[at(i0 + 1, j0, k0) + ch] * fx;
+            const c10 = A[at(i0, j0 + 1, k0) + ch] * (1 - fx) + A[at(i0 + 1, j0 + 1, k0) + ch] * fx;
+            const c01 = A[at(i0, j0, k0 + 1) + ch] * (1 - fx) + A[at(i0 + 1, j0, k0 + 1) + ch] * fx;
+            const c11 = A[at(i0, j0 + 1, k0 + 1) + ch] * (1 - fx) + A[at(i0 + 1, j0 + 1, k0 + 1) + ch] * fx;
+            const c0 = c00 * (1 - fy) + c10 * fy, c1 = c01 * (1 - fy) + c11 * fy;
+            out[ch] = c0 * (1 - fz) + c1 * fz;
+        }
+        return out;
+    }
 
+    // 单调曲线的反解：给输出 y 找回输入 x（1017 级，够用且只建一次）
+    const INV_N = 1017;
+    function rampInverse(lut) {
+        const out = new Float32Array(INV_N);
+        let j = 0;
+        for (let i = 0; i < INV_N; i++) {
+            const y = i / (INV_N - 1);
+            while (j < 254 && lut[j + 1] < y) j++;
+            const y0 = lut[j], y1 = lut[j + 1];
+            const f = y1 > y0 ? (y - y0) / (y1 - y0) : 0;
+            out[i] = Math.max(0, Math.min(1, (j + f) / 255));
+        }
+        return out;
+    }
+
+    // ── 色调的三维补偿 ───────────────────────────────────────────
+    // ACR 的曝光/白平衡/对比度/高光/白/黑是 17³ 三维表，作用到彩色像素时会改变
+    // 彩度；只取灰轴对角线做成逐通道曲线就丢掉了这部分。实测：黄叶 (200,170,70)
+    // 走三维 57.2、走对角线 48.4（少 15%），暖色墙面少 35%（灰轴本身不受影响）。
+    // 这就是「颜色不够艳」的主因——混色器那点 −13 的饱和度只是小头。
+    //
+    // 做法：CSS 滤镜仍然按对角线跑（快、无 GL 也能用），但把差量做成一张三维修正
+    // 表，折进已有的三维色表：网格点 y 先反解回 x（滤镜上还叠了用户曲线，所以要
+    // 「曲线⁻¹ ∘ 对角线⁻¹」一起反），再过真实三维色调 → 得 z，然后照常串颜色
+    // stage。整条链于是等于「三维色调 → 三维颜色」，不增加 pass。
+    //
+    // 只在滤镜里除了色调+曲线没有别的逐像素步骤时才补：色彩平衡/渐变映射/整体 gamma
+    // 也串在那条滤镜后面，混进来反解就不准了（它们都不是 ACR 的档位，默认全关）。
+    const _fixCache = { key: '', fix: null };
+    const FIX_GRID = 33;
+    function toneFix(p, bright, curveSig) {
+        const parts = toneParts(p, bright);
+        if (!parts) return null;
+        const diag = toneStages(p, bright);
+        const key = FIX_GRID + '|' + (curveSig || '-') + '|'
+            + diag.r.join(',') + '|' + diag.g.join(',') + '|' + diag.b.join(',');
+        if (_fixCache.key === key) return _fixCache.fix;
+        const t3 = compose3d(parts.map((x) => x.s), FIX_GRID);
+        // 三维表里没有绿轴补偿（那是给对角线加的），这里补上同一个增益，
+        // 否则「亮度取对角线、色度取三维」两边会对不上，暗部会重新偏品红
+        const wbPart = parts.find((x) => x.k === 'wb');
+        const gc = wbPart ? wbGreenGain(wbPart.s, p.temp) : 1;
+        // 滤镜实际做的是 curve(diag(x))，所以反解要连曲线一起反
+        const C = window.QfsCurve;
+        const cl = (C && C.curveActive(p.curve)) ? C.buildCurveLuts(p.curve) : null;
+        const chainOf = (d, c) => {
+            if (!c) return d;
+            const out = new Array(256);
+            for (let i = 0; i < 256; i++) {
+                const v = Math.min(1, Math.max(0, d[i]));
+                out[i] = c[Math.min(255, Math.round(v * 255))];
+            }
+            return out;
+        };
+        const invR = rampInverse(chainOf(diag.r, cl && cl.r));
+        const invG = rampInverse(chainOf(diag.g, cl && cl.g));
+        const invB = rampInverse(chainOf(diag.b, cl && cl.b));
+        const at = (ramp, v) => ramp[Math.min(INV_N - 1, Math.max(0, Math.round(v / 255 * (INV_N - 1))))] * 255;
+        const fix = {
+            key,
+            // 只借三维的**彩度**，亮度仍用对角线那条（也就是滤镜已经给出的值）。
+            // 六个 stage 串起来的三维合成在暗部会把整片压得更暗（实测 5% 分位掉 11 级，
+            // 而 LR 只掉 2 级）——那是逐级 8 位表复合的累积误差，不是 ACR 的真实行为。
+            // 彩度差是实打实的（黄叶少 15%），所以按「亮度取对角线、色度取三维」拼回去。
+            pre(r, g, b) {
+                const z = sampleTable(t3, at(invR, r), at(invG, g), at(invB, b));
+                z[1] *= gc;
+                const lz = 0.2126 * z[0] + 0.7152 * z[1] + 0.0722 * z[2];
+                const ly = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                // 加性重构（亮度换成对角线的、各通道保留与三维的差值）。
+                // 试过乘性版本（z * ly/lz）：色相理论上更稳，但实测 a*/b* 都更差
+                // —— 三维与对角线的亮度本来就差得远（饱和黄 57 vs 48），一乘法
+                // 连彩度一起缩了。留着加性。
+                // 也试过「高光端把三维彩度淡出、退回对角线」（ly 190→240）：最亮 6%
+                // 的均值只动 0.4 级，说明那段的三维与对角线本来就重合——真正把高光
+                // 洗白的是混色器（关掉它 B 立刻从 196 掉到 179），所以不保留这段代码。
+                return [ly + z[0] - lz, ly + z[1] - lz, ly + z[2] - lz];
+            }
+        };
+        _fixCache.key = key;
+        _fixCache.fix = fix;
+        return fix;
+    }
     // 校准：红/绿/蓝 各自的色相与饱和，顺序与 Swift 一致
     function calStages(cal) {
         const out = [];
@@ -383,13 +681,29 @@
         return out;
     }
 
+    // 滤镜里除色调/曲线之外还有别的逐像素步骤吗（色彩平衡、渐变映射、整体 gamma）。
+    // 有的话反解就不成立，宁可不补——这些都不是 ACR 的档位，默认全关。
+    function extrasInFilter(p) {
+        if (Number(p.gam) || 0) return true;
+        const cb = p.cb;
+        if (cb) for (const z of ['shadow', 'mid', 'high']) {
+            const v = cb[z];
+            if (v && (Number(v.r) || Number(v.g) || Number(v.b))) return true;
+        }
+        const gm = p.gm;
+        return !!(gm && gm.on !== 0 && (Number(gm.amount) || 0) > 0);
+    }
+
     // ── 对外：颜色侧三维 LUT（校准 → 饱和度 → 自然饱和度 → 混色器 → 颜色分级）──
     // 返回 { grid, rgba }；没有可测档位时返回 null（调用方退回原路径）。
     // 两个常用网格各留一份缓存：预览用小网格（快），静置/导出用大网格（精）。
     // 只留一份会在「拖动→静置」来回时反复重算。
+    //
+    // bright：色调三维补偿所需的亮度测度（对比度/高光自适应档）。不传就不补，
+    // 结果退回「对角线彩度」那一版（略欠饱和，但不会错色）。
     const _lutCache = {};
     let _lutSeq = 0;
-    function colorLut(p, grid) {
+    function colorLut(p, grid, bright) {
         if (!T || !p) return null;
         const parts = [];
         if (p.cal) parts.push.apply(parts, calStages(p.cal));
@@ -399,19 +713,31 @@
         if (vib) parts.push(plain(VIB_START, vib));
         if (p.mix) parts.push.apply(parts, mixerStages(p.mix));
         if (p.cg) parts.push.apply(parts, gradingStages(p.cg));
-        if (!parts.length) return null;
-        const key = parts.map((q) => q.map((x) => x.off + ':' + x.w.toFixed(4)).join(' ')).join('|');
+        const C2 = window.QfsCurve;
+        const curveSig = (C2 && C2.curveActive(p.curve)) ? C2.curveSignature(p.curve) : '-';
+        const fix = (bright && !extrasInFilter(p)) ? toneFix(p, bright, curveSig) : null;
+        if (!parts.length && !fix) return null;
+        const key = (fix ? 'T|' + fix.key + '|' : '')
+            + parts.map((q) => q.map((x) => x.off + ':' + x.w.toFixed(4)).join(' ')).join('|');
         const g = grid || GRID;
         const slot = _lutCache[g];
         if (slot && slot.key === key && slot.lut) return slot.lut;
-        const out = compose3d(parts, g);
+        const out = compose3d(parts, g, fix ? fix.pre : null, true);
         out.token = ++_lutSeq;   // 纹理上传的变更凭据
         _lutCache[g] = { key, lut: out };
         return out;
     }
 
-    // 图片亮度测度（与 Swift 的 Brightness 一致）：最亮通道均值的线性光均值、
-    // 最亮通道的对数平均、平均亮度，都编码回 sRGB 级（0..255）。
+    // 高光档要读「这张图的高光有多亮」，所以取最亮 10% 像素的平均亮度（sRGB 级）。
+    // 早先沿用 Compositor 的最亮通道对数平均（几何均值），实测会翻车：暗背景加一小块
+    // 天空的图（DSC09381 就是）几何均值只有 77，落进 53/80 这一档，而该档下高光 −100
+    // 是「压全图」——中间调 128 被压到 89、160 被压到 107，整张发灰；同一张图在 PS 里
+    // 只压顶部。改按高光端取值后这张图落到 160 档，128 只掉 3 级，与 LR 吻合。
+    // 理由：Photoshop 的自适应键描述的是「高光区有多亮」，不该被大片暗部拖低。
+    const HI_TOP_FRACTION = 0.10;
+
+    // 图片亮度测度（sRGB 级 0..255）：对比度用最亮通道线性光均值，阴影用平均亮度，
+    // 高光用高光端（见上）。缩略图上算，拖动滑块时不会重复采样。
     function measureBrightness(src) {
         const fallback = { con: 128, hi: 128, sh: 128 };
         if (!src || !src.naturalWidth) return fallback;
@@ -421,21 +747,30 @@
             const g = c.getContext('2d', { willReadFrequently: true });
             g.drawImage(src, 0, 0, w, h);
             const d = g.getImageData(0, 0, w, h).data;
-            let sumB = 0, sumL = 0, sumLog = 0, n = 0;
+            let sumB = 0, sumL = 0, n = 0;
+            const hist = new Uint32Array(256);   // 最亮通道的编码级直方图，供高光档取分位
             for (let i = 0; i < d.length; i += 4) {
                 if (d[i + 3] < 8) continue;
                 const r = d[i] / 255, gg = d[i + 1] / 255, b = d[i + 2] / 255;
                 const mx = Math.max(r, gg, b);
                 const lin = mx <= 0.04045 ? mx / 12.92 : Math.pow((mx + 0.055) / 1.055, 2.4);
                 const lum = 0.2126 * r + 0.7152 * gg + 0.0722 * b;
-                sumB += lin; sumL += lum; sumLog += Math.log(Math.max(1e-4, lin)); n++;
+                sumB += lin; sumL += lum; n++;
+                hist[Math.round(mx * 255)]++;
             }
             if (!n) return fallback;
             const enc = (v) => v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+            // 从最亮一级往下数满 10%，取这些像素的均值——对个别过曝斑点不敏感，
+            // 又不会被大面积暗部拉低。
+            let need = n * HI_TOP_FRACTION, sum = 0, weight = 0;
+            for (let v = 255; v >= 0 && need > 0; v--) {
+                const take = Math.min(hist[v], need);
+                if (take > 0) { sum += v * take; weight += take; need -= take; }
+            }
             return {
                 con: Math.round(enc(sumB / n) * 255),
                 sh: Math.round(enc(sumL / n) * 255),
-                hi: Math.round(enc(Math.exp(sumLog / n)) * 255)
+                hi: weight > 0 ? Math.round(sum / weight) : fallback.hi
             };
         } catch (_) { return fallback; }
     }

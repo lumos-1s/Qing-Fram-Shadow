@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('qingframe', {
     savePrefs: (p) => ipcRenderer.invoke('save-prefs', p),
     readExif: () => ipcRenderer.invoke('read-exif'),
     loadAcrTables: () => ipcRenderer.invoke('load-acr-tables'),
+    loadAcrShadows: () => ipcRenderer.invoke('load-acr-shadows'),
     openStickerImage: () => ipcRenderer.invoke('open-sticker-image'),
     listWallCovers: () => ipcRenderer.invoke('list-wall-covers'),
     openWallCoversDir: () => ipcRenderer.invoke('open-wall-covers-dir'),

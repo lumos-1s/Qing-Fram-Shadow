@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld('qingframe', {
     readExif: (filePath) => ipcRenderer.invoke('read-exif', filePath),
     // ACR 实测查找表（调色管线 ground truth，见 app-acr.js）
     loadAcrTables: () => ipcRenderer.invoke('load-acr-tables'),
+    // 阴影的空间自适应系数（见 app-acr-shadows.js）
+    loadAcrShadows: () => ipcRenderer.invoke('load-acr-shadows'),
     openStickerImage: () => ipcRenderer.invoke('open-sticker-image'),
     getAppInfo: () => ipcRenderer.invoke('get-app-info'),
     // 给渲染层同步判断平台用;不需要异步 invoke 就能决定快捷键显示/行为

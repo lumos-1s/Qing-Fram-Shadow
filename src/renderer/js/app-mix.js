@@ -210,7 +210,9 @@
                 for (const it of spec) {
                     const inp = $('sl' + it.id), lbl = $('lbl' + it.id);
                     if (inp) {
-                        this._gradeExtra[key][it.k] = { inp, lbl };
+                        // fmt：半径这类小数字段要自己决定显示（+0.5 不合适），
+                        // 没有就用默认的「带符号整数」
+                        this._gradeExtra[key][it.k] = { inp, lbl, fmt: it.fmt };
                         bind(inp, lbl, (v) => {
                             const cur = this.gradeOf(this.image);
                             const g = Object.assign({}, cur[key] || {}, { [it.k]: v });
@@ -219,7 +221,10 @@
                     }
                 }
             };
-            bindGroup(this.DET_FIELDS.map((f) => ({ k: f.k, id: 'Det' + f.k.charAt(0).toUpperCase() + f.k.slice(1) })), 'det');
+            // fmt 要一起带过去：半径是小数，默认的「带符号整数」会显示成 +0.8
+            bindGroup(this.DET_FIELDS.map((f) => ({
+                k: f.k, id: 'Det' + f.k.charAt(0).toUpperCase() + f.k.slice(1), fmt: f.fmt
+            })), 'det');
             bindGroup(this.CAL_FIELDS.map((f) => ({ k: f.k, id: 'Cal' + f.k.toUpperCase() })), 'cal');
             // 混色器：24 个滑块（8 带 × 3 项），patch 进 grade.mix
             for (const b of this.MIX_BANDS) {
@@ -273,7 +278,7 @@
             const setOne = (rec, v) => {
                 if (!rec) return;
                 rec.inp.value = String(v);
-                const text = fmt(v);
+                const text = rec.fmt ? rec.fmt(Number(v)) : fmt(v);
                 const id = rec.lbl ? rec.lbl.id : null;
                 if (id && typeof this.updateLabel === 'function') this.updateLabel(id, text);
                 else if (rec.lbl) rec.lbl.textContent = text;

@@ -158,6 +158,8 @@ if (!app.requestSingleInstanceLock()) {
     const MARKS_DIR = path.join(__dirname, '..', '..', 'shared', 'marks');
     // ACR 实测查找表（Camera Raw 滤镜 763 张 17³ 色格表，zlib 压缩；来源 Compositor，MIT）
     const ACR_TABLES_PATH = path.join(__dirname, '..', '..', 'shared', 'acr', 'cr-tables.bin');
+    // 阴影的空间自适应系数（同上来源；PS 渲染上拟合，CRS2 格式，25KB 不压缩）
+    const ACR_SHADOWS_PATH = path.join(__dirname, '..', '..', 'shared', 'acr', 'cr-shadows.bin');
     const TEMPLATES_DIR = path.join(app.getPath('userData'), 'templates');
     const { loadState, saveState, validDir, freeFilePath } = createStateStore(path.join(app.getPath('userData'), 'state.json'));
 
@@ -533,6 +535,13 @@ ipcMain.handle('load-acr-tables', () => {
         };
     } catch (_) { return null; }
 });
+ipcMain.handle('load-acr-shadows', () => {
+    try {
+        const raw = fs.readFileSync(ACR_SHADOWS_PATH);
+        if (raw.length < 34 || raw.slice(0, 4).toString('ascii') !== 'CRS2') return null;
+        return raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
+    } catch (_) { return null; }
+});
 ipcMain.handle('list-presets', () => {
     try {
         if (!fs.existsSync(PRESETS_DIR)) return [];
@@ -804,7 +813,10 @@ const cachedImages = (key, dir, exts) => {
 };
 const LOGO_EXTS = ['.png', '.jpg', '.jpeg', '.webp'];
 ipcMain.handle('list-logos', () => {
-    const builtin = cachedImages('logos', LOGOS_DIR, LOGO_EXTS);
+    // 内置目录通常为空(第三方 Logo 不进仓库/安装包):目录缺失也不能让整个 IPC 抛错,
+    // 否则渲染进程的 Logo 选择组会整块失效。
+    let builtin = [];
+    try { builtin = cachedImages('logos', LOGOS_DIR, LOGO_EXTS); } catch (_) { builtin = []; }
     let user = [];
     try { user = cachedImages('logos-user', USER_LOGOS_DIR, LOGO_EXTS); } catch (_) { user = []; }
     if (!user.length) return builtin;

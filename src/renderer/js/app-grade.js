@@ -212,6 +212,12 @@
 
     // ── 扩展档位（对齐 LR 的「细节 / 校准 / 混色器」） ──────────────
     const DET_FIELDS = [
+        // 锐化是 LR 的「捕获锐化」：XMP 里 SharpenAmount/Radius/Detail/EdgeMasking。
+        // 它不写进色调表（USM 是空间算子），走 syncChain 里独立的一级。
+        { k: 'shp', label: '锐化', min: 0, max: 150, hint: 'LR 捕获锐化：只作用于亮度，不产生彩边' },
+        { k: 'shr', label: '锐化半径', min: 0.3, max: 3, step: 0.1, fmt: (v) => (Math.round(v * 10) / 10).toFixed(1), hint: '按输出像素算：0.5～1.0 接近 LR 默认' },
+        { k: 'shd', label: '锐化细节', min: 0, max: 100, hint: '低值偏边缘、高值连细纹一起锐（近似）' },
+        { k: 'shm', label: '锐化蒙版', min: 0, max: 100, hint: '保护平滑区域（天空/皮肤），只锐边缘（近似）' },
         { k: 'clar', label: '清晰度', hint: '中间调立体感' },
         { k: 'tex', label: '纹理', hint: '表面细节' },
         { k: 'dhz', label: '去除薄雾', hint: '通透度：按 Camera Raw 的雾色反演，正档去雾、负档加雾' }
@@ -404,6 +410,8 @@
     }
 
     // 按「校准/纹理/清晰度是否启用 + 烘焙分辨率」重建子节点（分辨率变了模糊半径要跟着变）
+    // 锐化不在这里：它是带符号高通，SVG 滤镜的 arithmetic 会把负半边钳掉，
+    // 走 QfsSharpen 的 CPU pass（见 bakeOne），和阴影同一套做法。
     function syncChain(p, longPx, lutOn) {
         const f = ensureFilter();
         // 校准已并入三维表时这里不再叠矩阵
@@ -442,7 +450,26 @@
     }
 
     function defaultCal() { return { rh: 0, rs: 0, gh: 0, gs: 0, bh: 0, bs: 0 }; }
-    function defaultDet() { return { clar: 0, tex: 0, dhz: 0 }; }
+    // shr/shd 是 LR 的默认值（1.0 / 25）：预设里缺省时按它们补，见 app-xmp.js
+    function defaultDet() { return { clar: 0, tex: 0, dhz: 0, shp: 0, shr: 1, shd: 25, shm: 0 }; }
+    // 细节组不像别的组是纯 ±100：锐化量 0..150、半径 0.3..3.0（小数），
+    // 所以不能用 sanitizeGroup（它会把半径四舍五入成整数、把 0.5 抹成 1）。
+    function sanitizeDet(p) {
+        if (!p) return null;
+        const out = defaultDet();
+        const ci = (v) => Math.max(-100, Math.min(100, Math.round(Number(v) || 0)));
+        out.clar = ci(p.clar); out.tex = ci(p.tex); out.dhz = ci(p.dhz);
+        const shp = Number(p.shp);
+        out.shp = Number.isFinite(shp) ? Math.max(0, Math.min(150, Math.round(shp))) : 0;
+        const shr = Number(p.shr);
+        out.shr = Number.isFinite(shr) ? Math.round(Math.max(0.3, Math.min(3, shr)) * 10) / 10 : 1;
+        const shd = Number(p.shd);
+        out.shd = Number.isFinite(shd) ? Math.max(0, Math.min(100, Math.round(shd))) : 25;
+        const shm = Number(p.shm);
+        out.shm = Number.isFinite(shm) ? Math.max(0, Math.min(100, Math.round(shm))) : 0;
+        // 只有半径/细节被改、锐化量为 0 时视作没开（半径单独没有意义）
+        return detActive(out) ? out : null;
+    }
     // 只保留非零项，草稿里不塞一堆 0
     function sanitizeMix(m) {
         if (!m) return null;
@@ -519,7 +546,7 @@
         const C = window.QfsCurve;
         out.curve = C ? C.sanitizeCurve(p.curve) : null;
         out.cal = sanitizeGroup(p.cal, defaultCal);
-        out.det = sanitizeGroup(p.det, defaultDet);
+        out.det = sanitizeDet(p.det);
         out.mix = sanitizeMix(p.mix);
         out.cg = sanitizeCg(p.cg);
         out.bw = sanitizeBw(p.bw);
@@ -532,7 +559,7 @@
     }
 
     function calActive(c) { return !!(c && (c.rh || c.rs || c.gh || c.gs || c.bh || c.bs)); }
-    function detActive(d) { return !!(d && (d.clar || d.tex || d.dhz)); }
+    function detActive(d) { return !!(d && (d.clar || d.tex || d.dhz || d.shp)); }
     function mixActive(m) {
         if (!m) return false;
         for (const b of MIX_BANDS) {
@@ -765,7 +792,7 @@
     function filterString(p, longPx, lutOn) {
         syncChain(p, longPx || 0, !!lutOn);
         const parts = [];
-        const sh = Number(p.sh) || 0, hi = Number(p.hi) || 0, tp = Number(p.temp) || 0;
+        const hi = Number(p.hi) || 0, tp = Number(p.temp) || 0;
         const tn = Number(p.tint) || 0;
         const wht = Number(p.white) || 0, blk = Number(p.black) || 0;
         const exp = Number(p.exp) || 0;
@@ -776,7 +803,8 @@
         // 否则只开校准/USM 时会残留上一次烘焙的表值。
         // 曝光也在这张表里（线性光乘 2^EV），不再用 brightness()。
         const gamOn = Number(p.gam) || 0;
-        if (sh || hi || tp || tn || wht || blk || exp || gamOn || curved
+        // 阴影不进表：它由 QfsShadows 的空间 pass 负责（见 bakeOne）
+        if (hi || tp || tn || wht || blk || exp || gamOn || curved
             || (Number(p.con) || 0)
             || cbActive(p.cb) || gmActive(p.gm)
             || calOn || detActive(p.det)) {
@@ -813,12 +841,41 @@
     // 三维表：它们对红黄蓝的作用各不相同，逐通道 LUT 和手写公式都学不像 PS。
     // 表/WebGL 任一不可用时整段退回旧路径（QfsMix + shader 里的 vib/cg），
     // 功能不缺失，只是精度回到公式。
+    // 阴影 pass 的「画布内容」凭据，用来复用它的引导滤波场。
+    // 只能按参数自己拼：filterString 里只有 url(#id)，参数一换表就换、字符串却不变。
+    // sh 本身**不在**键里 —— 拖阴影滑块时场完全没变，正是要命中的场景。
+    const _shSrcId = new WeakMap();
+    let _shSrcSeq = 0;
+    function shadowKey(p, tw, th, src, withMix) {
+        // src 一定是 Image/Canvas；真遇到别的类型就不进缓存（宁可慢，不能崩）
+        let id = 0;
+        if (src && typeof src === 'object') {
+            id = _shSrcId.get(src);
+            if (!id) { id = ++_shSrcSeq; _shSrcId.set(src, id); }
+        }
+        const C = window.QfsCurve;
+        const sig = (C && C.curveActive(p.curve)) ? C.curveSignature(p.curve) : '-';
+        const n = (v) => Number(v) || 0;
+        const parts = [id, tw, th, n(p.exp), n(p.temp), n(p.tint), n(p.con), n(p.hi),
+            n(p.white), n(p.black), n(p.gam), sig,
+            p.cb ? JSON.stringify(p.cb) : '', p.gm ? JSON.stringify(p.gm) : '',
+            p.det ? JSON.stringify(p.det) : ''];
+        // 没有三维表时，混色器走前置 GL pass、饱和度/校准走 CSS 滤镜，画布内容就
+        // 跟着这些量变，键里必须带上（有表时它们全在 LUT 里，不必进键，否则拖
+        // 饱和度滑块会白白错过缓存）。
+        if (withMix) {
+            parts.push(JSON.stringify(p.mix || 0), n(p.sat), JSON.stringify(p.cal || 0));
+        }
+        return parts.join(',');
+    }
+
     function bakeOne(src, params, tw, th) {
         let drawSrc = src;
         // 预览用小网格、定稿用大网格：33³ 合成约 6ms，25³ 约 3ms，而两者逐点
         // 平均只差 0.3/255 级（肉眼不可见）。拖动时省下的 3ms 更值钱。
         const lutGrid = Math.max(tw, th) <= GRID_PREVIEW_MAX ? 25 : 33;
-        let lut = (window.QfsAcr && window.QfsAcr.ready()) ? window.QfsAcr.colorLut(params, lutGrid) : null;
+        let lut = (window.QfsAcr && window.QfsAcr.ready())
+            ? window.QfsAcr.colorLut(params, lutGrid, acrBrightness()) : null;
         const useLut = !!lut && !!(window.QfsColor && window.QfsColor.usingGL());
         if (!useLut) lut = null;
         // 混色器已并进三维表，就不再需要前置的 GL 混色 pass
@@ -835,10 +892,20 @@
         if (fs) g.filter = fs;
         g.drawImage(drawSrc, 0, 0, tw, th);
         if (fs) g.filter = 'none';
+        // 锐化不在这里：带蒙版的照片每一层都会走 bakeOne，放这儿会被锐化两遍。
+        // 它是全局的（LR 的捕获锐化同样不分蒙版），统一在 bake() 合成完再做一次。
+        // 阴影：ACR 的阴影是空间自适应的，逐通道查找表做不出那个形状，所以单独跑一遍
+        // 像素 pass（在色调之后、跨通道三维表之前，与 Camera Raw 的顺序一致）。
+        // 系数表没就绪时静默跳过——不能退回全局表，那正是要修掉的错误形状。
+        const shAmt = Number(params.sh) || 0;
+        const shOn = shAmt && window.QfsShadows && window.QfsShadows.ready();
+        if (shOn) {
+            window.QfsShadows.applyCanvas(c, shAmt, shadowKey(params, tw, th, src, !useLut));
+        }
         // 后置 pass 的顺序（对齐 Compositor）：先几何（畸变重采样），再上三维颜色表，
         // 最后黑白（PS 的黑白混色器没有实测表，仍走公式）。
         // 旧路径下 vib / cg 也在这里（按像素自己的饱和度/亮度选区，LUT 表达不了）。
-        if (useLut || bwActive(params.bw) || lcActive(params.lc)
+        if (shOn || useLut || bwActive(params.bw) || lcActive(params.lc)
             || (!useLut && ((Number(params.vib) || 0) || cgActive(params.cg)))
             || (Number(params.det && params.det.dhz) || 0)) {
             const haze = (Number(params.det && params.det.dhz) || 0) ? acrHaze() : null;
@@ -949,6 +1016,21 @@
             prevKey = key;
         }
         if (grps.length === 0) slot.chain.length = 0;
+
+        // 锐化：蒙版合成完之后做一次，且必须落到**新画布**上 ——
+        // cur 可能直接就是 slot.base 缓存，就地改会越叠越锐（每渲染一次再加一遍）。
+        // 参数先问一遍：低分辨率烘焙（拖动时的 1600px）会返回 null，不锐化，
+        // 这时连那张拷贝画布都不用建。
+        if (window.QfsSharpen && window.QfsSharpen.paramsOf(p.det, Math.max(tw, th), Math.max(W, H))) {
+            const sc = document.createElement('canvas');
+            sc.width = tw; sc.height = th;
+            const sg = sc.getContext('2d');
+            if (sg) {
+                sg.drawImage(cur, 0, 0);
+                window.QfsSharpen.applyCanvas(sc, p.det, Math.max(tw, th), Math.max(W, H));
+                cur = sc;
+            }
+        }
 
         // canvas 没有 naturalWidth/naturalHeight，但引擎里到处用它算 fit / 比例 /
         // 自适应字号（autoExifSize = 档位 × clamp(照片宽/1200)）。
