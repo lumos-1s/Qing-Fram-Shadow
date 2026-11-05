@@ -1940,6 +1940,11 @@ window.App = {
         const q = (sel) => Array.prototype.slice.call(document.querySelectorAll(sel));
         q('.ctl-grp-layers').forEach(el => { el.style.display = showLayers ? '' : 'none'; });
         q('.ctl-grp-light').forEach(el => { el.style.display = showLight ? '' : 'none'; });
+        // 「照片同步画幅」只有默认图层管线（engine.js 的 drawOriginImage）读 canvasSync。
+        // 相框风格自己排版照片、卡片/模糊底走 renderCardStyle，两条管线都不看这个字段：
+        // 露出来只会是“勾了没反应”。这里按当前实际渲染管线隐藏，切回默认模板时自动恢复。
+        const syncRow = document.getElementById('rowCanvasSync');
+        if (syncRow) syncRow.style.display = (frame || card) ? 'none' : '';
         // 齿孔掩膜只在默认图层管线读 filmTearConfig;相框样式 / 卡片(模糊底)渲染不走该管线(整组隐藏)
         // 「氛围」三组（暗角/漏光/颗粒）已并入调色页签，不再整页签隐藏：
         // 相框样式管线不支持它们时只隐藏这三组，调色的其余档位照常可用。

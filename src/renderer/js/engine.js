@@ -186,12 +186,22 @@ function setupCanvas(app, canvasW, canvasH) {
     const uiScale = (typeof app.exportScale === 'number' && app.exportScale > 0)
         ? app.exportScale / Math.max(canvasW, canvasH)
         : ui;
+    // 显示比例 ≠ 渲染比例：手势期 beginGesture 会把 displayMax 压到 900 做低清预览，
+    // 但降清只该减少画布像素，绝不能改变画面在屏幕上的尺寸。否则拖暗角/漏光/颗粒这类
+    // 走 bindRanges→beginGesture 的滑块时，_logW 跟着 displayMax 一起变小，
+    // applyZoomStyle 按它算 CSS 宽度 → 照片缩一圈，松手再弹回（照片"变小"）。
+    // 相框/卡片风格管线早已按「手势前的 displayMax」算显示比例（见 engine-styles 的
+    // displayScale），这里补上同一条规则，让默认模板/卡片/拼图管线也一致。
+    const sizeMax = (app._gesture && app._gesturePrevMax != null) ? app._gesturePrevMax : displayMax;
+    const displayScale = (typeof app.exportScale === 'number' && app.exportScale > 0)
+        ? uiScale
+        : Math.min(1, sizeMax / Math.max(canvasW, canvasH));
     const scale = uiScale * dpr;
     canvas.width = Math.max(1, Math.round(canvasW * scale));
     canvas.height = Math.max(1, Math.round(canvasH * scale));
     // 逻辑显示尺寸(CSS 像素),供 applyZoomStyle 使用(与后备缓冲解耦,不会因 DPR 放得更大)
-    canvas._logW = Math.max(1, Math.round(canvasW * uiScale));
-    canvas._logH = Math.max(1, Math.round(canvasH * uiScale));
+    canvas._logW = Math.max(1, Math.round(canvasW * displayScale));
+    canvas._logH = Math.max(1, Math.round(canvasH * displayScale));
     // 基准坐标(模板/照片矩形都是这套单位) → 逻辑显示坐标的比例。
     // 大图会被 uiScale 缩到 displayMax,叠加层/指针换算必须乘它,否则蒙版范围会错位成一个小矩形。
     app._canvasScale = uiScale;

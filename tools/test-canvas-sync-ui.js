@@ -7,6 +7,7 @@
 //  ③ 勾选 + 画布比例 1:1 → 渲染后照片 cover 内容区(photoRect 覆盖内容区,比例=原图)
 //  ④ 取消勾选 → photoRect 回到完整原图比例(不放大)
 //  ⑤ template.canvasSync=1 → syncUI 回显勾选状态
+//  ⑥ 相框风格 / 卡片(模糊底)管线不读 canvasSync → 开关整行隐藏;回默认模板后恢复
 'use strict';
 
 const fs = require('fs');
@@ -191,6 +192,29 @@ async function main() {
         return { checked: document.getElementById('cbCanvasSync').checked };
     })()`);
     check(echo.checked === true, '⑤ 模型 canvasSync=1 时 UI 回显勾选', `checked=${echo.checked}`);
+
+    /* ⑥ 开关只在默认图层管线可见:相框/卡片下隐藏,回默认恢复 */
+    const vis = await exec(`(() => {
+        const A = window.App;
+        const row = () => document.getElementById('rowCanvasSync');
+        const visible = () => !!row() && getComputedStyle(row()).display !== 'none';
+        const base = visible();
+        A.template.photoFrameStyle = 'POLAROID';
+        A.refreshUI();
+        const frame = visible();
+        A.template.photoFrameStyle = '';
+        A.template.baseMargin.bgBlurEnable = 1;
+        A.refreshUI();
+        const card = visible();
+        A.template.baseMargin.bgBlurEnable = 0;
+        A.refreshUI();
+        const back = visible();
+        return { base, frame, card, back };
+    })()`);
+    check(vis.base === true, '⑥ 默认模板下开关可见', `visible=${vis.base}`);
+    check(vis.frame === false, '⑥ 相框风格下开关隐藏(引擎不读 canvasSync)', `visible=${vis.frame}`);
+    check(vis.card === false, '⑥ 卡片/模糊底管线隐藏', `visible=${vis.card}`);
+    check(vis.back === true, '⑥ 切回默认模板后恢复可见', `visible=${vis.back}`);
 
     app.quit();
     if (failures.length) {
