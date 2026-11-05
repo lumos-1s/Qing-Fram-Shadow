@@ -50,6 +50,9 @@ ipcMain.handle('load-acr-tables', () => {
             data: planes.buffer.slice(planes.byteOffset, planes.byteOffset + planes.byteLength) };
     } catch (_) { return null; }
 });
+// 阴影增强表不参与这些用例：返回 null 让渲染侧按「没有表」安静降级，
+// 否则每次运行都会刷一串 "No handler registered for 'load-acr-shadows'"。
+ipcMain.handle('load-acr-shadows', () => null);
 ipcMain.handle('get-app-info', () => ({
     version: '0.1.21', electron: '45', chrome: '1', node: '1',
     platform: 'win32', arch: 'x64', packaged: false, portable: false, userData: process.env.TEMP, appPath: ROOT

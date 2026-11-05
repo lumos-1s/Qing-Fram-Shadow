@@ -45,6 +45,8 @@ for (const c of ['open-image', 'open-images', 'open-sticker-image', 'import-temp
     'save-image-base64', 'save-images-batch', 'pick-export-location', 'write-export-files', 'read-exif', 'load-acr-tables']) {
     ipcMain.handle(c, () => ({ canceled: true }));
 }
+// 阴影增强表不存在时渲染侧会安静降级；这里显式回应，避免刷 "No handler registered"。
+ipcMain.handle('load-acr-shadows', () => null);
 
 // 覆盖不同尺寸模型:照片铺满 / 留白 / 信息条 / 边框 / 拼贴
 const WANTED = 14;

@@ -35,6 +35,9 @@ window.App = {
     _comparePending: false,  // 本帧是否为「对比原图」旁路帧(见 setCompare)
     undoStack: [],
     redoStack: [],
+    // 撤销/重做按图片分开存：切图时交换当前栈，回来还能继续撤。
+    // WeakMap 以图片对象为键，删除图片后历史随之释放，不需要手动清理。
+    historyByImage: new WeakMap(),
     _gesture: false,
     isUpdating: false,
     draggingCompare: false,
@@ -66,10 +69,31 @@ window.App = {
             const raw = localStorage.getItem('qfs_last_state');
             if (!raw) return;
             const s = JSON.parse(raw);
+            // 「联名水印」旧版默认对齐是左下(0)，与联名水印官方版式(底部居中)不符。
+            // 老草稿没有 xmAlignV 标记时迁移一次为居中；用户之后手动选左下会带标记保存，正常记住。
+            if (s.xmLeica && typeof s.xmLeica === 'object' && Number(s.xmAlignV) < 2) s.xmLeica.align = 1;
             // 找到对应预设并选中
             if (s.presetName && this.presets) {
-                const p = this.presets.find(x => x.name === s.presetName);
-                if (p) { this.selectPreset(p); return; }
+                // 去品牌化改名：旧草稿里还写着旧名字，映射到新预设，避免恢复时丢掉选中态
+                const PRESET_RENAMED = { '小米徕卡水印': '联名水印' };
+                const wanted = PRESET_RENAMED[s.presetName] || s.presetName;
+                const p = this.presets.find(x => x.name === wanted);
+                if (p) {
+                    this.selectPreset(p);
+                    // 预设只提供外观基线:上次改过的苹果信息卡(文本/颜色/字号/显隐)优先恢复
+                    if (s.appleCard && typeof s.appleCard === 'object' && this.template) {
+                        this.template.appleCard = s.appleCard;
+                        this.refreshUI();
+                        this.scheduleRender();
+                    }
+                    // 联名水印同理
+                    if (s.xmLeica && typeof s.xmLeica === 'object' && this.template) {
+                        this.template.xmLeica = s.xmLeica;
+                        this.refreshUI();
+                        this.scheduleRender();
+                    }
+                    return;
+                }
             }
             // 没找到预设就只恢复关键字段
             if (s.photoFrameStyle && this.template) {
@@ -92,6 +116,8 @@ window.App = {
                 if (s.liquidGlassDate != null) this.template.liquidGlassDate = s.liquidGlassDate;
                 if (typeof s.polaroidCaption === 'string') this.template.polaroidCaption = s.polaroidCaption;
                 if (typeof s.hassyCaption === 'string') this.template.hassyCaption = s.hassyCaption;
+                if (s.appleCard && typeof s.appleCard === 'object') this.template.appleCard = s.appleCard;
+                if (s.xmLeica && typeof s.xmLeica === 'object') this.template.xmLeica = s.xmLeica;
                 // 用户显式记忆过「背景模糊默认开/关」时，它优先于旧草稿里的单次值。
                 if (typeof this.applyBgBlurDefault === 'function') this.applyBgBlurDefault(this.template);
                 this.refreshUI();
@@ -598,6 +624,97 @@ window.App = {
         if (inpPC) inpPC.addEventListener('input', () => { this.template.polaroidCaption = inpPC.value; this.onSettingChanged(); });
         const inpHC = document.getElementById('inpHassyCaption');
         if (inpHC) inpHC.addEventListener('input', () => { this.template.hassyCaption = inpHC.value; this.onSettingChanged(); });
+        // 苹果信息卡:日期 / 颜色(即时写入模板并重绘;复选框走通用 chks + syncModelFromUI)。
+        // 品牌/型号/参数不在这里另开输入 —— 它们统一由下方「相机参数(自动识别)」驱动。
+        [['tfAppleDate', 'dateText']].forEach(([id, key]) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', () => {
+                const ac = this.template.appleCard || (this.template.appleCard = {});
+                ac[key] = el.value;
+                this.onSettingChanged();
+            });
+        });
+        [['cpAppleText', 'textColor'], ['cpAppleSub', 'subColor'], ['cpAppleLine', 'lineColor'],
+         ['cpAppleBarBg', 'barBg']].forEach(([id, key]) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', () => {
+                const ac = this.template.appleCard || (this.template.appleCard = {});
+                ac[key] = el.value;
+                this.onSettingChanged();
+            });
+        });
+        const cbAF = document.getElementById('cbAppleFont');
+        if (cbAF) cbAF.addEventListener('change', () => {
+            const ac = this.template.appleCard || (this.template.appleCard = {});
+            ac.fontFamily = cbAF.value;
+            this.onSettingChanged();
+        });
+        // 联名水印:文本/颜色/对齐(即时写入模板并重绘;滑块走通用 slXm* 分支)
+        [['tfXmBrand', 'brandText'], ['tfXmLine1', 'line1'], ['tfXmLine2', 'line2'], ['tfXmPartner', 'partnerBrand']].forEach(([id, key]) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', () => {
+                const xc = this.template.xmLeica || (this.template.xmLeica = {});
+                xc[key] = el.value;
+                this.onSettingChanged();
+            });
+        });
+        [['cpXmText', 'textColor'], ['cpXmSub', 'subColor'], ['cpXmDiv', 'divColor']].forEach(([id, key]) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', () => {
+                const xc = this.template.xmLeica || (this.template.xmLeica = {});
+                xc[key] = el.value;
+                this.onSettingChanged();
+            });
+        });
+        const cbXmAlign = document.getElementById('cbXmAlign');
+        if (cbXmAlign) cbXmAlign.addEventListener('change', () => {
+            const xc = this.template.xmLeica || (this.template.xmLeica = {});
+            xc.align = Number(cbXmAlign.value) || 0;
+            this.onSettingChanged();
+        });
+        // 联名水印的「显示」开关必须单独接:它们不经过通用 checkbox 通道
+        [['chkXmShowDiv', 'showDiv'], ['chkXmShowScrim', 'showScrim']].forEach(([id, key]) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('change', () => {
+                const xc = this.template.xmLeica || (this.template.xmLeica = {});
+                xc[key] = el.checked ? 1 : 0;
+                this.onSettingChanged();
+            });
+        });
+        const slXmBT = document.getElementById('slXmBrandTrack');
+        if (slXmBT) slXmBT.addEventListener('input', () => {
+            const xc = this.template.xmLeica || (this.template.xmLeica = {});
+            xc.brandTracking = Number(slXmBT.value) / 100;
+            this.updateLabel('lblXmBrandTrack', slXmBT.value + '%');
+            this.onSettingChanged();
+        });
+        const cbXmLW = document.getElementById('cbXmLineWeight');
+        if (cbXmLW) cbXmLW.addEventListener('change', () => {
+            const xc = this.template.xmLeica || (this.template.xmLeica = {});
+            xc.lineWeight = Number(cbXmLW.value) || 600;
+            this.onSettingChanged();
+        });
+        const cpXmL = document.getElementById('cpXmLogo');
+        if (cpXmL) cpXmL.addEventListener('input', () => {
+            const xc = this.template.xmLeica || (this.template.xmLeica = {});
+            xc.logoColor = cpXmL.value;
+            xc.logoRaw = 0;
+            const raw = document.getElementById('chkXmLogoRaw');
+            if (raw) raw.checked = false;
+            this.onSettingChanged();
+        });
+        const chkLR = document.getElementById('chkXmLogoRaw');
+        if (chkLR) chkLR.addEventListener('change', () => {
+            const xc = this.template.xmLeica || (this.template.xmLeica = {});
+            xc.logoRaw = chkLR.checked ? 1 : 0;
+            this.onSettingChanged();
+        });
+        const cbXmFont = document.getElementById('cbXmFont');
+        if (cbXmFont) cbXmFont.addEventListener('change', () => {
+            const xc = this.template.xmLeica || (this.template.xmLeica = {});
+            xc.fontFamily = cbXmFont.value;
+            this.onSettingChanged();
+        });
         const cbF = document.getElementById('cbSignFont');
         if (cbF) cbF.addEventListener('change', () => { this.template.signFont = cbF.value; this.onSettingChanged(); });
         const cbC = document.getElementById('cbSignColor');
@@ -1422,6 +1539,26 @@ window.App = {
                 cornerDecorEnable: 0, cornerDecorType: 'line', cornerDecorSize: 30,
             },
             logoElements: [],
+            // 苹果信息卡的全部可自定义项(其余风格不读;空串 = 自动)
+            appleCard: {
+                dateText: '',
+                showBrand: 1, showModel: 1, showParams: 1, showDate: 1,
+                showLogo: 1, showLine: 1,
+                modelScale: 1, paramScale: 1, dateScale: 1, logoScale: 1,
+                logoOpacity: 60, lineScale: 1, fontFamily: 'Trebuchet MS',
+                textColor: '#1d1d1f', subColor: '#86868b', lineColor: '#d2d2d7',
+                barBg: '#ffffff',
+            },
+            // 联名水印的全部可自定义项(空串 = 自动;Logo/品牌显示与参数字号走通用控件)
+            xmLeica: {
+                brandText: '', line1: '', line2: 'CLASSIC · 影像定制', partnerBrand: '',
+                showDiv: 1, showScrim: 1, align: 1,
+                brandScale: 1, brandTracking: 0.16, lineWeight: 600,
+                lineScale: 1, logoScale: 1, logoOpacity: 100, logoColor: '#ffffff', logoRaw: 1,
+                padScale: 1, scrim: 45,
+                fontFamily: 'Courier New',
+                textColor: '#ffffff', subColor: '#d9d9d9', divColor: '#ffffff',
+            },
             paramFontSize: 33, paramType: 0, paramPosition: 'CENTER',
             userSignature: this.DEFAULT_SIGNATURE,
             puzzle: {
@@ -1469,6 +1606,62 @@ window.App = {
         this.template.userSignature = $('inpSignature') ? $('inpSignature').value : '';
         this.template.polaroidCaption = $('inpPolaroidCaption') ? $('inpPolaroidCaption').value : '';
         this.template.hassyCaption = $('inpHassyCaption') ? $('inpHassyCaption').value : '';
+        // 苹果信息卡:只在当前风格确实是 CARD_APPLE 时回读 DOM,避免用隐藏行的旧值污染别的模板。
+        if (String(this.template.photoFrameStyle || '').toUpperCase() === 'CARD_APPLE') {
+            const ac = this.template.appleCard || (this.template.appleCard = {});
+            const rdStr = (id, key) => { const el = $(id); if (el) ac[key] = el.value; };
+            rdStr('tfAppleDate', 'dateText');
+            rdStr('cbAppleFont', 'fontFamily');
+            const rdChk = (id, key) => { const el = $(id); if (el) ac[key] = el.checked ? 1 : 0; };
+            rdChk('chkAppleShowBrand', 'showBrand');
+            rdChk('chkAppleShowModel', 'showModel');
+            rdChk('chkAppleShowParams', 'showParams');
+            rdChk('chkAppleShowDate', 'showDate');
+            rdChk('chkAppleShowLogo', 'showLogo');
+            rdChk('chkAppleShowLine', 'showLine');
+            const rdNum = (id, key, div) => { const el = $(id); if (el) ac[key] = Number(el.value) / (div || 1); };
+            rdNum('slAppleModelSize', 'modelScale', 100);
+            rdNum('slAppleParamSize', 'paramScale', 100);
+            rdNum('slAppleDateSize', 'dateScale', 100);
+            rdNum('slAppleLogoSize', 'logoScale', 100);
+            rdNum('slAppleLogoOpacity', 'logoOpacity', 1);
+            rdNum('slAppleLineWidth', 'lineScale', 100);
+            const rdCol = (id, key) => { const el = $(id); if (el && el.value) ac[key] = el.value; };
+            rdCol('cpAppleText', 'textColor');
+            rdCol('cpAppleSub', 'subColor');
+            rdCol('cpAppleLine', 'lineColor');
+            rdCol('cpAppleBarBg', 'barBg');
+        }
+        // 联名水印:只在当前风格确实是 XIAOMI_LEICA 时回读 DOM,避免隐藏行旧值污染别的模板
+        if (String(this.template.photoFrameStyle || '').toUpperCase() === 'XIAOMI_LEICA') {
+            const xc = this.template.xmLeica || (this.template.xmLeica = {});
+            const xrStr = (id, key) => { const el = $(id); if (el) xc[key] = el.value; };
+            xrStr('tfXmBrand', 'brandText');
+            xrStr('tfXmLine1', 'line1');
+            xrStr('tfXmLine2', 'line2');
+            xrStr('tfXmPartner', 'partnerBrand');
+            const xrChk = (id, key) => { const el = $(id); if (el) xc[key] = el.checked ? 1 : 0; };
+            xrChk('chkXmShowDiv', 'showDiv');
+            xrChk('chkXmShowScrim', 'showScrim');
+            if ($('cbXmAlign')) xc.align = Number($('cbXmAlign').value) || 0;
+            if ($('cbXmFont') && $('cbXmFont').value) xc.fontFamily = $('cbXmFont').value;
+            const xrBT = $('slXmBrandTrack');
+            if (xrBT) xc.brandTracking = Number(xrBT.value) / 100;
+            if ($('cbXmLineWeight')) xc.lineWeight = Number($('cbXmLineWeight').value) || 600;
+            if ($('cpXmLogo') && $('cpXmLogo').value) xc.logoColor = $('cpXmLogo').value;
+            if ($('chkXmLogoRaw')) xc.logoRaw = $('chkXmLogoRaw').checked ? 1 : 0;
+            const xrNum = (id, key, div) => { const el = $(id); if (el) xc[key] = Number(el.value) / (div || 1); };
+            xrNum('slXmBrandSize', 'brandScale', 100);
+            xrNum('slXmLineSize', 'lineScale', 100);
+            xrNum('slXmLogoSize', 'logoScale', 100);
+            xrNum('slXmLogoOpacity', 'logoOpacity', 1);
+            xrNum('slXmPad', 'padScale', 100);
+            xrNum('slXmScrim', 'scrim', 1);
+            const xrCol = (id, key) => { const el = $(id); if (el && el.value) xc[key] = el.value; };
+            xrCol('cpXmText', 'textColor');
+            xrCol('cpXmSub', 'subColor');
+            xrCol('cpXmDiv', 'divColor');
+        }
         this.template.paramType = $('cbParamType') ? parseInt($('cbParamType').value, 10) : 0;
         this.syncManualExif();
 
@@ -1804,7 +1997,76 @@ window.App = {
             if ($('inpSignature')) $('inpSignature').value = this.template.userSignature || '';
             if ($('inpPolaroidCaption')) $('inpPolaroidCaption').value = this.template.polaroidCaption || '';
             if ($('inpHassyCaption')) $('inpHassyCaption').value = this.template.hassyCaption || '';
-            if ($('cbSignFont')) $('cbSignFont').value = this.template.signFont || 'cursive';
+            // 苹果信息卡回填(缺省值 = 引擎默认值)
+            {
+                const ac = this.template.appleCard || {};
+                const wrStr = (id, key) => { if ($(id)) $(id).value = ac[key] || ''; };
+                wrStr('tfAppleDate', 'dateText');
+                if ($('cbAppleFont')) $('cbAppleFont').value = ac.fontFamily || 'Trebuchet MS';
+                const wrChk = (id, key) => { if ($(id)) $(id).checked = ac[key] == null ? true : !!Number(ac[key]); };
+                wrChk('chkAppleShowBrand', 'showBrand');
+                wrChk('chkAppleShowModel', 'showModel');
+                wrChk('chkAppleShowParams', 'showParams');
+                wrChk('chkAppleShowDate', 'showDate');
+                wrChk('chkAppleShowLogo', 'showLogo');
+                wrChk('chkAppleShowLine', 'showLine');
+                const wrNum = (id, key, mul, lbl, def) => {
+                    if (!$(id)) return;
+                    const v = Math.round((ac[key] != null ? Number(ac[key]) : def) * mul);
+                    $(id).value = v;
+                    this.updateLabel(lbl, v + '%');
+                };
+                wrNum('slAppleModelSize', 'modelScale', 100, 'lblAppleModelSize', 1);
+                wrNum('slAppleParamSize', 'paramScale', 100, 'lblAppleParamSize', 1);
+                wrNum('slAppleDateSize', 'dateScale', 100, 'lblAppleDateSize', 1);
+                wrNum('slAppleLogoSize', 'logoScale', 100, 'lblAppleLogoSize', 1);
+                wrNum('slAppleLogoOpacity', 'logoOpacity', 1, 'lblAppleLogoOpacity', 60);
+                wrNum('slAppleLineWidth', 'lineScale', 100, 'lblAppleLineWidth', 1);
+                const wrCol = (id, key, def) => { if ($(id)) $(id).value = ac[key] || def; };
+                wrCol('cpAppleText', 'textColor', '#1d1d1f');
+                wrCol('cpAppleSub', 'subColor', '#86868b');
+                wrCol('cpAppleLine', 'lineColor', '#d2d2d7');
+                wrCol('cpAppleBarBg', 'barBg', '#ffffff');
+            }
+            // 联名水印回填(缺省值 = 引擎默认值)
+            {
+                const xc = this.template.xmLeica || {};
+                const xwStr = (id, key) => { if ($(id)) $(id).value = xc[key] || ''; };
+                xwStr('tfXmBrand', 'brandText');
+                xwStr('tfXmLine1', 'line1');
+                xwStr('tfXmLine2', 'line2');
+                xwStr('tfXmPartner', 'partnerBrand');
+                const xwChk = (id, key, def) => { if ($(id)) $(id).checked = xc[key] == null ? def : !!Number(xc[key]); };
+                xwChk('chkXmShowDiv', 'showDiv', true);
+                xwChk('chkXmShowScrim', 'showScrim', true);
+                if ($('cbXmAlign')) $('cbXmAlign').value = String(xc.align != null ? xc.align : 1);
+                if ($('cbXmFont')) $('cbXmFont').value = xc.fontFamily || 'Courier New';
+                if ($('slXmBrandTrack')) {
+                    const bt = Math.round((xc.brandTracking != null ? xc.brandTracking : 0.16) * 100);
+                    $('slXmBrandTrack').value = bt;
+                    this.updateLabel('lblXmBrandTrack', bt + '%');
+                }
+                if ($('cbXmLineWeight')) $('cbXmLineWeight').value = String(xc.lineWeight || 600);
+                if ($('cpXmLogo')) $('cpXmLogo').value = xc.logoColor || '#ffffff';
+                if ($('chkXmLogoRaw')) $('chkXmLogoRaw').checked = xc.logoRaw == null ? true : !!Number(xc.logoRaw);
+                const xwNum = (id, key, mul, lbl, def) => {
+                    if (!$(id)) return;
+                    const v = Math.round((xc[key] != null ? Number(xc[key]) : def) * mul);
+                    $(id).value = v;
+                    this.updateLabel(lbl, v + '%');
+                };
+                xwNum('slXmBrandSize', 'brandScale', 100, 'lblXmBrandSize', 1);
+                xwNum('slXmLineSize', 'lineScale', 100, 'lblXmLineSize', 1);
+                xwNum('slXmLogoSize', 'logoScale', 100, 'lblXmLogoSize', 1);
+                xwNum('slXmLogoOpacity', 'logoOpacity', 1, 'lblXmLogoOpacity', 100);
+                xwNum('slXmPad', 'padScale', 100, 'lblXmPad', 1);
+                xwNum('slXmScrim', 'scrim', 1, 'lblXmScrim', 45);
+                const xwCol = (id, key, def) => { if ($(id)) $(id).value = xc[key] || def; };
+                xwCol('cpXmText', 'textColor', '#ffffff');
+                xwCol('cpXmSub', 'subColor', '#d9d9d9');
+                xwCol('cpXmDiv', 'divColor', '#ffffff');
+            }
+            if ($('cbSignFont')) $('cbSignFont').value = this.template.signFont || 'Courier New';
             if ($('cbSignColor')) $('cbSignColor').value = this.template.signColor || '#555';
             if ($('chkSignModel')) $('chkSignModel').checked = !!(this.template.signIncludeModel);
             if ($('cbCreditMode')) $('cbCreditMode').value = String(this.template.creditMode || 0);
@@ -2086,7 +2348,12 @@ window.App = {
         // 普通单击/切换 = 单选:连批量勾选也一并取消,只保留当前这张
         this.batchSel = [idx];
         this.currentIdx = idx;
+        // 撤销历史跟着图片走:先把上一张的栈存起来，再换回目标图自己的栈。
+        // 不换的话，切图后 Ctrl+Z 会把上一张的模板/调色写到当前图（见 app-state undo）。
+        if (typeof this._swapHistory === 'function') this._swapHistory(this.images[idx]);
         this.image = this.images[idx];
+        // 换图即使宽高恰好相同也要重新适配(苹果信息卡的高度豁免只针对"调参数")
+        this._forceFitNext = true;
         // 切图时退出蒙版「原图预览」：预览属于上一张照片的编辑上下文，
         // 不清的话新图会一直显示未调色源，而蒙版面板已经不在了（看起来就是调色丢了）
         if (this._maskPreviewOriginal) {
@@ -2406,6 +2673,7 @@ window.App = {
             this.image = null;
             this.currentIdx = 0;
             this.selectedEls = [];
+            if (typeof this._resetHistory === 'function') this._resetHistory();
         } else if (cur) {
             this.currentIdx = this.images.indexOf(cur);
         }
@@ -2507,6 +2775,7 @@ window.App = {
             this.template = null;
             this.selectedEls = [];
             this.currentIdx = 0;
+            if (typeof this._resetHistory === 'function') this._resetHistory();
             this.updateEmptyState();
             if (this.dom.stRes) this.dom.stRes.textContent = '';
             if (this.dom.stInfo) this.dom.stInfo.textContent = '';
@@ -2904,9 +3173,15 @@ window.App = {
             'slVignetteStrength', 'slVignetteFeather', 'slLeakOpacity', 'slLeakAngle', 'slFilmGrain',
             'slCornerDecorSize', 'slActiveIconOpacity', 'slElementRotation', 'slPuzzleGap', 'slPuzzleCorner',
             'slCapSize1', 'slCapSize2', 'slCapSpacing', 'slSlotOffsetX', 'slSlotOffsetY', 'slSlotZoom',
+            'slAppleModelSize', 'slAppleParamSize', 'slAppleDateSize',
+            'slAppleLogoSize', 'slAppleLogoOpacity', 'slAppleLineWidth',
+            'slXmBrandSize', 'slXmLineSize', 'slXmLogoSize', 'slXmLogoOpacity', 'slXmPad', 'slXmScrim',
             'slLayerCornerTL', 'slLayerCornerTR', 'slLayerCornerBL', 'slLayerCornerBR', 'slLayerCornerRadius',
         ]);
         const onEdit = ['slGlobalMargin', 'slImgScale', 'slCornerTL', 'slCornerTR', 'slCornerBL', 'slCornerBR', 'slCornerRadius', 'slParamFontSize', 'slBrandSize', 'slParamScale', 'slGlassSize',
+            'slAppleModelSize', 'slAppleParamSize', 'slAppleDateSize',
+            'slAppleLogoSize', 'slAppleLogoOpacity', 'slAppleLineWidth',
+            'slXmBrandSize', 'slXmLineSize', 'slXmLogoSize', 'slXmLogoOpacity', 'slXmPad', 'slXmScrim',
             'slLayerCornerTL', 'slLayerCornerTR', 'slLayerCornerBL', 'slLayerCornerBR', 'slLayerCornerRadius'];
         (onEdit).forEach(id => {
             const el = $(id);
@@ -2936,7 +3211,9 @@ window.App = {
         }
 
         // 复选框 -> onSettingCommit
-        const chks = ['cbCornerLock', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq', 'cbCanvasSync', 'chkGlassDate'];
+        const chks = ['cbCornerLock', 'cbCapBgBar', 'cbLayerCornerLock', 'cbExifText', 'cbFocalEq', 'cbCanvasSync', 'chkGlassDate',
+            'chkAppleShowBrand', 'chkAppleShowModel', 'chkAppleShowParams', 'chkAppleShowDate',
+            'chkAppleShowLogo', 'chkAppleShowLine'];
         chks.forEach(id => {
             const el = $(id);
             if (el) el.addEventListener('change', () => this.onSettingCommit());
@@ -3719,6 +3996,32 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
                 this.onSettingChanged();
                 break;
             }
+            case 'slAppleModelSize': case 'slAppleParamSize':
+            case 'slAppleDateSize': case 'slAppleLogoSize': case 'slAppleLogoOpacity': case 'slAppleLineWidth': {
+                const ac = this.template.appleCard || (this.template.appleCard = {});
+                if (id === 'slAppleModelSize') ac.modelScale = v / 100;
+                else if (id === 'slAppleParamSize') ac.paramScale = v / 100;
+                else if (id === 'slAppleDateSize') ac.dateScale = v / 100;
+                else if (id === 'slAppleLogoSize') ac.logoScale = v / 100;
+                else if (id === 'slAppleLogoOpacity') ac.logoOpacity = v;
+                else ac.lineScale = v / 100;
+                this.updateLabel('lbl' + id.slice(2), v + '%');
+                this.onSettingChanged();
+                break;
+            }
+            case 'slXmBrandSize': case 'slXmLineSize': case 'slXmLogoSize':
+            case 'slXmLogoOpacity': case 'slXmPad': case 'slXmScrim': {
+                const xc = this.template.xmLeica || (this.template.xmLeica = {});
+                if (id === 'slXmBrandSize') xc.brandScale = v / 100;
+                else if (id === 'slXmLineSize') xc.lineScale = v / 100;
+                else if (id === 'slXmLogoSize') xc.logoScale = v / 100;
+                else if (id === 'slXmLogoOpacity') xc.logoOpacity = v;
+                else if (id === 'slXmPad') xc.padScale = v / 100;
+                else xc.scrim = v;
+                this.updateLabel('lbl' + id.slice(2), v + '%');
+                this.onSettingChanged();
+                break;
+            }
             case 'slLayerCornerTL': case 'slLayerCornerTR': case 'slLayerCornerBL': case 'slLayerCornerBR': {
                 const layer = this.currentLayer ? this.currentLayer() : null;
                 if (!layer) break;
@@ -3793,6 +4096,10 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
             slVignetteStrength: ['lblVignetteStrength', v + '%'], slVignetteFeather: ['lblVignetteFeather', v],
             slBrandSize: ['lblBrandSize', v + '%'], slParamScale: ['lblParamScale', v + '%'],
             slGlassSize: ['lblGlassSize', v + '%'],
+            slAppleModelSize: ['lblAppleModelSize', v + '%'],
+            slAppleParamSize: ['lblAppleParamSize', v + '%'], slAppleDateSize: ['lblAppleDateSize', v + '%'],
+            slAppleLogoSize: ['lblAppleLogoSize', v + '%'], slAppleLogoOpacity: ['lblAppleLogoOpacity', v + '%'],
+            slAppleLineWidth: ['lblAppleLineWidth', v + '%'],
             slLeakOpacity: ['lblLeakOpacity', v + '%'], slLeakAngle: ['lblLeakAngle', v + '°'],
             slFilmGrain: ['lblFilmGrain', v + '%'],
             slCornerDecorSize: ['lblCornerDecorSize', v],
@@ -3806,6 +4113,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
 
     onSliderLive(id) {
         if (['slGlobalMargin', 'slImgScale', 'slCornerTL', 'slCornerTR', 'slCornerBL', 'slCornerBR', 'slCornerRadius', 'slParamFontSize', 'slBrandSize', 'slParamScale', 'slGlassSize',
+            'slAppleModelSize', 'slAppleParamSize', 'slAppleDateSize', 'slAppleLogoSize', 'slAppleLogoOpacity', 'slAppleLineWidth',
             'slLayerCornerTL', 'slLayerCornerTR', 'slLayerCornerBL', 'slLayerCornerBR', 'slLayerCornerRadius'].includes(id)) return; // 由 onSliderCustom 处理
         if (id === 'slPuzzleGap' || id === 'slPuzzleCorner' || id === 'slCapSize1' || id === 'slCapSize2' || id === 'slCapSpacing' || id === 'slSlotOffsetX' || id === 'slSlotOffsetY' || id === 'slSlotZoom') {
             this.syncPuzzleFromUI(); this.onSettingChanged(); return;

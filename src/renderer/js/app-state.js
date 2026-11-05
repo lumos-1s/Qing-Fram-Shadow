@@ -37,6 +37,10 @@ window.App = Object.assign(window.App || {}, {
                 brandLogo: this.template.brandLogo || 0,
                 paramScale: this.template.paramScale || 1,
                 liquidGlassSize: this.template.liquidGlassSize || 1,
+                appleCard: this.template.appleCard || null,
+                xmLeica: this.template.xmLeica || null,
+                // 对齐迁移标记:≥2 表示用户已在「居中为默认」的版本里保存过,恢复时不再改 align
+                xmAlignV: 2,
             };
             localStorage.setItem('qfs_last_state', JSON.stringify(s));
         } catch (_) {}
@@ -113,8 +117,41 @@ window.App = Object.assign(window.App || {}, {
         this.updateHistoryButtons();
     },
 
+    // 切图时交换撤销/重做栈。当前图片的栈存进 historyByImage，目标图片取自己的；
+    // 第一次见到的图片从空历史开始。栈本身仍是普通数组，其他模块的读写不用改。
+    _swapHistory(nextImage) {
+        if (nextImage === this.image) return;
+        if (!this.historyByImage) this.historyByImage = new WeakMap();
+        if (this.image) {
+            this.historyByImage.set(this.image, { undo: this.undoStack, redo: this.redoStack });
+        }
+        const saved = nextImage ? this.historyByImage.get(nextImage) : null;
+        this.undoStack = saved ? saved.undo : [];
+        this.redoStack = saved ? saved.redo : [];
+        this.updateHistoryButtons();
+    },
+
+    // 替换整个工作区（打开工程/恢复草稿）时清空历史，避免旧图快照落到新图上。
+    _resetHistory() {
+        this.undoStack = [];
+        this.redoStack = [];
+        this.updateHistoryButtons();
+    },
+
+    // 撤销/重做前确认栈顶快照确实属于当前图片。正常路径下栈已经按图分好，
+    // 这里再兜一层：临时改 this.image 的渲染路径（缩略图/导出）不会污染历史。
+    _topHistoryBelongs(stack) {
+        if (!stack.length) return false;
+        const snap = stack[stack.length - 1];
+        return !snap.__image || snap.__image === this.image;
+    },
+
     undo() {
         if (!this.undoStack.length) { this.setStatus('没有可撤销的操作'); return; }
+        if (!this._topHistoryBelongs(this.undoStack)) {
+            this.setStatus('撤销记录属于另一张照片，已跳过');
+            return;
+        }
         const hadPuzzle = !!(this.template && this.template.puzzle && this.template.puzzle.enabled);
         this.redoStack.push(this.cloneTemplate());
         this.applyUndoSnapshot(this.undoStack.pop());
@@ -131,6 +168,10 @@ window.App = Object.assign(window.App || {}, {
 
     redo() {
         if (!this.redoStack.length) { this.setStatus('没有可重做的操作'); return; }
+        if (!this._topHistoryBelongs(this.redoStack)) {
+            this.setStatus('重做记录属于另一张照片，已跳过');
+            return;
+        }
         this.undoStack.push(this.cloneTemplate());
         if (this.undoStack.length > this.MAX_UNDO) this.undoStack.shift();
         this.applyUndoSnapshot(this.redoStack.pop());
@@ -159,6 +200,8 @@ window.App = Object.assign(window.App || {}, {
         // 否则「调完再撤销」时找不到 grade 就什么都不还原，Ctrl+Z 像是失灵了。
         const grade = (im && im.grade) ? JSON.parse(JSON.stringify(im.grade)) : null;
         Object.defineProperty(t, '__grade', { value: grade, enumerable: false, configurable: true, writable: true });
+        // 记录快照属于哪张图。非枚举，不会被 setTpl/JSON 序列化带进模板文件。
+        Object.defineProperty(t, '__image', { value: im || null, enumerable: false, configurable: true, writable: true });
         return t;
     },
 
@@ -182,6 +225,9 @@ window.App = Object.assign(window.App || {}, {
     // 应用一个撤销/重做快照。旧栈里可能存着「只有模板」的老格式，按缺失处理。
     applyUndoSnapshot(snap) {
         if (!snap) return;
+        // 老快照没有 __image；新快照必须和当前图片一致，否则宁可不动，
+        // 也不能把一张图的模板/调色写到另一张图上。
+        if (snap.__image && snap.__image !== this.image) return;
         this.template = snap;
         this.normalizeTemplate();
         const im = this.image;

@@ -9,6 +9,8 @@ window.App = Object.assign(window.App || {}, {
         if (!imgs || !imgs.length) return false;
         const cur = imgs[this.currentIdx];
         if (!cur || this.image === cur) return false;
+        // 这是切换当前图后的纠错路径，也要把撤销栈换成该图自己的。
+        if (typeof this._swapHistory === 'function') this._swapHistory(cur);
         this.image = cur;
         const saved = this.getTpl ? this.getTpl(cur) : null;
         this.template = saved ? JSON.parse(JSON.stringify(saved)) : this.defaultTemplate();

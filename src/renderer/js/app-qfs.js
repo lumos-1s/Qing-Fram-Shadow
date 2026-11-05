@@ -191,6 +191,8 @@ window.App = Object.assign(window.App || {}, {
         const ci = Math.min(Math.max(0, (bundle.session && bundle.session.currentIdx) || 0), ims.length - 1);
         this.currentIdx = ci;
         this.image = ims[ci];
+        // 打开工程替换了全部图片对象，旧历史不再适用。
+        if (typeof this._resetHistory === 'function') this._resetHistory();
         const savedTpl = this.getTpl(this.image);
         this.template = this.coerceTemplate(savedTpl
             ? JSON.parse(JSON.stringify(savedTpl))

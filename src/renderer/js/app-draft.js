@@ -199,6 +199,8 @@ window.App = Object.assign(window.App || {}, {
             const ci = Math.min(Math.max(0, draft.currentIdx || 0), restored.length - 1);
             this.currentIdx = ci;
             this.image = restored[ci];
+            // 换了一整批图片对象，旧撤销栈里的 __image 已经对不上，直接清空。
+            if (typeof this._resetHistory === 'function') this._resetHistory();
             // 恢复草稿换了一批照片：退出蒙版原图预览，避免新图一直显示未调色源
             this._maskPreviewOriginal = false;
             if (this._syncMaskOrigHint) this._syncMaskOrigHint();
