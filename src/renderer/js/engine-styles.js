@@ -5987,7 +5987,33 @@ const w = natW;
     }
 
     // 画布比例(只扩大、不裁切):渲染完成后按目标比例补齐画布,原图水平垂直居中,补边色取四角采样
-    function expandToRatio(out, ratioStr, img, blurRadius) {
+    // 源图四角平均色。圆角会把全出血成片的四角裁成透明，若仍从成片取样，
+    // 补边色就会随着圆角滑块从「照片角部色」变成「scrim 黑」/「兜底白」。
+    const _cornerColorCache = new WeakMap();
+    function cornerColorOf(src) {
+        if (!src) return null;
+        const nw = src.naturalWidth || src.width || 0;
+        const nh = src.naturalHeight || src.height || 0;
+        if (!nw || !nh) return null;
+        const hit = _cornerColorCache.get(src);
+        if (hit && hit.w === nw && hit.h === nh) return hit.color;
+        const c = newCanvas(1, 1);
+        const g = c.getContext('2d', { willReadFrequently: true });
+        let rs = 0, gs = 0, bs = 0, n = 0;
+        for (const [sx, sy] of [[0, 0], [nw - 1, 0], [0, nh - 1], [nw - 1, nh - 1]]) {
+            try {
+                g.clearRect(0, 0, 1, 1);
+                g.drawImage(src, sx, sy, 1, 1, 0, 0, 1, 1);
+                const d = g.getImageData(0, 0, 1, 1).data;
+                if (d[3] > 60) { rs += d[0]; gs += d[1]; bs += d[2]; n++; }
+            } catch (e) { /* 跨域/未解码时跳过该角 */ }
+        }
+        const color = n > 0 ? 'rgb(' + Math.round(rs / n) + ',' + Math.round(gs / n) + ',' + Math.round(bs / n) + ')' : '#ffffff';
+        _cornerColorCache.set(src, { w: nw, h: nh, color });
+        return color;
+    }
+
+    function expandToRatio(out, ratioStr, img, blurRadius, fillColor) {
         if (!ratioStr || ratioStr === 'original') return out;
         const wh = parseRatio(ratioStr);
         if (!wh || wh[0] <= 0 || wh[1] <= 0) return out;
@@ -6011,15 +6037,17 @@ const w = natW;
         } else {
             // 无照片回退:四角采样平均色
             let rs = 0, gs = 0, bs = 0, n = 0;
-            const g0 = out.getContext('2d');
-            try {
-                const pts = [[0, 0], [out.width - 1, 0], [0, out.height - 1], [out.width - 1, out.height - 1]];
-                for (const [px, py] of pts) {
-                    const d = g0.getImageData(Math.max(0, px), Math.max(0, py), 1, 1).data;
-                    if (d[3] > 60) { rs += d[0]; gs += d[1]; bs += d[2]; n++; }
-                }
-            } catch (e) { /* 忽略 */ }
-            g.fillStyle = n > 0 ? 'rgb(' + Math.round(rs / n) + ',' + Math.round(gs / n) + ',' + Math.round(bs / n) + ')' : '#ffffff';
+            if (!fillColor) {
+                const g0 = out.getContext('2d');
+                try {
+                    const pts = [[0, 0], [out.width - 1, 0], [0, out.height - 1], [out.width - 1, out.height - 1]];
+                    for (const [px, py] of pts) {
+                        const d = g0.getImageData(Math.max(0, px), Math.max(0, py), 1, 1).data;
+                        if (d[3] > 60) { rs += d[0]; gs += d[1]; bs += d[2]; n++; }
+                    }
+                } catch (e) { /* 忽略 */ }
+            }
+            g.fillStyle = fillColor || (n > 0 ? 'rgb(' + Math.round(rs / n) + ',' + Math.round(gs / n) + ',' + Math.round(bs / n) + ')' : '#ffffff');
             g.fillRect(0, 0, nw, nh);
         }
         g.drawImage(out, Math.round((nw - out.width) / 2), Math.round((nh - out.height) / 2));
@@ -8388,6 +8416,9 @@ const w = natW;
             // 照片在「最终画布基准坐标」上的矩形（蒙版叠加层用）。由下面的 drawImage 劫持抓取，
             // expandToRatio 补边后再按居中偏移修正。
             let photoRect = null;
+            // 照片是否正好铺满整张基础画布（全出血风格）。圆角后成片四角会变透明，
+            // 需要把成片也裁到同一圆角里，避免水印/scrim 漏进被裁掉的角。
+            let photoCoversCanvas = false;
             if (!draw) {
                 const dims = styleDims('_PH', iw, ih, size);
                 out = newCanvas(dims.w, dims.h);
@@ -8494,6 +8525,37 @@ const w = natW;
                 if (blurMode) draw(img, size, g, iw, ih, S, targetW, targetH);
                 else draw(img, size, g, iw, ih, S);
                 g.drawImage = origDrawImage;
+                // 照片正好铺满整张画布（全出血风格）。这类风格通常没有独立底色：
+                //  - 圆角时要连水印/scrim 一起裁，否则黑块漏进被裁掉的四角；
+                //  - 补边取色要认准这张照片本身，否则圆角一改补边色就跟着变。
+                // 但液态玻璃这类风格会先在画布上铺一层不透明黑底（那是画布背景，
+                // 不是照片），它的四角在圆角外仍是不透明黑，不能一起裁掉。
+                // 联名水印是已知的纯照片全出血（自身不铺任何底色），圆角 0 时也按
+                // 源照片取补边色，避免从 0 调到 >0 时补边色从「含 scrim 的成片角」跳变。
+                if (photoRect && photoRect.x <= 1 && photoRect.y <= 1
+                    && photoRect.x + photoRect.w >= out.width - 1
+                    && photoRect.y + photoRect.h >= out.height - 1) {
+                    let noCanvasBg = styleName === 'XIAOMI_LEICA';
+                    if (!noCanvasBg && hasPhotoRound && photoRound > 0) {
+                        try {
+                            const cg0 = out.getContext('2d');
+                            const aL = cg0.getImageData(0, 0, 1, 1).data[3];
+                            const aR = cg0.getImageData(out.width - 1, 0, 1, 1).data[3];
+                            noCanvasBg = !(aL > 60 || aR > 60);
+                        } catch (e) { /* 读不到就按有背景处理 */ }
+                    }
+                    if (noCanvasBg) {
+                        photoCoversCanvas = true;
+                        if (hasPhotoRound && photoRound > 0) {
+                            const cg = out.getContext('2d');
+                            cg.save();
+                            cg.globalCompositeOperation = 'destination-in';
+                            roundRectPath(cg, photoRect.x, photoRect.y, photoRect.w, photoRect.h, photoRound);
+                            cg.fill();
+                            cg.restore();
+                        }
+                    }
+                }
                 // 整体画布边框圆角
                 const borderR = t.borderRadius || 0;
                 if (borderR > 0) out = singleCornerClip(out, borderR);
@@ -8508,7 +8570,12 @@ const w = natW;
             // 时补边才用模糊照片延伸,否则回退四角采样纯色,避免没开模糊却出现模糊
             const useBlurFill = (t.baseMargin && (t.baseMargin.bgBlurEnable || 0) === 1);
             const preExpandW = out.width, preExpandH = out.height;
-            out = expandToRatio(out, effectiveCanvasRatio(t), useBlurFill ? img : null, (t.baseMargin && t.baseMargin.bgBlurRadius) || 30);
+            // 全出血 + 圆角时四角已被裁成透明；补边色改从源照片四角取，
+            // 这样只调「图片圆角」不会让画布底色跟着变（原来会变成 scrim 黑或兜底白）。
+            const canvasRatio = effectiveCanvasRatio(t);
+            const fillColor = (photoCoversCanvas && img && canvasRatio !== 'original')
+                ? cornerColorOf(img) : null;
+            out = expandToRatio(out, canvasRatio, useBlurFill ? img : null, (t.baseMargin && t.baseMargin.bgBlurRadius) || 30, fillColor);
             // 补边是「原画布居中贴进更大的画布」，照片矩形要跟着平移同样的偏移，
             // 否则按比例补边后蒙版范围会整体左/上偏（照片越偏离中心越明显）。
             const padX = Math.round((out.width - preExpandW) / 2);
