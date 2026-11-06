@@ -137,7 +137,9 @@ function _renderToCanvasInner(app, compare) {
     const { image, template } = app;
     // 每次渲染先清空:只有默认模板管线能算出照片矩形,卡片/相框管线保持 null(蒙版编辑层会提示切换)
     app._photoRect = null;
-    const img = photoSrc(image);
+    // 对比原图必须取**未调色**的工作底图(含裁切/旋转)。photoSrc 会优先返回调色烘焙画布，
+    // 直接用它会让“对比原图”显示成调色后的照片(只是去掉边框)，完全失去对比意义。
+    const img = compare ? (image.el || photoSrc(image)) : photoSrc(image);
     const cw0 = img.naturalWidth, ch0 = img.naturalHeight;
 
     // 对比原图:只画照片本身,无边框
