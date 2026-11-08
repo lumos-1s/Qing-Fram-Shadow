@@ -111,6 +111,9 @@ window.App = Object.assign(window.App || {}, {
     // 无条件压栈(离散操作/手势开始调用);连续手势的快照由 beginGesture 去重
     MAX_UNDO: 50,
     pushUndo() {
+        // 启动首帧还没有模板时（预设墙/空工作台），没有可回退的状态，
+        // 不能把 null 压进栈：cloneTemplate 之后 Object.defineProperty 会抛异常。
+        if (!this.template) return;
         this.undoStack.push(this.cloneTemplate());
         if (this.undoStack.length > this.MAX_UNDO) this.undoStack.shift();
         this.redoStack = [];

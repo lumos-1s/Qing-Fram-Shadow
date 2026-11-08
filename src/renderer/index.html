@@ -189,21 +189,46 @@
         <main id="main">
 
             <!-- 左侧：边框 -->
-            <aside id="sidebar">
-                <div class="side-title">
-                    <span>边框</span>
-                    <button id="btnMyTemplates" class="side-title-action" type="button" title="管理我的样式（边框 + 文字 + Logo 的整套外观）">我的样式</button>
-                    <button id="btnSidebarCollapse" class="panel-collapse-btn" type="button" title="收起边框栏 (Ctrl+[)" aria-label="收起边框栏">
+            <aside id="sidebar" class="mode-border">
+                <div class="side-title side-mode-title">
+                    <div class="side-mode-tabs" role="tablist" aria-label="左侧素材库">
+                        <button id="sideTabBorder" class="side-mode-tab active" type="button" data-side-mode="border" role="tab" aria-selected="true">边框</button>
+                        <button id="sideTabGrade" class="side-mode-tab" type="button" data-side-mode="grade" role="tab" aria-selected="false">我的调色</button>
+                    </div>
+                    <button id="btnSidebarCollapse" class="panel-collapse-btn" type="button" title="收起素材栏 (Ctrl+[)" aria-label="收起素材栏">
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5 5.5 8 10 12.5"/></svg>
                     </button>
                 </div>
-                <div class="side-search"><input id="presetSearch" type="text" placeholder="搜索边框…" /></div>
-                <div id="presetTree" class="preset-tree"></div>
-                <div id="sidebarResizer" class="side-resizer" title="拖动调整边框栏宽度，双击恢复默认"></div>
+                <div id="sideBorderBody" class="side-body">
+                    <div class="side-subhead">
+                        <span>边框</span>
+                        <button id="btnMyTemplates" class="side-title-action" type="button" title="管理我的样式（边框 + 文字 + Logo 的整套外观）">我的样式</button>
+                    </div>
+                    <div class="side-search"><input id="presetSearch" type="text" placeholder="搜索边框…" /></div>
+                    <div id="presetTree" class="preset-tree"></div>
+                </div>
+                <div id="sideGradeBody" class="side-body" hidden>
+                    <div class="grade-side-actions">
+                        <button id="btnGradePresetSave" class="side-action primary" type="button" title="把当前照片的全局调色保存成 XMP 预设；蒙版跟具体画面走，不保存">保存当前</button>
+                        <button id="btnGradePresetImport" class="side-action" type="button" title="一次选择多个 .xmp 文件，批量导入预设">导入预设</button>
+                    </div>
+                    <div class="side-search grade-search">
+                        <input id="tfGradePresetSearch" type="text" placeholder="搜索我的调色" aria-label="搜索我的调色" spellcheck="false" autocomplete="off" />
+                        <button id="btnClearGradePresetSearch" class="tpl-search-clear" type="button" title="清空搜索" aria-label="清空搜索" hidden>×</button>
+                    </div>
+                    <div class="grade-side-hint">
+                        <span>悬停预览，单击应用</span>
+                        <span id="gradePresetCount" class="tpl-count" hidden></span>
+                        <button id="btnGradePresetRefresh" class="side-icon-btn" type="button" title="刷新我的调色" aria-label="刷新我的调色">↻</button>
+                        <button id="btnGradePresetOpenDir" class="side-icon-btn" type="button" title="打开预设文件夹" aria-label="打开预设文件夹">📂</button>
+                    </div>
+                    <div id="lvGradePresets" class="grade-preset-list" role="region" aria-label="我的调色列表"></div>
+                </div>
+                <div id="sidebarResizer" class="side-resizer" title="拖动调整素材栏宽度，双击恢复默认"></div>
             </aside>
 
-            <button id="btnSidebarRail" class="panel-rail rail-left" type="button" title="展开边框栏 (Ctrl+[)" aria-label="展开边框栏" hidden>
-                <span>边框</span>
+            <button id="btnSidebarRail" class="panel-rail rail-left" type="button" title="展开素材栏 (Ctrl+[)" aria-label="展开素材栏" hidden>
+                <span>素材</span>
             </button>
 
             <!-- 中间：画布 -->
@@ -1229,23 +1254,6 @@
                     <!-- ══ Tab9 调色（工具） ══ -->
                     <div class="tab-panel" id="panel-grade">
                         <div class="param-empty-note">导入照片后即可调色</div>
-                        <div class="param-group" id="grpGradePresets">
-                            <div class="pg-title collapsible">
-                                <span class="pg-title-text">我的调色</span>
-                                <span id="gradePresetCount" class="tpl-count" hidden></span>
-                                <button id="btnGradePresetRefresh" class="tpl-refresh" type="button" title="刷新调色预设" aria-label="刷新调色预设">↻</button>
-                            </div>
-                            <div class="param-row grade-acts">
-                                <button id="btnGradePresetSave" class="mini-btn" type="button" title="把当前照片的全局调色（曝光、曲线、混色器、校准、细节等）保存为预设；蒙版跟具体画面走，不保存">保存当前</button>
-                                <button id="btnGradePresetImport" class="mini-btn" type="button" title="粘贴朋友分享的调色分享码（QFSGRADE1: 开头）">导入分享码</button>
-                            </div>
-                            <div class="tpl-search-wrap">
-                                <input id="tfGradePresetSearch" class="ctl-tx tpl-search" type="text" placeholder="搜索我的调色" aria-label="搜索我的调色" spellcheck="false" autocomplete="off" />
-                                <button id="btnClearGradePresetSearch" class="tpl-search-clear" type="button" title="清空搜索" aria-label="清空搜索" hidden>×</button>
-                            </div>
-                            <div id="lvGradePresets" class="tpl-list" role="region" aria-label="我的调色列表"></div>
-                            <div class="hint-box">保存的是全局调色，蒙版不会带过去。单击预设应用到当前照片；点 ⋯ 可批量套用、复制分享码、改名或删除。</div>
-                        </div>
                         <div class="param-group" id="grpMask">
                             <div class="pg-title collapsible">蒙版</div>
                             <div class="mask-bar">

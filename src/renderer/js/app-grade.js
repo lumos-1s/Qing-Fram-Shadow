@@ -1512,6 +1512,8 @@
             if (this.syncColorGradeUI) this.syncColorGradeUI(p);
             if (this.syncBwUI) this.syncBwUI(p);
             if (this.syncToneExtraUI) this.syncToneExtraUI(p);
+            // 参数被程序化改掉（撤销/切图/套预设/重置）时，「使用中」标记也要跟上。
+            if (this._scheduleGradePresetActive) this._scheduleGradePresetActive();
         },
 
         initGrade() {

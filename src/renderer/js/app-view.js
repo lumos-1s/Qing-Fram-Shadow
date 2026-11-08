@@ -71,12 +71,6 @@ window.App = Object.assign(window.App || {}, {
         if (name !== 'grade' && this._activeMaskId) this.setActiveMask(null);
         if (name === 'logo') this.renderLogoPools();
         if (name === 'template') this.refreshTemplates();
-        if (name === 'grade' && this.refreshGradePresets && !this._gradePresetsLoaded) {
-            this.refreshGradePresets();
-        } else if (name === 'grade' && this._renderGradePresetThumbs) {
-            // 切走期间换过照片时缩略图已被清空，回到本页签补渲染。
-            this._renderGradePresetThumbs();
-        }
         if (name === 'puzzle') this.refreshPuzzleUI();
         this.updateExportEntry();
     },

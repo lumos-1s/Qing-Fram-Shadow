@@ -1,4 +1,5 @@
-// 调色预设回归：保存 / 列表 / 应用 / 批量 / 撤销 / 缩略图 / 分享码导入
+// 调色预设回归：XMP 保存 / 列表 / 应用 / 批量 / 撤销 / 悬停预览 /
+// 批量导入 / 重命名 / 删除 / 缩略图。
 // 用法：node tools/run-electron.js tools/test-grade-presets.js
 'use strict';
 
@@ -11,6 +12,7 @@ process.stderr.on('error', () => {});
 
 const ROOT = path.join(__dirname, '..');
 const PRESET_DIR = path.join(ROOT, 'shared', 'presets');
+const FAKE_LIB = 'C:/fake/grade-presets';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ── 主进程 IPC：只保留 App 启动 + 本用例需要的通道 ──
@@ -61,24 +63,46 @@ ipcMain.handle('get-app-info', () => ({
     platform: 'win32', arch: 'x64', packaged: false, portable: false, userData: process.env.TEMP, appPath: ROOT
 }));
 
-// 内存版调色预设存储（主进程磁盘存储由 test-grade-preset-store.js 覆盖）
+// 内存版 XMP 预设存储（主进程磁盘存储由 test-grade-preset-store.js 覆盖）
 const store = new Map();
-ipcMain.handle('list-grade-presets', () => [...store.keys()]);
-ipcMain.handle('load-grade-preset', (_e, name) => store.get(name) || null);
-ipcMain.handle('save-grade-preset', (_e, { name, data }) => {
-    if (!name || !data || !data.grade) return { ok: false, error: 'bad' };
-    store.set(name, data);
+let importFiles = null;
+const presetList = () => [...store.keys()].map((name) => ({ name, ext: 'xmp' }));
+const validXmp = (xml) => typeof xml === 'string' && /<(?:x:)?xmpmeta|<rdf:RDF/i.test(xml);
+ipcMain.handle('list-grade-presets', presetList);
+ipcMain.handle('load-grade-preset', (_e, { name, ext }) => {
+    if (ext === 'json' || !store.has(name)) return null;
+    return { kind: 'xmp', xml: store.get(name) };
+});
+ipcMain.handle('save-grade-preset', (_e, { name, xml }) => {
+    if (!name || !validXmp(xml)) return { ok: false, error: 'bad' };
+    store.set(name, xml);
     return { ok: true };
 });
-ipcMain.handle('delete-grade-preset', (_e, name) => { store.delete(name); return { ok: true }; });
+ipcMain.handle('delete-grade-preset', (_e, { name }) => { store.delete(name); return { ok: true }; });
 ipcMain.handle('rename-grade-preset', (_e, { oldName, newName }) => {
     if (!store.has(oldName)) return { ok: false, error: 'missing' };
     if (store.has(newName)) return { ok: false, error: 'exists' };
-    const data = store.get(oldName);
+    const xml = store.get(oldName);
     store.delete(oldName);
-    store.set(newName, Object.assign({}, data, { name: newName }));
+    store.set(newName, xml);
     return { ok: true };
 });
+ipcMain.handle('pick-grade-preset-save-path', (_e, name) => ({
+    ok: true, path: FAKE_LIB + '/' + name + '.xmp', name, inLibrary: true
+}));
+ipcMain.handle('save-grade-preset-xmp', (_e, { path: filePath, xml }) => {
+    const name = path.basename(filePath, path.extname(filePath));
+    if (!validXmp(xml)) return { ok: false, error: 'bad' };
+    store.set(name, xml);
+    return { ok: true, path: filePath, libraryName: name, libraryPath: filePath };
+});
+ipcMain.handle('export-grade-preset-xmp', (_e, { path: filePath, xml }) => (
+    validXmp(xml) ? { ok: true, path: filePath } : { ok: false, error: 'bad' }
+));
+ipcMain.handle('pick-grade-xmp-files', () => (importFiles
+    ? { ok: true, files: importFiles, skipped: [] }
+    : { canceled: true }));
+ipcMain.handle('open-grade-presets-dir', () => ({ ok: true, path: FAKE_LIB }));
 
 const failures = [];
 function check(ok, label, extra) {
@@ -97,6 +121,20 @@ const MAKE_IMAGE = `async (w, h) => {
     await new Promise((r) => { el.onload = r; el.onerror = r; el.src = c.toDataURL('image/png'); });
     return el;
 }`;
+
+// LR / Camera Raw 风格的标准 XMP（没有清框影私有段）
+const lrXmp = (name, exp, con) => `<?xpacket begin="\uFEFF" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/"
+    crs:Exposure2012="${exp}"
+    crs:Contrast2012="${con}"
+    crs:WhiteBalance="As Shot">
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end="w"?>`;
 
 async function main() {
     await app.whenReady();
@@ -132,28 +170,44 @@ async function main() {
         A.setGrade({ exp: 0.5, con: 20, temp: 30, curve: { rgb: [[0, 0], [0.5, 0.6], [1, 1]] } });
         await new Promise((r) => setTimeout(r, 300));
         return {
-            hasExport: typeof A.normalizeGrade === 'function' && typeof A.bakeGradePreview === 'function',
+            hasExport: typeof A.normalizeGrade === 'function' && typeof A.bakeGradePreview === 'function'
+                && !!(window.AppXmp && typeof AppXmp.gradeToXmp === 'function'),
             grade: JSON.parse(JSON.stringify(A.image.grade)),
         };
     })()`);
-    check(setup.hasExport, '调色预设依赖的 normalizeGrade / bakeGradePreview 已导出');
-    check(setup.grade.exp === 0.5 && setup.grade.con === 20, '测试照片已设置非中性调色', JSON.stringify({ exp: setup.grade.exp, con: setup.grade.con }));
+    check(setup.hasExport, 'normalizeGrade / bakeGradePreview / gradeToXmp 已就绪');
+    check(setup.grade.exp === 0.5 && setup.grade.con === 20, '测试照片已设置非中性调色',
+        JSON.stringify({ exp: setup.grade.exp, con: setup.grade.con }));
 
-    // ── 保存 + 列表 ──
+    // ── 保存成 XMP + 列表 ──
     const saved = await exec(`(async () => {
         const A = window.App;
         const ok = await A.saveGradePresetFromCurrent('测试暖调');
         await A.refreshGradePresets();
+        const data = await window.qingframe.loadGradePreset('测试暖调', 'xmp');
+        const xml = (data && data.xml) || '';
+        const round = xml ? window.AppXmp.mapXmp(xml) : null;
         return {
             ok,
             count: A._gradePresets.length,
-            name: (A._gradePresets[0] || {}).disp || '',
+            name: (A._gradePresets[0] || {}).name || '',
             rows: document.querySelectorAll('#lvGradePresets .tpl-row').length,
             badge: document.getElementById('gradePresetCount').textContent,
+            isXmp: xml.indexOf('<x:xmpmeta') >= 0 && !/^\\s*\\{/.test(xml),
+            hasQf: xml.indexOf('<qf:QfsGrade>') >= 0,
+            hasCrs: xml.indexOf('crs:Exposure2012="0.5"') >= 0,
+            round: round && round.patch ? {
+                exp: round.patch.exp, temp: round.patch.temp,
+                curve: !!(round.patch.curve && round.patch.curve.rgb)
+            } : null,
         };
     })()`);
-    check(saved.ok && saved.count === 1 && saved.name === '测试暖调', '保存当前调色后出现在「我的调色」列表', JSON.stringify(saved));
+    check(saved.ok && saved.count === 1 && saved.name === '测试暖调', '保存当前调色后出现在「我的调色」列表',
+        JSON.stringify({ ok: saved.ok, count: saved.count, name: saved.name }));
     check(saved.rows === 1 && saved.badge === '1', '列表行与计数徽标同步更新');
+    check(saved.isXmp && saved.hasCrs, '保存的是带 crs: 字段的 XMP 文件');
+    check(saved.hasQf && saved.round && saved.round.exp === 0.5 && saved.round.temp === 30 && saved.round.curve,
+        'XMP 私有段能完整回读清框影参数（曝光/色温/曲线）', JSON.stringify(saved.round));
 
     // ── 应用 + 撤销 ──
     const applied = await exec(`(async () => {
@@ -188,30 +242,109 @@ async function main() {
         A.applyGradePreset(A._gradePresets[0], [0, 1]);
         return { onlySecond, all: [A.images[0].grade.exp, A.images[1].grade.exp] };
     })()`);
-    check(batch.onlySecond.second === 0.5 && batch.onlySecond.first === 0, '应用到选中照片只改目标，不动当前图', JSON.stringify(batch.onlySecond));
+    check(batch.onlySecond.second === 0.5 && batch.onlySecond.first === 0, '应用到选中照片只改目标，不动当前图',
+        JSON.stringify(batch.onlySecond));
     check(batch.all[0] === 0.5 && batch.all[1] === 0.5, '应用到全部照片同时更新两张', JSON.stringify(batch.all));
+
+    // ── 左侧双模式 + 悬停预览 ──
+    const hover = await exec(`(async () => {
+        const A = window.App;
+        A.resetGrade();
+        A.setSideMode('grade', { activateTab: false });
+        await new Promise((r) => setTimeout(r, 350));
+        const row = document.querySelector('#lvGradePresets .tpl-row');
+        const gradeBefore = A.image.grade ? A.image.grade.exp : 0;
+        row.dispatchEvent(new MouseEvent('mouseenter'));
+        await new Promise((r) => setTimeout(r, 500));
+        const previewing = !!A._gradeHover;
+        const src = window.photoSrcOf(A.image);
+        const isCanvas = !!(src && src.tagName === 'CANVAS');
+        const gradeDuring = A.image.grade ? A.image.grade.exp : 0;
+        row.dispatchEvent(new MouseEvent('mouseleave'));
+        await new Promise((r) => setTimeout(r, 80));
+        const restored = !A._gradeHover && window.photoSrcOf(A.image) === A.image.el;
+        // 点页签：左侧切模式，右侧顺手切到「调色」，滑块与预设同屏。
+        document.getElementById('sideTabBorder').click();
+        const borderOff = document.getElementById('sideGradeBody').hidden;
+        document.getElementById('sideTabGrade').click();
+        const rightGrade = document.getElementById('panel-grade').classList.contains('active');
+        return {
+            mode: A._sideMode,
+            gradeBody: !document.getElementById('sideGradeBody').hidden,
+            borderBody: document.getElementById('sideBorderBody').hidden,
+            previewing, isCanvas, gradeBefore, gradeDuring, restored, borderOff, rightGrade,
+        };
+    })()`);
+    check(hover.mode === 'grade' && hover.gradeBody && hover.borderBody,
+        '左侧「我的调色」模式显示调色列表、隐藏边框列表', JSON.stringify(hover));
+    check(hover.previewing && hover.isCanvas && hover.gradeBefore === 0 && hover.gradeDuring === 0,
+        '悬停时画面立即预览，但不写入照片参数', JSON.stringify({ before: hover.gradeBefore, during: hover.gradeDuring }));
+    check(hover.restored, '移开鼠标后画面与缓存还原');
+    check(hover.borderOff && hover.rightGrade,
+        '点页签真正切模式，并同步右侧到调色页签', JSON.stringify({ borderOff: hover.borderOff, rightGrade: hover.rightGrade }));
+
+    // ── 批量导入：一个按钮多选 .xmp，失败文件跳过 ──
+    importFiles = [
+        { name: '导入冷调', path: 'C:/in/导入冷调.xmp', xml: lrXmp('导入冷调', -0.75, 18) },
+        { name: '坏预设', path: 'C:/in/坏预设.xmp', xml: 'not an xmp' },
+    ];
+    const imported = await exec(`(async () => {
+        const A = window.App;
+        const ok = await A.importGradePresets();
+        const names = A._gradePresets.map((r) => r.name);
+        const status = (document.getElementById('stCanvas') || {}).textContent || '';
+        const entry = A._gradePresets.find((r) => r.name === '导入冷调');
+        return {
+            ok, names, status,
+            exp: entry && entry.grade ? entry.grade.exp : null,
+            con: entry && entry.grade ? entry.grade.con : null,
+        };
+    })()`);
+    check(imported.ok && imported.names.indexOf('导入冷调') >= 0, '批量导入标准 LR XMP 预设',
+        JSON.stringify(imported.names));
+    check(imported.exp === -0.75 && imported.con === 18, '导入后参数按 LR 语义映射',
+        JSON.stringify({ exp: imported.exp, con: imported.con }));
+    check(imported.status.indexOf('成功 1') >= 0 && imported.status.indexOf('跳过 1') >= 0,
+        '一次导入汇总成功 / 失败数量', imported.status);
+
+    const reimport = await exec(`(async () => {
+        const A = window.App;
+        await A.importGradePresets();
+        return A._gradePresets.map((r) => r.name);
+    })()`);
+    check(reimport.indexOf('导入冷调') >= 0 && reimport.indexOf('导入冷调 (2)') < 0,
+        '重复导入同一预设不产生重复条目', JSON.stringify(reimport));
+    importFiles = null;
 
     // ── 重命名 / 删除（菜单背后的能力） ──
     const manage = await exec(`(async () => {
         const A = window.App;
-        window.confirm = () => true; // 删除/覆盖确认在无头窗口里不能弹原生框
+        window.confirm = () => true;
         A.promptText = async () => '测试冷调';
-        const okRename = await A.renameGradePresetItem(A._gradePresets[0]);
+        const target = A._gradePresets.find((r) => r.name === '测试暖调');
+        const okRename = await A.renameGradePresetItem(target);
         const afterRename = A._gradePresets.map((r) => r.name);
-        const okDelete = await A.deleteGradePresetItem(A._gradePresets[0]);
-        return { okRename, afterRename, okDelete, left: A._gradePresets.length };
+        const renamed = A._gradePresets.find((r) => r.name === '测试冷调');
+        const data = await window.qingframe.loadGradePreset('测试冷调', 'xmp');
+        const round = data && data.xml ? window.AppXmp.mapXmp(data.xml) : null;
+        const okDelete = await A.deleteGradePresetItem(renamed);
+        return {
+            okRename, afterRename, okDelete,
+            left: A._gradePresets.map((r) => r.name),
+            innerName: round ? round.name : '',
+        };
     })()`);
-    check(manage.okRename && manage.afterRename[0] === '测试冷调', '重命名调色预设', JSON.stringify(manage.afterRename));
-    check(manage.okDelete && manage.left === 0, '删除调色预设');
+    check(manage.okRename && manage.afterRename.indexOf('测试冷调') >= 0, '重命名调色预设',
+        JSON.stringify(manage.afterRename));
+    check(manage.innerName === '测试冷调', '重命名同步更新 XMP 内的预设名', manage.innerName);
+    check(manage.okDelete && manage.left.indexOf('测试冷调') < 0, '删除调色预设', JSON.stringify(manage.left));
 
     // ── 缩略图 ──
     await exec(`(async () => {
         const A = window.App;
-        // 重新保存一份，列表里才有可渲染缩略图的行。
-        if (!A._gradePresets.length) await A.saveGradePresetFromCurrent('缩略图测试');
-        A.switchTab('grade');
+        A.setSideMode('grade', { activateTab: false });
         await A.refreshGradePresets();
-        await new Promise((r) => setTimeout(r, 600));
+        await new Promise((r) => setTimeout(r, 700));
         return true;
     })()`);
     const thumb = await exec(`(() => {
@@ -221,31 +354,14 @@ async function main() {
     check(/^data:image\/jpeg;base64,/.test(thumb.src) && thumb.w > 0,
         '预设缩略图用当前照片烘焙并显示', JSON.stringify({ w: thumb.w, kind: thumb.src.slice(0, 23) }));
 
-    // ── 分享码：复制 → 改提示 → 导入 ──
-    const shared = await exec(`(async () => {
+    // ── 导出 XMP（菜单能力） ──
+    const exported = await exec(`(async () => {
         const A = window.App;
-        let copied = '';
-        try {
-            Object.defineProperty(navigator, 'clipboard', {
-                value: { writeText: async (t) => { copied = t; } },
-                configurable: true,
-            });
-        } catch (_) {}
-        await A.copyGradePresetShareCode(A._gradePresets[0]);
-        const code = copied || '';
-        let n = 0;
-        // 第一次 prompt 粘贴分享码，第二次 prompt 输入保存名。
-        A.promptText = async () => (n++ === 0 ? code : '分享导入的调色');
-        const okImport = await A.importGradePresetShareCode();
-        return {
-            prefix: code.slice(0, 10),
-            len: code.length,
-            okImport,
-            names: A._gradePresets.map((r) => r.name),
-        };
+        const r = A._gradePresets[0];
+        const ok = await A.exportGradePresetToFile(r);
+        return { ok, status: (document.getElementById('stCanvas') || {}).textContent || '' };
     })()`);
-    check(shared.prefix === 'QFSGRADE1:' && shared.len > 40, '调色分享码以 QFSGRADE1: 开头', JSON.stringify({ prefix: shared.prefix, len: shared.len }));
-    check(shared.okImport && shared.names.indexOf('分享导入的调色') >= 0, '分享码可重新导入为预设', JSON.stringify(shared.names));
+    check(exported.ok && exported.status.indexOf('已导出') >= 0, '预设可另存为 XMP 文件', exported.status);
 
     console.log(failures.length ? `\n${failures.length} 项失败` : '\n全部通过');
     await win.close();

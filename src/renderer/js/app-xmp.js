@@ -1,10 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════
-   LR XMP 调色预设导入
+   LR XMP 调色预设导入 / 导出
    解析 Lightroom / Camera Raw 导出的 .xmp，把 crs: 命名空间的调色
    参数映射到清框影的 grade 对象（对齐 app-grade.js 的
    GRADE_FIELDS / DET_FIELDS / CAL_FIELDS / MIX_BANDS / curve / cg）。
-   映射原则：只映射「一定为真」的字段，解析失败/不认识的字段进
-   skipped 清单，绝不猜测数值。
+   反向的 gradeToXmp 会写一份 LR 能识别的标准字段，并额外附上清框影
+   自己的完整参数（qf:QfsGrade），让色彩平衡、渐变映射、色阶中间调
+   这些 LR 没有的字段也能在本应用内完整往返。
 
    几个关键对齐（旧版最容易「大相径庭」的地方）：
    - Exposure2012 是 EV，不是 -100..100 的滑块；直接存 EV。
@@ -36,6 +37,15 @@
         const mired = 1e6 / v;
         const ref = 1e6 / WB_REF_K;
         return Math.round(clamp(-(mired - ref) * WB_MIRED_SCALE, -100, 100));
+    }
+
+    // 反向换算：清框影的相对色温 → LR 的绝对开尔文。与 kelvinToTemp 互逆，
+    // 导入再导出能回到同一档（个位数的取整误差来自 mired 尺度，属预期）。
+    function tempToKelvin(v) {
+        const temp = clamp(NUM(v, 0), -100, 100);
+        const ref = 1e6 / WB_REF_K;
+        const mired = ref - temp / WB_MIRED_SCALE;
+        return Math.round(clamp(1e6 / mired, 2000, 50000));
     }
 
     // ── 基础档：LR 值域多为 -100~100；Exposure2012 是 EV（±5 典型） ──
@@ -322,9 +332,40 @@
         };
     }
 
+    // 清框影自己写出的完整参数（base64 JSON）。有它就优先用，
+    // 保证色彩平衡 / 渐变映射 / 色阶中间调 / 蒙版外全部字段原样回来。
+    function readQfGrade(values) {
+        const raw = values && values.QfsGrade;
+        if (!raw) return null;
+        try {
+            const bin = String(raw).replace(/\s+/g, '');
+            let json = '';
+            if (window.App && typeof window.App._b64ToJson === 'function') {
+                json = window.App._b64ToJson(bin);
+            } else {
+                const bytes = Uint8Array.from(atob(bin), (c) => c.charCodeAt(0));
+                json = new TextDecoder().decode(bytes);
+            }
+            const data = JSON.parse(json);
+            if (data && data.grade && typeof data.grade === 'object') return data;
+        } catch (_) { /* 损坏的私有段按没有处理，继续走标准字段 */ }
+        return null;
+    }
+
     // ── 主入口：文本 → { patch, applied[], skipped[], hasAdjust } ──
     function mapXmp(text) {
         const { values, found } = parseXmp(text);
+        const qf = readQfGrade(values);
+        if (qf) {
+            return {
+                patch: qf.grade,
+                applied: ['清框影完整调色'],
+                skipped: [],
+                hasAdjust: true,
+                qf: true,
+                name: String(qf.name || '')
+            };
+        }
         const patch = {};
         const applied = [];
         const skipped = [];
@@ -539,7 +580,140 @@
         say(msg);
     }
 
-    window.AppXmp = { mapXmp, importXmpPreset, kelvinToTemp };
+    /* ══ 导出：清框影 grade → Lightroom / Camera Raw 可读的 .xmp ══
+       只写 LR 有同义字段的参数；色彩平衡 / 渐变映射 / 色阶中间调是清框影
+       自己的实现，LR 没有同义字段，不硬塞成别的参数（宁可少导，不导错）。
+       标准字段全部写满（含 0 / 线性曲线），保证在 LR 里套用时不会残留上一套。
+       qf:QfsGrade 里另附完整 grade，本应用重新导入时逐字段还原。 */
+    const escAttr = (v) => String(v)
+        .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const numStr = (v) => String(Math.round((Number(v) || 0) * 100) / 100);
+    const curveVals = (pts) => {
+        const list = (pts && pts.length >= 2) ? pts : [[0, 0], [1, 1]];
+        return list.map((p) => Math.round(clamp(Number(p[0]) || 0, 0, 1) * 255)
+            + ', ' + Math.round(clamp(Number(p[1]) || 0, 0, 1) * 255));
+    };
+
+    function gradeToXmp(grade, name) {
+        const App = window.App;
+        const g = (App && App.normalizeGrade) ? App.normalizeGrade(grade) : (grade || {});
+        const safeName = String(name || '我的调色').replace(/[<>]/g, '').replace(/--+/g, '-');
+        const attrs = [];
+        const add = (k, v) => attrs.push('    crs:' + k + '="' + escAttr(v) + '"');
+
+        add('Version', '15.4');
+        add('ProcessVersion', '15.4');
+        add('PresetType', 'Normal');
+        add('HasSettings', 'True');
+
+        const BASE_OUT = [
+            ['exp', 'Exposure2012'], ['con', 'Contrast2012'],
+            ['sat', 'Saturation'], ['vib', 'Vibrance'],
+            ['hi', 'Highlights2012'], ['sh', 'Shadows2012'],
+            ['white', 'Whites2012'], ['black', 'Blacks2012']
+        ];
+        for (const f of BASE_OUT) add(f[1], numStr(g[f[0]]));
+
+        if (Number(g.temp) || Number(g.tint)) {
+            add('WhiteBalance', 'Custom');
+            add('Temperature', tempToKelvin(g.temp));
+            add('Tint', Math.round(Number(g.tint) || 0));
+        } else {
+            add('WhiteBalance', 'As Shot');
+        }
+
+        // 黑白：false 也要写，否则在 LR 里套完黑白预设再套彩色预设不会退出黑白。
+        add('ConvertToGrayscale', (g.bw && g.bw.on) ? 'True' : 'False');
+        if (g.bw && g.bw.on) {
+            BW_FIELDS.forEach((f) => add(f.xmp, Math.round(Number(g.bw[f.key]) || 0)));
+        }
+
+        // 细节：全部写满，0 也写，避免上一套预设的锐化/清晰度残留。
+        const det = g.det || {};
+        DET.forEach((f) => add(f.xmp, Math.round(Number(det[f.key]) || 0)));
+        add('SharpenAmount', Math.round(Number(det.shp) || 0));
+        add('SharpenRadius', (Math.round((Number(det.shr) || 1) * 10) / 10).toFixed(1));
+        add('SharpenDetail', Math.round(Number(det.shd) || 0));
+        add('SharpenEdgeMasking', Math.round(Number(det.shm) || 0));
+
+        const cal = g.cal || {};
+        CAL.forEach((f) => add(f.xmp, Math.round(Number(cal[f.key]) || 0)));
+
+        MIX_COLORS.forEach((c) => {
+            const cell = (g.mix && g.mix[c.key]) || {};
+            MIX_CH.forEach((ch) => add(ch.xmp + c.xmp, Math.round(Number(cell[ch.key]) || 0)));
+        });
+
+        const cg = g.cg || {};
+        const ZONES_OUT = [
+            ['Shadow', 'shadow'], ['Midtone', 'mid'],
+            ['Highlight', 'high'], ['Global', 'global']
+        ];
+        for (const z of ZONES_OUT) {
+            const v = cg[z[1]] || {};
+            add('ColorGrade' + z[0] + 'Hue', Math.round(Number(v.h) || 0));
+            add('ColorGrade' + z[0] + 'Sat', Math.round(Number(v.s) || 0));
+            add('ColorGrade' + z[0] + 'Lum', Math.round(Number(v.l) || 0));
+        }
+        const blend = Number(cg.blending);
+        add('ColorGradeBlending', Math.round(Number.isFinite(blend) ? blend : 50));
+        add('ColorGradeBalance', Math.round(Number(cg.balance) || 0));
+
+        add('LensManualDistortionAmount',
+            Math.round(Number((g.lc && g.lc.distort) || 0)));
+
+        // 曲线全部写满：没有调曲线时写直线，套预设才会清掉上一套曲线。
+        const CV = window.QfsCurve;
+        const hasCurve = CV ? CV.curveActive(g.curve)
+            : !!(g.curve && (g.curve.rgb || g.curve.r || g.curve.g || g.curve.b));
+        const CURVE_OUT = [
+            ['ToneCurvePV2012', 'rgb'], ['ToneCurvePV2012Red', 'r'],
+            ['ToneCurvePV2012Green', 'g'], ['ToneCurvePV2012Blue', 'b']
+        ];
+        const curveNodes = [];
+        for (const c of CURVE_OUT) {
+            const vals = curveVals(hasCurve && g.curve ? g.curve[c[1]] : null);
+            curveNodes.push('    <crs:' + c[0] + '>\n'
+                + '      <rdf:Seq>\n'
+                + vals.map((v) => '        <rdf:li>' + v + '</rdf:li>').join('\n') + '\n'
+                + '      </rdf:Seq>\n'
+                + '    </crs:' + c[0] + '>');
+        }
+
+        // 清框影私有完整参数。base64 后是纯 ASCII，放进 XML 文本节点即可。
+        let payload = '';
+        try {
+            if (App && typeof App._jsonToB64 === 'function') {
+                payload = App._jsonToB64(JSON.stringify({
+                    v: 1,
+                    kind: 'qfs-grade-xmp',
+                    name: safeName,
+                    grade: Object.assign({}, g, { masks: [] })
+                }));
+            }
+        } catch (_) { payload = ''; }
+
+        const lines = [];
+        lines.push('<?xpacket begin="\uFEFF" id="W5M0MpCehiHzreSzNTczkc9d"?>');
+        lines.push('<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Qingframe">');
+        lines.push(' <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">');
+        lines.push('  <!-- ' + safeName + ' -->');
+        lines.push('  <rdf:Description rdf:about=""');
+        lines.push('    xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/"');
+        lines.push('    xmlns:qf="https://qingframe.app/ns/grade/1.0/"');
+        for (const a of attrs) lines.push(a);
+        lines.push('  >');
+        for (const n of curveNodes) lines.push(n);
+        if (payload) lines.push('    <qf:QfsGrade>' + payload + '</qf:QfsGrade>');
+        lines.push('  </rdf:Description>');
+        lines.push(' </rdf:RDF>');
+        lines.push('</x:xmpmeta>');
+        lines.push('<?xpacket end="w"?>');
+        return lines.join('\n');
+    }
+
+    window.AppXmp = { mapXmp, importXmpPreset, kelvinToTemp, tempToKelvin, gradeToXmp };
 
     function bind() {
         const btn = document.getElementById('btnGradeImportXmp');

@@ -210,6 +210,8 @@ window.App = Object.assign(window.App || {}, {
             this.invalidateStyleCaches();
             this.buildThumbnails();
             this.afterImageSelect();
+            // 草稿整批换了照片：左侧「我的调色」缩略图/使用中标记要按新图重算。
+            if (this.onGradePresetImageChange) this.onGradePresetImageChange();
             this.refreshUI();
             this.scheduleRender(true);
             const btn = document.getElementById('btnRestoreDraft');

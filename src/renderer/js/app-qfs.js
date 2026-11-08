@@ -200,6 +200,8 @@ window.App = Object.assign(window.App || {}, {
         this.invalidateStyleCaches();
         this.buildThumbnails();
         this.afterImageSelect();
+        // 打开工程替换了整批照片：左侧「我的调色」缩略图/使用中标记要按新图重算。
+        if (this.onGradePresetImageChange) this.onGradePresetImageChange();
         this.refreshUI();
         this.scheduleRender(true);
         this.saveDraftNow();

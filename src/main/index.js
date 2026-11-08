@@ -945,24 +945,141 @@ ipcMain.handle('rename-template', (_e, { oldName, newName }) => {
     } catch (e) { return { ok: false, error: String(e) }; }
 });
 
-// ── 调色预设（只存全局调色参数，不含蒙版；与样式模板分库）──
-ipcMain.handle('save-grade-preset', (_e, { name, data }) => {
+// ── 调色预设：userData/grade-presets/*.xmp，与整帧样式模板分库 ──
+// 预设本身就是 Lightroom / Camera Raw 的 XMP 文件，目录里的文件可以直接分享。
+ipcMain.handle('save-grade-preset', (_e, { name, xml }) => {
     if (!isTrustedFrame(_e)) return BLOCKED;
-    return gradePresetStore.save(GRADE_PRESETS_DIR, name, data);
+    return gradePresetStore.save(GRADE_PRESETS_DIR, name, xml);
 });
 
 ipcMain.handle('list-grade-presets', () => gradePresetStore.list(GRADE_PRESETS_DIR));
 
-ipcMain.handle('load-grade-preset', (_e, name) => gradePresetStore.load(GRADE_PRESETS_DIR, name));
+ipcMain.handle('load-grade-preset', (_e, { name, ext }) =>
+    gradePresetStore.load(GRADE_PRESETS_DIR, name, ext));
 
-ipcMain.handle('delete-grade-preset', (_e, name) => {
+ipcMain.handle('delete-grade-preset', (_e, { name, ext }) => {
     if (!isTrustedFrame(_e)) return BLOCKED;
-    return gradePresetStore.remove(GRADE_PRESETS_DIR, name);
+    return gradePresetStore.remove(GRADE_PRESETS_DIR, name, ext);
 });
 
 ipcMain.handle('rename-grade-preset', (_e, { oldName, newName }) => {
     if (!isTrustedFrame(_e)) return BLOCKED;
     return gradePresetStore.rename(GRADE_PRESETS_DIR, oldName, newName);
+});
+
+ipcMain.handle('open-grade-presets-dir', async () => {
+    try {
+        fs.mkdirSync(GRADE_PRESETS_DIR, { recursive: true });
+        const err = await shell.openPath(GRADE_PRESETS_DIR);
+        return err ? { ok: false, message: err } : { ok: true, path: GRADE_PRESETS_DIR };
+    } catch (e) { return { ok: false, message: e && e.message }; }
+});
+
+// 保存当前调色：先让用户选位置；默认永远打开预设库目录，最省一步。
+ipcMain.handle('pick-grade-preset-save-path', async (_e, suggestedName) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
+    try {
+        fs.mkdirSync(GRADE_PRESETS_DIR, { recursive: true });
+        const base = safeLeafName(suggestedName || '我的调色', '我的调色');
+        const { canceled, filePath } = await dialog.showSaveDialog({
+            title: '保存调色预设',
+            defaultPath: path.join(GRADE_PRESETS_DIR, base + '.xmp'),
+            filters: [{ name: 'Lightroom 调色预设', extensions: ['xmp'] }]
+        });
+        if (canceled || !filePath) return { canceled: true };
+        // 强制 .xmp 后缀：Lightroom 只认这个扩展名。
+        const outPath = path.extname(filePath).toLowerCase() === '.xmp'
+            ? filePath
+            : path.join(path.dirname(filePath), path.basename(filePath, path.extname(filePath)) + '.xmp');
+        const inLibrary = path.resolve(path.dirname(outPath)).toLowerCase()
+            === path.resolve(GRADE_PRESETS_DIR).toLowerCase();
+        return {
+            ok: true,
+            path: outPath,
+            name: path.basename(outPath, path.extname(outPath)),
+            inLibrary
+        };
+    } catch (e) {
+        return { ok: false, error: String(e) };
+    }
+});
+
+// 写入用户选的位置；如果不在预设库里，再自动在库里放一份。
+ipcMain.handle('save-grade-preset-xmp', (_e, { path: filePath, xml }) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
+    if (typeof filePath !== 'string' || !filePath) return { ok: false, error: '保存路径为空' };
+    try {
+        fs.mkdirSync(GRADE_PRESETS_DIR, { recursive: true });
+        const checked = gradePresetStore.save(path.dirname(filePath),
+            path.basename(filePath, path.extname(filePath)), xml);
+        if (!checked || checked.ok === false) return checked || { ok: false, error: '写入失败' };
+        const libDir = path.resolve(GRADE_PRESETS_DIR).toLowerCase();
+        const outDir = path.resolve(path.dirname(filePath)).toLowerCase();
+        let libraryName = path.basename(filePath, path.extname(filePath));
+        let libraryPath = filePath;
+        if (outDir !== libDir) {
+            libraryName = gradePresetStore.uniqueName(GRADE_PRESETS_DIR, libraryName);
+            libraryPath = path.join(GRADE_PRESETS_DIR, libraryName + '.xmp');
+            const copied = gradePresetStore.save(GRADE_PRESETS_DIR, libraryName, xml);
+            if (!copied || copied.ok === false) return copied || { ok: false, error: '收录到预设库失败' };
+        }
+        saveState({ lastExportDir: path.dirname(filePath) });
+        return { ok: true, path: filePath, libraryName, libraryPath };
+    } catch (e) {
+        return { ok: false, error: String(e) };
+    }
+});
+
+// 导出已有预设到用户选的位置：只写文件，不再往库里收录一份。
+ipcMain.handle('export-grade-preset-xmp', (_e, { path: filePath, xml }) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
+    if (typeof filePath !== 'string' || !filePath) return { ok: false, error: '保存路径为空' };
+    try {
+        const r = gradePresetStore.save(path.dirname(filePath),
+            path.basename(filePath, path.extname(filePath)), xml);
+        if (!r || r.ok === false) return r || { ok: false, error: '写入失败' };
+        saveState({ lastExportDir: path.dirname(filePath) });
+        return { ok: true, path: filePath };
+    } catch (e) {
+        return { ok: false, error: String(e) };
+    }
+});
+
+// 批量导入：一个按钮选多个 .xmp，主进程只负责读文本，解析交给渲染进程。
+ipcMain.handle('pick-grade-xmp-files', async (_e) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
+    try {
+        const st = loadState();
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            title: '导入调色预设（可多选）',
+            defaultPath: validDir(st.lastOpenDir) ? st.lastOpenDir : undefined,
+            properties: ['openFile', 'multiSelections'],
+            filters: [{ name: 'Lightroom 调色预设', extensions: ['xmp'] }]
+        });
+        if (canceled || !filePaths || !filePaths.length) return { canceled: true };
+        const files = [];
+        const skipped = [];
+        for (const p of filePaths) {
+            try {
+                const stat = fs.statSync(p);
+                if (stat.size > gradePresetStore.MAX_BYTES) {
+                    skipped.push(path.basename(p) + '（超过 4MB）');
+                    continue;
+                }
+                files.push({
+                    name: path.basename(p, path.extname(p)),
+                    path: p,
+                    xml: fs.readFileSync(p, 'utf-8')
+                });
+            } catch (e) {
+                skipped.push(path.basename(p) + '（读取失败）');
+            }
+        }
+        if (files.length) saveState({ lastOpenDir: path.dirname(files[0].path) });
+        return { ok: true, files, skipped };
+    } catch (e) {
+        return { ok: false, error: String(e) };
+    }
 });
 
 // ── 草稿附件:把模板里的大 data: 图片搬到 userData/draft-assets,草稿只存引用 ──
