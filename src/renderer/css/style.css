@@ -398,13 +398,16 @@ html.dark .side-action.primary { color: #0c1914; }
     overscroll-behavior: contain;
 }
 .grade-preset-list .tpl-row { margin: 5px 0; }
-.grade-preset-list .tpl-thumb { width: 44px; height: 44px; }
 .grade-preset-list .tpl-empty { padding-top: calc(24px * var(--font-scale)); }
+/* 纯文字列表：没有缩略图，名称与「使用中」同排，行更矮、更好扫。
+   选择器写成两段是为了压过后面 .tpl-info 的 flex-direction: column。 */
+.tpl-info.grade-preset-info { flex-direction: row; align-items: center; gap: 6px; }
+.grade-preset-info .tpl-name { flex: 0 1 auto; min-width: 0; text-align: left; }
 .grade-preset-row.previewing {
     border-color: var(--primary); background: var(--surface);
     box-shadow: 0 0 0 1px var(--primary-soft);
 }
-.grade-preset-row.previewing .tpl-thumb { border-color: var(--primary); }
+.grade-preset-row.previewing .tpl-name { color: var(--primary-text); }
 .preset-group { margin-bottom: var(--sp-1-5); }
 .preset-group + .preset-group { margin-top: var(--sp-2); padding-top: calc(2px * var(--font-scale)); }
 /* 分类标题:弱化为小灰字,与预设项拉开层级(分类是导航,项才是操作对象) */

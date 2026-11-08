@@ -389,10 +389,6 @@ window.App = {
             body.classList.toggle('inspector-collapsed', ic);
             if (this.dom.sidebarRail) this.dom.sidebarRail.hidden = !sc;
             if (this.dom.inspectorRail) this.dom.inspectorRail.hidden = !ic;
-            // 素材栏重新展开时补烘「我的调色」缩略图：收起期间切过图的话缩略图是占位。
-            if (!sc && this._renderGradePresetThumbs) {
-                setTimeout(() => this._renderGradePresetThumbs(), 0);
-            }
             fit();
         };
         const toggle = (key) => { localStorage.setItem(key, localStorage.getItem(key) === '1' ? '0' : '1'); sync(); };

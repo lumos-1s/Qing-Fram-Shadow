@@ -10,14 +10,12 @@
 //    也可以从 LR 批量导入。旧版 .json 会在读取时自动迁移成 .xmp。
 // 3) 「我的调色」放在左侧素材栏，和「边框」双模式切换；右侧只留调色滑块，
 //    照片完整可见。悬停预览、单击应用，最接近 Lightroom 的操作方式。
-// 4) 缩略图用当前照片实时烘焙（bakeGradePreview），只在左侧「我的调色」可见
-//    时按需渲染并缓存。悬停预览只烘一张低分辨率图，不写 undo、不改参数。
+// 4) 列表只显示预设名，不放缩略图：左侧栏窄，文字列表更快扫读，也省掉每张
+//    预设都跑一遍调色管线的开销。悬停预览只烘一张低分辨率图，不写 undo。
 window.App = Object.assign(window.App || {}, {
     _gradePresets: [],
     _gradePresetRows: [],
     _gradePresetQuery: '',
-    _gradePresetThumbCache: new Map(),
-    _gradePresetThumbRendering: false,
     _gradePresetActiveTimer: 0,
     _gradePresetRevealTimer: 0,
     _gradePresetLoadSeq: 0,
@@ -316,7 +314,6 @@ window.App = Object.assign(window.App || {}, {
             return;
         }
         for (const r of rows) box.appendChild(this._buildGradePresetRow(r));
-        this._renderGradePresetThumbs();
     },
 
     _buildGradePresetRow(r) {
@@ -330,31 +327,19 @@ window.App = Object.assign(window.App || {}, {
         main.className = 'tpl-main';
         main.title = '单击应用调色「' + r.disp + '」到当前照片；悬停预览';
         main.setAttribute('aria-label', '应用调色「' + r.disp + '」');
-        const thumb = document.createElement('img');
-        thumb.className = 'tpl-thumb';
-        thumb.alt = '';
-        thumb.draggable = false;
-        // 透明占位，避免未渲染时出现破图图标。
-        thumb.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
-        row._thumb = thumb;
 
+        // 纯文字列表：预设名 +（使用中）标记；点击/悬停反馈就够了，不放缩略图。
         const info = document.createElement('span');
-        info.className = 'tpl-info';
+        info.className = 'tpl-info grade-preset-info';
         const nameSpan = document.createElement('span');
         nameSpan.className = 'tpl-name';
         nameSpan.textContent = r.disp;
         nameSpan.title = r.disp;
-        const meta = document.createElement('span');
-        meta.className = 'tpl-meta';
         const activeTag = document.createElement('span');
         activeTag.className = 'tpl-active-tag';
         activeTag.textContent = '使用中';
-        const hint = document.createElement('span');
-        hint.className = 'tpl-hint';
-        hint.textContent = '单击应用';
-        meta.append(activeTag, hint);
-        info.append(nameSpan, meta);
-        main.append(thumb, info);
+        info.append(nameSpan, activeTag);
+        main.append(info);
         main.addEventListener('click', () => this.applyGradePreset(r, [this.currentIdx]));
 
         row.addEventListener('mouseenter', () => this._scheduleGradePresetHover(r, row));
@@ -542,8 +527,6 @@ window.App = Object.assign(window.App || {}, {
         row.setAttribute('aria-current', active ? 'true' : 'false');
         const tag = row.querySelector('.tpl-active-tag');
         if (tag) tag.hidden = !active;
-        const hint = row.querySelector('.tpl-hint');
-        if (hint) hint.hidden = active;
     },
 
     _refreshGradePresetActive() {
@@ -556,81 +539,10 @@ window.App = Object.assign(window.App || {}, {
         this._gradePresetActiveTimer = setTimeout(() => this._refreshGradePresetActive(), 250);
     },
 
-    // 切图后缩略图/“使用中”都属于上一张照片，需要按新图重算。
+    // 切图后「使用中」标记属于上一张照片，需要按新图重算。
     onGradePresetImageChange() {
         this._endGradePresetHover(true);
-        if (this._gradePresetThumbCache) this._gradePresetThumbCache.clear();
-        if (!this._gradePresetRows || !this._gradePresetRows.length) return;
-        for (const row of this._gradePresetRows) {
-            if (row._thumb) {
-                row._thumb.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
-            }
-        }
         this._refreshGradePresetActive();
-        setTimeout(() => this._renderGradePresetThumbs(), 0);
-    },
-
-    /* ══ 缩略图 ══ */
-
-    _gradePresetThumbKey(r) {
-        const im = this.image;
-        const el = im && im.el;
-        if (!this._gradeThumbSrcIds) this._gradeThumbSrcIds = new WeakMap();
-        let srcId = 0;
-        if (el) {
-            srcId = this._gradeThumbSrcIds.get(el) || 0;
-            if (!srcId) {
-                srcId = (this._gradeThumbSeq = (this._gradeThumbSeq || 0) + 1);
-                this._gradeThumbSrcIds.set(el, srcId);
-            }
-        }
-        let sig = '';
-        try { sig = JSON.stringify(r.grade); } catch (_) { sig = r.name || ''; }
-        return (r.name || '') + '#' + srcId + '#' + sig.length + '#' + sig;
-    },
-
-    async _renderGradePresetThumbs() {
-        if (this._gradePresetThumbRendering) {
-            // 列表在渲染途中被刷新（切模式会连续触发两次 refresh）：
-            // 旧行已经 disconnected，新行需要重新排队，否则它们会一直停在占位图。
-            this._gradePresetThumbPending = true;
-            return;
-        }
-        if (typeof this.bakeGradePreview !== 'function') return;
-        // 左侧不在「我的调色」或素材栏收起时不烘焙：每张缩略图都是一次完整调色管线。
-        if (!this._gradePresetSideVisible()) return;
-        if (!this._gradePresetRows || !this._gradePresetRows.length) return;
-        this._gradePresetThumbRendering = true;
-        try {
-            for (const row of this._gradePresetRows) {
-                const r = row._preset;
-                const img = row._thumb;
-                if (!r || !img || !img.isConnected) continue;
-                const key = this._gradePresetThumbKey(r);
-                const cached = this._gradePresetThumbCache.get(key);
-                if (cached) {
-                    if (img.src !== cached) img.src = cached;
-                    continue;
-                }
-                let cv = null;
-                try { cv = this.bakeGradePreview(r.grade, 160); } catch (_) { cv = null; }
-                if (!cv) break; // 没有照片可作预览源，保持占位
-                try {
-                    const url = cv.toDataURL('image/jpeg', 0.72);
-                    img.src = url;
-                    if (this._gradePresetThumbCache.size > 240) this._gradePresetThumbCache.clear();
-                    this._gradePresetThumbCache.set(key, url);
-                } catch (_) { /* 保持占位 */ }
-                // 预设多时让一帧给界面，别让列表一次卡住。
-                await new Promise((resolve) => setTimeout(resolve, 0));
-            }
-        } finally {
-            this._gradePresetThumbRendering = false;
-            if (this._gradePresetThumbPending) {
-                this._gradePresetThumbPending = false;
-                setTimeout(() => this._renderGradePresetThumbs(), 0);
-            }
-        }
     },
 
     /* ══ 保存 / 导入 / 重命名 / 删除 / 导出 ══ */

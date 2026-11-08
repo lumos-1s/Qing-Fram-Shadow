@@ -1,5 +1,5 @@
 // 调色预设回归：XMP 保存 / 列表 / 应用 / 批量 / 撤销 / 悬停预览 /
-// 批量导入 / 重命名 / 删除 / 缩略图。
+// 批量导入 / 重命名 / 删除 / 纯文字列表。
 // 用法：node tools/run-electron.js tools/test-grade-presets.js
 'use strict';
 
@@ -339,20 +339,42 @@ async function main() {
     check(manage.innerName === '测试冷调', '重命名同步更新 XMP 内的预设名', manage.innerName);
     check(manage.okDelete && manage.left.indexOf('测试冷调') < 0, '删除调色预设', JSON.stringify(manage.left));
 
-    // ── 缩略图 ──
+    // ── 纯文字列表 ──
+    // 左侧栏窄，一行一个预设名更好扫；顺带省掉每张预设都跑一遍调色管线的开销。
     await exec(`(async () => {
         const A = window.App;
         A.setSideMode('grade', { activateTab: false });
         await A.refreshGradePresets();
-        await new Promise((r) => setTimeout(r, 700));
+        await new Promise((r) => setTimeout(r, 300));
         return true;
     })()`);
-    const thumb = await exec(`(() => {
-        const img = document.querySelector('#lvGradePresets .tpl-thumb');
-        return { src: (img && img.src) || '', w: (img && img.naturalWidth) || 0 };
+    const list = await exec(`(() => {
+        const box = document.getElementById('lvGradePresets');
+        const row = box && box.querySelector('.grade-preset-row');
+        const info = row && row.querySelector('.grade-preset-info');
+        const nameEl = row && row.querySelector('.tpl-name');
+        // 长名字必须靠省略号收在行内：临时换长文本量一下再还原。
+        let clipped = false;
+        if (nameEl) {
+            const old = nameEl.textContent;
+            nameEl.textContent = '一个名字特别长的调色预设用来看省略号';
+            clipped = nameEl.scrollWidth > nameEl.clientWidth + 1 && nameEl.clientWidth > 0;
+            nameEl.textContent = old;
+        }
+        return {
+            rows: box ? box.querySelectorAll('.grade-preset-row').length : 0,
+            thumbs: box ? box.querySelectorAll('.tpl-thumb').length : 0,
+            name: (nameEl && nameEl.textContent) || '',
+            hasInfo: !!info,
+            dir: info ? getComputedStyle(info).flexDirection : '',
+            overflow: row ? row.scrollWidth - row.clientWidth : 0,
+            clipped,
+        };
     })()`);
-    check(/^data:image\/jpeg;base64,/.test(thumb.src) && thumb.w > 0,
-        '预设缩略图用当前照片烘焙并显示', JSON.stringify({ w: thumb.w, kind: thumb.src.slice(0, 23) }));
+    check(list.rows > 0 && list.thumbs === 0 && list.hasInfo && list.name,
+        '列表是纯文字行（不烘缩略图），预设名可读', JSON.stringify(list));
+    check(list.dir === 'row' && list.overflow <= 1 && list.clipped,
+        '名称与「使用中」同排，长名字用省略号收在行内', JSON.stringify(list));
 
     // ── 导出 XMP（菜单能力） ──
     const exported = await exec(`(async () => {
