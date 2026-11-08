@@ -59,6 +59,9 @@ window.App = Object.assign(window.App || {}, {
     saveDraftNow() {
         try {
             if (!this.images || !this.images.length) return;
+            // 悬停预览时 this.template 是临时的，别把「划过的那一下」写进草稿；
+            // 脏标记留着，等鼠标移开后的定时器再存。
+            if (this._presetHover) return;
             // 内置示例照片没有磁盘路径,不能写进草稿:否则下次启动恢复时会被跳过,
             // 但它仍占着 currentIdx,真实照片的当前张就会错位。只存可再次加载的照片。
             const savable = [];

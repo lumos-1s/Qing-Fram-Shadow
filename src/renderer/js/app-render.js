@@ -235,10 +235,13 @@ window.App = Object.assign(window.App || {}, {
                 return;
             }
             // 未使用预设的图:画布直接展示原图;当前图只要有边框设置,就把最新模板写回该图记录
-            // (既标记“已用预设”,也保证切走再切回时保留最新编辑)
+            // (既标记“已用预设”,也保证切走再切回时保留最新编辑)。
+            // 悬停预览例外:那一帧的 template 是临时的,写回去就等于「划过一下 = 应用了」。
             const im = this.image;
-            if (this.hasBorderSettings(this.template)) this.setTpl(im, this.template);
-            const assigned = !!this.getTpl(im);
+            const previewing = !!this._presetHover;
+            if (!previewing && this.hasBorderSettings(this.template)) this.setTpl(im, this.template);
+            // 预览时即便这张图还没有模板记录,也要按 this.template 画，否则会被当成“未用预设”退回原图。
+            const assigned = previewing || !!this.getTpl(im);
             const previewTpl = assigned ? this.template : this.defaultTemplate();
             const prevTpl = this.template;
             this.template = previewTpl;

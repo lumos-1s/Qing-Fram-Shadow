@@ -2315,6 +2315,8 @@ window.App = {
 
     saveCurrentTemplate() {
         if (!this.image) return;
+        // 悬停预览期间 this.template 是借来的：任何自动保存/参数提交都不能把它落成这张图的模板。
+        if (this._presetHover) return;
         // 单一存取口(见 app-state.js):Map 与 customSettings 恒为同一对象。
         // 写入的是 cloneTemplate 快照,this.template 本体引用不变,selectedEls 不受影响
         this.setTpl(this.image, this.cloneTemplate());

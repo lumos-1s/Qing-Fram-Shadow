@@ -852,6 +852,8 @@ window.App = Object.assign(window.App || {}, {
 
     buildTree(filter) {
         const tree = this.dom.presetTree;
+        // 行马上要被整片换掉，预览态先还原，避免临时模板留在画布上。
+        if (this._presetHover) this._endPresetHover();
         tree.innerHTML = '';
         const f = (filter || '').toLowerCase();
         this._searchVal = filter || '';
@@ -929,7 +931,15 @@ window.App = Object.assign(window.App || {}, {
             star.title = '收藏/取消收藏';
             star.addEventListener('click', (e) => { e.stopPropagation(); this.toggleFav(p.templateName); });
             item.appendChild(star);
-            item.addEventListener('click', () => this.selectPreset(p, item));
+            item.title = '单击应用「' + p.templateName + '」；鼠标停留可在照片上预览';
+            item.addEventListener('mouseenter', () => this._schedulePresetHover(p, item));
+            item.addEventListener('mouseleave', () => this._schedulePresetHoverEnd());
+            item.addEventListener('click', () => {
+                // 预览只是临时的：先还原成已提交的模板，再走正常应用流程，
+                // 否则 applyPreset 会拿预览态当「上一份模板」去合并用户内容。
+                this._endPresetHover();
+                this.selectPreset(p, item);
+            });
             item.dataset.grp = grp;
             return item;
         };
@@ -1090,8 +1100,8 @@ window.App = Object.assign(window.App || {}, {
     // 区分用户文字与预设文字的依据:用户手动加的自由文字 align='free' 且带真实 x/y
     // (app-export.js 导出缩放时也按这个约定区分),预设文字一律是锚点对齐。
     // 因此只保留 align==='free' 的行,预设自带的排版照常跟随预设更新。
-    applyPreset(p) {
-        const prev = this.template || {};
+    mergePreset(prevTpl, p) {
+        const prev = prevTpl || {};
         const next = JSON.parse(JSON.stringify(p));
 
         // 全局「背景模糊默认」偏好：显式记忆过时覆盖预设自带值；
@@ -1134,13 +1144,70 @@ window.App = Object.assign(window.App || {}, {
             if (!next.userSignature && prev.userSignature) next.userSignature = prev.userSignature;
             this.fillDefaultSignature(next);
         }
+        return next;
+    },
 
+    applyPreset(p) {
+        const next = this.mergePreset(this.template, p);
         this.template = next;
         this.normalizeTemplate();
         this.saveCurrentTemplate();
         this.refreshUI();
         // 换模板必须重新适配;苹果信息卡的"只变高不 fit"豁免不能把换模板也吃掉
         this._forceFitNext = true;
+        this.scheduleRender(true);
+    },
+
+    /* ══ 悬停预览：鼠标停一下就套上边框，移开还原，点击才真正应用 ══
+       不写模板文件、不进「最近使用」、不压撤销栈，也不刷新右侧参数面板——
+       预览期间 this.template 是临时的，参数面板仍显示已提交的值。
+       停留 160ms 才开渲染：扫列表时不会一路闪帧。 */
+    _schedulePresetHover(p, item) {
+        if (!p || !this.image) return;
+        // 先撤掉待执行的「还原」：在同一行里移出又移回时，别让 120ms 前的定时器把预览关掉。
+        this._clearPresetHoverTimer();
+        if (this._presetHover && this._presetHover.name === p.templateName) return;
+        this._presetHoverTimer = setTimeout(() => this._previewPresetOnPhoto(p, item), 160);
+    },
+
+    _clearPresetHoverTimer() {
+        if (this._presetHoverTimer) { clearTimeout(this._presetHoverTimer); this._presetHoverTimer = 0; }
+        if (this._presetHoverLeave) { clearTimeout(this._presetHoverLeave); this._presetHoverLeave = 0; }
+    },
+
+    _previewPresetOnPhoto(p, item) {
+        this._presetHoverTimer = 0;
+        if (!this.image || !p) return;
+        if (this._presetHover && this._presetHover.name === p.templateName) return;
+        // 快照只取一次：从已提交的模板起算，连续划过多个预设不会层层叠加。
+        if (!this._presetHover) {
+            this._presetHover = { snapshot: JSON.parse(JSON.stringify(this.template || {})), name: '', item: null };
+        }
+        const st = this._presetHover;
+        if (st.item) st.item.classList.remove('previewing');
+        st.name = p.templateName;
+        st.item = item || null;
+        if (item) item.classList.add('previewing');
+        this.template = this.mergePreset(st.snapshot, p);
+        this.normalizeTemplate();
+        // 不设 _forceFitNext：画布尺寸真变了引擎自己会 fit；没变就别让画面跳。
+        this.scheduleRender(true);
+    },
+
+    // 移开鼠标：先等 120ms 再还原，这样从一行划到下一行时不会先闪回原图。
+    _schedulePresetHoverEnd() {
+        this._clearPresetHoverTimer();
+        if (!this._presetHover) return;
+        this._presetHoverLeave = setTimeout(() => this._endPresetHover(), 120);
+    },
+
+    _endPresetHover() {
+        this._clearPresetHoverTimer();
+        const st = this._presetHover;
+        if (!st) return;
+        this._presetHover = null;
+        if (st.item) st.item.classList.remove('previewing');
+        this.template = st.snapshot;
         this.scheduleRender(true);
     },
 
