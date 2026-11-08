@@ -90,7 +90,9 @@ window.App = Object.assign(window.App || {}, {
                 // 它不需要重新编码，所以是真正无损可持久的
                 images: savable.map(im => ({
                     name: im.name, path: im.path, w: im.w, h: im.h,
-                    grade: (im.grade && !this.isNeutralGrade(im.grade)) ? im.grade : undefined
+                    grade: (im.grade && !this.isNeutralGrade(im.grade)) ? im.grade : undefined,
+                    // RAW 只存显影参数(几个数字),像素由主进程按参数重解,草稿不会因此变大
+                    raw: im.raw ? { params: Object.assign({}, im.raw.params) } : undefined
                 })),
                 currentIdx: cur,
                 template: tpl,
@@ -242,7 +244,19 @@ window.App = Object.assign(window.App || {}, {
                 try { exif = (await window.qingframe.readExif(meta.path)) || {}; } catch (e) { exif = {}; }
             }
             const img = window.qfsImage();
-            const src = this.photoUrl(meta.path);
+            // 草稿里带 raw 参数 = 这张是 RAW：恢复时按同一套参数重新显影，
+            // 不存像素也不存缩略图，改过参数重开还是改过的样子。
+            const rawInfo = meta.raw
+                ? {
+                    params: Object.assign({}, this.RAW_DEFAULTS, meta.raw.params || {}),
+                    edge: this.RAW_PROXY_EDGE,
+                    full: false,
+                    seq: 0
+                }
+                : null;
+            const src = rawInfo
+                ? this.rawSrc(meta.path, rawInfo.params, rawInfo.edge)
+                : this.photoUrl(meta.path);
             await new Promise(r => { img.onload = r; img.onerror = r; img.src = src; });
             if (!img.naturalWidth) return null;
             if (img.naturalWidth * img.naturalHeight > 200 * 1000 * 1000) {
@@ -260,6 +274,7 @@ window.App = Object.assign(window.App || {}, {
                 h: oriented ? oriented.h : img.naturalHeight,
                 exif,
                 customSettings: null,
+                raw: rawInfo,
                 grade: meta.grade || null
             };
             // 有调色参数：作废旧缓存,载入后该图被选中时会由 selectImage 在新底图上重放

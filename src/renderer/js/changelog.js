@@ -5,6 +5,28 @@
    - 历史版本不必全留：更老的说明在 GitHub Releases(项目主页 → Releases) 上。 */
 window.QF_CHANGELOG = [
     {
+        version: '0.1.25',
+        date: '2026-11-09',
+        groups: [
+            {
+                title: '新增',
+                items: [
+                    'RAW 支持：可以直接导入 Sony / Canon / Nikon / Fujifilm / Panasonic / Olympus / Pentax / 徕卡 / 大疆等机身的 RAW（arw、cr2、cr3、nef、raf、rw2、orf、pef、dng 等三十余种）。解码走 LibRaw 的原始数据，不是相机直出的 JPEG，所以高光和白平衡都还有余量',
+                    'RAW 显影：当前照片是 RAW 时，「调色」页签顶部出现「RAW 显影」一组，曝光 / 对比 / 高光 / 色温 / 色调五档。参数按图保存并写进草稿，下次打开还是调过的样子',
+                    'RAW 分两级显影：拖动滑块时用 1600px 代理（约 0.5 秒就能看到），停手 1.1 秒后自动按全尺寸重解一次；导出与切图前会先补齐，成品不会停在代理分辨率',
+                    '显影结果按参数缓存到本地，参数调回旧值直接命中，不重复解码；缓存超过 900MB 时按最久未用自动清理'
+                ]
+            },
+            {
+                title: '改进',
+                items: [
+                    'RAW 的 EXIF 用 exifr 单独读取，相机型号、ISO、快门、镜头这些参数条信息与 JPEG 走同一套字段，观感一致',
+                    '导入 RAW 时先出 1600px 代理，几十张也能很快看到缩略图，不会卡在「正在导入」'
+                ]
+            }
+        ]
+    },
+    {
         version: '0.1.24',
         date: '2026-11-05',
         groups: [

@@ -434,6 +434,20 @@ html.dark .side-action.primary { color: #0c1914; }
    选择器写成两段是为了压过后面 .tpl-info 的 flex-direction: column。 */
 .tpl-info.grade-preset-info { flex-direction: row; align-items: center; gap: 6px; }
 .grade-preset-info .tpl-name { flex: 0 1 auto; min-width: 0; text-align: left; }
+
+/* RAW 显影：标题旁的格式徽章 + 一行状态（代理尺寸 / 全尺寸）。
+   状态行是给"为什么现在只有 1600px"一个可见的答案，否则用户会以为导出被压过。 */
+.raw-badge {
+    margin-left: 6px; padding: 0 5px; border-radius: 5px;
+    background: var(--primary-soft); color: var(--primary-text);
+    font-size: 9px; font-weight: 700; letter-spacing: .4px; line-height: 15px;
+    vertical-align: 1px;
+}
+/* 状态并进标题行右侧：省一行高度，也让「现在是多少 px」和组名在同一视线里 */
+.raw-state {
+    margin-left: auto; font-size: var(--fs-10); font-weight: 500; color: var(--text-3);
+    font-variant-numeric: tabular-nums; letter-spacing: 0;
+}
 .grade-preset-row.previewing {
     border-color: var(--primary); background: var(--surface);
     box-shadow: 0 0 0 1px var(--primary-soft);

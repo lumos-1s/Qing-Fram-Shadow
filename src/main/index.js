@@ -31,12 +31,20 @@ const exifWrite = require('./exif-write');
 const { isHeic, heicFileToJpeg, HEIC_EXTS } = require('./heic');
 // HEIC 的 EXIF 走 exifr(自定义 exif-read 只认 JPEG);输出与 exifSummary 同字段。
 const { readHeicExif } = require('./heic-exif');
+// RAW 解码/显影:libraw-wasm 跑在常驻 worker 线程里,主进程只负责调度与落缓存。
+const { isRaw, RAW_EXTS, develop: developRaw, setCacheRoot: setRawCacheRoot, dispose: disposeRaw } = require('./raw');
+const { readRawExif } = require('./raw-exif');
 const { imageSize } = require('./image-size');
 const { ensureBuffer: ensurePngSrgb } = require('../shared/png-srgb');
 
 // 照片导入支持的扩展名(HEIC 由主进程解码,对渲染进程透明)
-const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp'].concat(HEIC_EXTS.map(e => e.slice(1)));
-const IMAGE_FILTERS = [{ name: '图片', extensions: IMAGE_EXTS }];
+const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp']
+    .concat(HEIC_EXTS.map(e => e.slice(1)))
+    .concat(RAW_EXTS);
+const IMAGE_FILTERS = [
+    { name: '图片与 RAW', extensions: IMAGE_EXTS },
+    { name: 'RAW', extensions: RAW_EXTS }
+];
 // 单张图上限:文件 512MB / 像素 200MP。超过后在导入阶段就拒绝,
 // 避免浏览器解码时直接 OOM(8192 导出本身已经要 3 份大缓冲)。
 const MAX_IMAGE_BYTES = 512 * 1024 * 1024;
@@ -120,6 +128,8 @@ function safeSubdir(root, subdir) {
 
 // 照片 EXIF 统一入口:JPEG 走轻量头部解析,HEIC 走 exifr;HEIC 读不到时返回空结果。
 async function readPhotoExif(filePath) {
+    // RAW 是 TIFF 结构,自定义 exif-read 只认 JPEG 段,这里换成 exifr。
+    if (isRaw(filePath)) return readRawExif(filePath);
     if (isHeic(filePath)) {
         const exif = await readHeicExif(filePath);
         if (exif && Object.keys(exif).length) return exif;
@@ -320,6 +330,31 @@ app.whenReady().then(() => {
             if (!SERVABLE_IMAGE_EXT.has(ext)) return new Response('Forbidden', { status: 403, headers: CORS });
             // 只服务主进程登记过的图片:文件选择、拖放、剪贴板、封面目录、read-exif。
             if (!servedImagePaths.has(imageKey(real))) return new Response('Forbidden', { status: 403, headers: CORS });
+            // RAW:Chromium 完全无法解码,由主进程显影成 JPEG。
+            // 参数随 URL 走(&raw=<json>&q=<长边>):同一个文件不同显影参数是不同的 URL,
+            // 渲染层换参数只要换 URL 就能拿到新像素,不需要额外的失效通知。
+            if (isRaw(real)) {
+                let params = {};
+                const rawParam = u.searchParams.get('raw');
+                if (rawParam) {
+                    try { params = JSON.parse(rawParam); } catch (e) { params = {}; }
+                }
+                const edge = Math.max(0, Number(u.searchParams.get('q')) || 0);
+                try {
+                    const out = await developRaw(real, { params, maxEdge: edge, halfSize: edge > 0 });
+                    return new Response(out.jpg, {
+                        headers: {
+                            ...CORS,
+                            'content-type': 'image/jpeg',
+                            'cache-control': 'no-store',
+                            'x-qf-raw-cached': out.cached ? '1' : '0'
+                        }
+                    });
+                } catch (e) {
+                    console.warn('[raw] 显影失败:', e && e.message);
+                    return new Response('RAW develop failed: ' + (e && e.message), { status: 415, headers: CORS });
+                }
+            }
             // HEIC/HEIF:Chromium 无法解码,先转成 JPEG 再返回;其他格式保持零拷贝流式读取。
             if (isHeic(real)) {
                 try {
@@ -342,6 +377,8 @@ app.whenReady().then(() => {
     });
     cleanupPasteDir();
     cleanupQfsTmpRoot();
+    // RAW 显影缓存放在 userData 下:卸载/升级不影响,也不占安装目录。
+    try { setRawCacheRoot(path.join(app.getPath('userData'), 'raw-cache')); } catch (e) { /* 极端情况下不缓存 */ }
     createWindow();
 
     // ── 自动更新:仅打包后(app.isPackaged)生效;启动静默检查,事件经 webContents 推给渲染进程做 UI ──
@@ -1389,6 +1426,7 @@ ipcMain.handle('qfs-cancel-export', (_e, id) => {
     return { ok: true };
 });
 app.on('will-quit', cleanupQfsTmpRoot);
+app.on('will-quit', () => { try { disposeRaw(); } catch (e) { /* 退出阶段忽略 */ } });
 
 ipcMain.handle('export-qfs', async (_e, data) => {
     if (!isTrustedFrame(_e)) return BLOCKED;
@@ -1494,7 +1532,7 @@ const collectImageFiles = async (inputPaths, limit) => {
         const real = path.resolve(p);
         if (seen.has(real)) return;
         seen.add(real);
-        out.push({ name: path.basename(p), path: real, size: st.size });
+        out.push({ name: path.basename(p), path: real, size: st.size, raw: isRaw(p) });
     };
     for (const p of inputPaths) await walk(String(p || ''), 0);
     return { items: out, skipped };
@@ -1545,7 +1583,7 @@ ipcMain.handle('open-image', async () => {
     const reason = imageRejectReason(fp, size);
     if (reason) return { error: `图片过大（${reason}），已跳过` };
     allowImagePath(fp);
-    return { name: path.basename(fp), path: fp, size, exif: await readPhotoExif(fp) };
+    return { name: path.basename(fp), path: fp, size, raw: isRaw(fp), exif: await readPhotoExif(fp) };
 });
 
 ipcMain.handle('open-images', async () => {
@@ -1563,7 +1601,7 @@ ipcMain.handle('open-images', async () => {
         const size = fs.statSync(fp).size;
         if (imageRejectReason(fp, size)) return null;
         allowImagePath(fp);
-        return { name: path.basename(fp), path: fp, size, exif: await readPhotoExif(fp) };
+        return { name: path.basename(fp), path: fp, size, raw: isRaw(fp), exif: await readPhotoExif(fp) };
     }))).filter(Boolean);
     return items.length ? items : null;
 });

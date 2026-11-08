@@ -1339,6 +1339,42 @@
                             </div>
 <!--                            <div class="hint-box">选中蒙版后，下面 9 档滑块只作用在蒙版范围内；点「全局」回到整图。曲线/校准/混色器始终是全局。</div>-->
                         </div>
+                        <!-- RAW 显影：只在当前照片是 RAW 时出现。参数属于这张图，写进草稿；
+                             拖动时用 1600px 代理，停手后自动升到全尺寸。 -->
+                        <div class="param-group" id="grpRaw" hidden>
+                            <div class="pg-title collapsible">RAW 显影 <span class="raw-badge" id="rawBadge">RAW</span>
+                                <span class="raw-state" id="rawState"></span>
+                            </div>
+                            <div class="param-row" id="rowRawExp">
+                                <label>曝光</label>
+                                <input type="range" id="slRawExp" class="ctl-rng" min="-5" max="5" step="0.01" value="0" />
+                                <span class="pval" id="lblRawExp">0</span>
+                            </div>
+                            <div class="param-row" id="rowRawCon">
+                                <label>对比</label>
+                                <input type="range" id="slRawCon" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblRawCon">0</span>
+                            </div>
+                            <div class="param-row" id="rowRawHi">
+                                <label>高光</label>
+                                <input type="range" id="slRawHi" class="ctl-rng" min="-100" max="100" step="1" value="25" />
+                                <span class="pval" id="lblRawHi">+25</span>
+                            </div>
+                            <div class="param-row" id="rowRawTemp">
+                                <label>色温</label>
+                                <input type="range" id="slRawTemp" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblRawTemp">0</span>
+                            </div>
+                            <div class="param-row" id="rowRawTint">
+                                <label>色调</label>
+                                <input type="range" id="slRawTint" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                <span class="pval" id="lblRawTint">0</span>
+                            </div>
+                            <div class="param-row grade-acts">
+                                <button id="btnRawReset" class="mini-btn" type="button" title="曝光/对比/高光/色温/色调回到默认">重置显影</button>
+                            </div>
+                            <div class="hint-box">显影在前，调色在后。停手后自动按全尺寸重解，导出前也会补齐。</div>
+                        </div>
                         <div class="param-group" id="grpGrade">
                             <div class="pg-title collapsible">调色</div>
                             <div class="param-row grade-acts">
@@ -2229,6 +2265,7 @@
     <script src="js/app-sharpen.js"></script>
     <script src="js/app-grade.js"></script>
     <script src="js/app-grade-presets.js"></script>
+    <script src="js/app-raw.js"></script>
     <script src="js/app-xmp.js"></script>
     <script src="js/app-curve.js"></script>
     <script src="js/app-mix.js"></script>

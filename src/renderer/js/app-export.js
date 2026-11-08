@@ -27,10 +27,19 @@ window.App = Object.assign(window.App || {}, {
        只有切图页签要换通道(切图是一张图切成 rows×cols 块,不是单图导出)。
        拼图页签仍走主导出管线:exportImage 自己会渲染拼图成品,格式/质量/尺寸都跟随导出设置
        (默认 JPG),不再被锁死在拼图面板按钮的固定档位上。 */
-    doExport() {
+    async doExport() {
         const active = this.dom.tabs && this.dom.tabs.querySelector('.tab.active');
         const tab = active ? active.dataset.tab : '';
-        if (tab === 'grid') return this.exportGridCrop();
+        if (tab === 'grid') {
+            // 切图也是按像素裁的：代理分辨率切出来的块会糊，先把参与的图补到全尺寸。
+            if (this.rawPrepareOutput) {
+                const list = (this.selectedIdx && this.selectedIdx.length > 1)
+                    ? this.selectedIdx.map(i => this.images[i])
+                    : [this.image];
+                await this.rawPrepareOutput(list);
+            }
+            return this.exportGridCrop();
+        }
         return this.exportImage();
     },
 
@@ -118,6 +127,10 @@ window.App = Object.assign(window.App || {}, {
             loc = await window.qingframe.pickExportLocation({ count: jobs.length, hintName: files[0].filename });
         } catch (e) { loc = null; }
         if (!loc || loc.canceled) { this.setStatus('已取消导出'); return; }
+
+        // RAW 导入时是 1600px 代理，直接导出会掉到代理分辨率。
+        // 放在选完保存位置之后：解一张全尺寸要 2~4 秒，不该挡在保存对话框前面。
+        if (this.rawPrepareOutput) await this.rawPrepareOutput(jobs.map(j => j.im));
 
         // ③ 再逐张渲染导出画面(展示画布同步变大),期间无渲染的确认框
         const originalIdx = this.currentIdx;

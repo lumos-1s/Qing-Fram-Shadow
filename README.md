@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://github.com/lumos-1s/Qing-Fram-Shadow/stargazers"><img src="https://img.shields.io/github/stars/lumos-1s/Qing-Fram-Shadow?style=flat-square&color=blue" alt="GitHub stars"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/github/license/lumos-1s/Qing-Fram-Shadow?style=flat-square&color=green" alt="MIT License"></a>
-  <a href="https://github.com/lumos-1s/Qing-Fram-Shadow/releases"><img src="https://img.shields.io/badge/version-0.1.24-orange?style=flat-square" alt="Version 0.1.24"></a>
+  <a href="https://github.com/lumos-1s/Qing-Fram-Shadow/releases"><img src="https://img.shields.io/badge/version-0.1.25-orange?style=flat-square" alt="Version 0.1.25"></a>
   <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-45-47848F?style=flat-square" alt="Electron 45"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4?style=flat-square" alt="Windows 10/11">
 </p>
@@ -96,6 +96,7 @@
 <a id="features"></a>
 ## 核心功能 · Features
 
+- **RAW 直读与显影** — 直接导入 Sony / Canon / Nikon / Fujifilm / Panasonic / Olympus / Pentax / 徕卡 / 大疆等机身的 RAW（arw、cr2、cr3、nef、raf、rw2、orf、pef、dng 等三十余种），解码走 LibRaw 的原始数据而不是相机直出的 JPEG：「调色」页签顶部多出「RAW 显影」一组，曝光 / 对比 / 高光 / 色温 / 色调五档先把宽容度和白平衡定下来，再交给下面的调色。拖动时用 1600px 代理（约 0.5 秒），停手 1.1 秒后自动按全尺寸重解，导出与切图前也会补齐；参数按图保存、写进草稿，显影结果按参数缓存在本地，调回旧值直接命中。解码只用通用色彩矩阵，没有 Adobe 的 DCP 相机配置文件，颜色会比 Lightroom 平一些——差的是一份数据，不是能力。
 - **90 款内置边框 · 95 种风格** — 杂志、拍立得、撕纸、胶带、邮票、报纸、胶片、渐变卡、漫画分镜、3D 卡、签名纪念与头像叠加，以及自动取色边框等快速预设；选中即套用，再继续微调。列表行高 34px，一屏能扫十几行；鼠标在行上停留 0.16 秒就把这个边框套到照片上预览，移开还原，点击才真正应用。
 - **边框墙启动页** — 启动即进入 90 张边框封面墙，方向键、滚轮或拖动浏览，点击直接套用并进入编辑；支持用自定义照片替换封面。支持「本图预览」：用当前照片实时渲染每款边框，随时可切回内置/自定义封面。
 - **参数实时可调** — 圆角、边距、照片缩放/偏移、内/外阴影、描边、投影、画布比例、纹理/渐变填充，改动即时反馈。
@@ -194,6 +195,7 @@ npm run gen:wall
 | 桌面壳 Desktop shell | Electron 45（主/渲染进程分离，`contextIsolation` + `sandbox` 开启） |
 | 渲染 Rendering | 原生 HTML / CSS / JavaScript + Canvas 2D 离屏合成 |
 | 打包分发 Packaging | electron-builder（NSIS 安装版 + 便携版） |
+| RAW 解码 RAW decode | LibRaw（`libraw-wasm`，跑在主进程的独立线程里；LGPL-2.1 / CDDL） |
 | 自动更新 Auto-update | electron-updater + GitHub Releases |
 
 没有前端框架，也没有后端服务；边框、光影、文字与导出都在渲染进程的 Canvas 2D 里完成。

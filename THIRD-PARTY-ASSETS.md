@@ -62,6 +62,19 @@ Copyright (c) 2026 lumos-1s），适用 MIT 许可。
 
 ---
 
+## 5. RAW 解码：LibRaw / libraw-wasm — LGPL-2.1 / CDDL，不影响本仓库 MIT
+
+`libraw-wasm`（ISC License）把 [LibRaw](https://www.libraw.org/) 编译成 WebAssembly，
+由主进程在独立线程里调用，用于解码相机 RAW。LibRaw 本身是 **LGPL-2.1 / CDDL 1.0 双许可**。
+
+- 本项目**不修改** LibRaw 源码，只把它当作独立的 WASM 模块加载、按公开 API 调用；
+- 它作为独立依赖随安装包分发，源码可从 <https://www.libraw.org/download> 或
+  <https://github.com/LibRaw/LibRaw> 获取；
+- 该模块与主程序之间只有「传文件路径、参数，取回像素」这一层数据接口，
+  替换或重新编译 `node_modules/libraw-wasm/dist/libraw.wasm` 不需要改动应用其余部分。
+
+因此 `src/` 下的代码仍整体适用 MIT；LibRaw 部分遵循其自身许可。
+
 ## English Summary
 
 - **Code** (`src/`, MIT License): free to use under the terms of `LICENSE`.
@@ -78,6 +91,9 @@ Copyright (c) 2026 lumos-1s），适用 MIT 许可。
   respective owners. Verify the source and licensing of these assets before public
   distribution.
 - **`shared/presets/`**: original parameter descriptions by this project, MIT licensed.
+- **RAW decoding**: `libraw-wasm` (ISC) wraps [LibRaw](https://www.libraw.org/)
+  (LGPL-2.1 / CDDL 1.0). It is loaded as an unmodified, separate WASM module;
+  the MIT license of this repository's own source is unaffected.
 - **`shared/acr/cr-tables.bin`**: measured Camera Raw color tables from the
   [Compositor](https://github.com/robbietilton/Compositor) project (MIT License,
   Copyright (c) 2026 Wonder Assembly LLC), repacked from LZMA to zlib. Used to align

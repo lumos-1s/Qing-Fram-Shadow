@@ -195,6 +195,7 @@ window.App = {
         if (this.initCrop) this.initCrop();
         if (this.initGrade) this.initGrade();
         if (this.initGradePresets) this.initGradePresets();
+        if (this.initRawPanel) this.initRawPanel();
         this.loadPrefs();
         this._presetsReady = this.loadPresets();   // 墙/侧栏点击要等它就绪，否则头一秒点卡片会点空
         this.restoreLastState();
@@ -2512,7 +2513,11 @@ window.App = {
                 const memWarn = estGB >= 1.5
                     ? `｜注意：当前 ${this.images.length} 张共约 ${estGB.toFixed(1)}GB 内存，建议处理完一批先删掉再导下一批`
                     : '';
-                this.setStatus(`已导入 ${loaded} 张图片${carry ? '，沿用「' + carry.templateName + '」' : ''}${skipped ? '，跳过 ' + skipped + ' 个不支持的文件' : ''}${iccNote}${memWarn}`);
+                // RAW 的显影入口在「调色」页签顶部，不主动切页签（有人只想加个边框），
+                // 但必须说一句在哪里，否则会以为导入后就只能这样了。
+                const rawCount = results.filter((im) => im && im.raw).length;
+                const rawNote = rawCount ? `｜${rawCount} 张 RAW 可在「调色」页签顶部调显影` : '';
+                this.setStatus(`已导入 ${loaded} 张图片${carry ? '，沿用「' + carry.templateName + '」' : ''}${skipped ? '，跳过 ' + skipped + ' 个不支持的文件' : ''}${iccNote}${rawNote}${memWarn}`);
             }
         } finally {
             this.finishImportProgress();
@@ -2615,7 +2620,19 @@ window.App = {
         if (res.error) { this.setStatus(res.error); return null; }
         if (!res.path) { this.setStatus('图片加载失败：缺少文件路径'); return null; }
         const img = window.qfsImage();
-        const src = this.photoUrl(res.path);
+        // RAW 不能直接给 Chromium：先按半尺寸代理显影（长边 1600，约 0.5s），
+        // 导入能立刻看到画面；停手后再自动升到全尺寸。
+        const rawInfo = res.raw && this.rawSrc
+            ? {
+                params: Object.assign({}, this.RAW_DEFAULTS),
+                edge: this.RAW_PROXY_EDGE,
+                full: false,
+                seq: 0
+            }
+            : null;
+        const src = rawInfo
+            ? this.rawSrc(res.path, rawInfo.params, rawInfo.edge)
+            : this.photoUrl(res.path);
         await new Promise(r => { img.onload = r; img.onerror = r; img.src = src; });
         if (!img.naturalWidth) return null;
         const exif = res.exif || {};
@@ -2624,6 +2641,7 @@ window.App = {
         const w = oriented ? oriented.w : img.naturalWidth;
         const h = oriented ? oriented.h : img.naturalHeight;
         const im = { el: useEl, name: res.name, path: res.path, w, h, exif, customSettings: null,
+            raw: rawInfo,
             _grade: { neutral: true, canvas: null, low: null, lowKey: '', fullKey: '' } };
         this.queueThumb(im);
         return im;
