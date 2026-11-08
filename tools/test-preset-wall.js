@@ -412,36 +412,30 @@ async function main() {
     check(coverOn.src.indexOf('&v=') > 0,
         '自定义封面 URL 带版本号(同名文件替换不会命中旧缓存)', coverOn.src.slice(-16));
 
-    // 编辑页侧栏与墙共用同一份封面：墙换过之后，工作台左侧也要跟着换。
-    const sideCoverOn = await exec(`(async () => {
-        await App.refreshPresetThumbCovers(true);
+    // 编辑页侧栏只留「图标 + 名字」：墙换过封面也不在窄栏里塞缩略图（效果交给悬停预览）。
+    const sideCoverOn = await exec(`(() => {
         App.buildTree('');
         const item = Array.from(document.querySelectorAll('#presetTree .preset-item'))
             .find((x) => x.dataset.name === '3D卡片');
-        const img = item && item.querySelector('img.preset-thumb');
-        return { src: img ? img.getAttribute('src') : null };
+        const dot = item && item.querySelector('.dot');
+        const name = item && item.querySelector('.preset-name');
+        return {
+            img: !!(item && item.querySelector('img')),
+            icon: dot ? dot.textContent : '',
+            name: name ? name.textContent : '',
+        };
     })()`);
-    check(sideCoverOn.src && sideCoverOn.src.indexOf('qflocal:') === 0
-        && decodeURIComponent(sideCoverOn.src).indexOf('我的封面') >= 0,
-        '编辑页侧栏跟随墙自定义封面同步', sideCoverOn.src && sideCoverOn.src.slice(0, 40) + '…');
-    check(sideCoverOn.src && sideCoverOn.src.indexOf('&v=') > 0,
-        '编辑页侧栏封面 URL 也带版本号', sideCoverOn.src && sideCoverOn.src.slice(-16));
+    check(sideCoverOn.img === false && !!sideCoverOn.icon && sideCoverOn.name === '3D卡片',
+        '编辑页侧栏只有图标和名字，不再渲染封面图', JSON.stringify(sideCoverOn));
 
     wallCovers = {};
     const coverOff = await exec(`(async () => {
         await App.refreshWallCovers(true);
-        await App.refreshPresetThumbCovers(true);
         const tile = Array.from(document.querySelectorAll('.pw-tile'))
             .find((t) => t.querySelector('.pw-tile-name').textContent === '3D卡片');
-        const item = Array.from(document.querySelectorAll('#presetTree .preset-item'))
-            .find((x) => x.dataset.name === '3D卡片');
-        const img = item && item.querySelector('img.preset-thumb');
-        return { src: tile.querySelector('.pw-tile-cover img').getAttribute('src'), cover: tile.dataset.cover,
-                 sideSrc: img ? img.getAttribute('src') : null };
+        return { src: tile.querySelector('.pw-tile-cover img').getAttribute('src'), cover: tile.dataset.cover };
     })()`);
     check(coverOff.src === coverOff.cover, '删掉自定义封面回落到内置封面', coverOff.src);
-    check(coverOff.sideSrc === coverOff.cover, '删除自定义封面后编辑页侧栏也回落到内置封面',
-        `${coverOff.sideSrc} vs ${coverOff.cover}`);
 
     // 2.7 真实输入回归（sendInputEvent 走完整命中测试 + pointer capture）
     //     合成的 tile.click() 会绕过 pointerdown/mousedown/capture，历史上正是这个盲区让

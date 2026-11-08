@@ -465,33 +465,19 @@ html.dark .side-action.primary { color: #0c1914; }
 /* 悬停预览中：右侧照片已经套上这个边框，行上给一个和 hover 不同的实心底，
    让「我正在看的是这一行」有落点，移开就散。 */
 .preset-item.previewing { background: var(--primary-soft); color: var(--primary-text); }
-.preset-item.previewing .preset-thumb { border-color: var(--primary); }
 .preset-item .dot {
-    flex: 0 0 auto; font-size: var(--fs-13); line-height: 1;
+    flex: 0 0 auto; width: 16px; text-align: center;
+    font-size: var(--fs-13); line-height: 1;
     transition: transform .15s;
     filter: saturate(.85);
 }
 .preset-item:hover .dot { transform: scale(1.25); }
 .preset-item.active .dot { transform: scale(1.08); filter: none; }
-/* 编辑页预设缩略图:与预设墙用同一张封面(懒加载),让"换预设"这件事在两侧是同一套视觉语言。
-   87 张封面全部 loading=lazy,只有滚到视口里的才解码;左右留白收紧,给名字和星标腾出宽度。
-   行高从 50 收到 34:一屏能多出五六行,细节交给「悬停即预览」在照片上看。 */
+/* 左侧栏只留「图标 + 名字」:一张 26px 的小封面看不出边框细节,反而占掉行高与名字的宽度。
+   效果改由「悬停即在照片上预览」承担;行高从 34 收到 26,90 款边框一屏能扫二十来行。 */
 .preset-item {
-    padding: calc(2px * var(--font-scale)) calc(6px * var(--font-scale));
-    gap: 7px;
-}
-.preset-item .preset-thumb {
-    flex: 0 0 auto; width: 26px; height: 30px; border-radius: 6px;
-    object-fit: cover; background: var(--thumb-bg);
-    border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,.14);
-    transition: transform .15s, border-color .15s;
-}
-.preset-item:hover .preset-thumb { transform: scale(1.06); border-color: var(--border-strong); }
-.preset-item.active .preset-thumb { border-color: var(--primary); box-shadow: 0 0 0 1.5px var(--primary-soft); }
-.preset-item .preset-thumb-fallback {
-    flex: 0 0 auto; width: 26px; height: 30px; border-radius: 6px;
-    display: grid; place-items: center; font-size: var(--fs-12);
-    background: var(--surface-alt); border: 1px solid var(--border);
+    padding: calc(4px * var(--font-scale)) calc(6px * var(--font-scale));
+    gap: 6px;
 }
 .preset-item .preset-name {
     flex: 1 1 auto; min-width: 0;

@@ -1,11 +1,10 @@
 // 边框预设列表：紧凑行高 + 悬停即在照片上预览。
 //
-// 背景：预设一多，50px 一行的卡片列表一屏只放得下 9 个；缩到 34px 后单看缩略图
-// 又看不出边框细节，于是把「看清效果」交给悬停预览：鼠标停留 160ms 就把预设套到
-// 画布上，移开还原，点击才真正应用。
+// 背景：预设一多，50px 一行的卡片列表一屏只放得下 9 个；26px 的纯文字行能扫二十来行，
+// 「看清效果」则交给悬停预览：鼠标停留 160ms 就把预设套到画布上，移开还原，点击才真正应用。
 //
 // 覆盖：
-//  ① 行高收到 34 上下、缩略图 26×30（密度），组头也跟着收
+//  ① 行高收到 26 上下、行内没有封面缩略图（密度），组头也跟着收
 //  ② 悬停后画布真的换成了该预设，行上有 previewing 标记
 //  ③ 预览不写盘：不改「最近使用」、不压撤销栈、不写每图模板、不进草稿
 //  ④ 移开还原成预览前的模板（含用户 logo/文字，不因预览丢失）
@@ -107,25 +106,26 @@ async function main() {
     check(setup.presets > 0 && setup.rows > 0, '预设库与列表已就绪',
         JSON.stringify(setup));
 
-    // ── 密度：行高、缩略图、组头 ──
+    // ── 密度：行高、纯文字行、组头 ──
     const density = await exec(`(() => {
         const rows = [...document.querySelectorAll('#presetTree .preset-item')]
             .filter((r) => r.offsetParent !== null);
         const one = rows[0] || document.querySelector('#presetTree .preset-item');
-        const thumb = one && (one.querySelector('.preset-thumb') || one.querySelector('.preset-thumb-fallback'));
         const head = document.querySelector('#presetTree .group-name');
         return {
             rowH: one ? one.getBoundingClientRect().height : 0,
-            thumbW: thumb ? thumb.getBoundingClientRect().width : 0,
-            thumbH: thumb ? thumb.getBoundingClientRect().height : 0,
+            imgs: document.querySelectorAll('#presetTree .preset-item img').length,
+            icon: one && one.querySelector('.dot') ? one.querySelector('.dot').textContent : '',
+            name: one && one.querySelector('.preset-name') ? one.querySelector('.preset-name').textContent : '',
             headH: head ? head.getBoundingClientRect().height : 0,
             visible: rows.length,
         };
     })()`);
-    check(density.rowH > 0 && density.rowH <= 38,
-        '预设行收到 34px 上下（原来 50）', JSON.stringify(density));
-    check(density.thumbW > 0 && density.thumbW <= 28 && density.thumbH <= 32,
-        '缩略图同步收小到 26×30', density.thumbW + '×' + density.thumbH);
+    check(density.rowH > 0 && density.rowH <= 30,
+        '预设行收到 26px 上下（原来 50）', JSON.stringify(density));
+    check(density.imgs === 0 && !!density.icon && !!density.name,
+        '每行只有图标和名字，没有封面缩略图',
+        `imgs=${density.imgs} icon=${density.icon} name=${density.name}`);
     check(density.headH > 0 && density.headH <= 30, '组头跟着收紧', density.headH + 'px');
 
     // ── 悬停预览：换画面但不落盘 ──
