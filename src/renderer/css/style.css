@@ -798,9 +798,11 @@ body.inspector-collapsed #inspector { display: none; }
     background: var(--pool-border); border: none; pointer-events: none;
 }
 
-/* 拖拽遮罩 */
+/* 拖拽遮罩:盖住整个窗口(元素本身挂在 body 上)。
+   只覆盖中间画布时,拖到侧栏/参数栏上没有任何反馈,用户会以为不支持拖入。
+   z-index 要在边框墙(900)之上:启动就是墙,拖图进来时同样得看得见反馈。 */
 .drop-overlay {
-    position: absolute; inset: 0; z-index: 20;
+    position: fixed; inset: 0; z-index: 950;
     display: none; align-items: center; justify-content: center;
     background: var(--primary-soft);
     border: 3px dashed var(--primary); border-radius: var(--r-l);
@@ -811,7 +813,7 @@ body.inspector-collapsed #inspector { display: none; }
     background: var(--overlay-bg); padding: calc(14px * var(--font-scale)) calc(26px * var(--font-scale)); border-radius: var(--r-m);
     box-shadow: var(--shadow);
 }
-#canvasPane.dragging .drop-overlay { display: flex; }
+body.drop-active .drop-overlay { display: flex; }
 
 /* 空状态: 未导入照片时右侧面板整体置灰, 引导用户先导入 */
 #inspector.no-image { opacity: .62; transition: opacity .25s ease; }

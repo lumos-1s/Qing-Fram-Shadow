@@ -219,22 +219,62 @@ window.App = Object.assign(window.App || {}, {
     },
 
     /* ── 拖拽导入 ── */
+    // 整窗接收:以前只绑在中间画布上,把照片拖到左侧素材栏 / 右侧参数栏 / 底部胶片条
+    // 上什么都不会发生——落点没人管,Chromium 就按默认行为导航到那个 file:// URL,
+    // 整个界面被一张图替换,用户看到的是「拖进去把软件弄坏了」,自然以为不支持拖入。
     setupDragDrop() {
-        const pane = this.dom.canvasPane;
-        let depth = 0;
-        pane.addEventListener('dragenter', e => { e.preventDefault(); depth++; pane.classList.add('dragging'); });
-        pane.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
-        pane.addEventListener('dragleave', e => { e.preventDefault(); if (--depth <= 0) { depth = 0; pane.classList.remove('dragging'); } });
-        pane.addEventListener('drop', e => {
-            e.preventDefault(); depth = 0; pane.classList.remove('dragging');
-            // 只接受操作系统文件拖放(类型为 "Files");应用内元素(缩略图等)的拖拽不触发重导入
-            const types = Array.from(e.dataTransfer && e.dataTransfer.types || []);
-            const osDrop = types.some(t => String(t).toLowerCase() === 'files');
-            const files = osDrop ? Array.from(e.dataTransfer.files || []) : [];
+        // 遮罩挂到 body 上,才能盖住三栏(fixed 定位不受 #canvasPane 的 overflow 影响)。
+        const overlay = this.dom.dropOverlay;
+        if (overlay && overlay.parentNode !== document.body) document.body.appendChild(overlay);
+
+        // 只认操作系统文件(types 含 "Files");应用内拖元素(模板分组、缩略图)不带这个类型
+        const hasFiles = (e) => {
+            const types = (e.dataTransfer && e.dataTransfer.types) || [];
+            for (let i = 0; i < types.length; i++) {
+                if (String(types[i]).toLowerCase() === 'files') return true;
+            }
+            return false;
+        };
+        // 预设墙的卡片自己接「拖图换封面」:让卡片优先,别同时当成导入
+        const ownDrop = (e) => e.target instanceof Element && !!e.target.closest('.pw-tile');
+
+        let hideTimer = 0;
+        const show = () => { document.body.classList.add('drop-active'); };
+        const hide = () => { clearTimeout(hideTimer); document.body.classList.remove('drop-active'); };
+        // dragover 在窗口内的连续触发就是「还在拖」的心跳:心跳停了 260ms 就收起遮罩。
+        // 比 dragenter/dragleave 计数稳——后者在子元素之间移动时配对经常对不上,遮罩会闪。
+        const beat = () => { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 260); };
+
+        window.addEventListener('dragenter', (e) => {
+            if (!hasFiles(e)) return;
+            e.preventDefault();            // 不拦 dragenter/dragover,drop 事件根本不会派发
+            if (ownDrop(e)) { hide(); return; }
+            show(); beat();
+        });
+        window.addEventListener('dragover', (e) => {
+            if (!hasFiles(e)) return;
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+            if (ownDrop(e)) { hide(); return; }
+            show(); beat();
+        });
+        window.addEventListener('dragleave', (e) => { if (hasFiles(e)) beat(); });
+        window.addEventListener('dragend', hide);
+        window.addEventListener('blur', hide);
+        window.addEventListener('drop', (e) => {
+            if (!hasFiles(e)) return;
+            hide();
+            // 卡片等内部区域已经处理过这次 drop(preventDefault),不再当导入
+            if (e.defaultPrevented) return;
+            e.preventDefault();
+            const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
             if (!files.length) return;
-            // 统一走路径:文件与文件夹都能处理,HEIC 由主进程解码
+            // 统一走路径:文件与文件夹都能处理,RAW/HEIC 由主进程解码
             const paths = files.map(f => window.qingframe.getPathForFile(f)).filter(Boolean);
             if (!paths.length) { this.setStatus('无法读取拖入文件的路径'); return; }
+            // 启动时盖着的是边框墙：拖图进来就是「我要开始做图」，
+            // 先关墙（workbench 模式，不顺手套任何预设），导入进度条才看得见。
+            if (this._wallActive && typeof this.closePresetWall === 'function') this.closePresetWall(true);
             this.importPaths(paths);
         });
     },

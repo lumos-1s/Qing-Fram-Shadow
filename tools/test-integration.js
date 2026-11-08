@@ -151,6 +151,16 @@ const check = (ok, label, detail) => {
         fs.existsSync(qfsOut) ? `size=${fs.statSync(qfsOut).size}B` : 'missing');
     check(!out.errors.length, '渲染侧无异常', out.errors.join(' | '));
 
+    // 8) 导航兜底：拖放落到没人处理的区域时，Chromium 会按默认行为导航到那个 file://，
+    //    整个窗口被一张图替换（用户以为"拖进去把软件弄坏了"）。主进程必须拦下任何导航。
+    const beforeNav = win.webContents.getURL();
+    try {
+        await win.webContents.executeJavaScript(`location.href = 'file:///C:/Windows/win.ini'; true`);
+    } catch (_) { /* 导航被拦时 executeJavaScript 可能被中断，属预期 */ }
+    await sleep(600);
+    const afterNav = win.webContents.getURL();
+    check(afterNav === beforeNav, '导航到 file:// 被拦住（窗口不会被拖入的文件替换）', afterNav);
+
     console.log('─'.repeat(84));
     console.log(fails.length ? `✖ ${fails.length} 项未通过: ${fails.join('、')}` : `✓ 全部 ${total} 项通过`);
 

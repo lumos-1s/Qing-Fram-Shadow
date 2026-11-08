@@ -224,6 +224,17 @@ const createWindow = () => {
         }
     });
     win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+    // 拖文件到窗口任意位置(包括侧栏、参数栏、标题栏)时，没人处理的落点会让 Chromium
+    // 默认导航到那个 file:// URL——整个界面被一张图替换，返回还得重启软件。
+    // 渲染层已经把整窗拖放接下来了，这里再兜一层：任何导航一律拒绝，外链交系统浏览器。
+    win.webContents.on('will-navigate', (e, url) => {
+        e.preventDefault();
+        if (/^https?:/i.test(url)) shell.openExternal(url).catch(() => {});
+    });
+    win.webContents.setWindowOpenHandler(({ url }) => {
+        if (/^https?:/i.test(url)) shell.openExternal(url).catch(() => {});
+        return { action: 'deny' };
+    });
     wireTitleBar(win);
     win.once('ready-to-show', () => win.show());
     return win;

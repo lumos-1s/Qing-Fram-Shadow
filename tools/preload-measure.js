@@ -1,9 +1,17 @@
 // 测量专用 preload:提供 App 启动所需的 IPC 桥 + 测试图注入
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('qingframe', {
     openImage: () => ipcRenderer.invoke('open-image'),
     openImages: () => ipcRenderer.invoke('open-images'),
+    collectImages: (paths) => ipcRenderer.invoke('collect-images', paths),
+    // 拖放用例用：和真实 preload 同一条 webUtils 路径（Electron 32 起 File.path 被移除）
+    getPathForFile: (file) => {
+        try {
+            if (webUtils && typeof webUtils.getPathForFile === 'function') return webUtils.getPathForFile(file);
+        } catch (e) { /* 回退 */ }
+        return (file && file.path) || '';
+    },
     listPresets: () => ipcRenderer.invoke('list-presets'),
     loadPreset: (name) => ipcRenderer.invoke('load-preset', name),
     saveImage: () => ipcRenderer.invoke('save-image-base64'),
