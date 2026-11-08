@@ -15,6 +15,8 @@
 window.App = Object.assign(window.App || {}, {
     _gradePresets: [],
     _gradePresetRows: [],
+    _gradeGroupHeads: [],
+    _gradeGroupOpenMap: null,
     _gradePresetQuery: '',
     _gradePresetActiveTimer: 0,
     _gradePresetRevealTimer: 0,
@@ -191,6 +193,9 @@ window.App = Object.assign(window.App || {}, {
         if (token !== this._gradePresetLoadSeq) return; // 更新的刷新已接管
         this._gradePresets = rows.filter(Boolean)
             .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+        // 参数指纹一次算好：列表每行都要和当前照片比"是否使用中"，
+        // 上千个预设时逐行 normalize + stringify 会拖慢拖滑块（250ms 防抖一次）。
+        for (const r of this._gradePresets) r._hash = this._gradeHashOf(r.grade);
         this._gradePresetLoaded = true;
         this._renderGradePresetList();
         if (opts && opts.announce) {
@@ -282,6 +287,105 @@ window.App = Object.assign(window.App || {}, {
         el.title = q ? `找到 ${shown} 个，共 ${total} 个调色预设` : `共 ${total} 个调色预设`;
     },
 
+    /* ══ 按命名自动分组（模仿 Lightroom 的「组 → 预设」两级） ══ */
+
+    // 成员数 ≥2 才收成一组。只有 1 个的直接平铺，不制造只有一个成员的组头。
+    _GRADE_GROUP_MIN: 2,
+    // 库很小的时候全部展开：新用户不该为了看一眼预设多点一次。
+    _GRADE_GROUP_AUTO_OPEN_MAX: 24,
+    // 「未分组」的伪组名，用不可见字符避免和真实预设名撞车。
+    _GRADE_GROUP_LOOSE: '\u0000loose',
+
+    // 从文件名推断组名。LR 的组来自文件夹，我们只有一个扁平目录，只能看命名：
+    //   001-滨田英明调色 [霜绝预设] → 滨田英明调色 [霜绝预设]（预设包导出常带序号）
+    //   黑白预设 (12)              → 黑白预设            （同名导入时自动加的重复号）
+    //   人像 - 白皙                 → 人像                （空格分隔的「组 - 名」）
+    // 只影响列表怎么归堆；文件名本身不改，分享给 LR 时还是原名。
+    _gradeGroupKeyOf(name) {
+        const raw = String(name == null ? '' : name);
+        let s = raw.replace(/^\s*\d{1,3}[-_.、．:：](?!\d)\s*/, '');
+        s = s.replace(/\s*[（(]\s*\d{1,4}\s*[)）]\s*$/, '');
+        const m = s.match(/^(.{1,24}?)\s+[-—–|｜/]\s+\S/);
+        if (m) s = m[1];
+        return s.trim() || raw.trim();
+    },
+
+    // 组内那行显示什么：组名已经在组头，行内只留能区分的部分（`(12)` / `#004`）。
+    _gradePresetVarLabel(r, key) {
+        const name = String((r && r.name) || '');
+        const noSeq = name.replace(/^\s*\d{1,3}[-_.、．:：](?!\d)\s*/, '');
+        const seq = name.match(/^\s*(\d{1,3})[-_.、．:：](?!\d)/);
+        if (noSeq === key) return seq ? '#' + seq[1] : name;
+        if (noSeq.indexOf(key) === 0) {
+            // `人像 - 白皙` 的剩余是 `- 白皙`，把分隔符也吃掉，只留名字。
+            const rest = noSeq.slice(key.length).replace(/^[\s\-—–|｜/:：]+/, '').trim();
+            if (rest) return rest;
+        }
+        return noSeq || name;
+    },
+
+    _gradeHashOf(grade) {
+        try {
+            const g = this.normalizeGrade(grade);
+            g.masks = [];
+            return JSON.stringify(g);
+        } catch (_) {
+            return '';
+        }
+    },
+
+    _gradePresetTree(rows) {
+        const map = new Map();
+        for (const r of rows) {
+            const key = this._gradeGroupKeyOf(r.name);
+            let g = map.get(key);
+            if (!g) { g = { key, list: [] }; map.set(key, g); }
+            g.list.push(r);
+        }
+        const groups = [];
+        const loose = [];
+        for (const g of map.values()) {
+            g.list.sort((a, b) => a.name.localeCompare(b.name, 'zh', { numeric: true }));
+            if (g.list.length >= this._GRADE_GROUP_MIN) {
+                for (const r of g.list) {
+                    r.groupKey = g.key;
+                    r._label = this._gradePresetVarLabel(r, g.key);
+                }
+                groups.push(g);
+            } else {
+                for (const r of g.list) { r.groupKey = ''; delete r._label; }
+                loose.push(g.list[0]);
+            }
+        }
+        groups.sort((a, b) => a.key.localeCompare(b.key, 'zh'));
+        loose.sort((a, b) => a.name.localeCompare(b.name, 'zh', { numeric: true }));
+        return { groups, loose };
+    },
+
+    _gradeGroupState() {
+        if (this._gradeGroupOpenMap) return this._gradeGroupOpenMap;
+        let open = {};
+        try {
+            const parsed = JSON.parse(localStorage.getItem('qfs_grade_preset_groups') || 'null');
+            if (parsed && parsed.open && typeof parsed.open === 'object') open = parsed.open;
+        } catch (_) { /* 隐私模式 / 坏数据，用默认值 */ }
+        this._gradeGroupOpenMap = { open };
+        return this._gradeGroupOpenMap;
+    },
+
+    _gradeGroupIsOpen(key, total) {
+        const st = this._gradeGroupState();
+        const v = st.open[key];
+        if (v === 0 || v === 1) return v === 1;   // 用户手动开/关过，以记忆为准
+        return total <= this._GRADE_GROUP_AUTO_OPEN_MAX;
+    },
+
+    _gradeGroupSetOpen(key, open) {
+        const st = this._gradeGroupState();
+        st.open[key] = open ? 1 : 0;
+        try { localStorage.setItem('qfs_grade_preset_groups', JSON.stringify(st)); } catch (_) {}
+    },
+
     _renderGradePresetList() {
         const box = this.$('lvGradePresets');
         if (!box) return;
@@ -292,6 +396,7 @@ window.App = Object.assign(window.App || {}, {
             : [];
         box.innerHTML = '';
         this._gradePresetRows = [];
+        this._gradeGroupHeads = [];
         this._updateGradePresetCount(rows.length, total);
         this._syncGradePresetSearchClear();
 
@@ -313,10 +418,29 @@ window.App = Object.assign(window.App || {}, {
             box.appendChild(wrap);
             return;
         }
-        for (const r of rows) box.appendChild(this._buildGradePresetRow(r));
+        // 搜索时平铺：关键词已经把范围收窄，再折一层反而多一次点击。
+        if (q) {
+            for (const r of rows) box.appendChild(this._buildGradePresetRow(r, true));
+            this._refreshGradePresetActive();
+            return;
+        }
+        const tree = this._gradePresetTree(rows);
+        // 全是落单的（新库 / 命名没规律）就不摆组头，保持原来的平铺列表。
+        if (!tree.groups.length) {
+            for (const r of tree.loose) box.appendChild(this._buildGradePresetRow(r, true));
+            this._refreshGradePresetActive();
+            return;
+        }
+        for (const g of tree.groups) box.appendChild(this._buildGradeGroup(g, total));
+        if (tree.loose.length) {
+            box.appendChild(this._buildGradeGroup({
+                key: this._GRADE_GROUP_LOOSE, list: tree.loose, loose: true,
+            }, total));
+        }
+        this._refreshGradePresetActive();
     },
 
-    _buildGradePresetRow(r) {
+    _buildGradePresetRow(r, plain) {
         const row = document.createElement('div');
         row.className = 'tpl-row grade-preset-row';
         row.dataset.gradePresetKey = r.name;
@@ -329,11 +453,12 @@ window.App = Object.assign(window.App || {}, {
         main.setAttribute('aria-label', '应用调色「' + r.disp + '」');
 
         // 纯文字列表：预设名 +（使用中）标记；点击/悬停反馈就够了，不放缩略图。
+        // 组内行只显示能区分的部分（`(12)` / `#004`），全名放 title。
         const info = document.createElement('span');
         info.className = 'tpl-info grade-preset-info';
         const nameSpan = document.createElement('span');
         nameSpan.className = 'tpl-name';
-        nameSpan.textContent = r.disp;
+        nameSpan.textContent = (!plain && r._label) ? r._label : r.disp;
         nameSpan.title = r.disp;
         const activeTag = document.createElement('span');
         activeTag.className = 'tpl-active-tag';
@@ -359,8 +484,72 @@ window.App = Object.assign(window.App || {}, {
         });
         row.append(main, more);
         this._gradePresetRows.push(row);
-        this._markGradePresetRowActive(row, r);
+        // 「使用中」标记统一由 _refreshGradePresetActive 一次算，避免逐行比参数。
         return row;
+    },
+
+    // 组头：▸ 组名 [数量] + 「组内有正在使用的调色」小圆点。
+    _buildGradeGroup(g, total) {
+        const key = g.key;
+        const open = this._gradeGroupIsOpen(key, total);
+        const wrap = document.createElement('div');
+        wrap.className = 'preset-group grade-group' + (open ? ' open' : '');
+
+        const head = document.createElement('div');
+        head.className = 'group-name grade-group-head';
+        head.setAttribute('role', 'button');
+        head.setAttribute('tabindex', '0');
+        head.setAttribute('aria-expanded', open ? 'true' : 'false');
+        head.title = (g.loose ? '未分组' : key) + ' · ' + g.list.length + ' 个（点击折叠 / 展开）';
+
+        const caret = document.createElement('span');
+        caret.className = 'caret';
+        caret.textContent = '\u25B8';
+
+        const title = document.createElement('span');
+        title.className = 'grade-group-title';
+        title.textContent = g.loose ? '未分组' : key;
+
+        const count = document.createElement('span');
+        count.className = 'grade-group-count';
+        count.textContent = String(g.list.length);
+
+        const dot = document.createElement('span');
+        dot.className = 'grade-group-active';
+        dot.textContent = '●';
+        dot.title = '组内有正在使用的调色';
+        dot.hidden = true;
+
+        head.append(caret, title, count, dot);
+        head.addEventListener('click', () => this._toggleGradeGroup(wrap, key, total));
+        head.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            this._toggleGradeGroup(wrap, key, total);
+        });
+        wrap.appendChild(head);
+
+        const rowEls = [];
+        for (const r of g.list) {
+            const row = this._buildGradePresetRow(r, false);
+            row._groupKey = key;
+            wrap.appendChild(row);
+            rowEls.push(row);
+        }
+        head._rowEls = rowEls;
+        this._gradeGroupHeads.push(head);
+        return wrap;
+    },
+
+    _toggleGradeGroup(wrap, key, total) {
+        if (!wrap) return;
+        const open = !wrap.classList.contains('open');
+        wrap.classList.toggle('open', open);
+        const head = wrap.querySelector('.grade-group-head');
+        if (head) head.setAttribute('aria-expanded', open ? 'true' : 'false');
+        this._gradeGroupSetOpen(key, open);
+        // 展开后把"使用中"的点补上（折叠时行是隐藏的，标记仍然算过）。
+        this._refreshGradeGroupDots();
     },
 
     _openGradePresetMenu(r, btn) {
@@ -506,23 +695,21 @@ window.App = Object.assign(window.App || {}, {
         catch (_) { return this.normalizeGrade(p); }
     },
 
-    _gradePresetMatches(r) {
+    _gradePresetMatches(r, curHash) {
         const im = this.image;
         if (!im || !im.grade || !r || !r.grade) return false;
         try {
-            const cur = this.normalizeGrade(im.grade);
-            const pre = this.normalizeGrade(r.grade);
-            cur.masks = [];
-            pre.masks = [];
-            return JSON.stringify(cur) === JSON.stringify(pre);
+            const cur = typeof curHash === 'string' ? curHash : this._gradeHashOf(im.grade);
+            const pre = r._hash || (r._hash = this._gradeHashOf(r.grade));
+            return !!cur && cur === pre;
         } catch (_) {
             return false;
         }
     },
 
-    _markGradePresetRowActive(row, r) {
+    _markGradePresetRowActive(row, r, curHash) {
         if (!row) return;
-        const active = this._gradePresetMatches(r);
+        const active = this._gradePresetMatches(r, curHash);
         row.classList.toggle('active', active);
         row.setAttribute('aria-current', active ? 'true' : 'false');
         const tag = row.querySelector('.tpl-active-tag');
@@ -530,8 +717,22 @@ window.App = Object.assign(window.App || {}, {
     },
 
     _refreshGradePresetActive() {
-        if (!this._gradePresetRows || !this._gradePresetRows.length) return;
-        for (const row of this._gradePresetRows) this._markGradePresetRowActive(row, row._preset);
+        const rows = this._gradePresetRows || [];
+        if (!rows.length && !(this._gradeGroupHeads || []).length) return;
+        // 当前照片的指纹只算一次，上千行共享；逐行 normalize 会明显拖慢拖滑块。
+        const cur = (this.image && this.image.grade) ? this._gradeHashOf(this.image.grade) : '';
+        for (const row of rows) this._markGradePresetRowActive(row, row._preset, cur);
+        this._refreshGradeGroupDots();
+    },
+
+    // 组折叠时行看不见，"使用中"要能在组头上体现，否则用户不知道正用着哪个包里的预设。
+    _refreshGradeGroupDots() {
+        for (const head of this._gradeGroupHeads || []) {
+            const dot = head.querySelector('.grade-group-active');
+            if (!dot) continue;
+            const rowEls = head._rowEls || [];
+            dot.hidden = !rowEls.some((el) => el.classList.contains('active'));
+        }
     },
 
     _scheduleGradePresetActive() {
@@ -731,6 +932,14 @@ window.App = Object.assign(window.App || {}, {
         const row = [...box.querySelectorAll('.tpl-row')]
             .find((el) => el.dataset.gradePresetKey === key);
         if (!row) return false;
+        // 刚保存 / 刚导入的预设可能落在折叠的组里，先展开再滚动，否则滚了个看不见的行。
+        const wrap = row.closest('.preset-group');
+        if (wrap && !wrap.classList.contains('open')) {
+            wrap.classList.add('open');
+            const head = wrap.querySelector('.grade-group-head');
+            if (head) head.setAttribute('aria-expanded', 'true');
+            this._gradeGroupSetOpen(row._groupKey || '', true);
+        }
         try { row.scrollIntoView({ block: 'nearest' }); } catch (_) { /* 老环境无此 API */ }
         row.classList.add('tpl-flash');
         clearTimeout(this._gradePresetRevealTimer);

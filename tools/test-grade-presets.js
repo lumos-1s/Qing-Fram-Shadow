@@ -376,6 +376,147 @@ async function main() {
     check(list.dir === 'row' && list.overflow <= 1 && list.clipped,
         '名称与「使用中」同排，长名字用省略号收在行内', JSON.stringify(list));
 
+    // ── 按命名自动分组（模仿 Lightroom 的「组 → 预设」） ──
+    // 上千个预设平铺着翻很痛苦；LR 用文件夹分组，我们只有一个扁平目录，
+    // 于是按命名推断：`001-包名` 去序号、`包名 (2)` 去重复号、`组 - 名` 取前段。
+    for (const [nm, exp] of [
+        ['001-滨田英明调色', 0.1], ['002-滨田英明调色', 0.2],
+        ['黑白预设 (1)', 0.3], ['黑白预设 (2)', 0.4],
+        ['人像 - 白皙', 0.5], ['人像 - 通透', 0.6],
+        ['孤零零的一条', 0.7],
+    ]) store.set(nm, lrXmp(nm, exp, 10));
+
+    const grouped = await exec(`(async () => {
+        const A = window.App;
+        A._gradeGroupOpenMap = null;
+        try { localStorage.removeItem('qfs_grade_preset_groups'); } catch (_) {}
+        const input = document.getElementById('tfGradePresetSearch');
+        if (input) input.value = '';
+        await A.refreshGradePresets();
+        const box = document.getElementById('lvGradePresets');
+        const heads = [...box.querySelectorAll('.grade-group-head')];
+        return {
+            groups: heads.map((h) => ({
+                name: h.querySelector('.grade-group-title').textContent,
+                count: h.querySelector('.grade-group-count').textContent,
+                open: h.parentElement.classList.contains('open'),
+                rows: [...h.parentElement.querySelectorAll('.grade-preset-row')]
+                    .map((r) => r.querySelector('.tpl-name').textContent),
+            })),
+            keys: ['001-滨田英明调色 [霜绝预设]', '黑白预设 (12)', '人像 - 白皙', '24-70 镜头', '孤零零的一条']
+                .map((n) => A._gradeGroupKeyOf(n)),
+            rowsInDom: box.querySelectorAll('.grade-preset-row').length,
+            total: A._gradePresets.length,
+        };
+    })()`);
+    check(JSON.stringify(grouped.keys) === JSON.stringify([
+        '滨田英明调色 [霜绝预设]', '黑白预设', '人像', '24-70 镜头', '孤零零的一条']),
+        '组名从命名推断：去序号、去重复号、取「组 - 名」前段，镜头焦段不误切',
+        JSON.stringify(grouped.keys));
+    check(JSON.stringify(grouped.groups.map((g) => g.name + '/' + g.count))
+        === JSON.stringify(['滨田英明调色/2', '黑白预设/2', '人像/2', '未分组/2']),
+        '同包预设收进一个组，落单的归到「未分组」',
+        JSON.stringify(grouped.groups.map((g) => g.name + '/' + g.count)));
+    check(grouped.groups[0].rows.join(',') === '#001,#002'
+        && grouped.groups[1].rows.join(',') === '(1),(2)'
+        && grouped.groups[2].rows.join(',') === '白皙,通透',
+        '组内行只显示可区分部分（#序号 / (重复号) / 名字）',
+        JSON.stringify(grouped.groups.map((g) => g.rows)));
+    check(grouped.groups.every((g) => g.open) && grouped.rowsInDom === grouped.total,
+        '小库默认全展开；折叠只是隐藏，行没有丢',
+        JSON.stringify({ rows: grouped.rowsInDom, total: grouped.total }));
+
+    const collapsed = await exec(`(() => {
+        const A = window.App;
+        A._gradeGroupSetOpen('人像', false);
+        A._renderGradePresetList();
+        const box = document.getElementById('lvGradePresets');
+        const head = [...box.querySelectorAll('.grade-group-head')]
+            .find((h) => h.querySelector('.grade-group-title').textContent === '人像');
+        const wrap = head.parentElement;
+        const row = wrap.querySelector('.grade-preset-row');
+        const stored = JSON.parse(localStorage.getItem('qfs_grade_preset_groups') || '{}');
+        return {
+            open: wrap.classList.contains('open'),
+            display: getComputedStyle(row).display,
+            aria: head.getAttribute('aria-expanded'),
+            stored: stored.open && stored.open['人像'],
+        };
+    })()`);
+    check(collapsed.open === false && collapsed.display === 'none' && collapsed.aria === 'false',
+        '折叠组时成员行隐藏，aria-expanded 同步', JSON.stringify(collapsed));
+    check(collapsed.stored === 0, '折叠状态写进 localStorage，下次打开还是收着的', String(collapsed.stored));
+
+    const clicked = await exec(`(() => {
+        const A = window.App;
+        const box = document.getElementById('lvGradePresets');
+        const head = [...box.querySelectorAll('.grade-group-head')]
+            .find((h) => h.querySelector('.grade-group-title').textContent === '黑白预设');
+        const wrap = head.parentElement;
+        const before = wrap.classList.contains('open');
+        head.click();
+        const after = wrap.classList.contains('open');
+        const row = wrap.querySelector('.grade-preset-row');
+        const shown = getComputedStyle(row).display !== 'none';
+        head.click();
+        return { before, after, shown, back: wrap.classList.contains('open') };
+    })()`);
+    check(clicked.before === true && clicked.after === false && clicked.shown === false
+        && clicked.back === true,
+        '点组头真的能折叠 / 展开（成员行随之隐藏与恢复）', JSON.stringify(clicked));
+
+    const dotOn = await exec(`(() => {
+        const A = window.App;
+        const target = A._gradePresets.find((r) => r.name === '黑白预设 (1)');
+        A._gradeGroupSetOpen('黑白预设', false);
+        A.image.grade = A.normalizeGrade(target.grade);
+        A._renderGradePresetList();
+        A._refreshGradePresetActive();
+        const box = document.getElementById('lvGradePresets');
+        const head = [...box.querySelectorAll('.grade-group-head')]
+            .find((h) => h.querySelector('.grade-group-title').textContent === '黑白预设');
+        const out = {
+            open: head.parentElement.classList.contains('open'),
+            dot: !head.querySelector('.grade-group-active').hidden,
+            rowActive: !!head.parentElement.querySelector('.grade-preset-row.active'),
+        };
+        A.resetGrade();
+        A._refreshGradePresetActive();
+        return out;
+    })()`);
+    check(dotOn.open === false && dotOn.dot === true && dotOn.rowActive === true,
+        '组折叠着也能从组头的圆点看出「里面有正在使用的调色」', JSON.stringify(dotOn));
+
+    const revealed = await exec(`(() => {
+        const A = window.App;
+        A._gradeGroupSetOpen('人像', false);
+        A._renderGradePresetList();
+        const ok = A._revealGradePreset('人像 - 通透');
+        const box = document.getElementById('lvGradePresets');
+        const head = [...box.querySelectorAll('.grade-group-head')]
+            .find((h) => h.querySelector('.grade-group-title').textContent === '人像');
+        return { ok, open: head.parentElement.classList.contains('open') };
+    })()`);
+    check(revealed.ok && revealed.open, '定位预设时自动展开它所在的组（保存/导入后不会滚到看不见的行）',
+        JSON.stringify(revealed));
+
+    const searched = await exec(`(() => {
+        const A = window.App;
+        const input = document.getElementById('tfGradePresetSearch');
+        input.value = '黑白';
+        input.dispatchEvent(new Event('input'));
+        const box = document.getElementById('lvGradePresets');
+        const out = {
+            heads: box.querySelectorAll('.grade-group-head').length,
+            rows: [...box.querySelectorAll('.grade-preset-row .tpl-name')].map((el) => el.textContent),
+        };
+        input.value = '';
+        input.dispatchEvent(new Event('input'));
+        return out;
+    })()`);
+    check(searched.heads === 0 && searched.rows.length === 2,
+        '搜索时平铺命中项，不再套一层折叠', JSON.stringify(searched));
+
     // ── 导出 XMP（菜单能力） ──
     const exported = await exec(`(async () => {
         const A = window.App;
