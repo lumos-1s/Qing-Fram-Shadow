@@ -407,6 +407,9 @@ async function main() {
                 .map((n) => A._gradeGroupKeyOf(n)),
             rowsInDom: box.querySelectorAll('.grade-preset-row').length,
             total: A._gradePresets.length,
+            labels: A._gradePresets.filter((r) => r.groupKey).map((r) => r._label),
+            tagLabel: A._gradePresetVarLabel(
+                { name: '001-滨田英明调色 [霜绝预设]' }, '滨田英明调色 [霜绝预设]'),
         };
     })()`);
     check(JSON.stringify(grouped.keys) === JSON.stringify([
@@ -417,11 +420,17 @@ async function main() {
         === JSON.stringify(['滨田英明调色/2', '黑白预设/2', '人像/2', '未分组/2']),
         '同包预设收进一个组，落单的归到「未分组」',
         JSON.stringify(grouped.groups.map((g) => g.name + '/' + g.count)));
-    check(grouped.groups[0].rows.join(',') === '#001,#002'
-        && grouped.groups[1].rows.join(',') === '(1),(2)'
+    check(grouped.groups[0].rows.join(',') === '#001 滨田英明调色,#002 滨田英明调色'
+        && grouped.groups[1].rows.join(',') === '(1) 黑白预设,(2) 黑白预设'
         && grouped.groups[2].rows.join(',') === '白皙,通透',
-        '组内行只显示可区分部分（#序号 / (重复号) / 名字）',
+        '组内行不出现光秃秃的编号：编号在前、组名在后；有独立名字的只显示名字',
         JSON.stringify(grouped.groups.map((g) => g.rows)));
+    check(grouped.labels.every((s) => !/^[#＃]?\s*[（(]?\s*\d{1,4}\s*[)）]?$/.test(String(s).trim())),
+        '没有一行只剩数字（用户看到的「数字后面没有名字」）',
+        JSON.stringify(grouped.labels.filter((s) => /^[#＃]?\s*[（(]?\s*\d{1,4}\s*[)）]?$/.test(String(s).trim()))));
+    check(grouped.tagLabel === '#001 滨田英明调色',
+        '真实命名：`001-滨田英明调色 [霜绝预设]` 行内省掉组头已有的厂牌尾注',
+        grouped.tagLabel);
     check(grouped.groups.every((g) => g.open) && grouped.rowsInDom === grouped.total,
         '小库默认全展开；折叠只是隐藏，行没有丢',
         JSON.stringify({ rows: grouped.rowsInDom, total: grouped.total }));

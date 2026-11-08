@@ -310,18 +310,24 @@ window.App = Object.assign(window.App || {}, {
         return s.trim() || raw.trim();
     },
 
-    // 组内那行显示什么：组名已经在组头，行内只留能区分的部分（`(12)` / `#004`）。
+    // 组内那行显示什么：组名已经在组头，行内只留能区分的部分（`白皙`）。
+    // 但绝大多数预设名只是「编号 + 包名」，去掉包名后只剩一个光数字（`#001` / `(55)`），
+    // 读不出是什么，于是把编号放前面、包名带回来：`#001 滨田英明调色`、`(55) 黑白预设`。
     _gradePresetVarLabel(r, key) {
         const name = String((r && r.name) || '');
+        const seq = name.match(/^\s*(\d{1,3})[-_.、．:：](?!\d)\s*/);
+        const dup = name.match(/\s*[（(]\s*(\d{1,4})\s*[)）]\s*$/);
         const noSeq = name.replace(/^\s*\d{1,3}[-_.、．:：](?!\d)\s*/, '');
-        const seq = name.match(/^\s*(\d{1,3})[-_.、．:：](?!\d)/);
-        if (noSeq === key) return seq ? '#' + seq[1] : name;
-        if (noSeq.indexOf(key) === 0) {
-            // `人像 - 白皙` 的剩余是 `- 白皙`，把分隔符也吃掉，只留名字。
-            const rest = noSeq.slice(key.length).replace(/^[\s\-—–|｜/:：]+/, '').trim();
-            if (rest) return rest;
-        }
-        return noSeq || name;
+        // `人像 - 白皙` 的剩余是 `- 白皙`，把分隔符也吃掉，只留名字。
+        const rest = noSeq.indexOf(key) === 0
+            ? noSeq.slice(key.length).replace(/^[\s\-—–|｜/:：]+/, '').trim()
+            : '';
+        const isNum = (s) => /^[（(]?\s*\d{1,4}\s*[)）]?$/.test(String(s).trim());
+        if (rest && !isNum(rest)) return rest;          // 有真名字就用它
+        const num = seq ? '#' + seq[1] : (dup ? '(' + dup[1] + ')' : '');
+        // 组头已经带着 `[霜绝预设]` 这类厂牌尾注，行内不再重复，留出宽度给名字。
+        const bare = key.replace(/\s*[\[【][^\]】]*[\]】]\s*$/, '').trim() || key;
+        return (num ? num + ' ' : '') + bare;
     },
 
     _gradeHashOf(grade) {
