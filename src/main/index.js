@@ -10,6 +10,7 @@ const { safeLeafName, safeExportName, autoExportTarget, EXPORT_EXTS } = require(
 const { normalizeMirror, mirrorUrlFor, downloadVerified, releaseAssetUrl } = require('./update-mirror');
 const { normalizeAutoCheck, shouldAutoCheck } = require('./update-policy');
 const { importLogoPack } = require('./logo-pack');
+const gradePresetStore = require('./grade-preset-store');
 
 // 仓库改名后统一从这里取,避免菜单 / 更新源 / 下载兜底 / 外链白名单各写一份。
 const REPO_URL = 'https://github.com/lumos-1s/Qing-Fram-Shadow';
@@ -161,6 +162,8 @@ if (!app.requestSingleInstanceLock()) {
     // 阴影的空间自适应系数（同上来源；PS 渲染上拟合，CRS2 格式，25KB 不压缩）
     const ACR_SHADOWS_PATH = path.join(__dirname, '..', '..', 'shared', 'acr', 'cr-shadows.bin');
     const TEMPLATES_DIR = path.join(app.getPath('userData'), 'templates');
+    // 调色预设与整帧样式模板分库存：预设只含全局调色参数，几 KB，方便频繁读写与分享。
+    const GRADE_PRESETS_DIR = path.join(app.getPath('userData'), 'grade-presets');
     const { loadState, saveState, validDir, freeFilePath } = createStateStore(path.join(app.getPath('userData'), 'state.json'));
 
 // ── 自定义标题栏:窗口控制(最小化/最大化切换/关闭)与最大化状态推送 ──
@@ -940,6 +943,26 @@ ipcMain.handle('rename-template', (_e, { oldName, newName }) => {
         fs.renameSync(from, to);
         return { ok: true };
     } catch (e) { return { ok: false, error: String(e) }; }
+});
+
+// ── 调色预设（只存全局调色参数，不含蒙版；与样式模板分库）──
+ipcMain.handle('save-grade-preset', (_e, { name, data }) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
+    return gradePresetStore.save(GRADE_PRESETS_DIR, name, data);
+});
+
+ipcMain.handle('list-grade-presets', () => gradePresetStore.list(GRADE_PRESETS_DIR));
+
+ipcMain.handle('load-grade-preset', (_e, name) => gradePresetStore.load(GRADE_PRESETS_DIR, name));
+
+ipcMain.handle('delete-grade-preset', (_e, name) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
+    return gradePresetStore.remove(GRADE_PRESETS_DIR, name);
+});
+
+ipcMain.handle('rename-grade-preset', (_e, { oldName, newName }) => {
+    if (!isTrustedFrame(_e)) return BLOCKED;
+    return gradePresetStore.rename(GRADE_PRESETS_DIR, oldName, newName);
 });
 
 // ── 草稿附件:把模板里的大 data: 图片搬到 userData/draft-assets,草稿只存引用 ──

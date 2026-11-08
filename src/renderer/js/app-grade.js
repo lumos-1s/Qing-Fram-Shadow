@@ -1270,9 +1270,33 @@
         isDetActive: detActive,
         isMixActive: mixActive,
         calMatrixValues,
+        normalizeGrade,
+        defaultGrade,
 
         gradeOf(im) {
             return (im && im.grade) ? im.grade : defaultGrade();
+        },
+
+        // 调色预设缩略图：用当前照片走同一条烘焙管线，输出长边 ≤ maxEdge 的画布。
+        // 只做同步一次，调用方负责缓存。bake 内部的亮度自适应/去薄雾都通过
+        // window.App.image 取源，所以这里临时把 image 换成"同一张照片 + 预设参数"
+        // 的临时对象，finally 恢复 —— 不碰用户真实的 grade/_grade 缓存。
+        bakeGradePreview(p, maxEdge) {
+            const im = this.image;
+            const src = im && im.el;
+            if (!src) return null;
+            const w = src.naturalWidth || im.w || 0;
+            const h = src.naturalHeight || im.h || 0;
+            if (!w || !h) return null;
+            const grade = normalizeGrade(Object.assign({}, p || {}, { masks: [] }));
+            const temp = { el: src, w, h, grade, _grade: { neutral: false } };
+            const prev = this.image;
+            this.image = temp;
+            try {
+                return bake(temp, grade, maxEdge || 128);
+            } finally {
+                this.image = prev;
+            }
         },
 
         // 参数变了：立刻出一张降采样供拖动时看，静置 220ms 再补全分辨率

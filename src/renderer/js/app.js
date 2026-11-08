@@ -194,6 +194,7 @@ window.App = {
         if (this.initPresetWall) this.initPresetWall();
         if (this.initCrop) this.initCrop();
         if (this.initGrade) this.initGrade();
+        if (this.initGradePresets) this.initGradePresets();
         this.loadPrefs();
         this._presetsReady = this.loadPresets();   // 墙/侧栏点击要等它就绪，否则头一秒点卡片会点空
         this.restoreLastState();
@@ -2373,6 +2374,8 @@ window.App = {
         // 此时 photoSrcOf 会回退到原图,调色像"没了"。只要参数还在就立刻在新底图上重放。
         const g = this.image && this.image._grade;
         if (g && !g.neutral && !g.canvas && !g.low) this.rebuildGrade('full');
+        // 调色预设的缩略图/“使用中”都按当前照片计算，切图后重算。
+        if (this.onGradePresetImageChange) this.onGradePresetImageChange();
         if (prevHadPuzzle && !(this.tplPuzzle && this.tplPuzzle())) {
             this.setStatus('拼图保存在「' + (prevIm.name || '上一张') + '」上（点胶片条切回该照片可继续编辑）');
         }

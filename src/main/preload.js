@@ -36,6 +36,12 @@ contextBridge.exposeInMainWorld('qingframe', {
     renameTemplate: (oldName, newName) => ipcRenderer.invoke('rename-template', { oldName, newName }),
     exportTemplate: (name, data) => ipcRenderer.invoke('export-template', { name, data }),
     importTemplate: () => ipcRenderer.invoke('import-template'),
+    // 调色预设（只存全局调色参数，不含蒙版；与样式模板分库）
+    saveGradePreset: (name, data) => ipcRenderer.invoke('save-grade-preset', { name, data }),
+    listGradePresets: () => ipcRenderer.invoke('list-grade-presets'),
+    loadGradePreset: (name) => ipcRenderer.invoke('load-grade-preset', name),
+    deleteGradePreset: (name) => ipcRenderer.invoke('delete-grade-preset', name),
+    renameGradePreset: (oldName, newName) => ipcRenderer.invoke('rename-grade-preset', { oldName, newName }),
     importXmp: () => ipcRenderer.invoke('import-xmp'),
     exportQfs: (data) => ipcRenderer.invoke('export-qfs', data),
     // 流式 .qfs:先 begin(选位置),逐张 add,最后 finish 拼装;失败时 cancel 清临时文件

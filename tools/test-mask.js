@@ -23,7 +23,7 @@ ipcMain.handle('load-preset', (_event, name) => {
 const EMPTY = () => [];
 const OK = () => ({ ok: true });
 const CANCEL = () => ({ canceled: true });
-for (const channel of ['list-logos', 'list-textures', 'list-templates', 'list-wall-covers']) ipcMain.handle(channel, EMPTY);
+for (const channel of ['list-logos', 'list-textures', 'list-templates', 'list-wall-covers', 'list-grade-presets']) ipcMain.handle(channel, EMPTY);
 for (const channel of ['save-prefs', 'save-user', 'logout-user', 'save-template', 'delete-template',
     'rename-template', 'export-template', 'export-qfs', 'open-external', 'open-data-dir', 'copy-text',
     'save-diagnostics', 'check-for-updates', 'start-update-download', 'quit-and-install',
