@@ -31,13 +31,8 @@ window.App = Object.assign(window.App || {}, {
         const active = this.dom.tabs && this.dom.tabs.querySelector('.tab.active');
         const tab = active ? active.dataset.tab : '';
         if (tab === 'grid') {
-            // 切图也是按像素裁的：代理分辨率切出来的块会糊，先把参与的图补到全尺寸。
-            if (this.rawPrepareOutput) {
-                const list = (this.selectedIdx && this.selectedIdx.length > 1)
-                    ? this.selectedIdx.map(i => this.images[i])
-                    : [this.image];
-                await this.rawPrepareOutput(list, [this.template]);
-            }
+            // 切图也要按像素裁：补尺寸放在 exportGridCrop 里做，
+            // 面板上的「导出切图」按钮走的也是同一条路，不会漏。
             return this.exportGridCrop();
         }
         return this.exportImage();
@@ -131,7 +126,11 @@ window.App = Object.assign(window.App || {}, {
         // RAW 导入时是 1600px 代理，直接导出会掉到代理分辨率。
         // 放在选完保存位置之后：解一张全尺寸要 2~4 秒，不该挡在保存对话框前面。
         // 多选导出时其余照片可能沿用「当前模板」渲染，它的拼图槽位也要补齐
-        if (this.rawPrepareOutput) await this.rawPrepareOutput(jobs.map(j => j.im), [this.template]);
+        let rawShort = 0;
+        if (this.rawPrepareOutput) {
+            const prep = await this.rawPrepareOutput(jobs.map(j => j.im), [this.template]);
+            rawShort = (prep && prep.failed) || 0;
+        }
 
         // ③ 再逐张渲染导出画面(展示画布同步变大),期间无渲染的确认框
         const originalIdx = this.currentIdx;
@@ -282,11 +281,13 @@ window.App = Object.assign(window.App || {}, {
             const m = aborted
                 ? `已取消导出：完成 ${okCount}${failCount ? `，失败 ${failCount}` : ''}`
                 : `导出完成：成功 ${okCount}${failCount ? `，失败 ${failCount}` : ''}${useBaseCount ? `（${useBaseCount} 张沿用当前设计）` : ''}`;
+            // RAW 没补齐就是「成品只有 1600px」：不能只默默写成成功，用户会在看图软件里发现
+            const rawNote = rawShort ? ` · ${rawShort} 张 RAW 未按全尺寸显影，成品为 1600px 代理` : '';
             // 设了「默认导出位置」时不再弹保存框,状态栏补一句落到哪个文件夹,否则用户不知道文件去哪了
             const destDir = loc && (loc.mode === 'dir' ? loc.dir
                 : (loc.filePath ? String(loc.filePath).replace(/[\\/][^\\/]+$/, '') : ''));
             const destName = destDir ? String(destDir).split(/[\\/]/).filter(Boolean).pop() : '';
-            this.setStatus(!aborted && destName ? `${m} · 已存到 ${destName}` : m);
+            this.setStatus((!aborted && destName ? `${m} · 已存到 ${destName}` : m) + rawNote);
         } finally {
             if (btnCancel) btnCancel.style.display = 'none';
             delete this.uiDprOverride;
@@ -525,6 +526,23 @@ window.App = Object.assign(window.App || {}, {
         if (this._gridBusy) return;
         this._gridBusy = true;
         const targets = (this.selectedIdx && this.selectedIdx.length > 1) ? this.selectedIdx.slice() : [this.currentIdx];
+        let rawShort = 0;
+        try {
+            // 切图是按像素裁的：代理分辨率切出来的块会糊。放在选目录之前，
+            // 因为单张分支要先渲染出块才弹保存框。
+            if (this.rawPrepareOutput) {
+                const list = targets.map(i => this.images[i]).filter(Boolean);
+                const prep = await this.rawPrepareOutput(list, [this.template]);
+                rawShort = (prep && prep.failed) || 0;
+                // 预览缓存的块是代理尺寸切的，底图换全尺寸后必须重切
+                if (prep && prep.upgraded) this.invalidateGridCache();
+            }
+        } catch (e) {
+            this._gridBusy = false;
+            this.setStatus('RAW 全尺寸显影失败：' + ((e && e.message) || '未知错误'));
+            return;
+        }
+        const rawNote = rawShort ? ' · ' + rawShort + ' 张 RAW 为 1600px 代理' : '';
         const { rows, cols } = this.gridSpec();
         const gridCount = rows * cols;
         const pad = this.gridPad();
@@ -621,7 +639,7 @@ window.App = Object.assign(window.App || {}, {
             });
             const wr = await window.qingframe.writeExportFiles({ location: loc, files }) || {};
             const sizeText = blocks[0] ? ' · 每块约 ' + blocks[0].width + '×' + blocks[0].height + 'px' : '';
-            this.setStatus(wr.ok ? (gridLabel === '九宫格' ? '九宫格切图完成' : '切图完成') + ':成功 ' + wr.ok + ' 张' + (wr.fail ? ',失败 ' + wr.fail : '') + sizeText : '切图导出失败');
+            this.setStatus(wr.ok ? (gridLabel === '九宫格' ? '九宫格切图完成' : '切图完成') + ':成功 ' + wr.ok + ' 张' + (wr.fail ? ',失败 ' + wr.fail : '') + sizeText + rawNote : '切图导出失败');
             this.hideGridPreview();
         } catch (e) {
             console.warn('切图导出失败:', e, (e && e.stack || ''));

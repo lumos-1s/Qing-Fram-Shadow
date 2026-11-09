@@ -364,6 +364,37 @@ async function main() {
     check(restored.ok && !restored.crop && restored.rotate === 0 && restored.hasOrig === false,
         'RAW「还原原图」清掉裁切/旋转并按原图重解', JSON.stringify(restored));
 
+    // ── ⑨ 连续全尺寸显影：wasm 堆只涨不缩，解几张之后会把线程吃死 ──
+    // 复现过的现场：连续十几次显影后线程 RSS 到 2.4GB，再解就抛 "[object Object]"，
+    // 全尺寸失败 → 导出只能拿 1600px 代理。修法是解满定额就换掉整个线程。
+    {
+        const before = RAW.stats();
+        let okCount = 0, err = '';
+        const t0 = Date.now();
+        // 参数带一点随机抖动：否则第二次跑会命中上一次留下的磁盘缓存，
+        // 根本没有解码，也就测不到「线程会不会被吃死」。
+        const jitter = (Date.now() % 1000) / 100000;
+        for (let i = 0; i < 3; i++) {
+            try {
+                const out = await RAW.develop(SAMPLE, {
+                    params: { exposure: -0.6 + i * 0.37 + jitter, contrast: 5, highlights: 20, temperature: -8, tint: 3 },
+                    maxEdge: 0,
+                    halfSize: false
+                });
+                if (out.width > 3000 && out.height > 2000) okCount++;
+            } catch (e) { err = String((e && e.message) || e); }
+        }
+        // 回收是延迟 1.2s 做的（避免用户刚拖完滑块就重建 wasm），等它落地
+        await sleep(1600);
+        const after = RAW.stats();
+        check(okCount === 3 && !err,
+            '连续 3 张全尺寸显影都成功（线程不会被 wasm 堆吃死）',
+            `${okCount}/3 ${err} ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+        check(after.recycles > before.recycles,
+            '解满定额后解码线程被回收，内存真正还给系统',
+            JSON.stringify({ before: before.recycles, after: after.recycles, rss: after.rss }));
+    }
+
     console.log(failures.length ? `\n${failures.length} 项失败` : '\n全部通过');
     await sleep(120);
     await win.destroy();

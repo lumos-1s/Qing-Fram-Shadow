@@ -931,6 +931,9 @@ window.App = Object.assign(window.App || {}, {
         const ext = fmt === 'jpeg' ? 'jpg' : fmt;
         const qRaw = this.dom.slExportQuality ? parseInt(this.dom.slExportQuality.value, 10) : 92;
         const quality = fmt === 'png' ? 1 : Math.min(1, Math.max(0.6, (qRaw || 92) / 100));
+        // 槽位里如果有 RAW，先把参与合成的照片补到全尺寸：拼图成品是 4000px，
+        // 用 1600px 代理画进去那几格会明显糊。
+        if (this.rawPrepareOutput) await this.rawPrepareOutput([this.image], [this.template]);
         const exportPuzzleNow = () => {
             if (!window.__renderPuzzle) { this.setStatus('拼图渲染不可用'); return Promise.resolve(false); }
             const prev = this.displayMax;

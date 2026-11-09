@@ -152,6 +152,10 @@ async function handle(job) {
         parentPort.postMessage({
             id: job.id,
             ok: true,
+            // 线程自己的常驻内存：主进程据此决定什么时候把线程整体换掉。
+            // wasm 堆只涨不缩，连续解几张全尺寸后线程会吃满 2GB 然后解码失败，
+            // 表现就是「导出只有 1600px」。回收线程是唯一能真正把内存还给系统的办法。
+            mem: process.memoryUsage().rss,
             width: dw,
             height: dh,
             gain: gain,
@@ -169,7 +173,16 @@ async function handle(job) {
             bgra
         }, [bgra.buffer]);
     } catch (e) {
-        parentPort.postMessage({ id: job.id, ok: false, error: String((e && e.message) || e) });
+        // e 不一定是个 Error：wasm 层 OOM 时抛出来的是带 message 字段的普通对象，
+        // 旧写法 String(e.message) 会把它压成 "[object Object]"，日志里什么都看不出来。
+        const msg = (e && typeof e.message === 'string') ? e.message
+            : (e && e.message ? JSON.stringify(e.message) : String(e));
+        parentPort.postMessage({
+            id: job.id,
+            ok: false,
+            mem: process.memoryUsage().rss,
+            error: ((e && e.name) ? e.name + ': ' : '') + msg
+        });
     } finally {
         try { if (raw && raw.dispose) raw.dispose(); } catch (e) { /* 忽略 */ }
     }
@@ -181,10 +194,58 @@ parentPort.on('message', (job) => { if (job && job.id != null) run(job); });
 let worker = null;
 let seq = 0;
 const pending = new Map();
+// 线程最后一次自报的常驻内存，以及换线程以来解过几张全尺寸。
+// libraw 的 wasm 堆只涨不缩：每解一张 24MP 全尺寸大约留下 200MB，十几张后线程会
+// 顶到 2GB 上限，之后再解就直接失败 —— 用户看到的是「导出只有 1600px」。
+let workerRss = 0;
+let fullJobs = 0;
+let recycles = 0;
+let recycleTimer = null;
+const WORKER_RSS_LIMIT = 900 * 1024 * 1024;    // 超过这个：等手头空了就换线程
+const WORKER_RSS_HARD = 1300 * 1024 * 1024;    // 再高就立刻换，别等下一次解码撞上限
+const FULL_JOBS_PER_WORKER = 2;                // 或者解满两张全尺寸就换线程
+
+// 换线程要重新加载 wasm（~1.4s）。刚解完全尺寸时用户很可能马上又拖滑块，
+// 所以先等 1.2 秒；期间有新的解码请求就把回收取消，等下一个空档再说。
+function scheduleRecycle() {
+    if (recycleTimer) return;
+    recycleTimer = setTimeout(() => {
+        recycleTimer = null;
+        if (!pending.size) recycleWorker();
+    }, 1200);
+    if (typeof recycleTimer.unref === 'function') recycleTimer.unref();
+}
+
+function cancelRecycle() {
+    if (!recycleTimer) return;
+    clearTimeout(recycleTimer);
+    recycleTimer = null;
+}
 
 function failAll(err) {
     for (const [, p] of pending) p.reject(err);
     pending.clear();
+}
+
+// 把线程整个结束掉，wasm 堆才会真正还给系统。下一次 request 会重新建一个，
+// 代价只有一次模块加载（1 秒上下），比「解不出来」好得多。
+function recycleWorker() {
+    const w = worker;
+    worker = null;
+    workerRss = 0;
+    fullJobs = 0;
+    cancelRecycle();
+    if (!w) return;
+    recycles++;
+    try { w.terminate(); } catch (e) { /* 忽略 */ }
+}
+
+// 只在没有排队任务时换线程：终止会把排队中的请求一起带走。
+function maybeRecycleWorker(full) {
+    if (pending.size) return;
+    if (full) fullJobs++;
+    if (workerRss > WORKER_RSS_HARD) { recycleWorker(); return; }
+    if (workerRss > WORKER_RSS_LIMIT || fullJobs >= FULL_JOBS_PER_WORKER) scheduleRecycle();
 }
 
 function ensureWorker() {
@@ -194,21 +255,25 @@ function ensureWorker() {
         workerData: { dist: librawDist(), tonemapPath: tonemapPath() },
         resourceLimits: { maxOldGenerationSizeMb: 2048 }
     });
+    const gone = (err) => {
+        // 主动回收（terminate）也会触发 error/exit：这时 worker 已经指向新线程，
+        // 不能再把新线程排队中的请求一起拒掉。
+        if (worker !== w) return;
+        worker = null;
+        workerRss = 0;
+        fullJobs = 0;
+        failAll(err);
+    };
     w.on('message', (m) => {
+        if (m && m.mem) workerRss = m.mem;
         const p = pending.get(m.id);
         if (!p) return;
         pending.delete(m.id);
         if (m.ok) p.resolve(m);
         else p.reject(new Error(m.error || 'RAW 解码失败'));
     });
-    w.on('error', (e) => {
-        worker = null;
-        failAll(e instanceof Error ? e : new Error(String(e)));
-    });
-    w.on('exit', () => {
-        worker = null;
-        failAll(new Error('RAW 解码线程已退出'));
-    });
+    w.on('error', (e) => gone(e instanceof Error ? e : new Error(String(e))));
+    w.on('exit', () => gone(new Error('RAW 解码线程已退出')));
     // 线程不该拖住应用退出；有任务时 request 会自己保活。
     if (typeof w.unref === 'function') w.unref();
     worker = w;
@@ -216,6 +281,13 @@ function ensureWorker() {
 }
 
 function decode(job) {
+    // 有新的解码请求：先把排队中的「换线程」取消，别在用户拖滑块时重建 wasm。
+    cancelRecycle();
+    // 但要先看一眼线程的账：上一张已经把内存吃到限额，就先换线程再解，
+    // 否则这一张很可能正好是压垮它的那张（wasm 堆 2GB 就报 [object Object]）。
+    if (worker && !pending.size && (workerRss > WORKER_RSS_LIMIT || fullJobs >= FULL_JOBS_PER_WORKER)) {
+        recycleWorker();
+    }
     const w = ensureWorker();
     return new Promise((resolve, reject) => {
         const id = ++seq;
@@ -329,15 +401,33 @@ async function develop(file, opts) {
         if (hit) return { jpg: hit.buf, meta: hit.meta, cached: true, width: hit.meta.width, height: hit.meta.height };
     }
 
-    const res = await decode({
-        file,
-        params,
-        maxEdge,
-        quality: o.quality || 3,
-        halfSize: !!o.halfSize,
-        crop: view.crop,
-        rotate: view.rotate
-    });
+    let res;
+    try {
+        res = await decode({
+            file,
+            params,
+            maxEdge,
+            quality: o.quality || 3,
+            halfSize: !!o.halfSize,
+            crop: view.crop,
+            rotate: view.rotate
+        });
+    } catch (e) {
+        // 解码失败多半是线程被 wasm 堆顶死了。线程已经不健康，换掉后用同一份参数
+        // 再试一次：这一层是兜底，渲染层的重试只在「导出前补齐」那条路上生效。
+        const heavy = workerRss > 200 * 1024 * 1024 || fullJobs > 0;
+        recycleWorker();
+        if (!heavy) throw e;
+        res = await decode({
+            file,
+            params,
+            maxEdge,
+            quality: o.quality || 3,
+            halfSize: !!o.halfSize,
+            crop: view.crop,
+            rotate: view.rotate
+        });
+    }
 
     const img = jpegEncoder().createFromBitmap(Buffer.from(res.bgra.buffer, res.bgra.byteOffset, res.bgra.byteLength), {
         width: res.width,
@@ -354,15 +444,25 @@ async function develop(file, opts) {
         writeCache(key, jpg, meta);
         pruneCache(o.cacheLimit);
     }
+    maybeRecycleWorker(maxEdge === 0);
     return { jpg, meta, cached: false, width: res.width, height: res.height, ms: res.ms };
 }
 
 function dispose() {
-    if (worker) {
-        try { worker.terminate(); } catch (e) { /* 忽略 */ }
-        worker = null;
+    const w = worker;
+    worker = null;
+    workerRss = 0;
+    fullJobs = 0;
+    cancelRecycle();
+    if (w) {
+        try { w.terminate(); } catch (e) { /* 忽略 */ }
     }
     failAll(new Error('RAW 解码线程已停止'));
+}
+
+// 给用例看的解码线程状态：验证「连续解多张不会把线程吃死」。
+function stats() {
+    return { running: !!worker, rss: workerRss, fullJobs, recycles, pending: pending.size };
 }
 
 module.exports = {
@@ -371,6 +471,7 @@ module.exports = {
     isRaw,
     develop,
     dispose,
+    stats,
     setCacheRoot,
     cacheDir,
     _cacheKey: cacheKey

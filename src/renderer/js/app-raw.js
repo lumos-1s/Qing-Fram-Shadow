@@ -238,7 +238,14 @@
             if (this._rawDom && this._rawDom.state && im === this.image) {
                 this._rawDom.state.textContent = '显影中…';
             }
-            const p = this._rawReload(im, 0).then((ok) => {
+            const p = (async () => {
+                let ok = await this._rawReload(im, 0);
+                // 解码失败时主进程已经把解码线程换成了新的（wasm 堆吃满就只能换线程），
+                // 再试一次通常就能成功；不重试的话导出会悄悄停在 1600px 代理上。
+                if (!ok && im.raw.error) {
+                    await new Promise((r) => setTimeout(r, 120));
+                    ok = await this._rawReload(im, 0);
+                }
                 if (im.raw.fullPending === p) im.raw.fullPending = null;
                 if (im === this.image) {
                     this.syncRawUI();
@@ -247,7 +254,7 @@
                     else if (im.raw.error) this.setStatus('RAW 全尺寸显影失败，导出可能只有代理分辨率');
                 }
                 return ok;
-            });
+            })();
             im.raw.fullPending = p;
             return p;
         },
@@ -284,14 +291,22 @@
                 addSlots(own || (im === this.image ? this.template : null));
             }
             for (const tpl of extraTemplates || []) addSlots(tpl);
-            if (!list.length) return;
+            if (!list.length) return { total: 0, failed: 0, upgraded: 0 };
             if (list.length > 1) this.setStatus(`正在按全尺寸显影 ${list.length} 张 RAW…`);
-            let failed = 0;
+            const failed = [];
+            let upgraded = 0;
             for (const im of list) {
-                const ok = await this.rawEnsureFull(im);
-                if (ok === false && im.raw.error) failed++;
+                const before = im.w;
+                await this.rawEnsureFull(im);
+                if (im.w > before) upgraded++;
+                // 以「最后到底是不是全尺寸」为准，不看 error 标记：被更新的请求取代、
+                // 参数刚好又变了，这两种情况都不算失败，但结果同样不是全尺寸。
+                if (!im.raw.full) failed.push(im);
             }
-            if (failed) this.setStatus(`有 ${failed} 张 RAW 全尺寸显影失败，导出可能只有代理分辨率`);
+            if (failed.length) {
+                this.setStatus(`有 ${failed.length} 张 RAW 未能按全尺寸显影，本次成品只有 1600px 代理`);
+            }
+            return { total: list.length, failed: failed.length, upgraded };
         },
 
         // 把「旋转后的显示坐标」中的归一化矩形，反推回「裁切后、旋转前」的归一化坐标。
