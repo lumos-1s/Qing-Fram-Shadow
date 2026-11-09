@@ -41,8 +41,15 @@ async function main() {
     win.showInactive();
     win.setContentSize(1500, 1000);
     await exec(`(() => {
-        try { localStorage.setItem('qfs_intro_done', '1'); } catch (_) {}
+        try {
+            localStorage.setItem('qfs_intro_done', '1');
+            // 截图只演示默认态：清掉别的用例留下的侧栏模式与分组展开记录
+            localStorage.removeItem('qfs_side_mode');
+            localStorage.removeItem('qfs_preset_groups');
+        } catch (_) {}
         if (window.App && App.closeIntro) App.closeIntro();
+        if (window.App && App.setSideMode) App.setSideMode('border');
+        if (window.App && App.buildTree) App.buildTree('');
         return true;
     })()`);
     await sleep(1600);
@@ -115,6 +122,11 @@ async function main() {
     };
 
     await shot('window-full');
+    // 工具栏「⋯」展开状态
+    await exec(`(() => { const b = document.getElementById('btnToolbarMore'); if (b) b.click(); return true; })()`);
+    await sleep(250);
+    await shot('window-more');
+    await exec(`(() => { const b = document.getElementById('btnToolbarMore'); if (b) b.click(); return true; })()`);
     // 设置弹窗里的密度三档
     await exec(`(() => { if (window.App && App.openSettings) App.openSettings(); return true; })()`);
     await sleep(500);

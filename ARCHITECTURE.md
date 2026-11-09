@@ -131,6 +131,14 @@ GUI 用例的 `get-prefs` 返回 `{}`，测试里点折叠不会污染下次运�
 但用户显式收起过（`panelFolds.grpMask === true`）就不抢决定。
 默认折叠不碰显隐审计的取样行——蒙版那 8 个 `row*` 在冻结基线里 95 个风格本来就全是隐藏。
 
+**顶部与左栏减负**：工具栏的低频按钮（导入文件夹/复制/同步/重置/随机/主题）只是**移动 DOM**
+到 `#toolbarMoreMenu`，id 不变，所以 `bind()` 里按 id 的绑定、快捷键、`app-view.js` 对 `btnCopy`
+的显隐、以及所有 GUI 用例都不用改；`.toolbar-group` 去掉 `--surface-alt` 底色与边框，改由
+`#toolbar > .toolbar-group + .toolbar-group` 画发丝线。`app-templates.js` 的边框树原来每次
+`buildTree()` 都把「最近使用」和 `defOpen` 两组一起展开，且只持久化分组顺序
+（`qfs_group_order`）；现在展开态存 `qfs_preset_groups`，默认只开 `defOpen`，
+「最近使用」默认收起且截到 4 条，搜索（`f` 非空）时强制全展开。
+
 **与 Lightroom 的数值对照**（`app-xmp.js` 导入 `.xmp` 用同一套口径）：
 
 | 项 | 对齐程度 | 说明 |

@@ -810,6 +810,9 @@ window.App = Object.assign(window.App || {}, {
         const curName = (this.template && this.template.templateName) || '';
         const curGrp = curName ? [...sorted].find(g => (groups.get(g) || []).some(p => p.templateName === curName)) : null;
         const defOpen = curGrp || sorted[0] || null;
+        const groupState = this._loadPresetGroupState();
+        const isOpen = (key, dflt) => (groupState[key] === undefined ? dflt : !!groupState[key]);
+        const remember = (el, key) => { this._setPresetGroupOpen(key, el.classList.contains('open')); };
         const renderItem = (p, grp) => {
             const item = document.createElement('div');
             item.className = 'preset-item' + (p.templateName === curName ? ' active' : '');
@@ -846,11 +849,11 @@ window.App = Object.assign(window.App || {}, {
             const favPresets = favs.map(n => this.presets.find(p => p.templateName === n)).filter(Boolean);
             if (favPresets.length) {
                 const gEl = document.createElement('div');
-                gEl.className = 'preset-group open';
+                gEl.className = 'preset-group' + ((f || isOpen('收藏', true)) ? ' open' : '');
                 const nm = document.createElement('div');
                 nm.className = 'group-name';
                 nm.innerHTML = '<span class="caret">▸</span><span class="g-icon">⭐</span><span>收藏 · ' + favPresets.length + '</span>';
-                nm.addEventListener('click', () => gEl.classList.toggle('open'));
+                nm.addEventListener('click', () => { gEl.classList.toggle('open'); remember(gEl, '收藏'); });
                 gEl.appendChild(nm);
                 favPresets.forEach(p => gEl.appendChild(renderItem(p, '收藏')));
                 tree.appendChild(gEl);
@@ -858,14 +861,18 @@ window.App = Object.assign(window.App || {}, {
         }
         // 最近使用分组
         if (!f) {
-            const recPresets = recent.map(n => this.presets.find(p => p.templateName === n)).filter(Boolean);
+            // 「最近使用」里的条目和下面各分类里的同名项是重复的，全展开等于
+            // 同一批名字看两遍。默认收起，展开了也只留最近 4 个。
+            const recPresets = recent.map(n => this.presets.find(p => p.templateName === n))
+                .filter(Boolean).slice(0, 4);
             if (recPresets.length) {
                 const gEl = document.createElement('div');
-                gEl.className = 'preset-group open';
+                gEl.className = 'preset-group' + (isOpen('最近使用', false) ? ' open' : '');
                 const nm = document.createElement('div');
                 nm.className = 'group-name';
+                nm.title = '只显示最近 4 个 · 点击展开/收起';
                 nm.innerHTML = '<span class="caret">▸</span><span class="g-icon">🕐</span><span>最近使用 · ' + recPresets.length + '</span>';
-                nm.addEventListener('click', () => gEl.classList.toggle('open'));
+                nm.addEventListener('click', () => { gEl.classList.toggle('open'); remember(gEl, '最近使用'); });
                 gEl.appendChild(nm);
                 recPresets.forEach(p => gEl.appendChild(renderItem(p, '最近使用')));
                 tree.appendChild(gEl);
@@ -873,7 +880,7 @@ window.App = Object.assign(window.App || {}, {
         }
         for (const grp of sorted) {
             const groupEl = document.createElement('div');
-            groupEl.className = 'preset-group' + ((f && groups.get(grp).length) || grp === defOpen ? ' open' : '');
+            groupEl.className = 'preset-group' + ((f || isOpen(grp, grp === defOpen)) ? ' open' : '');
             const name = document.createElement('div');
             name.className = 'group-name';
             name.title = '点击展开/收起 · 拖动排序';
@@ -891,6 +898,7 @@ window.App = Object.assign(window.App || {}, {
             name.appendChild(tag);
             name.addEventListener('click', () => {
                 groupEl.classList.toggle('open');
+                remember(groupEl, grp);
             });
             /* 拖拽排序:拖动本组标题到其他组标题上/下,重排分类顺序 */
             name.addEventListener('dragstart', (e) => {
@@ -926,6 +934,20 @@ window.App = Object.assign(window.App || {}, {
         }
     },
     filterTree(v) { this.buildTree(v); },
+
+    /* ══ 分组展开状态 ══
+       原来只存分组顺序、不存展开态：每次 buildTree 都把「最近使用」和当前组一起
+       重新展开，左侧一屏塞 20+ 行。现在默认只展开当前选中项所在组，其余收起，
+       用户手动点过哪一组就记住哪一组。搜索时强制展开命中组，否则等于把结果藏了。 */
+    _loadPresetGroupState() {
+        try { const v = localStorage.getItem('qfs_preset_groups'); return v ? (JSON.parse(v) || {}) : {}; }
+        catch { return {}; }
+    },
+    _setPresetGroupOpen(key, open) {
+        const st = this._loadPresetGroupState();
+        st[key] = !!open;
+        try { localStorage.setItem('qfs_preset_groups', JSON.stringify(st)); } catch {}
+    },
 
     /* ══ 分组拖拽排序 ══ */
     _loadGroupOrder() {
