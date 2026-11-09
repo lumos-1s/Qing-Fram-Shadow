@@ -81,9 +81,15 @@ async function main() {
         if (!p || !RAW.isRaw(p)) return new Response('not raw', { status: 404, headers: CORS });
         let params = {};
         try { params = JSON.parse(u.searchParams.get('raw') || '{}'); } catch (e) { params = {}; }
+        let crop = null;
+        const cropParam = u.searchParams.get('crop');
+        if (cropParam) {
+            try { crop = JSON.parse(cropParam); } catch (e) { crop = null; }
+        }
+        const rotate = Math.max(0, Math.min(3, Math.round(Number(u.searchParams.get('rot')) || 0)));
         const edge = Math.max(0, Number(u.searchParams.get('q')) || 0);
         try {
-            const out = await RAW.develop(p, { params, maxEdge: edge, halfSize: edge > 0 });
+            const out = await RAW.develop(p, { params, maxEdge: edge, halfSize: edge > 0, crop, rotate });
             return new Response(out.jpg, { headers: { ...CORS, 'content-type': 'image/jpeg' } });
         } catch (e) {
             return new Response('fail: ' + e.message, { status: 415, headers: CORS });
@@ -203,7 +209,103 @@ async function main() {
     check(/^\d+×\d+$/.test(String(full.state || '').trim()),
         '标题行右侧写明当前像素尺寸', full.state);
 
-    // ── ④ 普通 JPEG：面板收起 ──
+    // ── ④ RAW 裁切/旋转：参数化视图不能被下一次显影冲掉 ──
+    const view = await exec(`(async () => {
+        const A = window.App;
+        const im = A.image;
+        const fullW = im.w, fullH = im.h;
+        if (A.savePhotoOrigin) A.savePhotoOrigin(im);
+        const okCrop = await A.rawRecordCrop(im, { W: fullW, H: fullH, turns: 0, useOrig: false },
+            { x: 0, y: 0, w: Math.round(fullW / 2), h: Math.round(fullH / 2) });
+        clearTimeout(A._rawFullTimer);
+        const crop1 = im.raw.crop ? JSON.parse(JSON.stringify(im.raw.crop)) : null;
+        const croppedW = im.w, croppedH = im.h;
+        A.setGrade({ exp: 0.3 });
+        const sl = document.getElementById('slRawCon');
+        sl.value = '20';
+        sl.dispatchEvent(new Event('input', { bubbles: true }));
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        await wait(1200);
+        clearTimeout(A._rawFullTimer);
+        await A.flushRender();
+        return {
+            okCrop, fullW, fullH, croppedW, croppedH,
+            crop1, crop2: im.raw.crop,
+            w2: im.w, h2: im.h,
+            contrast: im.raw.params.contrast,
+            gradeNeutral: !!(im._grade && im._grade.neutral),
+            gradeLowKey: !!(im._grade && im._grade.lowKey),
+            gradeSrc: window.photoSrcOf(im) !== im.el
+        };
+    })()`);
+    check(view.okCrop && view.crop1 && view.croppedW < view.fullW && view.croppedH < view.fullH,
+        'RAW 裁切写进显影视图，代理按裁切后的尺寸重解',
+        JSON.stringify({ full: [view.fullW, view.fullH], crop: [view.croppedW, view.croppedH] }));
+    check(JSON.stringify(view.crop2) === JSON.stringify(view.crop1) &&
+        view.w2 === view.croppedW && view.h2 === view.croppedH,
+        '再拖显影滑块不会把裁切冲掉',
+        JSON.stringify({ crop1: view.crop1, crop2: view.crop2, size: [view.w2, view.h2] }));
+    check(view.gradeNeutral === false && view.gradeLowKey === true && view.gradeSrc === true,
+        'RAW 重解后调色仍然生效（不是退回未调色原图）',
+        JSON.stringify({ neutral: view.gradeNeutral, lowKey: view.gradeLowKey, src: view.gradeSrc }));
+    check(view.contrast === 20, '显影滑块参数写入这张图', String(view.contrast));
+
+    const rot = await exec(`(async () => {
+        const A = window.App; const im = A.image;
+        const beforeW = im.w, beforeH = im.h;
+        const crop = im.raw.crop ? JSON.stringify(im.raw.crop) : null;
+        const ok = await A.rawRecordCrop(im, { W: beforeW, H: beforeH, turns: 1, useOrig: false },
+            { x: 0, y: 0, w: beforeW, h: beforeH });
+        clearTimeout(A._rawFullTimer);
+        return { ok, beforeW, beforeH, w: im.w, h: im.h, rotate: im.rotate, crop,
+            crop2: im.raw.crop ? JSON.stringify(im.raw.crop) : null };
+    })()`);
+    check(rot.ok && rot.rotate === 1 && rot.w === rot.beforeH && rot.h === rot.beforeW,
+        '裁切弹层里的旋转记进显影视图，画面宽高对调', JSON.stringify(rot));
+    check(rot.crop === rot.crop2, '旋转后裁切框仍指向同一块原图区域',
+        JSON.stringify({ before: rot.crop, after: rot.crop2 }));
+
+    // ── ⑤ 撤销：显影参数进撤销栈，一次拖动只压一张；撤销不能把裁切/旋转冲掉 ──
+    const undo = await exec(`(async () => {
+        const A = window.App; const im = A.image;
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        A.undoStack = []; A.redoStack = [];
+        const crop0 = im.raw.crop ? JSON.stringify(im.raw.crop) : null;
+        const rot0 = im.rotate;
+        const before = im.raw.params.exposure;
+        const slider = document.getElementById('slRawExp');
+        slider.value = '0.8';
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+        const pushedOne = A.undoStack.length;
+        slider.value = '1.1';
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+        const pushedTwo = A.undoStack.length;
+        await wait(1300);
+        clearTimeout(A._rawFullTimer);
+        const afterDrag = im.raw.params.exposure;
+        A.undo();
+        await wait(1300);
+        clearTimeout(A._rawFullTimer);
+        await A.flushRender();
+        return {
+            before, pushedOne, pushedTwo, afterDrag,
+            exposure: im.raw.params.exposure,
+            cropNow: im.raw.crop ? JSON.stringify(im.raw.crop) : null,
+            rotNow: im.rotate, crop0, rot0
+        };
+    })()`);
+    check(undo.pushedOne === 1 && undo.pushedTwo === 1,
+        '一次拖动只压一张显影快照（连续 input 共用）',
+        JSON.stringify({ first: undo.pushedOne, second: undo.pushedTwo }));
+    check(Math.abs(undo.afterDrag - 1.1) < 1e-6 && Math.abs(undo.before - 1.5) < 1e-6,
+        '拖动过程参数连续写入，停在最后一档', JSON.stringify({ before: undo.before, after: undo.afterDrag }));
+    check(Math.abs(undo.exposure - undo.before) < 1e-6,
+        '撤销回到拖动前的显影参数', JSON.stringify({ now: undo.exposure, before: undo.before }));
+    check(undo.cropNow === undo.crop0 && undo.rotNow === undo.rot0,
+        '撤销不会把裁切与旋转一起带回去（视图跟参数分开存）',
+        JSON.stringify({ crop0: undo.crop0, cropNow: undo.cropNow, rot0: undo.rot0, rotNow: undo.rotNow }));
+
+    // ── ⑥ 普通 JPEG：面板收起 ──
     const plain = await exec(`(async () => {
         const A = window.App;
         const c = document.createElement('canvas');
@@ -224,7 +326,7 @@ async function main() {
     check(plain.hidden === true && plain.display === 'none' && plain.hasRaw === false,
         '换成普通 JPEG 后面板收起（display:none），不会误显影', JSON.stringify(plain));
 
-    // ── ⑤ 草稿只存参数 ──
+    // ── ⑦ 草稿只存参数与视图 ──
     const draft = await exec(`(async () => {
         const A = window.App;
         A.selectImage(0);
@@ -236,11 +338,31 @@ async function main() {
             has: !!row,
             params: row && row.raw && row.raw.params,
             keys: row ? Object.keys(row.raw) : [],
+            crop: row && row.raw.crop,
+            rotate: row && row.raw.rotate,
             bytes: captured ? JSON.stringify(captured).length : 0
         };
     })()`);
-    check(draft.has && draft.params && draft.params.exposure === 1.5 && draft.keys.length === 1,
-        '草稿只记显影参数（几个数字），不存像素', JSON.stringify({ keys: draft.keys, bytes: draft.bytes }));
+    check(draft.has && draft.params && draft.params.exposure === 1.5 &&
+        draft.keys.length === 3 && draft.crop && draft.rotate === 1,
+        '草稿只记显影参数与视图（几个数字），不存像素',
+        JSON.stringify({ keys: draft.keys, rotate: draft.rotate, bytes: draft.bytes }));
+
+    // ── ⑧ 还原原图：RAW 回到最初的显影视图，而不是换回一张旧代理 ──
+    const restored = await exec(`(async () => {
+        const A = window.App; const im = A.image;
+        const ok = A.restoreOriginalPhoto(im);
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        await wait(1200);
+        clearTimeout(A._rawFullTimer);
+        await A.flushRender();
+        return {
+            ok, crop: im.raw.crop, rotate: im.rotate, hasOrig: !!im.orig,
+            w: im.w, h: im.h
+        };
+    })()`);
+    check(restored.ok && !restored.crop && restored.rotate === 0 && restored.hasOrig === false,
+        'RAW「还原原图」清掉裁切/旋转并按原图重解', JSON.stringify(restored));
 
     console.log(failures.length ? `\n${failures.length} 项失败` : '\n全部通过');
     await sleep(120);

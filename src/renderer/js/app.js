@@ -2376,7 +2376,12 @@ window.App = {
         // 切回某张照片时,它的调色烘焙画布可能已被 LRU 淘汰(去编辑别的图 / 批量应用后切回),
         // 此时 photoSrcOf 会回退到原图,调色像"没了"。只要参数还在就立刻在新底图上重放。
         const g = this.image && this.image._grade;
-        if (g && !g.neutral && !g.canvas && !g.low) this.rebuildGrade('full');
+        if (g && !g.neutral && !g.canvas && (!g.low || !g.lowKey)) this.rebuildGrade('full');
+        // RAW 导入/恢复草稿时先给 1600px 代理；切到这张图后自动补全尺寸，
+        // 否则它会一直停在代理，直到用户再碰一次滑块或导出。
+        if (this.image && this.image.raw && !this.image.raw.full && this._rawQueueFull) {
+            this._rawQueueFull(900);
+        }
         // 调色预设的缩略图/“使用中”都按当前照片计算，切图后重算。
         if (this.onGradePresetImageChange) this.onGradePresetImageChange();
         if (prevHadPuzzle && !(this.tplPuzzle && this.tplPuzzle())) {
@@ -2388,6 +2393,23 @@ window.App = {
     async rotateCurrentPhoto() {
         const im = this.image;
         if (!im || !im.el) { this.setStatus('请先导入照片'); return; }
+        // RAW 的旋转是显影参数：只改 rotate 次数再让主进程重解，不能把当前代理烘进像素，
+        // 否则换一次显影参数就会把旋转丢掉，而且旋转后的裁切框也无法还原。
+        if (im.raw && this._rawReload) {
+            if (this.savePhotoOrigin) this.savePhotoOrigin(im);
+            im.rotate = ((im.rotate || 0) + 1) % 4;
+            im.thumb = null;
+            im._thumbEl = null;
+            im._tqAt = 0;
+            if (this.invalidateStyleCaches) this.invalidateStyleCaches();
+            if (this._rawDom && this._rawDom.state) this._rawDom.state.textContent = '显影中…';
+            const edge = im.raw.full ? 0 : this.RAW_PROXY_EDGE;
+            const ok = await this._rawReload(im, edge);
+            if (!ok) { this.setStatus('旋转失败'); return; }
+            if (this.syncCropOriginalBtn) this.syncCropOriginalBtn();
+            this.setStatus('照片已旋转 90°(再次右键可继续旋转)');
+            return;
+        }
         const img = im.el;
         const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
         if (!W || !H) return;
@@ -2625,13 +2647,14 @@ window.App = {
         const rawInfo = res.raw && this.rawSrc
             ? {
                 params: Object.assign({}, this.RAW_DEFAULTS),
+                crop: null,
                 edge: this.RAW_PROXY_EDGE,
                 full: false,
                 seq: 0
             }
             : null;
         const src = rawInfo
-            ? this.rawSrc(res.path, rawInfo.params, rawInfo.edge)
+            ? this.rawSrc(res.path, rawInfo.params, rawInfo.edge, rawInfo)
             : this.photoUrl(res.path);
         await new Promise(r => { img.onload = r; img.onerror = r; img.src = src; });
         if (!img.naturalWidth) return null;

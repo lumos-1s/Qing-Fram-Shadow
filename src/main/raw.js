@@ -40,8 +40,10 @@ const isRaw = (p) => RAW_EXT_SET.has(path.extname(String(p || '')).toLowerCase()
 // 否则 ESM import 与 fs 读 wasm 在部分版本上会失败（见 package.json 的 asarUnpack）。
 function librawDist() {
     const candidates = [
-        path.join(__dirname, '..', '..', 'node_modules', 'libraw-wasm', 'dist'),
+        // 打包后优先用 asar 外的那份：worker 线程不走主进程的 asar 补丁，
+        // 直接 import app.asar 里的 ESM/wasm 会失败（见 package.json asarUnpack）。
         path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', 'libraw-wasm', 'dist'),
+        path.join(__dirname, '..', '..', 'node_modules', 'libraw-wasm', 'dist'),
         path.join(process.resourcesPath || '', 'app.asar', 'node_modules', 'libraw-wasm', 'dist')
     ];
     for (const dir of candidates) {
@@ -50,6 +52,16 @@ function librawDist() {
         } catch (e) { /* 继续找下一个 */ }
     }
     return candidates[0];
+}
+
+// worker 里 require 的色调映射模块也要放在 asar 外：worker_threads 里没有
+// Electron 的 asar fs 补丁，app.asar/src/main/raw-tonemap.js 在打包后读不到。
+function tonemapPath() {
+    const unpacked = path.join(process.resourcesPath || '', 'app.asar.unpacked', 'src', 'main', 'raw-tonemap.js');
+    try {
+        if (fs.existsSync(unpacked)) return unpacked;
+    } catch (e) { /* 开发环境继续用源码路径 */ }
+    return path.join(__dirname, 'raw-tonemap.js');
 }
 
 // worker 用 eval 字符串启动：避免 asar 里的 .js 能不能被 worker_threads 加载这种环境问题。
@@ -107,27 +119,34 @@ async function handle(job) {
         const total = sw * sh;
         const src = img.data;
 
-        // 自动基线按原图算，缩放后再算会受插值影响偏亮。
+        // 自动基线按原图算：裁切一块暗角不应该让整张照片的曝光跟着变。
+        // 缩放后再算会受插值影响偏亮，所以也在缩放前。
         const gain = tm.autoGain(src, ch, total);
-        let dw = sw;
-        let dh = sh;
+        // 裁切/旋转在缩放前做：代理图先从原图裁出目标区域再缩到 1600，
+        // 不会先整图缩小再裁一次。裁切框是归一化坐标，代理/全尺寸共用。
+        const view = tm.cropRotate(src, sw, sh, ch, job.crop, job.rotate);
+        const vw = view.width;
+        const vh = view.height;
+        const vch = view.colors;
+        let dw = vw;
+        let dh = vh;
         if (job.maxEdge > 0) {
-            const long = Math.max(sw, sh);
+            const long = Math.max(vw, vh);
             if (long > job.maxEdge) {
                 const k = job.maxEdge / long;
-                dw = Math.max(1, Math.round(sw * k));
-                dh = Math.max(1, Math.round(sh * k));
+                dw = Math.max(1, Math.round(vw * k));
+                dh = Math.max(1, Math.round(vh * k));
             }
         }
         const lut = tm.buildLut(job.params, gain);
         let pixels;
         let colors;
-        if (dw !== sw || dh !== sh) {
-            pixels = tm.resizeBox(src, sw, sh, dw, dh, ch);
+        if (dw !== vw || dh !== vh) {
+            pixels = tm.resizeBox(view.data, vw, vh, dw, dh, vch);
             colors = 4;
         } else {
-            pixels = src;
-            colors = ch;
+            pixels = view.data;
+            colors = vch;
         }
         const bgra = tm.toBgra(pixels, colors, dw, dh, lut);
         parentPort.postMessage({
@@ -172,7 +191,7 @@ function ensureWorker() {
     if (worker) return worker;
     const w = new Worker(WORKER_SRC, {
         eval: true,
-        workerData: { dist: librawDist(), tonemapPath: path.join(__dirname, 'raw-tonemap.js') },
+        workerData: { dist: librawDist(), tonemapPath: tonemapPath() },
         resourceLimits: { maxOldGenerationSizeMb: 2048 }
     });
     w.on('message', (m) => {
@@ -214,11 +233,13 @@ function cacheDir() {
     return cacheRoot;
 }
 
-function cacheKey(file, stat, params, maxEdge) {
+function cacheKey(file, stat, params, maxEdge, view) {
     const h = crypto.createHash('sha1');
     h.update(String(file));
     h.update('|' + stat.size + '|' + Math.round(stat.mtimeMs));
     h.update('|' + JSON.stringify(params) + '|' + maxEdge);
+    // 裁切/旋转也是显影参数的一部分：同一组滑块、不同裁切框必须分开缓存。
+    h.update('|' + JSON.stringify(view || null));
     return h.digest('hex');
 }
 
@@ -296,11 +317,13 @@ function jpegEncoder() {
 async function develop(file, opts) {
     const o = opts || {};
     const params = tonemap.normalize(o.params);
+    // view 也要经过同一套裁剪：URL、草稿、旧版本都可能塞进越界值。
+    const view = tonemap.normalizeView(o.crop, o.rotate);
     const maxEdge = Math.max(0, Number(o.maxEdge) || 0);
     const stat = await fs.promises.stat(file).catch(() => null);
     if (!stat) throw new Error('文件不存在：' + path.basename(file));
 
-    const key = cacheKey(file, stat, params, maxEdge);
+    const key = cacheKey(file, stat, params, maxEdge, view);
     if (o.cache !== false) {
         const hit = readCache(key);
         if (hit) return { jpg: hit.buf, meta: hit.meta, cached: true, width: hit.meta.width, height: hit.meta.height };
@@ -311,7 +334,9 @@ async function develop(file, opts) {
         params,
         maxEdge,
         quality: o.quality || 3,
-        halfSize: !!o.halfSize
+        halfSize: !!o.halfSize,
+        crop: view.crop,
+        rotate: view.rotate
     });
 
     const img = jpegEncoder().createFromBitmap(Buffer.from(res.bgra.buffer, res.bgra.byteOffset, res.bgra.byteLength), {

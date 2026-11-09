@@ -103,6 +103,9 @@ window.App = Object.assign(window.App || {}, {
             // 最小框边长：照片本身比 8px 还小时不能让下限比图还大
             minSide: Math.max(1, Math.min(CROP_MIN_SRC, W, H)),
             useOrig: false,
+            // 弹层里转了几次 90°：只作用于这次裁切。RAW 要把这个次数一起算进显影参数，
+            // 非 RAW 则直接烘进像素，不写回 im.rotate。
+            turns: 0,
             drag: null, viewW: 0, viewH: 0, fit: 1, ox: 0, oy: 0, dpr: 1
         };
         d.overlay.style.display = 'flex';
@@ -533,6 +536,7 @@ window.App = Object.assign(window.App || {}, {
         ctx.rotate(Math.PI / 2);
         ctx.drawImage(st.src, -st.W / 2, -st.H / 2);
         st.src = c;
+        st.turns = ((Number(st.turns) || 0) + 1) % 4;
         const W = st.W;
         st.W = st.H;
         st.H = W;
@@ -555,6 +559,7 @@ window.App = Object.assign(window.App || {}, {
         st.ratioKey = 'free';
         st.customText = '';
         st.useOrig = false;
+        st.turns = 0;
         if (this._cropDom && this._cropDom.ratioInp) {
             this._cropDom.ratioInp.value = '';
             this._cropDom.ratioInp.classList.remove('is-bad');
@@ -574,7 +579,13 @@ window.App = Object.assign(window.App || {}, {
         t.orig = {
             el: t.el,
             w: t.el.naturalWidth || t.w || 0,
-            h: t.el.naturalHeight || t.h || 0
+            h: t.el.naturalHeight || t.h || 0,
+            // RAW 的还原不能只换回旧 el：裁切/旋转是显影参数，
+            // 必须把当时的视图一起记住，重解时才不会把旋转/裁切丢掉。
+            raw: t.raw ? {
+                crop: t.raw.crop ? Object.assign({}, t.raw.crop) : null,
+                rotate: ((Number(t.rotate) || 0) % 4 + 4) % 4
+            } : null
         };
         return true;
     },
@@ -583,6 +594,24 @@ window.App = Object.assign(window.App || {}, {
     restoreOriginalPhoto(im, opts) {
         const t = im || this.image;
         if (!t || !t.orig || !t.orig.el) return false;
+        // RAW：原图 = 最初的显影视图（裁切框 + 旋转次数），不是某一张旧位图。
+        // 直接换回代理像素会把全尺寸和后续重解一起毁掉。
+        if (t.raw && this.rawApplyUndo) {
+            const v = t.orig.raw || { crop: null, rotate: 0 };
+            delete t.orig;
+            t.thumb = null;
+            t._thumbEl = null;
+            t._tqAt = 0;
+            if (this.buildThumbnails) this.buildThumbnails();
+            this.rawApplyUndo(t, {
+                params: this.rawParamsOf ? this.rawParamsOf(t) : Object.assign({}, t.raw.params),
+                crop: v.crop,
+                rotate: v.rotate
+            });
+            if (this.syncCropOriginalBtn) this.syncCropOriginalBtn();
+            if (!opts || !opts.silent) this.setStatus('已还原为原图');
+            return true;
+        }
         t.el = t.orig.el;
         t.w = t.orig.w;
         t.h = t.orig.h;
@@ -618,6 +647,7 @@ window.App = Object.assign(window.App || {}, {
         st.ratioKey = 'free';
         st.customText = '';
         st.useOrig = true;
+        st.turns = 0;
         if (this._cropDom && this._cropDom.ratioInp) {
             this._cropDom.ratioInp.value = '';
             this._cropDom.ratioInp.classList.remove('is-bad');
@@ -676,8 +706,8 @@ window.App = Object.assign(window.App || {}, {
         const w = Math.max(1, Math.min(st.W - x, Math.round(st.box.w)));
         const h = Math.max(1, Math.min(st.H - y, Math.round(st.box.h)));
         const fullBox = x === 0 && y === 0 && w === st.W && h === st.H;
-        // 点了「还原原图」又没重新框：直接换回原图，别绕一圈重新编码
-        if (st.useOrig && fullBox) {
+        // 点了「还原原图」又没重新框、也没旋转：直接换回原图，别绕一圈重新编码
+        if (st.useOrig && fullBox && !st.turns) {
             const ok = this.restoreOriginalPhoto(im, { silent: true });
             this.closeCrop(true);
             this.setStatus(ok ? '已还原为原图' : '没有改动，照片未做处理');
@@ -692,6 +722,15 @@ window.App = Object.assign(window.App || {}, {
         }
         // 换掉位图之前先留一份原图：裁切本身不可撤销，但"回到原图"必须一直可用
         this.savePhotoOrigin(im);
+        // RAW 不烘像素：把框记成归一化显影参数，再让主进程按原图重解。
+        // 这样后面拖任何显影滑块都不会把裁切冲掉，导出也还是全尺寸。
+        if (im.raw && this.rawRecordCrop) {
+            const ok = await this.rawRecordCrop(im, st, { x, y, w, h });
+            this.closeCrop(true);
+            this.setStatus(ok ? '已更新 RAW 裁切，正在按新构图显影' : '裁切已记录，但显影失败，请稍后重试');
+            this.syncCropOriginalBtn();
+            return ok;
+        }
         const c = document.createElement('canvas');
         c.width = w;
         c.height = h;

@@ -351,8 +351,16 @@ app.whenReady().then(() => {
                     try { params = JSON.parse(rawParam); } catch (e) { params = {}; }
                 }
                 const edge = Math.max(0, Number(u.searchParams.get('q')) || 0);
+                let crop = null;
+                const cropParam = u.searchParams.get('crop');
+                if (cropParam) {
+                    try { crop = JSON.parse(cropParam); } catch (e) { crop = null; }
+                }
+                const rotate = Math.max(0, Math.min(3, Math.round(Number(u.searchParams.get('rot')) || 0)));
                 try {
-                    const out = await developRaw(real, { params, maxEdge: edge, halfSize: edge > 0 });
+                    const out = await developRaw(real, {
+                        params, maxEdge: edge, halfSize: edge > 0, crop, rotate
+                    });
                     return new Response(out.jpg, {
                         headers: {
                             ...CORS,

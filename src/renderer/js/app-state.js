@@ -203,6 +203,9 @@ window.App = Object.assign(window.App || {}, {
         // 否则「调完再撤销」时找不到 grade 就什么都不还原，Ctrl+Z 像是失灵了。
         const grade = (im && im.grade) ? JSON.parse(JSON.stringify(im.grade)) : null;
         Object.defineProperty(t, '__grade', { value: grade, enumerable: false, configurable: true, writable: true });
+        // RAW 显影参数 + 裁切/旋转也是这张图的状态，撤销必须一起回退。
+        const raw = this.rawSnapshotOf ? this.rawSnapshotOf(im) : null;
+        Object.defineProperty(t, '__raw', { value: raw, enumerable: false, configurable: true, writable: true });
         // 记录快照属于哪张图。非枚举，不会被 setTpl/JSON 序列化带进模板文件。
         Object.defineProperty(t, '__image', { value: im || null, enumerable: false, configurable: true, writable: true });
         return t;
@@ -222,7 +225,9 @@ window.App = Object.assign(window.App || {}, {
         const im = this.image;
         const cur = (im && im.grade) ? JSON.parse(JSON.stringify(im.grade)) : null;
         const sg = snap.__grade;
-        return JSON.stringify(cur || null) === JSON.stringify(sg || null);
+        if (JSON.stringify(cur || null) !== JSON.stringify(sg || null)) return false;
+        const rawCur = this.rawSnapshotOf ? this.rawSnapshotOf(im) : null;
+        return JSON.stringify(rawCur) === JSON.stringify(snap.__raw || null);
     },
 
     // 应用一个撤销/重做快照。旧栈里可能存着「只有模板」的老格式，按缺失处理。
@@ -234,6 +239,9 @@ window.App = Object.assign(window.App || {}, {
         this.template = snap;
         this.normalizeTemplate();
         const im = this.image;
+        // 同一份快照如果会触发 RAW 重解，像素换好后 _rawReload 会重建调色；
+        // 这里先烘一次全尺寸只是白等 1~3 秒。
+        const reloadRaw = !!(im && im.raw && snap && '__raw' in snap && snap.__raw);
         // 用 '__grade' in snap 判存在性：快照里的 grade 可能是 null（本来就没调色），
         // 用真值判断会漏掉「从有调色回到无调色」这一种还原。
         if (im && snap && '__grade' in snap) {
@@ -241,8 +249,12 @@ window.App = Object.assign(window.App || {}, {
             im.grade = g ? JSON.parse(JSON.stringify(g)) : null;
             // 底图和参数都变了，调色缓存必须作废，否则画面还挂着旧的烘焙结果
             if (this.invalidateGrade) this.invalidateGrade(im);
-            if (this.rebuildGrade) this.rebuildGrade('full');
+            if (this.rebuildGrade && !reloadRaw) this.rebuildGrade('full');
             if (this.syncGradeUI) this.syncGradeUI();
+        }
+        if (reloadRaw) {
+            // 恢复显影参数和视图；像素由主进程按快照重解（异步，不阻塞撤销栈）
+            if (this.rawApplyUndo) this.rawApplyUndo(im, snap.__raw);
         }
     },
 

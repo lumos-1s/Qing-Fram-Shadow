@@ -91,8 +91,8 @@ window.App = Object.assign(window.App || {}, {
                 images: savable.map(im => ({
                     name: im.name, path: im.path, w: im.w, h: im.h,
                     grade: (im.grade && !this.isNeutralGrade(im.grade)) ? im.grade : undefined,
-                    // RAW 只存显影参数(几个数字),像素由主进程按参数重解,草稿不会因此变大
-                    raw: im.raw ? { params: Object.assign({}, im.raw.params) } : undefined
+                    // RAW 只存显影参数 + 视图(几个数字),像素由主进程按参数重解,草稿不会因此变大
+                    raw: (this.rawSnapshotOf ? this.rawSnapshotOf(im) : null) || undefined
                 })),
                 currentIdx: cur,
                 template: tpl,
@@ -244,18 +244,23 @@ window.App = Object.assign(window.App || {}, {
                 try { exif = (await window.qingframe.readExif(meta.path)) || {}; } catch (e) { exif = {}; }
             }
             const img = window.qfsImage();
-            // 草稿里带 raw 参数 = 这张是 RAW：恢复时按同一套参数重新显影，
-            // 不存像素也不存缩略图，改过参数重开还是改过的样子。
+            // 草稿里带 raw 参数 = 这张是 RAW：恢复时按同一套参数 + 视图重新显影，
+            // 不存像素也不存缩略图，改过参数/裁切重开还是改过的样子。
+            const rawView = meta.raw ? {
+                crop: meta.raw.crop || null,
+                rotate: ((Number(meta.raw.rotate) || 0) % 4 + 4) % 4
+            } : null;
             const rawInfo = meta.raw
                 ? {
                     params: Object.assign({}, this.RAW_DEFAULTS, meta.raw.params || {}),
+                    crop: rawView.crop,
                     edge: this.RAW_PROXY_EDGE,
                     full: false,
                     seq: 0
                 }
                 : null;
             const src = rawInfo
-                ? this.rawSrc(meta.path, rawInfo.params, rawInfo.edge)
+                ? this.rawSrc(meta.path, rawInfo.params, rawInfo.edge, rawView)
                 : this.photoUrl(meta.path);
             await new Promise(r => { img.onload = r; img.onerror = r; img.src = src; });
             if (!img.naturalWidth) return null;
@@ -275,6 +280,7 @@ window.App = Object.assign(window.App || {}, {
                 exif,
                 customSettings: null,
                 raw: rawInfo,
+                rotate: rawView ? rawView.rotate : 0,
                 grade: meta.grade || null
             };
             // 有调色参数：作废旧缓存,载入后该图被选中时会由 selectImage 在新底图上重放

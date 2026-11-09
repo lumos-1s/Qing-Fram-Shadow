@@ -36,7 +36,7 @@ window.App = Object.assign(window.App || {}, {
                 const list = (this.selectedIdx && this.selectedIdx.length > 1)
                     ? this.selectedIdx.map(i => this.images[i])
                     : [this.image];
-                await this.rawPrepareOutput(list);
+                await this.rawPrepareOutput(list, [this.template]);
             }
             return this.exportGridCrop();
         }
@@ -130,7 +130,8 @@ window.App = Object.assign(window.App || {}, {
 
         // RAW 导入时是 1600px 代理，直接导出会掉到代理分辨率。
         // 放在选完保存位置之后：解一张全尺寸要 2~4 秒，不该挡在保存对话框前面。
-        if (this.rawPrepareOutput) await this.rawPrepareOutput(jobs.map(j => j.im));
+        // 多选导出时其余照片可能沿用「当前模板」渲染，它的拼图槽位也要补齐
+        if (this.rawPrepareOutput) await this.rawPrepareOutput(jobs.map(j => j.im), [this.template]);
 
         // ③ 再逐张渲染导出画面(展示画布同步变大),期间无渲染的确认框
         const originalIdx = this.currentIdx;

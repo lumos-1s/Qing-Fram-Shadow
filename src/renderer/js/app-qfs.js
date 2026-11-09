@@ -101,6 +101,8 @@ window.App = Object.assign(window.App || {}, {
         }
         if (!started || started.canceled) { this.setStatus('已取消导出'); return; }
         if (!started.ok) { this.setStatus('导出失败：' + (started.error || '无法创建工程文件')); return; }
+        // 工程文件存的是成品像素；RAW 先补到全尺寸，否则 .qfs 里只有 1600px 代理。
+        if (this.rawPrepareOutput) await this.rawPrepareOutput(this.images);
         // 逐张编码/写临时文件:任意时刻只驻留一张 base64,不再把整个工程堆进内存。
         let done = 0;
         try {

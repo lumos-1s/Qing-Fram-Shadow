@@ -112,6 +112,86 @@ function buildLut(params, gain) {
     return lut;
 }
 
+// 显影视图：裁切 + 旋转。
+//
+// 裁切矩形用 0..1 的归一化坐标存，坐标系是「LibRaw 已经按机身方向转正后的原图」。
+// 这样代理图和全尺寸图能用同一份参数，不必在渲染层按分辨率换算。
+// 顺序固定为「先裁切、后旋转」：用户在主界面再转 90° 只是把 rotate 加一，
+// 裁切框不需要跟着改，重新显影也能得到同一块画面。
+function normalizeView(crop, rotate) {
+    const t = ((Math.round(num(rotate, 0)) % 4) + 4) % 4;
+    let c = null;
+    if (crop && typeof crop === 'object' && !Array.isArray(crop)) {
+        // 宽高先夹到 (0,1]；左上角再按宽高夹回去，避免 URL/草稿里的越界值
+        // 让 worker 算出一个负的起点或 0 像素的图。
+        let w = Math.min(1, Math.max(0.001, num(crop.w, 1)));
+        let h = Math.min(1, Math.max(0.001, num(crop.h, 1)));
+        let x = Math.min(Math.max(0, num(crop.x, 0)), 1 - w);
+        let y = Math.min(Math.max(0, num(crop.y, 0)), 1 - h);
+        w = Math.min(w, 1 - x);
+        h = Math.min(h, 1 - y);
+        // 几乎等于整张图就当没裁，少一次全图拷贝。
+        if (x > 0.0005 || y > 0.0005 || w < 0.9995 || h < 0.9995) {
+            c = { x, y, w, h };
+        }
+    }
+    return { crop: c, rotate: t };
+}
+
+// 裁切 + 90°×turns 旋转，返回一块新的 RGB(A) 缓冲。
+// 放在缩放之前：代理图也先从原图裁出目标区域，再缩到 1600，清晰度不会先被
+// 整图缩小再裁一次。整图且不旋转时直接返回原缓冲，零拷贝。
+function cropRotate(src, sw, sh, channels, crop, turns) {
+    const stride = channels || 3;
+    const och = stride === 4 ? 4 : 3;
+    const t = ((Math.round(num(turns, 0)) % 4) + 4) % 4;
+    let x0 = 0, y0 = 0, cw = sw, ch = sh;
+    if (crop) {
+        x0 = Math.min(sw - 1, Math.max(0, Math.floor(num(crop.x, 0) * sw)));
+        y0 = Math.min(sh - 1, Math.max(0, Math.floor(num(crop.y, 0) * sh)));
+        cw = Math.max(1, Math.min(sw - x0, Math.round(num(crop.w, 1) * sw)));
+        ch = Math.max(1, Math.min(sh - y0, Math.round(num(crop.h, 1) * sh)));
+    }
+    const full = x0 === 0 && y0 === 0 && cw === sw && ch === sh;
+    if (full && t === 0) return { data: src, width: sw, height: sh, colors: stride };
+
+    const ow = (t & 1) ? ch : cw;
+    const oh = (t & 1) ? cw : ch;
+    const out = new Uint8Array(ow * oh * och);
+
+    // 不旋转时按行拷贝，24MP 也只是一次线性复制。
+    if (t === 0 && och === stride) {
+        for (let y = 0; y < ch; y++) {
+            const s = ((y0 + y) * sw + x0) * stride;
+            out.set(src.subarray(s, s + cw * stride), y * cw * stride);
+        }
+        return { data: out, width: cw, height: ch, colors: och };
+    }
+
+    const put = (s, d) => {
+        if (stride <= 2) {
+            // 单通道 RAW/灰度：复制成 RGB，后面的 LUT/BGRA 不需要再分情况。
+            const v = src[s];
+            out[d] = v; out[d + 1] = v; out[d + 2] = v;
+        } else {
+            out[d] = src[s]; out[d + 1] = src[s + 1]; out[d + 2] = src[s + 2];
+            if (och === 4) out[d + 3] = stride === 4 ? src[s + 3] : 255;
+        }
+    };
+    // 旋转方向的推导：90° 顺时针把源 (x,y) 送到 (ch-1-y, x)。
+    for (let sy = 0; sy < ch; sy++) {
+        for (let sx = 0; sx < cw; sx++) {
+            const s = ((y0 + sy) * sw + (x0 + sx)) * stride;
+            let dx, dy;
+            if (t === 1) { dx = ch - 1 - sy; dy = sx; }
+            else if (t === 2) { dx = cw - 1 - sx; dy = ch - 1 - sy; }
+            else { dx = sy; dy = cw - 1 - sx; }
+            put(s, (dy * ow + dx) * och);
+        }
+    }
+    return { data: out, width: ow, height: oh, colors: och };
+}
+
 // 缩放用面积平均（box）：缩小不会像最近邻那样出现锯齿，对代理图足够。
 function resizeBox(src, sw, sh, dw, dh, channels) {
     if (dw === sw && dh === sh) return src;
@@ -162,4 +242,7 @@ function toBgra(src, colors, width, height, lut) {
     return out;
 }
 
-module.exports = { DEFAULTS, LIMITS, normalize, autoGain, buildLut, resizeBox, toBgra, SRGB_TO_LIN };
+module.exports = {
+    DEFAULTS, LIMITS, normalize, normalizeView, autoGain, buildLut,
+    cropRotate, resizeBox, toBgra, SRGB_TO_LIN
+};

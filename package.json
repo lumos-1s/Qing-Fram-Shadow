@@ -35,6 +35,7 @@
     "test:presetkeep": "node tools/run-electron.js tools/test-preset-keep-content.js",
     "test:presethover": "node tools/run-electron.js tools/test-preset-hover.js",
     "test:dragdrop": "node tools/run-electron.js tools/test-dragdrop.js",
+    "test:rawview": "node tools/test-raw-view.js",
     "test:raw": "node tools/run-electron.js tools/test-raw.js",
     "test:shortcut": "node tools/run-electron.js tools/test-shortcut-delete.js",
     "test:imgdel": "node tools/run-electron.js tools/test-image-batch-delete.js",
@@ -80,7 +81,7 @@
     "test:grain": "node tools/run-electron.js tools/test-film-grain.js",
     "test:visual": "node tools/run-electron.js tools/visual-regression.js",
     "test": "npm run check && npm run test:gui && npm run test:visual",
-    "check": "npm run lint && npm run check:contrast && npm run validate:presets && npm run check:readme && npm run check:caps && npm run check:marks && npm run test:updatemirror && npm run test:mainio && npm run test:exifwrite && npm run test:focaleq && npm run test:syncadapt && npm run test:sharecode && npm run test:icons && npm run test:engine && npm run test:exportdir && npm run test:updatepolicy && npm run test:gradepresetstore",
+    "check": "npm run lint && npm run check:contrast && npm run validate:presets && npm run check:readme && npm run check:caps && npm run check:marks && npm run test:updatemirror && npm run test:mainio && npm run test:exifwrite && npm run test:focaleq && npm run test:syncadapt && npm run test:sharecode && npm run test:icons && npm run test:engine && npm run test:exportdir && npm run test:updatepolicy && npm run test:gradepresetstore && npm run test:rawview",
     "app:dir": "electron-builder --win --dir",
     "verify:dist": "node tools/verify-dist.js",
     "verify:pkg": "node tools/verify-dist.js --installers",
@@ -197,7 +198,8 @@
       "artifactName": "Qingframe-Portable-${version}-${arch}.${ext}"
     },
     "asarUnpack": [
-      "node_modules/libraw-wasm/**"
+      "node_modules/libraw-wasm/**",
+      "src/main/raw-tonemap.js"
     ]
   },
   "devDependencies": {
