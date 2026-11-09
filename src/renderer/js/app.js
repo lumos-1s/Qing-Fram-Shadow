@@ -2352,6 +2352,9 @@ window.App = {
         else this.normalizeTemplate();
         this.selectedEls = [];
         this.updateStatusBar();
+        // 直方图已提到页签之上常驻：每次切图都补一次（无图时模块自己跳过；
+        // 调色尚未烘好时先取原图，烘好后再由 grade 模块刷新一次）。
+        if (window.QfsHistogram && this.image) window.QfsHistogram.refresh(this.image);
         this.refreshUI();
         this.autoFit = true;
         this.scheduleRender(true);

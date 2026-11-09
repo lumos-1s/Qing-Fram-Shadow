@@ -1144,7 +1144,7 @@ input[type=range].fine-tuning::-webkit-slider-thumb {
     overflow: hidden;
     box-shadow: var(--shadow-sm);
 }
-.histo-plot { position: relative; }
+.histo-plot { position: relative; padding: 0 2px; }
 .histo-cv { display: block; width: 100%; height: calc(88px * var(--density)); background: var(--histo-bg); }
 /* 剪切警告：常驻两角，任一通道压到 0 / 顶到 255 才点亮；点击在波形上标出被 capEnds 夹掉的首尾档 */
 .histo-clip {
@@ -1163,7 +1163,7 @@ input[type=range].fine-tuning::-webkit-slider-thumb {
 .histo-clip.is-mark { transform: scale(1.35); }
 .histo-tools {
     display: flex; align-items: center; gap: 6px;
-    min-height: 23px; padding: 0 8px 6px;
+    min-height: 23px; padding: 0 9px 6px 2px;
 }
 .histo-tools .mini-btn { flex: 0 0 auto; padding: 2px 8px; font-size: var(--fs-10); }
 .histo-mask-state {
@@ -1182,7 +1182,7 @@ input[type=range].fine-tuning::-webkit-slider-thumb {
 }
 .histo-exif {
     flex: 1 1 auto; min-width: 0; display: block;
-    padding: 3px 0 6px 10px;
+    padding: 3px 0 6px 2px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .histo-raw {
@@ -1203,7 +1203,16 @@ input[type=range].fine-tuning::-webkit-slider-thumb {
 .fold-notice .mini-btn { flex: 0 0 auto; padding: 2px 7px; font-size: var(--fs-10); }
 .histo-exif .he-sep { color: var(--text-3); opacity: .7; margin: 0 5px; }
 .histo-exif .he-empty { color: var(--text-3); }
-#inspector.no-image .histo-card { display: none; }
+/* 直方图已移到页签之上常驻显示：无图时不再整卡隐藏，而是淡出并居中提示、
+   且不可交互，这样「直方图一直显示」在空态下也成立，不会闪没。 */
+#inspector.no-image .histo-card { opacity: .5; pointer-events: none; }
+#inspector.no-image .histo-plot::after {
+    content: '未导入照片';
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-3); font-size: var(--fs-11);
+    pointer-events: none;
+}
 
 /* 段头：比 .pg-title 低一档，靠一条发丝线分隔，右侧复位按钮默认隐身 */
 .pg-sub { margin-top: 2px; }
@@ -2199,19 +2208,17 @@ button:disabled, input:disabled, select:disabled, textarea:disabled {
     background: var(--bg); border-bottom: 1px solid var(--border);
     user-select: none;
 }
-/* 空出来的标题栏中间放「文件名 · 第几张」。pointer-events:none 是为了
-   不抢 -webkit-app-region:drag 的拖拽命中区，窗口行为一点不改。 */
+/* 空出来的标题栏中间放「文件名 · 第几张」。作为 flex 子项 flex:1 填充
+   「标题」与「窗口控制」之间的空白、文字再在其内居中 —— 真正落在可用区域
+   正中，不再因右侧控制按钮偏宽而显得歪；pointer-events:none 不抢拖拽命中区。 */
 .titlebar-file {
-    position: absolute; left: 50%; top: 0; height: 100%;
-    transform: translateX(-50%);
-    display: flex; align-items: center;
-    max-width: 46%;
+    flex: 1 1 0; min-width: 0;
+    display: flex; align-items: center; justify-content: center;
     font-size: var(--fs-11); color: var(--text-3);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     pointer-events: none;
 }
 .titlebar-file[hidden] { display: none; }
-body.platform-darwin .titlebar-file { left: calc(50% + 40px); }
 .titlebar-title { font-size: var(--fs-12); letter-spacing: .4px; color: var(--text-3); white-space: nowrap; overflow: hidden; }
 .titlebar-controls { -webkit-app-region: no-drag; display: flex; align-items: stretch; height: 100%; margin-left: auto; }
 .tb-btn {

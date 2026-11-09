@@ -86,12 +86,19 @@ const PROBE = `(async () => {
     A.switchTab('grade');
     await wait(500);
 
-    // ── 1. 直方图在页签最上方 ──
+    // ── 1. 直方图常驻在页签之上（属于 #inspector，但不属于任何 tab-panel）──
     const card = $('gradeHistoCard');
     const maskGrp = $('grpMask');
-    const inGrade = !!(card && card.closest('#panel-grade'));
+    const inTop = !!(card && card.closest('#inspector') && !card.closest('.tab-panel'));
     const beforeMask = !!(card && maskGrp && (card.compareDocumentPosition(maskGrp) & Node.DOCUMENT_POSITION_FOLLOWING));
     const cv = $('gradeHisto');
+
+    // ── 1b. 直方图一直显示：切到非调色页签后仍存在且有宽度（不再随页签消失）──
+    A.switchTab('canvas');
+    await wait(80);
+    const onOtherTabVisible = !!(card && card.offsetWidth > 0 && getComputedStyle(card).display !== 'none');
+    A.switchTab('grade');
+    await wait(60);
 
     // ── 2. 统计随调色变化：曝光 +1.5 后平均亮度右移 ──
     const meanOf = (s) => {
@@ -220,7 +227,7 @@ const PROBE = `(async () => {
     }
 
     return {
-        inGrade, beforeMask, hasCanvas: !!cv,
+        inTop, beforeMask, onOtherTabVisible, hasCanvas: !!cv,
         baseTotal, baseMean: Math.round(baseMean * 10) / 10, brightMean: Math.round(brightMean * 10) / 10,
         exifText, exifEmpty,
         keys, lightOk, colorOk, fxOk, detOnlySharpen,
@@ -255,8 +262,9 @@ async function main() {
         check(false, '探针执行', String(e && e.message));
     }
     if (res) {
-        check(res.inGrade && res.beforeMask && res.hasCanvas && res.cw > 0 && res.ch > 0,
-            '调色页签顶部有直方图，且排在蒙版之前', JSON.stringify({ inGrade: res.inGrade, beforeMask: res.beforeMask, cw: res.cw, ch: res.ch }));
+        check(res.inTop && res.beforeMask && res.hasCanvas && res.cw > 0 && res.ch > 0,
+            '直方图卡常驻在页签之上（非 tab-panel 内），且排在蒙版之前', JSON.stringify({ inTop: res.inTop, beforeMask: res.beforeMask, cw: res.cw, ch: res.ch }));
+        check(res.onOtherTabVisible, '切到非调色页签后直方图卡仍可见（一直显示）', JSON.stringify({ onOtherTabVisible: res.onOtherTabVisible }));
         check(res.baseTotal > 1000, '直方图统计读到了预览像素', `total=${res.baseTotal}`);
         check(res.brightMean > res.baseMean + 4,
             '曝光 +1.5 后直方图整体右移（统计的是调色后的像素）',

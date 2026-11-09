@@ -72,9 +72,9 @@ window.App = Object.assign(window.App || {}, {
         if (name === 'logo') this.renderLogoPools();
         if (name === 'template') this.refreshTemplates();
         if (name === 'puzzle') this.refreshPuzzleUI();
-        // 直方图在页签隐藏时没有宽度，画不出来；切回来要补一次，
-        // 否则从别的页签回来会看到一张空白/上一次尺寸的图。
-        if (name === 'grade' && window.QfsHistogram) window.QfsHistogram.refresh(this.image);
+        // 直方图已提到页签之上常驻（不属于任何 tab-panel），任一页签都看得到，
+        // 所以每次切页签都补一次；有图才画，无图时直方图模块自己跳过。
+        if (window.QfsHistogram && this.image) window.QfsHistogram.refresh(this.image);
         // 密度按页签切换、折叠提示按收起数量刷新、更多按钮回显当前页签
         if (window.QfsPanelDensity) window.QfsPanelDensity.onTab(name);
         this.updateExportEntry();
