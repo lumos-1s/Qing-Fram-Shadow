@@ -92,6 +92,9 @@ const PROBE = `(async () => {
     const inGrade = !!(card && card.closest('#panel-grade'));
     const beforeMask = !!(card && maskGrp && (card.compareDocumentPosition(maskGrp) & Node.DOCUMENT_POSITION_FOLLOWING));
     const cv = $('gradeHisto');
+    // 直方图卡在调色页内应钉在栏顶（滚动长参数时不跟走）
+    const cs = card ? getComputedStyle(card) : null;
+    const stickyPinned = !!(cs && cs.position === 'sticky' && parseFloat(cs.top) === 0 && parseInt(cs.zIndex, 10) >= 1);
 
     // ── 2. 统计随调色变化：曝光 +1.5 后平均亮度右移 ──
     const meanOf = (s) => {
@@ -220,7 +223,7 @@ const PROBE = `(async () => {
     }
 
     return {
-        inGrade, beforeMask, hasCanvas: !!cv,
+        inGrade, beforeMask, hasCanvas: !!cv, stickyPinned,
         baseTotal, baseMean: Math.round(baseMean * 10) / 10, brightMean: Math.round(brightMean * 10) / 10,
         exifText, exifEmpty,
         keys, lightOk, colorOk, fxOk, detOnlySharpen,
@@ -257,6 +260,9 @@ async function main() {
     if (res) {
         check(res.inGrade && res.beforeMask && res.hasCanvas && res.cw > 0 && res.ch > 0,
             '直方图卡留在调色页签内（#panel-grade），且排在蒙版组之前', JSON.stringify({ inGrade: res.inGrade, beforeMask: res.beforeMask, cw: res.cw, ch: res.ch }));
+        check(res.stickyPinned,
+            '直方图卡在调色页内用 sticky 钉在栏顶（下滑长参数时不跟走）',
+            JSON.stringify({ stickyPinned: res.stickyPinned }));
         check(res.baseTotal > 1000, '直方图统计读到了预览像素', `total=${res.baseTotal}`);
         check(res.brightMean > res.baseMean + 4,
             '曝光 +1.5 后直方图整体右移（统计的是调色后的像素）',
