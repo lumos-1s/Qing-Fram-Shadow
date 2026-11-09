@@ -1161,19 +1161,6 @@ input[type=range].fine-tuning::-webkit-slider-thumb {
 .histo-clip.clip-lo.is-on { background: #78aaff; opacity: 1; }
 .histo-clip.clip-hi.is-on { background: #ff7b6e; opacity: 1; }
 .histo-clip.is-mark { transform: scale(1.35); }
-.histo-tools {
-    display: flex; align-items: center; gap: 6px;
-    min-height: 23px; padding: 0 9px 6px 2px;
-}
-.histo-tools .mini-btn { flex: 0 0 auto; padding: 2px 8px; font-size: var(--fs-10); }
-.histo-mask-state {
-    flex: 1 1 auto; min-width: 0;
-    border: 0; background: transparent; padding: 2px 0;
-    color: var(--primary-text); font-size: var(--fs-10);
-    text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    cursor: pointer;
-}
-.histo-mask-state[hidden] { display: none; }
 .histo-foot {
     display: flex; align-items: center; gap: 6px;
     padding-right: 9px;
@@ -1203,16 +1190,8 @@ input[type=range].fine-tuning::-webkit-slider-thumb {
 .fold-notice .mini-btn { flex: 0 0 auto; padding: 2px 7px; font-size: var(--fs-10); }
 .histo-exif .he-sep { color: var(--text-3); opacity: .7; margin: 0 5px; }
 .histo-exif .he-empty { color: var(--text-3); }
-/* 直方图已移到页签之上常驻显示：无图时不再整卡隐藏，而是淡出并居中提示、
-   且不可交互，这样「直方图一直显示」在空态下也成立，不会闪没。 */
+/* 直方图留在调色页签内：无图时整卡淡出并不可交互，空态下也成立，不会闪没。 */
 #inspector.no-image .histo-card { opacity: .5; pointer-events: none; }
-#inspector.no-image .histo-plot::after {
-    content: '未导入照片';
-    position: absolute; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-    color: var(--text-3); font-size: var(--fs-11);
-    pointer-events: none;
-}
 
 /* 段头：比 .pg-title 低一档，靠一条发丝线分隔，右侧复位按钮默认隐身 */
 .pg-sub { margin-top: 2px; }

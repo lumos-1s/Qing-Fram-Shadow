@@ -321,29 +321,6 @@
                     </button>
                 </div>
 
-                <!-- 直方图 + 参数条：提到所有页签之上常驻显示（吸顶、跨页签不消失），
-                     对齐 Camera Raw「编辑」面板顶部。直方图取调色后的预览，拖滑块实时跟变；
-                     参数条只在读得到 EXIF 时出现，读不到就退成一行灰字。 -->
-                <div class="histo-card" id="gradeHistoCard">
-                    <!-- 两角三角是 Camera Raw 的剪切警告：改成 DOM 按钮后可悬停看占比、
-                         点击在波形上标出被夹掉的首尾档。 -->
-                    <div class="histo-plot">
-                        <canvas id="gradeHisto" class="histo-cv" aria-label="RGB 直方图"></canvas>
-                        <button id="gradeClipLo" class="histo-clip clip-lo" type="button" aria-label="阴影剪切警告" title="阴影剪切：暂无像素压到 0"></button>
-                        <button id="gradeClipHi" class="histo-clip clip-hi" type="button" aria-label="高光剪切警告" title="高光剪切：暂无像素顶到 255"></button>
-                    </div>
-                    <div class="histo-foot">
-                        <div class="histo-exif" id="gradeExif" title="照片的 EXIF 参数"></div>
-                        <span class="histo-raw" id="gradeRawTag" hidden></span>
-                    </div>
-                    <!-- 工具与参数分层：需要在画布上拖的蒙版入口放在直方图下，
-                         参数仍留在调色页的折叠组里，不必把滑块复制一套。 -->
-                    <div class="histo-tools" id="histoTools">
-                        <button id="btnHistoMask" class="mini-btn" type="button" title="新建线性渐变蒙版，随后在照片上拖出方向">+ 蒙版</button>
-                        <button id="histoMaskState" class="histo-mask-state" type="button" hidden title="点击回到蒙版列表">编辑蒙版 · 拖滑块只作用选区</button>
-                    </div>
-                </div>
-
                 <div class="insp-body">
                     <div id="modeStatus" class="mode-status" style="display:none"></div>
 
@@ -1289,9 +1266,23 @@
                     <!-- ══ Tab9 调色（工具） ══ -->
                     <div class="tab-panel" id="panel-grade">
                         <div class="param-empty-note">导入照片后即可调色</div>
-                        <!-- 直方图卡已提到页签之上常驻（见 #inspector 顶部），这里只留提示与折叠组。 -->
+                        <!-- 直方图 + 参数条：留在调色页签内（不在页签之上常驻）。
+                             直方图取调色后的预览，拖滑块实时跟变；参数条只在读得到 EXIF 时出现。 -->
+                        <div class="histo-card" id="gradeHistoCard">
+                            <!-- 两角三角是 Camera Raw 的剪切警告：改成 DOM 按钮后可悬停看占比、
+                                 点击在波形上标出被夹掉的首尾档。 -->
+                            <div class="histo-plot">
+                                <canvas id="gradeHisto" class="histo-cv" aria-label="RGB 直方图"></canvas>
+                                <button id="gradeClipLo" class="histo-clip clip-lo" type="button" aria-label="阴影剪切警告" title="阴影剪切：暂无像素压到 0"></button>
+                                <button id="gradeClipHi" class="histo-clip clip-hi" type="button" aria-label="高光剪切警告" title="高光剪切：暂无像素顶到 255"></button>
+                            </div>
+                            <div class="histo-foot">
+                                <div class="histo-exif" id="gradeExif" title="照片的 EXIF 参数"></div>
+                                <span class="histo-raw" id="gradeRawTag" hidden></span>
+                            </div>
+                        </div>
                         <!-- 低频组默认收起后的唯一提示：一行写完「收了几组、怎么展开」。
-                             全部展开后这行消失，不常驻占位。 -->
+                            全部展开后这行消失，不常驻占位。 -->
                         <div class="fold-notice" id="foldNotice" hidden>
                             <span id="foldNoticeText"></span>
                             <button type="button" class="mini-btn" id="btnExpandAll" title="把调色页所有参数组展开">全部展开</button>

@@ -131,15 +131,15 @@ const PROBE = `(async () => {
     const tracks = { vib: grad('slGradeVib'), sat: grad('slGradeSat'), temp: grad('slGradeTemp'), tint: grad('slGradeTint') };
 
     // ── 5. 工具入口 / 编辑态 / 配置文件可点 ──
+    // 蒙版新建入口已移到下方「蒙版」折叠组（直方图卡上不再有 ＋ 蒙版 按钮）
     const beforeMasks = (A.image.grade && A.image.grade.masks || []).length;
-    $('btnHistoMask').click();
+    const linearBtn = document.querySelector('#grpMask .curve-chan[data-mt="linear"]');
+    if (linearBtn) linearBtn.click();
     await wait(350);
     const afterMasks = (A.image.grade && A.image.grade.masks || []).length;
-    const maskTag = $('histoMaskState');
-    const tagShown = !maskTag.hidden && /编辑蒙版|已加/.test(maskTag.textContent);
+    const maskCreated = afterMasks > beforeMasks;
+    // 带蒙版时 syncMasks 自动展开「蒙版」组
     const maskExpanded = !$('grpMask').classList.contains('collapsed');
-    $('histoMaskState').click();
-    const stillExpanded = !$('grpMask').classList.contains('collapsed');
 
     const origBuild = A.buildTree;
     let buildCalls = 0;
@@ -170,7 +170,7 @@ const PROBE = `(async () => {
         halfClip, redClip, clipOn, clipText, clipPct, marked, unmarked,
         fileText, fileVisible, afterNext, afterPrev,
         plainCount: plain.length, noZero, allInRange, expZero, shpZero,
-        tracks, beforeMasks, afterMasks, tagShown, maskExpanded, stillExpanded,
+        tracks, beforeMasks, afterMasks, maskCreated, maskExpanded,
         styleClickable, copied, pasted, untouched, tplCopied, noTargetMsg, noCopyMsg
     };
 })()`;
@@ -219,10 +219,9 @@ async function main() {
             JSON.stringify({ exp: res.expZero, shp: res.shpZero }));
         check(Object.values(res.tracks).every((v) => /linear-gradient/.test(v)),
             '色温/色调/自然饱和度/饱和度四条轨道都是渐变', JSON.stringify(res.tracks));
-        check(res.afterMasks === res.beforeMasks + 1 && res.tagShown && res.maskExpanded,
-            '直方图卡的「+ 蒙版」能新建，编辑态同步显示、蒙版组自动展开',
-            JSON.stringify({ before: res.beforeMasks, after: res.afterMasks, tag: res.tagShown }));
-        check(res.stillExpanded, '点编辑态标签回到蒙版列表，不会把组折回去');
+        check(res.maskCreated && res.maskExpanded,
+            '「蒙版」组的线性渐变能新建，且蒙版组自动展开',
+            JSON.stringify({ before: res.beforeMasks, after: res.afterMasks, created: res.maskCreated }));
         check(res.styleClickable, '状态栏「当前样式」可点，跳到左侧边框列表重建');
         check(res.copied && res.pasted && res.untouched && res.tplCopied,
             '复制/粘贴设置把调色 + 边框搬给多选照片，未选中的不受影响',

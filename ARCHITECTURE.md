@@ -147,8 +147,8 @@ GUI 用例的 `get-prefs` 返回 `{}`，测试里点折叠不会污染下次运�
 由 `updateStatusBar()` 写入「文件名 · 第几张」，切图的 `←/→` 早已有，这里只补可见性。
 零点标记由 `initGradePanel()` 按 `defaultValue` 算 `--zero` 写在行上，CSS `::after` 画三角；
 `.rng-vib/.rng-sat` 与 `.rng-temp/.rng-tint` 共用 `var(--rng-bg)` 渐变轨道。
-工具与参数分层：`#histoTools` 的「+ 蒙版」调 `App.addMask('linear')`，`setMaskState()` 在
-`syncMasks()` 里同步编辑态，参数列表仍在 `#grpMask` 折叠组，不复制第二套滑块；
+工具与参数分层：新建 / 管理蒙版的入口都放在 `#grpMask` 折叠组（渐变 / 椭圆 / 画笔 / 亮度 / 颜色），
+直方图卡上不再放「+ 蒙版」；`syncMasks()` 在带蒙版时自动展开该组，参数列表仍在 `#grpMask`，不复制第二套滑块；
 底部 `#stStyle` 是 `role=button` 的 span，点击走 `setSideMode('border') + buildTree('')`。
 `app-sync.js` 的 `copySettings/pasteSettings` 只存内存、不写系统剪贴板也不落草稿，
 目标取 `selectedIdx`（排除当前张），与 `applyGradeToAll`（调色给全部）和
