@@ -212,6 +212,31 @@ window.App = Object.assign(window.App || {}, {
             const draftTpl = this.getTpl(this.image);
             this.template = draftTpl || (draft.template ? JSON.parse(JSON.stringify(draft.template)) : this.defaultTemplate());
             this.normalizeTemplate();
+            // 草稿里的调色是「记录值」：imageFromMeta 只把 grade 挂回照片并作废缓存，
+            // 没有烘焙。selectImage() 里有补烘，但恢复是直接给 this.image 赋值的，绕过了它
+            // —— 结果面板已回显上次参数，photoSrcOf 却退回 im.el（原图），用户必须动一下
+            // 滑块才看得到调色。这里补上与 selectImage 一致的收尾。
+            const curIm = this.image;
+            for (const im of restored) {
+                const g = im && im._grade;
+                if (!g || g.neutral || g.canvas || (g.low && g.lowKey)) continue;
+                // bake() 按 window.App.image 取当前的 ACR 测度，逐张临时换过去。
+                // 当前这张直接全分辨率；其余只出 1600px 降采样，避免 N 张全尺寸
+                // 在恢复时一起吃内存，切到它们时 selectImage 会再补全。
+                this.image = im;
+                this.rebuildGrade(im === curIm ? 'full' : 'low');
+            }
+            this.image = curIm;
+            // 缩略图在烘焙之前就入队了，强制重做一次，胶片条别停在原图。
+            for (const im of restored) {
+                if (!im || !im.grade || (im._grade && im._grade.neutral)) continue;
+                im.thumb = null;
+                im._thumbEl = null;
+                im._tqAt = 0;
+                this.queueThumb(im);
+            }
+            // RAW 恢复时只有 1600px 代理，切到这张图后要按老规矩自动补尺寸。
+            if (curIm && curIm.raw && !curIm.raw.full && this._rawQueueFull) this._rawQueueFull(900);
             this.invalidateStyleCaches();
             this.buildThumbnails();
             this.afterImageSelect();
@@ -285,7 +310,8 @@ window.App = Object.assign(window.App || {}, {
                 rotate: rawView ? rawView.rotate : 0,
                 grade: meta.grade || null
             };
-            // 有调色参数：作废旧缓存,载入后该图被选中时会由 selectImage 在新底图上重放
+            // 有调色参数：只作废旧缓存（草稿里没有像素）。真正的重烘在 restoreDraft()
+            // 里按当前张 / 其余张分别补，之后用户切图再由 selectImage 兜底。
             if (im.grade && this.invalidateGrade) this.invalidateGrade(im);
             if (savedTpl) this.setTpl(im, savedTpl);
             this.queueThumb(im);
