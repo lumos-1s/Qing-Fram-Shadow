@@ -1514,7 +1514,7 @@
             if (this.syncToneExtraUI) this.syncToneExtraUI(p);
             // 参数被程序化改掉（撤销/切图/套预设/重置）时，「使用中」标记也要跟上。
             if (this._scheduleGradePresetActive) this._scheduleGradePresetActive();
-            // 当前图是不是 RAW 决定「RAW 显影」这一组的显隐与数值，切图时必须同步。
+            // 当前图是不是 RAW 决定「RAW 显影」这一组的显隐与状态，切图时必须同步。
             if (this.syncRawUI) this.syncRawUI();
         },
 

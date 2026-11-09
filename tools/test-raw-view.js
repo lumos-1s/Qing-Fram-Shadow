@@ -96,5 +96,31 @@ const px = (buf, w, x, y, ch) => Array.from(buf.subarray((y * w + x) * ch, (y * 
         '真正的裁切框原样保留', JSON.stringify(tm.normalizeView({ x: 0.2, y: 0.2, w: 0.5, h: 0.5 }, 0).crop));
 }
 
+// ── buildLut：解码基线（曝光 0 + 高光肩 25） ──
+// 这五档已经从界面上撤掉（挪进「调色」），但解码仍按这套参数折表：
+// 基线要稳定，旧草稿/工程里存过的数值也要能原样重现。
+{
+    const L = tm.buildLut(tm.DEFAULTS, 1);
+    const at = (c, v) => L[c * 256 + v];
+    check(Math.abs(at(0, 128) - 128) <= 1,
+        '默认显影不动中间调（中灰还是中灰）', `128 → ${at(0, 128)}`);
+    check(at(0, 255) < 250 && at(0, 255) > 200,
+        '默认显影给高光留肩：纯白被压到 200–250 之间', `255 → ${at(0, 255)}`);
+    check(Math.abs(at(0, 18) - 18) <= 1,
+        '默认显影不抬暗部（黑还是黑）', `18 → ${at(0, 18)}`);
+
+    const up = tm.buildLut({ exposure: 1, contrast: 0, highlights: 25, temperature: 0, tint: 0 }, 1);
+    check(up[128] > 160,
+        '存过的曝光 +1 仍能重现（旧草稿兼容）', `128 → ${up[128]}`);
+
+    const warm = tm.buildLut({ exposure: 0, contrast: 0, highlights: 25, temperature: 60, tint: 0 }, 1);
+    check(warm[128] > warm[512 + 128],
+        '色温 + 时红通道高于蓝通道', `R=${warm[128]} B=${warm[512 + 128]}`);
+
+    const clamped = tm.normalize({ exposure: 99, contrast: -999, highlights: 'x' });
+    check(clamped.exposure === 5 && clamped.contrast === -100 && clamped.highlights === 25,
+        '越界/非法参数被裁回合法区间', JSON.stringify(clamped));
+}
+
 console.log(failures.length ? `\n${failures.length} 项失败` : '\n全部通过');
 process.exit(failures.length ? 1 : 0);

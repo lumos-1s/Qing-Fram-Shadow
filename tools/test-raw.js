@@ -148,50 +148,30 @@ async function main() {
     check(imported.panelHidden === false && imported.badge === 'ARW',
         '「RAW 显影」面板出现，徽章显示 ARW', `badge=${imported.badge} state=${imported.state}`);
 
-    // ── ② 拖曝光：参数生效且画面真变亮 ──
-    const before = await exec(`(async () => {
+    // ── ② 一套滑块：RAW 不再单独摆一套同名的 ──
+    // 以前「RAW 显影」和「调色」各有一套曝光/对比/高光/色温/色调：概念重复，
+    // 而且两边的「高光 +」方向相反（显影是压、调色是提）。现在只在调色里留一套。
+    const single = await exec(`(async () => {
         const A = window.App;
-        const im = A.image;
-        const c = document.createElement('canvas');
-        c.width = 120; c.height = 80;
-        const g = c.getContext('2d');
-        g.drawImage(im.el, 0, 0, 120, 80);
-        const d = g.getImageData(0, 0, 120, 80).data;
-        let s = 0;
-        for (let i = 0; i < d.length; i += 4) s += (d[i] * 77 + d[i + 1] * 150 + d[i + 2] * 29) >> 8;
-        return +(s / (d.length / 4)).toFixed(2);
-    })()`);
-    const after = await exec(`(async () => {
-        const A = window.App;
-        const sl = document.getElementById('slRawExp');
-        sl.value = '1.5';
-        sl.dispatchEvent(new Event('input', { bubbles: true }));
-        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-        // 1100ms：代理已解完(220 防抖 + 约 500 解码)，但还没到自动升全尺寸的 1.1s 空闲点
-        await wait(1100);
-        await A.flushRender();
-        const im = A.image;
-        const c = document.createElement('canvas');
-        c.width = 120; c.height = 80;
-        const g = c.getContext('2d');
-        g.drawImage(im.el, 0, 0, 120, 80);
-        const d = g.getImageData(0, 0, 120, 80).data;
-        let s = 0;
-        for (let i = 0; i < d.length; i += 4) s += (d[i] * 77 + d[i + 1] * 150 + d[i + 2] * 29) >> 8;
+        const has = (id) => !!document.getElementById(id);
+        const panel = document.getElementById('grpRaw');
+        const hint = panel ? panel.querySelector('.hint-box') : null;
         return {
-            mean: +(s / (d.length / 4)).toFixed(2),
-            exposure: im.raw.params.exposure,
-            label: (document.getElementById('lblRawExp') || {}).textContent,
-            w: im.w,
-            full: im.raw.full
+            rawSliders: ['slRawExp', 'slRawCon', 'slRawHi', 'slRawTemp', 'slRawTint'].filter(has),
+            gradeSliders: ['slGradeExp', 'slGradeCon', 'slGradeHi', 'slGradeTemp', 'slGradeTint'].filter(has),
+            panelShown: panel ? getComputedStyle(panel).display !== 'none' : false,
+            hint: hint ? hint.textContent.trim() : '',
+            params: A.image.raw.params
         };
     })()`);
-    check(after.exposure === 1.5 && after.label === '+1.50',
-        '曝光参数写进这张图，数值标签同步', JSON.stringify(after));
-    check(after.mean > before * 1.25,
-        '拖曝光后画面确实变亮（不是只改了数字）', `${before} → ${after.mean}`);
-    check(after.full === false && after.w === 1600,
-        '拖动阶段仍然只解代理，不会每动一下就重解全尺寸', `w=${after.w} full=${after.full}`);
+    check(single.rawSliders.length === 0,
+        'RAW 面板不再重复一套曝光/对比/高光/色温/色调滑块', JSON.stringify(single.rawSliders));
+    check(single.gradeSliders.length === 5,
+        '这五档只在「调色」里出现一次', JSON.stringify(single.gradeSliders));
+    check(single.panelShown && /调色/.test(single.hint),
+        'RAW 面板保留状态行，并写明这五档去哪里调', single.hint.slice(0, 40));
+    check(single.params.exposure === 0 && single.params.highlights === 25,
+        '解码基线仍是「曝光 0 + 高光肩 25」', JSON.stringify(single.params));
 
     // ── ③ 全尺寸显影 ──
     const full = await exec(`(async () => {
@@ -221,18 +201,14 @@ async function main() {
         const crop1 = im.raw.crop ? JSON.parse(JSON.stringify(im.raw.crop)) : null;
         const croppedW = im.w, croppedH = im.h;
         A.setGrade({ exp: 0.3 });
-        const sl = document.getElementById('slRawCon');
-        sl.value = '20';
-        sl.dispatchEvent(new Event('input', { bubbles: true }));
-        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-        await wait(1200);
+        // 换个参数重解一次（等同重开这张图）：裁切/旋转不能被新解出来的原图冲掉
+        await A._rawReload(im, A.RAW_PROXY_EDGE);
         clearTimeout(A._rawFullTimer);
         await A.flushRender();
         return {
             okCrop, fullW, fullH, croppedW, croppedH,
             crop1, crop2: im.raw.crop,
             w2: im.w, h2: im.h,
-            contrast: im.raw.params.contrast,
             gradeNeutral: !!(im._grade && im._grade.neutral),
             gradeLowKey: !!(im._grade && im._grade.lowKey),
             gradeSrc: window.photoSrcOf(im) !== im.el
@@ -243,12 +219,11 @@ async function main() {
         JSON.stringify({ full: [view.fullW, view.fullH], crop: [view.croppedW, view.croppedH] }));
     check(JSON.stringify(view.crop2) === JSON.stringify(view.crop1) &&
         view.w2 === view.croppedW && view.h2 === view.croppedH,
-        '再拖显影滑块不会把裁切冲掉',
+        '再显影一次也不会把裁切冲掉',
         JSON.stringify({ crop1: view.crop1, crop2: view.crop2, size: [view.w2, view.h2] }));
     check(view.gradeNeutral === false && view.gradeLowKey === true && view.gradeSrc === true,
         'RAW 重解后调色仍然生效（不是退回未调色原图）',
         JSON.stringify({ neutral: view.gradeNeutral, lowKey: view.gradeLowKey, src: view.gradeSrc }));
-    check(view.contrast === 20, '显影滑块参数写入这张图', String(view.contrast));
 
     const rot = await exec(`(async () => {
         const A = window.App; const im = A.image;
@@ -265,45 +240,31 @@ async function main() {
     check(rot.crop === rot.crop2, '旋转后裁切框仍指向同一块原图区域',
         JSON.stringify({ before: rot.crop, after: rot.crop2 }));
 
-    // ── ⑤ 撤销：显影参数进撤销栈，一次拖动只压一张；撤销不能把裁切/旋转冲掉 ──
+    // ── ⑤ 撤销：显影视图进快照，撤销能原样还原裁切/旋转 ──
     const undo = await exec(`(async () => {
         const A = window.App; const im = A.image;
-        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-        A.undoStack = []; A.redoStack = [];
-        const crop0 = im.raw.crop ? JSON.stringify(im.raw.crop) : null;
-        const rot0 = im.rotate;
-        const before = im.raw.params.exposure;
-        const slider = document.getElementById('slRawExp');
-        slider.value = '0.8';
-        slider.dispatchEvent(new Event('input', { bubbles: true }));
-        const pushedOne = A.undoStack.length;
-        slider.value = '1.1';
-        slider.dispatchEvent(new Event('input', { bubbles: true }));
-        const pushedTwo = A.undoStack.length;
-        await wait(1300);
+        const snap = A.rawSnapshotOf(im);
+        // 再转一次，制造一份与快照不同的视图
+        await A.rawRecordCrop(im, { W: im.w, H: im.h, turns: 1, useOrig: false },
+            { x: 0, y: 0, w: im.w, h: im.h });
         clearTimeout(A._rawFullTimer);
-        const afterDrag = im.raw.params.exposure;
-        A.undo();
-        await wait(1300);
+        const changed = { rotate: im.rotate, crop: im.raw.crop ? JSON.stringify(im.raw.crop) : null };
+        // 撤销走的就是这个入口
+        await A.rawApplyUndo(im, snap);
         clearTimeout(A._rawFullTimer);
         await A.flushRender();
         return {
-            before, pushedOne, pushedTwo, afterDrag,
-            exposure: im.raw.params.exposure,
-            cropNow: im.raw.crop ? JSON.stringify(im.raw.crop) : null,
-            rotNow: im.rotate, crop0, rot0
+            snap, changed,
+            rotate: im.rotate,
+            crop: im.raw.crop ? JSON.stringify(im.raw.crop) : null,
+            snapCrop: snap.crop ? JSON.stringify(snap.crop) : null
         };
     })()`);
-    check(undo.pushedOne === 1 && undo.pushedTwo === 1,
-        '一次拖动只压一张显影快照（连续 input 共用）',
-        JSON.stringify({ first: undo.pushedOne, second: undo.pushedTwo }));
-    check(Math.abs(undo.afterDrag - 1.1) < 1e-6 && Math.abs(undo.before - 1.5) < 1e-6,
-        '拖动过程参数连续写入，停在最后一档', JSON.stringify({ before: undo.before, after: undo.afterDrag }));
-    check(Math.abs(undo.exposure - undo.before) < 1e-6,
-        '撤销回到拖动前的显影参数', JSON.stringify({ now: undo.exposure, before: undo.before }));
-    check(undo.cropNow === undo.crop0 && undo.rotNow === undo.rot0,
-        '撤销不会把裁切与旋转一起带回去（视图跟参数分开存）',
-        JSON.stringify({ crop0: undo.crop0, cropNow: undo.cropNow, rot0: undo.rot0, rotNow: undo.rotNow }));
+    check(undo.changed.rotate === ((undo.snap.rotate + 1) % 4),
+        '裁切弹层里的旋转记进视图', JSON.stringify(undo.changed));
+    check(undo.rotate === undo.snap.rotate && undo.crop === undo.snapCrop,
+        '撤销快照能原样还原裁切与旋转',
+        JSON.stringify({ want: undo.snap, got: { rotate: undo.rotate, crop: undo.crop } }));
 
     // ── ⑥ 普通 JPEG：面板收起 ──
     const plain = await exec(`(async () => {
@@ -343,10 +304,10 @@ async function main() {
             bytes: captured ? JSON.stringify(captured).length : 0
         };
     })()`);
-    check(draft.has && draft.params && draft.params.exposure === 1.5 &&
+    check(draft.has && draft.params && draft.params.exposure === 0 && draft.params.highlights === 25 &&
         draft.keys.length === 3 && draft.crop && draft.rotate === 1,
-        '草稿只记显影参数与视图（几个数字），不存像素',
-        JSON.stringify({ keys: draft.keys, rotate: draft.rotate, bytes: draft.bytes }));
+        '草稿只记视图与基线参数（几个数字），不存像素',
+        JSON.stringify({ keys: draft.keys, params: draft.params, rotate: draft.rotate, bytes: draft.bytes }));
 
     // ── ⑧ 还原原图：RAW 回到最初的显影视图，而不是换回一张旧代理 ──
     const restored = await exec(`(async () => {

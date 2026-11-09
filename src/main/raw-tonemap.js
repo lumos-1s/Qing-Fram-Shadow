@@ -10,7 +10,9 @@
 // 高光肩是逐通道做的：真实的高光压缩本来就会让高光去饱和，观感上比按亮度缩放更接近
 // Lightroom；代价是极端色（纯红高光）会略掉饱和，这在 8bit 输出里可以接受。
 
-const DEFAULTS = { exposure: 0, contrast: 0, highlights: 0, temperature: 0, tint: 0 };
+// 高光肩默认 25：渲染层导入时也是这个基线，两边必须一致——以前一边 0 一边 25，
+// URL 里少一个字段（旧工程/旧草稿）画面就会突然硬一档。
+const DEFAULTS = { exposure: 0, contrast: 0, highlights: 25, temperature: 0, tint: 0 };
 const LIMITS = {
     exposure: [-5, 5],
     contrast: [-100, 100],

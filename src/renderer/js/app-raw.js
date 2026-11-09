@@ -1,26 +1,21 @@
-// RAW 显影面板与像素换装。
+// RAW 显影：像素换装 + 状态。
 //
 // 交互模型（为什么不是"每拖一下重解全尺寸"）：
-//   · 拖动时用半尺寸代理（长边 1600，解码 ~0.5s），够看清曝光/高光/白平衡；
-//   · 停手 1.1s 后自动升到全尺寸（~2s），导出/拼图前也会强制补齐；
+//   · 拖动调色滑块时用半尺寸代理（长边 1600），够看清曝光/高光/白平衡；
+//   · 停手后自动升到全尺寸（~2s），导出/拼图前也会强制补齐；
 //   · 两组结果都落在主进程磁盘缓存里，参数回到旧值就直接命中，不重复解码。
 //
-// 显影参数属于"这张照片"（和调色一样按图存），写进草稿；换图、重启都还在。
-// 裁切和旋转作为「显影视图」交给主进程：只存归一化裁切框 + 90° 次数，
-// 代理和全尺寸都能重放；否则用户裁完再碰一下滑块，画面就会被重新解出来的原图冲掉。
+// **显影不再有自己的滑块**。曝光/对比/高光/色温/色调只在「调色」里出现一次：
+// LibRaw 交出的是 8bit sRGB，显影层再做一遍这几档拿不到额外宽容度，只会变成
+// 第二套同名、方向还相反的控件（显影的「高光 +」压高光，调色的「高光 +」提亮高光）。
+// 解码时固定做自动曝光基线 + 高光肩，用户能调的全在调色里，一套数值。
+//
+// 显影参数仍然保留在 raw.params 里：一是裁切/旋转这类「视图」要跟着 URL 走，
+// 二是旧草稿/旧工程里可能存过 tone 数值，读进来还得能重现。
 (function () {
     const DEFAULTS = { exposure: 0, contrast: 0, highlights: 25, temperature: 0, tint: 0 };
     const PROXY_EDGE = 1600;
-    const DEBOUNCE = 220;
     const FULL_IDLE = 1100;
-
-    const FIELDS = [
-        { k: 'exposure', sl: 'slRawExp', lbl: 'lblRawExp', fmt: (v) => (v > 0 ? '+' + v.toFixed(2) : String(v.toFixed(2))) },
-        { k: 'contrast', sl: 'slRawCon', lbl: 'lblRawCon', fmt: (v) => (v > 0 ? '+' + v : String(v)) },
-        { k: 'highlights', sl: 'slRawHi', lbl: 'lblRawHi', fmt: (v) => (v > 0 ? '+' + v : String(v)) },
-        { k: 'temperature', sl: 'slRawTemp', lbl: 'lblRawTemp', fmt: (v) => (v > 0 ? '+' + v : String(v)) },
-        { k: 'tint', sl: 'slRawTint', lbl: 'lblRawTint', fmt: (v) => (v > 0 ? '+' + v : String(v)) }
-    ];
 
     window.App = Object.assign(window.App || {}, {
         RAW_DEFAULTS: DEFAULTS,
@@ -62,107 +57,25 @@
         },
 
         initRawPanel() {
-            const d = {
-                wrap: document.getElementById('grpRaw'),
+            const wrap = document.getElementById('grpRaw');
+            if (!wrap) return;
+            // 面板只剩状态行：不绑滑块，只记住要更新的几个节点。
+            this._rawDom = {
+                wrap,
                 badge: document.getElementById('rawBadge'),
-                state: document.getElementById('rawState'),
-                reset: document.getElementById('btnRawReset'),
-                sliders: {},
-                labels: {}
+                state: document.getElementById('rawState')
             };
-            for (const f of FIELDS) {
-                const s = document.getElementById(f.sl);
-                if (s) [d.sliders[f.k], d.labels[f.k]] = [s, document.getElementById(f.lbl)];
-            }
-            if (!d.wrap || !Object.keys(d.sliders).length) return;
-            this._rawDom = d;
-            d.wrap.hidden = true;
-
-            for (const f of FIELDS) {
-                const s = d.sliders[f.k];
-                if (!s) continue;
-                s.addEventListener('input', () => this._rawOnInput(f, Number(s.value)));
-                // change = 松手/键盘松开：结束这一次拖动，下一次再按一次撤销。
-                s.addEventListener('change', () => this._rawEndUndo());
-            }
-            if (d.reset) {
-                d.reset.addEventListener('click', () => {
-                    const im = this.image;
-                    if (!im || !im.raw) return;
-                    this.rawPushUndoOnce(true);
-                    im.raw.params = Object.assign({}, DEFAULTS);
-                    this._rawInvalidate(im);
-                    this.syncRawUI();
-                    this._rawApplyParams(im, PROXY_EDGE);
-                    this.setStatus('RAW 显影已回到默认');
-                });
-            }
+            wrap.hidden = true;
         },
 
-        // 一次拖动只压一张快照。松手前的所有 input 共用同一份；
-        // 键盘改数值不一定有 change，所以再加 800ms 空闲解锁。
-        rawPushUndoOnce(force) {
-            if (typeof this.pushUndo !== 'function') return;
-            if (!force && this._rawUndoLock) {
-                // 长按/连续拖：锁要一直续到停手，别在拖动中途又压一张。
-                clearTimeout(this._rawUndoTimer);
-                this._rawUndoTimer = setTimeout(() => { this._rawUndoLock = false; }, 800);
-                return;
-            }
-            const top = this.undoStack && this.undoStack[this.undoStack.length - 1];
-            if (top && this.sameUndoState && this.sameUndoState(top)) return;
-            this.pushUndo();
-            this._rawUndoLock = true;
-            clearTimeout(this._rawUndoTimer);
-            this._rawUndoTimer = setTimeout(() => { this._rawUndoLock = false; }, 800);
-        },
-
-        _rawEndUndo() {
-            this._rawUndoLock = false;
-            clearTimeout(this._rawUndoTimer);
-        },
-
-        _rawOnInput(field, value) {
-            const im = this.image;
-            if (!im || !im.raw) return;
-            this.rawPushUndoOnce();
-            // 用户开始拖滑块：取消切图时排的自动全尺寸，等这次停手后重新排。
-            clearTimeout(this._rawFullTimer);
-            im.raw.params = Object.assign({}, this.rawParamsOf(im), { [field.k]: value });
-            if (this._rawDom && this._rawDom.labels[field.k]) {
-                this.updateLabel(field.lbl, field.fmt(value));
-            }
-            this._rawApplyParams(im, PROXY_EDGE);
-        },
-
-        // 参数或视图变了：立刻作废在途请求和排队中的代理/全尺寸，别让旧结果盖回新画面。
+        // 视图（裁切/旋转）变了：立刻作废在途请求和排队中的全尺寸，别让旧结果盖回新画面。
         _rawInvalidate(im) {
             if (!im || !im.raw) return;
             im.raw.seq = (im.raw.seq || 0) + 1;
             im.raw.full = false;
             im.raw.fullPending = null;
             im.raw.error = false;
-            // 防抖定时器是全局单例，只有它确实属于这张图时才取消；
-            // 否则会把另一张图刚排的代理重解也一起掐掉。
-            if (this._rawDebounceIm === im) {
-                clearTimeout(this._rawDebounce);
-                this._rawDebounce = 0;
-                this._rawDebounceIm = null;
-            }
             if (im === this.image) clearTimeout(this._rawFullTimer);
-        },
-
-        // 参数改了就重来一帧代理图；连续拖动只保留最后一次（seq 令牌作废旧请求）。
-        _rawApplyParams(im, edge) {
-            clearTimeout(this._rawDebounce);
-            this._rawDebounceIm = im;
-            this._rawDebounce = setTimeout(() => {
-                this._rawDebounce = 0;
-                this._rawDebounceIm = null;
-                this._rawReload(im, edge).then((ok) => {
-                    if (ok && im === this.image) this._rawQueueFull(FULL_IDLE);
-                });
-            }, DEBOUNCE);
         },
 
         _rawQueueFull(delay) {
@@ -177,13 +90,6 @@
         // 把当前参数 + 视图显影出来并换进 im.el。返回是否真的换了。
         _rawReload(im, edge) {
             if (!im || !im.raw || !im.path) return Promise.resolve(false);
-            // 直接重解（导出、撤销、裁切、旋转）优先于还排着队的代理图；
-            // 不取消的话，防抖计时器稍后会用代理结果把这次全尺寸请求作废。
-            if (this._rawDebounceIm === im) {
-                clearTimeout(this._rawDebounce);
-                this._rawDebounce = 0;
-                this._rawDebounceIm = null;
-            }
             const seq = (im.raw.seq || 0) + 1;
             im.raw.seq = seq;
             im.raw.error = false;
@@ -391,7 +297,7 @@
             return ok;
         },
 
-        // 面板显隐与数值同步。切图、撤销、套预设后都会被 syncGradeUI 顺带叫到。
+        // 面板显隐与状态。切图、撤销、导出补尺寸后都会被顺带叫到。
         syncRawUI() {
             const d = this._rawDom;
             if (!d) return;
@@ -399,12 +305,6 @@
             const on = !!(im && im.raw);
             d.wrap.hidden = !on;
             if (!on) return;
-            const p = this.rawParamsOf(im);
-            for (const f of FIELDS) {
-                const s = d.sliders[f.k];
-                if (s && String(s.value) !== String(p[f.k])) s.value = String(p[f.k]);
-                this.updateLabel(f.lbl, f.fmt(Number(p[f.k]) || 0));
-            }
             if (d.badge) {
                 const ext = String(im.path || '').split('.').pop().toUpperCase();
                 d.badge.textContent = ext && ext.length <= 4 ? ext : 'RAW';

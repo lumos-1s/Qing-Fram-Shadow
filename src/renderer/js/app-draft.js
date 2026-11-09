@@ -252,7 +252,9 @@ window.App = Object.assign(window.App || {}, {
             } : null;
             const rawInfo = meta.raw
                 ? {
-                    params: Object.assign({}, this.RAW_DEFAULTS, meta.raw.params || {}),
+                    // 显影档位已经并进「调色」：旧草稿里的 exposure/highlights 不再还原，
+                    // 否则会出现"照片偏亮却找不到对应滑块"的僵局。视图（裁切/旋转）照旧恢复。
+                    params: Object.assign({}, this.RAW_DEFAULTS),
                     crop: rawView.crop,
                     edge: this.RAW_PROXY_EDGE,
                     full: false,
