@@ -352,7 +352,12 @@ window.App = Object.assign(window.App || {}, {
     updateStatusBar() {
         if (!this.image) { this.setStatus(''); return; }
         const im = this.image;
-        this.dom.stRes.textContent = `${im.w}×${im.h}`;
+        // RAW 在代理阶段只有 1600px：不标注的话，状态栏会把代理尺寸当成照片尺寸，
+        // 用户既看不出「还在显影」，也看不出「导出掉到了代理分辨率」。
+        const rawTag = im.raw
+            ? (im.raw.fullPending ? ' · RAW 显影中' : (im.raw.full ? ' · RAW' : ' · RAW 代理'))
+            : '';
+        this.dom.stRes.textContent = `${im.w}×${im.h}${rawTag}`;
         this.dom.stInfo.textContent = `${this.currentIdx + 1}/${this.images.length} · ${im.name}`;
         this.setStatus(this.statusMsg && !this.statusMsg.startsWith('画布') ? this.statusMsg : '');
     },

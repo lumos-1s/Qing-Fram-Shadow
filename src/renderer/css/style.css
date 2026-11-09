@@ -448,6 +448,14 @@ html.dark .side-action.primary { color: #0c1914; }
     margin-left: auto; font-size: var(--fs-10); font-weight: 500; color: var(--text-3);
     font-variant-numeric: tabular-nums; letter-spacing: 0;
 }
+/* 显影中：状态前加一个呼吸点。全尺寸解码要 1~4 秒，静止的文字容易被当成没反应。 */
+.raw-state.busy { color: var(--primary-text); }
+.raw-state.busy::before {
+    content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 4px;
+    border-radius: 50%; background: currentColor; vertical-align: 1px;
+    animation: rawPulse 1.1s ease-in-out infinite;
+}
+@keyframes rawPulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 .grade-preset-row.previewing {
     border-color: var(--primary); background: var(--surface);
     box-shadow: 0 0 0 1px var(--primary-soft);

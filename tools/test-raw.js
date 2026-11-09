@@ -173,21 +173,77 @@ async function main() {
     check(single.params.exposure === 0 && single.params.highlights === 25,
         '解码基线仍是「曝光 0 + 高光肩 25」', JSON.stringify(single.params));
 
-    // ── ③ 全尺寸显影 ──
-    const full = await exec(`(async () => {
+    // ── ③ 自动显影：不用手动触发，切到这张图后自己升；面板与状态栏都要看得见 ──
+    const auto = await exec(`(async () => {
         const A = window.App;
         const im = A.image;
+        const stRes = () => (document.getElementById('stRes') || {}).textContent || '';
+        const btn = document.getElementById('btnRawDevelop');
+        const state = document.getElementById('rawState');
+        const start = {
+            btn: btn ? btn.textContent : null,
+            state: state ? state.textContent : null,
+            stRes: stRes()
+        };
+        // 不调用任何显影接口：导入/切图后主进程自己会排一次全尺寸
         const t0 = Date.now();
-        const ok = await A.rawEnsureFull(im);
+        while (Date.now() - t0 < 15000 && !im.raw.full) {
+            await new Promise((r) => setTimeout(r, 150));
+        }
         await A.flushRender();
-        return { ok, w: im.w, h: im.h, full: im.raw.full, sec: ((Date.now() - t0) / 1000).toFixed(1),
-                 state: (document.getElementById('rawState') || {}).textContent };
+        return {
+            start,
+            full: im.raw.full, w: im.w, h: im.h,
+            sec: +((Date.now() - t0) / 1000).toFixed(1),
+            end: {
+                btn: btn ? btn.textContent : null,
+                state: state ? state.textContent : null,
+                stRes: stRes()
+            }
+        };
     })()`);
-    // 不校验耗时：同一组参数可能命中上次跑留下的磁盘缓存（这正是缓存该做的事）
-    check(full.ok && full.full === true && full.w > 3000,
-        '停手后能升到全尺寸，导出不会只剩 1600px', JSON.stringify(full));
-    check(/^\d+×\d+$/.test(String(full.state || '').trim()),
-        '标题行右侧写明当前像素尺寸', full.state);
+    check(auto.start.btn === '按全尺寸显影' && /^代理\s*\d+px$/.test(String(auto.start.state || '').trim()),
+        '代理阶段：按钮写着「按全尺寸显影」，状态写明还是代理', JSON.stringify(auto.start));
+    check(/RAW 代理/.test(auto.start.stRes),
+        '状态栏把 1600px 标成「RAW 代理」，不会被当成照片尺寸', auto.start.stRes);
+    check(auto.full === true && auto.w > 3000,
+        '切到这张图后自动升到全尺寸，用户不用手动触发',
+        JSON.stringify({ w: auto.w, h: auto.h, sec: auto.sec }));
+    check(auto.end.btn === '重新显影' && /^\d+×\d+$/.test(String(auto.end.state || '').trim()),
+        '显影完成后按钮变成「重新显影」，状态写明实际像素', JSON.stringify(auto.end));
+    check(/· RAW$/.test(auto.end.stRes),
+        '状态栏跟着变成「RAW」，全尺寸与否一眼可辨', auto.end.stRes);
+
+    // ── ③b 面板按钮能手动触发：代理状态点一下会真的重解 ──
+    const manual = await exec(`(async () => {
+        const A = window.App;
+        const im = A.image;
+        // 模拟「停在代理」：只改状态标记，像素仍是全尺寸，点按钮会再解一次
+        im.raw.full = false;
+        im.raw.edge = A.RAW_PROXY_EDGE;
+        A.syncRawUI();
+        const btn = document.getElementById('btnRawDevelop');
+        const state = document.getElementById('rawState');
+        const before = btn.textContent;
+        btn.click();
+        const during = {
+            btn: btn.textContent,
+            disabled: btn.disabled,
+            state: state.textContent,
+            busy: state.classList.contains('busy')
+        };
+        const t0 = Date.now();
+        while (Date.now() - t0 < 15000 && !im.raw.full) {
+            await new Promise((r) => setTimeout(r, 150));
+        }
+        return { before, during, full: im.raw.full, btnNow: btn.textContent };
+    })()`);
+    check(manual.before === '按全尺寸显影' && manual.during.btn === '显影中…' && manual.during.disabled === true,
+        '点按钮后立刻变成「显影中…」并禁用，不是点下去没反应', JSON.stringify(manual.during));
+    check(manual.during.busy === true && manual.during.state === '显影中…',
+        '状态行同时显示显影中（带脉动标记）', JSON.stringify(manual.during));
+    check(manual.full === true && manual.btnNow === '重新显影',
+        '手动触发能真的升到全尺寸，完成后按钮回到「重新显影」', manual.btnNow);
 
     // ── ④ RAW 裁切/旋转：参数化视图不能被下一次显影冲掉 ──
     const view = await exec(`(async () => {

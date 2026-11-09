@@ -2535,10 +2535,10 @@ window.App = {
                 const memWarn = estGB >= 1.5
                     ? `｜注意：当前 ${this.images.length} 张共约 ${estGB.toFixed(1)}GB 内存，建议处理完一批先删掉再导下一批`
                     : '';
-                // RAW 的显影入口在「调色」页签顶部，不主动切页签（有人只想加个边框），
-                // 但必须说一句在哪里，否则会以为导入后就只能这样了。
+                // RAW 的显影是自动的，但入口/状态在「调色」页签顶部，不主动切页签
+                // （有人只想加个边框），得说一句在哪里能看见，否则会以为导入后就只能这样了。
                 const rawCount = results.filter((im) => im && im.raw).length;
-                const rawNote = rawCount ? `｜${rawCount} 张 RAW 可在「调色」页签顶部调显影` : '';
+                const rawNote = rawCount ? `｜${rawCount} 张 RAW 会自动显影，状态见「调色」页签顶部` : '';
                 this.setStatus(`已导入 ${loaded} 张图片${carry ? '，沿用「' + carry.templateName + '」' : ''}${skipped ? '，跳过 ' + skipped + ' 个不支持的文件' : ''}${iccNote}${rawNote}${memWarn}`);
             }
         } finally {

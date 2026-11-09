@@ -59,13 +59,25 @@
         initRawPanel() {
             const wrap = document.getElementById('grpRaw');
             if (!wrap) return;
-            // 面板只剩状态行：不绑滑块，只记住要更新的几个节点。
+            // 面板只剩「状态 + 一个按钮」：显影参数没有滑块可调，但必须让用户
+            // 看得见它现在算什么尺寸、正在做什么，也留一个手动入口（重试/重来）。
             this._rawDom = {
                 wrap,
                 badge: document.getElementById('rawBadge'),
-                state: document.getElementById('rawState')
+                state: document.getElementById('rawState'),
+                btn: document.getElementById('btnRawDevelop')
             };
             wrap.hidden = true;
+            const d = this._rawDom;
+            if (d.btn) {
+                d.btn.addEventListener('click', () => {
+                    const im = this.image;
+                    if (!im || !im.raw || im.raw.fullPending) return;
+                    // 已经是全尺寸时按钮是「重新显影」：强制再解一次。
+                    // 参数没变会命中磁盘缓存，所以通常一闪就好；失败过的话这次能重来。
+                    this.rawEnsureFull(im, { force: !!im.raw.full });
+                });
+            }
         },
 
         // 视图（裁切/旋转）变了：立刻作废在途请求和排队中的全尺寸，别让旧结果盖回新画面。
@@ -83,7 +95,9 @@
             const im = this.image;
             if (!im || !im.raw || im.raw.full) return;
             this._rawFullTimer = setTimeout(() => {
-                if (this.image === im) this.rawEnsureFull(im);
+                // 自动升级不抢状态栏：导入时那句「已导入 N 张…跳过 M 个文件」更有信息量，
+                // 显影进度看面板与状态栏的 RAW 标记就够了。
+                if (this.image === im) this.rawEnsureFull(im, { silent: true });
             }, delay == null ? FULL_IDLE : delay);
         },
 
@@ -136,14 +150,13 @@
             });
         },
 
-        // 全尺寸显影：导出、松手后自动调用。并发同一个参数时只跑一次。
-        async rawEnsureFull(im) {
-            if (!im || !im.raw || im.raw.full) return true;
+        // 全尺寸显影：切图后自动调用，导出前强制补齐，面板上的按钮也走这里。
+        // 并发同一个参数时只跑一次；force 用于「已经是全尺寸，但想重来一遍」。
+        async rawEnsureFull(im, opts) {
+            if (!im || !im.raw) return true;
             if (im.raw.fullPending) return im.raw.fullPending;
+            if (im.raw.full && !(opts && opts.force)) return true;
             const t0 = Date.now();
-            if (this._rawDom && this._rawDom.state && im === this.image) {
-                this._rawDom.state.textContent = '显影中…';
-            }
             const p = (async () => {
                 let ok = await this._rawReload(im, 0);
                 // 解码失败时主进程已经把解码线程换成了新的（wasm 堆吃满就只能换线程），
@@ -155,13 +168,20 @@
                 if (im.raw.fullPending === p) im.raw.fullPending = null;
                 if (im === this.image) {
                     this.syncRawUI();
-                    if (ok) this.setStatus(`RAW 已按全尺寸显影（${((Date.now() - t0) / 1000).toFixed(1)}s）`);
+                    if (ok && !(opts && opts.silent)) {
+                        this.setStatus(`RAW 已按全尺寸显影（${((Date.now() - t0) / 1000).toFixed(1)}s）`);
+                    }
                     // 被更新的参数/视图请求取代时也会 resolve(false)，那不是失败，别误报。
-                    else if (im.raw.error) this.setStatus('RAW 全尺寸显影失败，导出可能只有代理分辨率');
+                    if (!ok && im.raw.error) this.setStatus('RAW 全尺寸显影失败，点「重试显影」再解一次');
                 }
                 return ok;
             })();
             im.raw.fullPending = p;
+            // 解码要 1~4 秒：按钮和状态行必须马上变成「显影中」，否则点下去像没反应。
+            if (im === this.image) {
+                this.syncRawUI();
+                if (this.updateStatusBar) this.updateStatusBar();
+            }
             return p;
         },
 
@@ -309,11 +329,21 @@
                 const ext = String(im.path || '').split('.').pop().toUpperCase();
                 d.badge.textContent = ext && ext.length <= 4 ? ext : 'RAW';
             }
+            const busy = !!im.raw.fullPending;
             if (d.state) {
+                d.state.classList.toggle('busy', busy);
                 if (im.raw.error) d.state.textContent = '显影失败';
-                else if (im.raw.fullPending) d.state.textContent = '显影中…';
+                else if (busy) d.state.textContent = '显影中…';
                 else if (im.raw.full) d.state.textContent = `${im.w}×${im.h}`;
-                else d.state.textContent = `${Math.max(im.w, im.h)}px 代理`;
+                else d.state.textContent = `代理 ${Math.max(im.w, im.h)}px`;
+            }
+            // 按钮本身就是「显影」这件事的入口：代理状态可手动升，失败时是重试，
+            // 已全尺寸时还能强制重来（命中缓存时一闪而过）。
+            if (d.btn) {
+                d.btn.disabled = busy;
+                d.btn.textContent = busy
+                    ? '显影中…'
+                    : (im.raw.error ? '重试显影' : (im.raw.full ? '重新显影' : '按全尺寸显影'));
             }
         }
     });
