@@ -580,32 +580,6 @@ window.App = {
             this._fitResizeRO = ro;
         }
         d.btnTheme.addEventListener('click', () => this.toggleTheme());
-        // 工具栏「⋯」：低频入口的 DOM/id 都还在，只是收进弹出菜单。
-        // 点菜单项后自动收起；点外部或按 Esc 也收起，不抢导出设置弹层的逻辑。
-        const moreWrap = this.$('toolbarMoreWrap');
-        const moreBtn = this.$('btnToolbarMore');
-        const moreMenu = this.$('toolbarMoreMenu');
-        if (moreWrap && moreBtn && moreMenu) {
-            const closeMore = () => {
-                moreMenu.hidden = true;
-                moreBtn.setAttribute('aria-expanded', 'false');
-            };
-            moreBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const open = moreMenu.hidden;
-                moreMenu.hidden = !open;
-                moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-            });
-            moreMenu.addEventListener('click', (e) => {
-                if (e.target.closest('button')) closeMore();
-            });
-            document.addEventListener('click', (e) => {
-                if (!moreMenu.hidden && !e.target.closest('#toolbarMoreWrap')) closeMore();
-            });
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && !moreMenu.hidden) closeMore();
-            });
-        }
         d.zoomRange.addEventListener('input', e => this.setZoom(parseInt(e.target.value, 10) / 100));
         d.zoomInput.addEventListener('change', e => {
             const v = parseFloat(String(e.target.value).replace('%', ''));

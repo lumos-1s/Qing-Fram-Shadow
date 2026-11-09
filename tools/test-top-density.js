@@ -1,4 +1,5 @@
-// 顶部工具栏 / 左侧预设树减负回归。
+// 顶栏维持原状 + 左侧预设树收拢回归。
+// 顶栏的「⋯」收拢版已按用户要求撤回，这里把恢复后的形态冻结成断言。
 // 用法：node tools/run-electron.js tools/test-top-density.js
 'use strict';
 
@@ -57,27 +58,22 @@ const PROBE = `(async () => {
     A.buildTree('');
     await wait(120);
 
-    // ── 1. 工具栏常驻入口 ──
-    const inMenu = (b) => !!b.closest('#toolbarMoreMenu');
+    // ── 1. 顶栏恢复原样：13 个入口常驻，没有 ⋯ 弹出菜单 ──
+    // 用户看过收拢版后选择恢复，这里把「原样」写成断言，免得以后又被顺手收走。
     const allBtns = Array.prototype.slice.call(document.querySelectorAll('#toolbar button'));
-    const visible = allBtns.filter((b) => !inMenu(b) && b.offsetParent !== null);
+    const visible = allBtns.filter((b) => b.offsetParent !== null);
     const labels = visible.map((b) => (b.textContent || '').trim()).filter(Boolean);
-    const menuIds = ['btnOpenFolder', 'btnCopy', 'btnSyncSel', 'btnReset', 'btnRandom', 'btnTheme'];
-    const movedOk = menuIds.every((id) => { const el = $(id); return !!el && inMenu(el); });
+    const barIds = ['btnOpenFolder', 'btnCopy', 'btnSyncSel', 'btnReset', 'btnRandom', 'btnTheme'];
+    const allInBar = barIds.every((id) => {
+        const el = $(id);
+        return !!el && !!el.closest('#toolbar .toolbar-group') && !el.closest('[hidden]');
+    });
+    const noMore = !$('btnToolbarMore') && !$('toolbarMoreMenu');
+    const themeInRight = !!($('btnTheme') && $('btnTheme').closest('.toolbar-group.right'));
     const g = document.querySelector('.toolbar-group');
     const cs = g ? getComputedStyle(g) : null;
-    const pillGone = !!cs && (cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent')
-        && parseFloat(cs.borderTopWidth) === 0;
-
-    // ── 2. 「更多」菜单开合 ──
-    const moreBtn = $('btnToolbarMore'), menu = $('toolbarMoreMenu');
-    moreBtn.click();
-    const opened = !menu.hidden && moreBtn.getAttribute('aria-expanded') === 'true';
-    document.body.click();
-    const closedOutside = menu.hidden;
-    moreBtn.click();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    const closedEsc = menu.hidden;
+    const pillBack = !!cs && cs.backgroundColor !== 'rgba(0, 0, 0, 0)'
+        && cs.backgroundColor !== 'transparent' && parseFloat(cs.borderTopWidth) > 0;
 
     // ── 3. 左侧分组默认展开状态 ──
     const tree = $('presetTree');
@@ -116,7 +112,7 @@ const PROBE = `(async () => {
     try { localStorage.removeItem('qfs_preset_groups'); } catch (_) {}
 
     return {
-        labels, movedOk, pillGone, opened, closedOutside, closedEsc,
+        labels, allInBar, noMore, themeInRight, pillBack,
         openNames, defaultVisible, recentCollapsed, recentCount,
         persisted, rebuiltOpen, searchOpen, searchVisible, groupCount: groups.length
     };
@@ -145,13 +141,14 @@ async function main() {
     catch (e) { check(false, '探针执行', String(e && e.message)); }
     if (res) {
         if (res.missing) check(false, '模块已加载', 'App 未定义');
-        check(res.labels.length <= 7 && /更多/.test(res.labels.join('')),
-            '常驻入口收敛到 7 个以内，含「更多」', JSON.stringify(res.labels));
-        check(res.movedOk, '六个低频按钮都还在 DOM 里，只是移进了 ⋯ 菜单');
-        check(res.pillGone, '工具组 pill 底色与边框已去掉');
-        check(res.opened && res.closedOutside && res.closedEsc,
-            '⋯ 菜单能开、点外部关、Esc 关',
-            JSON.stringify({ open: res.opened, outside: res.closedOutside, esc: res.closedEsc }));
+        check(res.labels.length >= 10 && /导入文件夹/.test(res.labels.join(''))
+            && /重置/.test(res.labels.join('')) && /随机/.test(res.labels.join('')),
+            '顶栏恢复常驻入口（含导入文件夹 / 重置 / 随机）', JSON.stringify(res.labels));
+        check(res.allInBar && res.noMore,
+            '六个按钮回到工具组，⋯ 溢出菜单已移除',
+            JSON.stringify({ inBar: res.allInBar, noMore: res.noMore }));
+        check(res.pillBack, '工具组 pill 底色与边框已恢复');
+        check(res.themeInRight, '主题按钮回到右侧工具组（设置里那个也仍在）');
         check(res.openNames.filter((n) => !/最近使用|收藏/.test(n)).length <= 1,
             '默认只展开一个常规分组（当前选中项所在组）', JSON.stringify(res.openNames));
         check(res.recentCollapsed && res.recentCount > 0 && res.recentCount <= 4,

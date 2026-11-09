@@ -122,11 +122,6 @@ async function main() {
     };
 
     await shot('window-full');
-    // 工具栏「⋯」展开状态
-    await exec(`(() => { const b = document.getElementById('btnToolbarMore'); if (b) b.click(); return true; })()`);
-    await sleep(250);
-    await shot('window-more');
-    await exec(`(() => { const b = document.getElementById('btnToolbarMore'); if (b) b.click(); return true; })()`);
     // 设置弹窗里的密度三档
     await exec(`(() => { if (window.App && App.openSettings) App.openSettings(); return true; })()`);
     await sleep(500);

@@ -158,47 +158,16 @@ body {
     box-shadow: var(--shadow-sm), var(--shadow-rim);
     z-index: 3;
 }
-/* 原来每个工具组都是一块带底色的圆角 pill，6 个 pill 各画一圈框，
-   视觉噪声比按钮文字本身还重。改成透明 + 组间一根发丝线，功能与 DOM 全不变。 */
 .toolbar-group {
     display: flex; align-items: center; gap: 3px;
-    padding: 0; background: transparent;
-    border: 0; border-radius: 0; flex: 0 0 auto;
+    padding: var(--sp-1) calc(7px * var(--font-scale));
+    background: var(--surface-alt);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    flex: 0 0 auto;
 }
-.toolbar-group.right, .toolbar-group.zoom-group { background: transparent; border: 0; padding: 0; }
-#toolbar > .toolbar-group + .toolbar-group,
-#toolbar > .toolbar-more-wrap,
-#toolbar > .toolbar-group.zoom-group,
-#toolbar > .toolbar-group.right {
-    border-left: 1px solid var(--border);
-    padding-left: calc(9px * var(--font-scale));
-    margin-left: calc(1px * var(--font-scale));
-}
-/* 「⋯」溢出菜单：与参数栏的「更多 ▾」同一套观感 */
-.toolbar-more-wrap { position: relative; flex: 0 0 auto; }
-.toolbar-more-wrap > .tbtn { gap: 6px; padding: calc(5px * var(--font-scale)) calc(10px * var(--font-scale)); }
-.tb-ellipsis { font-size: var(--fs-14); line-height: .6; letter-spacing: 1px; color: var(--text-3); }
-.toolbar-more-menu {
-    position: absolute; left: 0; top: calc(100% + 9px);
-    min-width: 196px; padding: 6px;
-    background: var(--surface); border: 1px solid var(--border-strong);
-    border-radius: var(--r-m); box-shadow: var(--shadow);
-    z-index: 60;
-}
-.toolbar-more-menu[hidden] { display: none; }
-.toolbar-more-menu .tbtn {
-    display: flex; align-items: center; gap: 8px;
-    width: 100%; text-align: left; padding: 7px 9px;
-    border-radius: 8px; font-size: var(--fs-12); white-space: nowrap;
-}
-.toolbar-more-menu .tbtn:hover { background: var(--surface-alt); }
-.toolbar-more-menu .tbtn.warn:hover { color: var(--rose-text); }
-.toolbar-more-label {
-    padding: 3px 9px 6px; font-size: var(--fs-10);
-    letter-spacing: 1.2px; color: var(--text-3);
-}
-.toolbar-more-sep { height: 1px; background: var(--border); margin: 5px 3px; }
-.toolbar-more-hint { padding: 2px 9px 4px; font-size: var(--fs-10); color: var(--text-3); }
+.toolbar-group.right { background: transparent; border: none; padding: 0; }
+.toolbar-group.zoom-group { background: transparent; border: 1px solid var(--border); padding: var(--sp-1) var(--sp-1-5); }
 .sep { width: 1px; height: 18px; background: var(--border-strong); margin: 0 var(--sp-1); }
 .grow { flex: 1; }
 
