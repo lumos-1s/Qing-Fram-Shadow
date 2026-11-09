@@ -43,6 +43,9 @@
                 <path d="M9 9 H13.6" stroke="url(#tbIconGold)" stroke-width="1.1" stroke-linecap="round"/>
             </svg>
             <div class="titlebar-title">清框影</div>
+            <!-- 参考 Camera Raw：空掉的标题栏中间放「当前文件名 · 第几张」，
+                 比把两行合成一行便宜得多，也不用重测拖拽区 / 双击最大化。 -->
+            <div class="titlebar-file" id="titlebarFile" hidden></div>
             <div class="titlebar-controls">
                 <button id="tbFull" class="tb-btn" title="全屏 (F11)" aria-label="全屏">
                     <svg class="ico-full" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3.4 V1 H3.4 M6.6 1 H9 V3.4 M9 6.6 V9 H6.6 M3.4 9 H1 V6.6"/></svg>
@@ -1267,10 +1270,23 @@
                              所以拖滑块时它跟着变，用户能看见自己把高光推到哪了。
                              参数条只在读得到 EXIF 时出现，读不到就退成一行灰字。 -->
                         <div class="histo-card" id="gradeHistoCard">
-                            <canvas id="gradeHisto" class="histo-cv" aria-label="RGB 直方图"></canvas>
+                            <!-- 两角三角是 Camera Raw 的剪切警告：以前画在 canvas 里，
+                                 只能「亮一下」，读不到百分比也没法交互；改成 DOM 按钮后
+                                 可悬停看占比、点击在波形上标出被夹掉的首尾档。 -->
+                            <div class="histo-plot">
+                                <canvas id="gradeHisto" class="histo-cv" aria-label="RGB 直方图"></canvas>
+                                <button id="gradeClipLo" class="histo-clip clip-lo" type="button" aria-label="阴影剪切警告" title="阴影剪切：暂无像素压到 0"></button>
+                                <button id="gradeClipHi" class="histo-clip clip-hi" type="button" aria-label="高光剪切警告" title="高光剪切：暂无像素顶到 255"></button>
+                            </div>
                             <div class="histo-foot">
                                 <div class="histo-exif" id="gradeExif" title="照片的 EXIF 参数"></div>
                                 <span class="histo-raw" id="gradeRawTag" hidden></span>
+                            </div>
+                            <!-- 工具与参数分层：需要在画布上拖的蒙版入口放在直方图下，
+                                 参数仍留在下面折叠组里，不必把滑块复制一套。 -->
+                            <div class="histo-tools" id="histoTools">
+                                <button id="btnHistoMask" class="mini-btn" type="button" title="新建线性渐变蒙版，随后在照片上拖出方向">+ 蒙版</button>
+                                <button id="histoMaskState" class="histo-mask-state" type="button" hidden title="点击回到蒙版列表">编辑蒙版 · 拖滑块只作用选区</button>
                             </div>
                         </div>
                         <!-- 低频组默认收起后的唯一提示：一行写完「收了几组、怎么展开」。
@@ -1381,6 +1397,8 @@
                             <div class="param-row grade-acts">
                                 <button id="btnGradeReset" class="mini-btn" type="button" title="全部归零，回到照片本色">重置</button>
                                 <button id="btnGradeApplyAll" class="mini-btn" type="button" title="把这套参数复制给本次导入的所有照片">应用到全部</button>
+                                <button id="btnGradeCopySet" class="mini-btn" type="button" title="复制这张照片的调色 + 边框设置（不写系统剪贴板）">复制设置</button>
+                                <button id="btnGradePasteSet" class="mini-btn" type="button" title="把复制的设置粘贴到胶片条里多选的照片">粘贴设置</button>
                                 <button id="btnGradeImportXmp" class="mini-btn" type="button" title="导入 Lightroom / Camera Raw 的 .xmp 调色预设">导入 LR 预设</button>
                             </div>
 
@@ -1446,12 +1464,12 @@
                                 </div>
                                 <div class="param-row" id="rowGradeVib">
                                     <label>自然饱和度</label>
-                                    <input type="range" id="slGradeVib" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                    <input type="range" id="slGradeVib" class="ctl-rng rng-vib" min="-100" max="100" step="1" value="0" />
                                     <span class="pval" id="lblGradeVib">0</span>
                                 </div>
                                 <div class="param-row" id="rowGradeSat">
                                     <label>饱和度</label>
-                                    <input type="range" id="slGradeSat" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                    <input type="range" id="slGradeSat" class="ctl-rng rng-sat" min="-100" max="100" step="1" value="0" />
                                     <span class="pval" id="lblGradeSat">0</span>
                                 </div>
                             </div>
@@ -1748,7 +1766,7 @@
         <footer id="statusbar">
             <span id="stRes" class="st-item">分辨率 --</span>
             <span id="stInfo" class="st-item">未导入照片</span>
-            <span id="stStyle" class="st-item st-style" hidden></span>
+            <span id="stStyle" class="st-item st-style" role="button" tabindex="0" hidden title="点击在左侧边框列表定位当前样式"></span>
             <span id="stCanvas" class="st-item grow">画布 --×--</span>
             <button id="btnCompare" class="st-btn" title="按住查看原图（触屏可点按，空格 按住）/ 松开恢复"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 1.8v12.4"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4" fill="currentColor" fill-opacity=".25" stroke="none"/></svg>对比原图</button>
             <div class="progress-wrap"><div id="progressBar" class="progress-bar"></div></div>

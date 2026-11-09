@@ -138,5 +138,47 @@ window.App = Object.assign(window.App || {}, {
         this.setStatus(n
             ? `已将当前边框同步到 ${n} 张照片（含 Logo；贴纸/文字/拼图保留各图自有）`
             : '没有需要同步的选中照片');
+    },
+
+    // 「复制设置 / 粘贴设置」：LR 左栏底部那对按钮的等价物。
+    // 与现有两条能力互补，不重复：
+    //   · 应用到全部   = 只搬调色，目标是全部照片
+    //   · 同步到选中   = 只搬边框，目标是多选照片
+    //   · 复制/粘贴设置 = 调色 + 边框一起搬，目标由胶片条多选决定
+    // 只存内存、不写系统剪贴板、不落草稿：重启即失效，和 LR 一致。
+    copySettings() {
+        const im = this.image;
+        if (!im) { this.setStatus('请先打开一张照片'); return false; }
+        this._copiedSettings = {
+            grade: JSON.parse(JSON.stringify(im.grade || {})),
+            template: this.template && this.cloneTemplate ? this.cloneTemplate() : null,
+            from: im.name || '当前照片'
+        };
+        this.setStatus('已复制「' + this._copiedSettings.from + '」的调色与边框设置；在胶片条多选照片后点「粘贴设置」');
+        return true;
+    },
+
+    pasteSettings() {
+        const src = this._copiedSettings;
+        if (!src) { this.setStatus('请先点「复制设置」'); return false; }
+        const idxs = Array.from(new Set((this.selectedIdx || [])
+            .filter((i) => Number.isInteger(i) && i !== this.currentIdx && this.images[i])));
+        if (!idxs.length) {
+            this.setStatus('请先在胶片条多选要粘贴的照片（Ctrl / Shift + 点击）');
+            return false;
+        }
+        for (const i of idxs) {
+            const it = this.images[i];
+            it.grade = JSON.parse(JSON.stringify(src.grade || {}));
+            // 缓存作废：切到这张时 selectImage 会按新参数重烘，避免显示上一版画面
+            it._grade = { neutral: false, canvas: null, low: null, lowKey: '', fullKey: '' };
+            if (src.template && this.setTpl) {
+                this.setTpl(it, JSON.parse(JSON.stringify(src.template)));
+            }
+        }
+        if (this.buildThumbnails) this.buildThumbnails();
+        if (this.scheduleDraft) this.scheduleDraft();
+        this.setStatus('已把调色与边框粘贴到 ' + idxs.length + ' 张照片');
+        return true;
     }
 });

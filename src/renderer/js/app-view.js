@@ -355,8 +355,20 @@ window.App = Object.assign(window.App || {}, {
         });
     },
     updateStatusBar() {
-        if (!this.image) { this.setStatus(''); return; }
+        const tf = document.getElementById('titlebarFile');
+        if (!this.image) {
+            this.setStatus('');
+            if (tf) tf.hidden = true;
+            return;
+        }
         const im = this.image;
+        // 标题栏中间那行：文件名 + 序号。← / → 本来就能切图，这里只把
+        // 「我在第几张」写进视线，让用户知道那对快捷键存在。
+        if (tf) {
+            tf.textContent = (im.name || '未命名') + ' · ' + (this.currentIdx + 1) + '/' + this.images.length;
+            tf.title = '当前照片 · ← / → 切换上一张 / 下一张';
+            tf.hidden = false;
+        }
         // RAW 在代理阶段只有 1600px：不标注的话，状态栏会把代理尺寸当成照片尺寸，
         // 用户既看不出「还在显影」，也看不出「导出掉到了代理分辨率」。
         const rawTag = im.raw

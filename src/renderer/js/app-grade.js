@@ -1646,8 +1646,23 @@
                     });
                 }
             }
+            // 轨道零点标记：按 defaultValue 算出默认档在轨道上的位置，
+            // 写进行上的 --zero，CSS 画一枚小三角（排除色相/混色器等特殊轨道）。
+            document.querySelectorAll('#panel-grade .param-row > input[type=range]').forEach((inp) => {
+                if (inp.classList.contains('ctl-hue') || inp.classList.contains('rng-cb') || inp.classList.contains('rng-mix')) return;
+                const mn = parseFloat(inp.min), mx = parseFloat(inp.max), dv = parseFloat(inp.defaultValue);
+                if (!isFinite(mn) || !isFinite(mx) || !isFinite(dv) || mx <= mn) return;
+                const row = inp.parentElement;
+                if (!row) return;
+                row.classList.add('has-zero');
+                row.style.setProperty('--zero', Math.max(0, Math.min(1, (dv - mn) / (mx - mn))));
+            });
             const all = $('btnGradeApplyAll');
             if (all) all.addEventListener('click', () => this.applyGradeToAll());
+            const cp = $('btnGradeCopySet');
+            if (cp) cp.addEventListener('click', () => this.copySettings());
+            const ps = $('btnGradePasteSet');
+            if (ps) ps.addEventListener('click', () => this.pasteSettings());
             if (this.initCurve) this.initCurve();
             if (this.initGradeExtra) this.initGradeExtra();
             if (this.initColorGrade) this.initColorGrade();

@@ -1144,7 +1144,36 @@ input[type=range].fine-tuning::-webkit-slider-thumb {
     overflow: hidden;
     box-shadow: var(--shadow-sm);
 }
+.histo-plot { position: relative; }
 .histo-cv { display: block; width: 100%; height: calc(88px * var(--density)); background: var(--histo-bg); }
+/* 剪切警告：常驻两角，任一通道压到 0 / 顶到 255 才点亮；点击在波形上标出被 capEnds 夹掉的首尾档 */
+.histo-clip {
+    position: absolute; top: 5px; z-index: 2;
+    width: 9px; height: 9px; padding: 0; border: 0;
+    /* 角标压在直方图的恒深底上，不能用跟随主题的 --text-3：浅色主题下
+       那是个深灰，在深底上几乎看不见。这里固定用浅灰，两种主题一致。 */
+    background: rgba(226,232,226,.72); opacity: .38; cursor: pointer;
+    transition: transform .12s, opacity .12s;
+}
+.histo-clip:hover { opacity: .9; }
+.histo-clip.clip-lo { left: 5px; clip-path: polygon(0 0, 100% 0, 0 100%); }
+.histo-clip.clip-hi { right: 5px; clip-path: polygon(0 0, 100% 0, 100% 100%); }
+.histo-clip.clip-lo.is-on { background: #78aaff; opacity: 1; }
+.histo-clip.clip-hi.is-on { background: #ff7b6e; opacity: 1; }
+.histo-clip.is-mark { transform: scale(1.35); }
+.histo-tools {
+    display: flex; align-items: center; gap: 6px;
+    min-height: 23px; padding: 0 8px 6px;
+}
+.histo-tools .mini-btn { flex: 0 0 auto; padding: 2px 8px; font-size: var(--fs-10); }
+.histo-mask-state {
+    flex: 1 1 auto; min-width: 0;
+    border: 0; background: transparent; padding: 2px 0;
+    color: var(--primary-text); font-size: var(--fs-10);
+    text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    cursor: pointer;
+}
+.histo-mask-state[hidden] { display: none; }
 .histo-foot {
     display: flex; align-items: center; gap: 6px;
     padding-right: 9px;
@@ -1256,6 +1285,24 @@ input[type=range].fine-tuning::-webkit-slider-thumb {
 /* 白平衡两根轴给渐变轨道：左冷右暖 / 左绿右品红，拖到哪一眼能看懂 */
 #panel-grade .rng-temp { --rng-bg: linear-gradient(90deg, #4d7fd6, var(--track) 50%, #e2b45a); }
 #panel-grade .rng-tint { --rng-bg: linear-gradient(90deg, #4fbf85, var(--track) 50%, #d078c6); }
+/* 饱和类也上渐变：左端去色、中点回到中性、右端加艳 */
+#panel-grade .rng-vib { --rng-bg: linear-gradient(90deg, #6b7d78, var(--track) 50%, #d9a14b); }
+#panel-grade .rng-sat { --rng-bg: linear-gradient(90deg, #7d8581, var(--track) 50%, #e0524a); }
+/* 零点小三角：LR 在轨道的默认值位置留一枚刻度，拖动时能看出偏了多少，
+   也顺带暴露「锐化 0-150 / 去薄雾 -100~100 的默认点并不在中点」。
+   --zero 由 initGradePanel 按 defaultValue 算好；6px 补偿 thumb 半径。 */
+#panel-grade .param-row.has-zero { position: relative; }
+#panel-grade .param-row.has-zero::after {
+    content: '';
+    position: absolute;
+    left: calc(6px + (100% - 12px) * var(--zero, .5));
+    bottom: calc(10px * var(--density));
+    width: 0; height: 0;
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+    border-bottom: 4px solid var(--text-3);
+    opacity: .5; pointer-events: none;
+}
 
 /* ── 复选框 ── */
 .ctl-chk {
@@ -1290,8 +1337,16 @@ input[type=color]::-webkit-color-swatch {
 .mini-btn.danger:hover { border-color: var(--rose); color: var(--rose-text); background: rgba(212,98,122,.10); }
 
 /* 调色：两个操作按钮并排，不跟 .param-row 的三栏网格抢宽度 */
-.param-row.grade-acts { display: flex; gap: var(--sp-2); padding-top: calc(2px * var(--font-scale)); }
-.param-row.grade-acts .mini-btn { flex: 1; text-align: center; padding: calc(6px * var(--font-scale)) calc(4px * var(--font-scale)); }
+/* 五个按钮（重置 / 应用到全部 / 复制设置 / 粘贴设置 / 导入 LR 预设）
+   平分一行会把文字压成「导入」「复制」两字，改成按内容宽换行。 */
+.param-row.grade-acts {
+    display: flex; flex-wrap: wrap; gap: 5px;
+    padding-top: calc(2px * var(--font-scale));
+}
+.param-row.grade-acts .mini-btn {
+    flex: 0 0 auto; min-width: 54px; text-align: center;
+    padding: calc(6px * var(--font-scale)) calc(6px * var(--font-scale));
+}
 /* ═══ 蒙版 ═══ */
 /* 蒙版「组合」行：新建 / 添加 / 减去 / 相交。
    和类型按钮分开一行，因为它改的是「这一块跟上一块怎么合」，不是蒙版形状。 */
@@ -2137,12 +2192,26 @@ button:disabled, input:disabled, select:disabled, textarea:disabled {
 
 /* ═══ 自定义标题栏 ═══ */
 .titlebar {
+    position: relative;
     -webkit-app-region: drag;
     display: flex; align-items: center; flex: none;
     height: 36px; padding-left: calc(14px * var(--font-scale));
     background: var(--bg); border-bottom: 1px solid var(--border);
     user-select: none;
 }
+/* 空出来的标题栏中间放「文件名 · 第几张」。pointer-events:none 是为了
+   不抢 -webkit-app-region:drag 的拖拽命中区，窗口行为一点不改。 */
+.titlebar-file {
+    position: absolute; left: 50%; top: 0; height: 100%;
+    transform: translateX(-50%);
+    display: flex; align-items: center;
+    max-width: 46%;
+    font-size: var(--fs-11); color: var(--text-3);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    pointer-events: none;
+}
+.titlebar-file[hidden] { display: none; }
+body.platform-darwin .titlebar-file { left: calc(50% + 40px); }
 .titlebar-title { font-size: var(--fs-12); letter-spacing: .4px; color: var(--text-3); white-space: nowrap; overflow: hidden; }
 .titlebar-controls { -webkit-app-region: no-drag; display: flex; align-items: stretch; height: 100%; margin-left: auto; }
 .tb-btn {
@@ -2936,6 +3005,8 @@ body.platform-darwin .pw-winbtns { display: none; }
 /* 底部状态栏：当前样式并入这一行，不再在参数栏顶部单独占一条横幅 */
 .st-style { color: var(--text-3); max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .st-style[hidden] { display: none; }
+.st-style { cursor: pointer; border-bottom: 1px dashed var(--border-strong); }
+.st-style:hover, .st-style:focus-visible { color: var(--primary-text); text-decoration: underline; outline: none; }
 /* RAW 显影组的说明原是三行灰字，状态已写在标题与直方图卡里，说明留一行足够 */
 #grpRaw .hint-box {
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

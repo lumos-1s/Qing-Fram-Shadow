@@ -32,6 +32,9 @@
     let lastAt = 0;
     let pending = null;
     let lastImage = null;
+    // 点两角三角后，在波形上把被 capEnds 夹掉的首尾档单独标一根竖条
+    let showClip = false;
+    let clipBound = false;
 
     const $ = (id) => document.getElementById(id);
 
@@ -46,6 +49,21 @@
         if (ctx && window.ResizeObserver) {
             // 参数栏可拖宽：宽度一变就重画，否则图会被拉糊
             new ResizeObserver(() => { if (lastImage) refresh(lastImage); }).observe(cv);
+        }
+        if (!clipBound) {
+            clipBound = true;
+            for (const id of ['gradeClipLo', 'gradeClipHi']) {
+                const b = $(id);
+                if (!b) continue;
+                b.addEventListener('click', () => {
+                    showClip = !showClip;
+                    for (const x of ['gradeClipLo', 'gradeClipHi']) {
+                        const e = $(x);
+                        if (e) e.classList.toggle('is-mark', showClip);
+                    }
+                    if (lastImage) refresh(lastImage);
+                });
+            }
         }
         return !!ctx && !!sctx;
     }
@@ -76,17 +94,21 @@
         const g = new Uint32Array(BINS);
         const b = new Uint32Array(BINS);
         const y = new Uint32Array(BINS);
-        let total = 0, lo = 0, hi = 0;
+        let total = 0, lo = 0, hi = 0, loAll = 0, hiAll = 0;
         for (let i = 0; i < data.length; i += 4) {
             const R = data[i], G = data[i + 1], B = data[i + 2];
             r[R]++; g[G]++; b[B]++;
             // 亮度用 ITU-R BT.601 的整数近似，够画图用
             y[(R * 77 + G * 150 + B * 29) >> 8]++;
             total++;
-            if (!R && !G && !B) lo++;
-            if (R === 255 && G === 255 && B === 255) hi++;
+            // 与 LR 一致：任一通道顶到端点就算剪切（纯黑/纯白只是其中一种），
+            // 否则偏色照片的高光溢出会被漏掉。细分值给角标的悬停文案用。
+            if (!R || !G || !B) lo++;
+            if (R === 255 || G === 255 || B === 255) hi++;
+            if (!R && !G && !B) loAll++;
+            if (R === 255 && G === 255 && B === 255) hiAll++;
         }
-        return { r, g, b, y, total, lo, hi };
+        return { r, g, b, y, total, lo, hi, loAll, hiAll };
     }
 
     // 3-bin 均值：单像素级的尖刺会让整张直方图看起来像噪声
@@ -107,6 +129,8 @@
     }
 
     function paint(stat) {
+        const clipLo = stat.total ? stat.lo / stat.total : 0;
+        const clipHi = stat.total ? stat.hi / stat.total : 0;
         const rect = cv.getBoundingClientRect();
         if (!rect.width || !rect.height) return;
         const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -178,20 +202,30 @@
         }
         ctx.globalCompositeOperation = 'source-over';
 
-        // 截断提示：两端各一枚小三角，出现即代表有像素压死在 0 或 255
-        const clipLo = stat.total ? stat.lo / stat.total : 0;
-        const clipHi = stat.total ? stat.hi / stat.total : 0;
-        const tri = (x, dir, color) => {
-            ctx.beginPath();
-            ctx.moveTo(x, 3);
-            ctx.lineTo(x + dir * 7, 3);
-            ctx.lineTo(x, 10);
-            ctx.closePath();
-            ctx.fillStyle = color;
-            ctx.fill();
+        // capEnds 把首尾两档夹掉了（不然整片纯黑会把图挤扁）。点两角角标时
+        // 在这里把这两档单独标出来，信息不丢，也不用去动画布渲染。
+        if (showClip) {
+            const bw = Math.max(2, Math.round(W / 128));
+            if (clipLo > 0.002) { ctx.fillStyle = 'rgba(120,170,255,.45)'; ctx.fillRect(0, 0, bw, H); }
+            if (clipHi > 0.002) { ctx.fillStyle = 'rgba(255,123,110,.45)'; ctx.fillRect(W - bw, 0, bw, H); }
+        }
+    }
+
+    // 剪切角标：常驻两角，数据超阈值点亮；悬停给「任一通道 / 三通道同时」两组占比
+    function setClip(stat) {
+        const pct = (n) => (stat.total ? (n / stat.total) * 100 : 0);
+        const set = (id, side, any, all, end) => {
+            const el = $(id);
+            if (!el) return;
+            const p = pct(any);
+            el.classList.toggle('is-on', p > 0.2);
+            el.dataset.pct = p.toFixed(2);
+            el.dataset.allPct = pct(all).toFixed(2);
+            el.title = side + '剪切 ' + p.toFixed(2) + '% · 纯' + end + ' '
+                + pct(all).toFixed(2) + '% · 点击在波形上标出端点';
         };
-        if (clipLo > 0.002) tri(4, 1, 'rgba(130,170,255,.95)');
-        if (clipHi > 0.002) tri(W - 4, -1, 'rgba(255,120,110,.95)');
+        set('gradeClipLo', '阴影', stat.lo, stat.loAll, '黑');
+        set('gradeClipHi', '高光', stat.hi, stat.hiAll, '白');
     }
 
     function setExif(im) {
@@ -246,7 +280,9 @@
         if (!src) return;
         const data = sample(src);
         if (!data) return;
-        paint(collect(data));
+        const stat = collect(data);
+        paint(stat);
+        setClip(stat);
     }
 
     function refresh(im) {
@@ -267,6 +303,14 @@
         statsOf(im) {
             const data = sample(srcOf(im || (window.App && window.App.image)));
             return data ? collect(data) : null;
-        }
+        },
+        clipOf(im) {
+            const data = sample(srcOf(im || (window.App && window.App.image)));
+            if (!data) return null;
+            const st = collect(data);
+            const n = st.total || 1;
+            return { lo: st.lo / n, hi: st.hi / n, loAll: st.loAll / n, hiAll: st.hiAll / n, total: st.total };
+        },
+        clipMarked() { return showClip; }
     };
 })();

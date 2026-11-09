@@ -112,7 +112,22 @@
 
     // 有蒙版时把蒙版组自动展开：草稿还原 / 上次编辑带出蒙版却看不见列表，
     // 会让人以为「蒙版丢了」。用户显式收起过（folds.grpMask === true）不抢他的决定。
+    // 工具与参数分层：直方图卡上常驻「＋ 蒙版」，选中蒙版时在同一行显示编辑态。
+    // 参数仍留在下面折叠组里，不复制第二套滑块（RAW 显影那次踩过这个坑）。
+    function setMaskState(im) {
+        const tag = $('histoMaskState');
+        if (!tag) return;
+        const masks = (im && im.grade && im.grade.masks) || [];
+        const grade = $('grpGrade');
+        const editing = !!(grade && grade.classList.contains('editing-mask'));
+        tag.hidden = !masks.length;
+        tag.textContent = editing
+            ? '编辑蒙版 · 拖滑块只作用选区'
+            : (masks.length ? '已加 ' + masks.length + ' 个蒙版 · 点此管理' : '');
+    }
+
     function syncMasks(im) {
+        setMaskState(im);
         const masks = im && im.grade && im.grade.masks;
         if (!masks || !masks.length) return;
         if (folds && folds.grpMask === true) return;
@@ -217,6 +232,36 @@
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menuOpen) closeMenu(); });
         syncMoreLabel();
 
+        const histoMask = $('btnHistoMask');
+        if (histoMask) histoMask.addEventListener('click', () => {
+            if (app && typeof app.addMask === 'function') app.addMask('linear');
+        });
+        const maskState = $('histoMaskState');
+        if (maskState) maskState.addEventListener('click', () => {
+            const g = $('grpMask');
+            if (!g) return;
+            if (g.classList.contains('collapsed')) {
+                g.classList.remove('collapsed');
+                onFoldChange(g);
+                syncFoldNotice();
+            }
+            g.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        });
+        // 「当前样式」不是状态展示而是调色起点：点它去左侧边框列表换底子。
+        // 用 span + role=button，避免给状态栏塞一个抢占视觉的按钮样式。
+        const styleEl = $('stStyle');
+        if (styleEl) {
+            const locateStyle = () => {
+                if (!app) return;
+                if (typeof app.setSideMode === 'function') app.setSideMode('border');
+                if (typeof app.buildTree === 'function') app.buildTree('');
+            };
+            styleEl.addEventListener('click', locateStyle);
+            styleEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); locateStyle(); }
+            });
+        }
+
         const expand = $('btnExpandAll');
         if (expand) expand.addEventListener('click', expandAll);
         for (const id of ['btnFoldReset', 'btnMenuFoldReset']) {
@@ -237,7 +282,7 @@
     }
 
     window.QfsPanelDensity = {
-        init, setPrefs, onTab, onFoldChange, syncMasks, setStyleLabel, setRawTag,
+        init, setPrefs, onTab, onFoldChange, syncMasks, setMaskState, setStyleLabel, setRawTag,
         DEFAULT_FOLDS,
         // 测试用：读到当前生效值，不必去猜 CSS class
         state() {

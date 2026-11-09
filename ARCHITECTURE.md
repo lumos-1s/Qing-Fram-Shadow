@@ -139,6 +139,21 @@ GUI 用例的 `get-prefs` 返回 `{}`，测试里点折叠不会污染下次运�
 > 用户看过截图后选择恢复原样；那部分已撤回，`#toolbar` 仍是 13 个常驻入口 + 圆角 pill。
 > `tools/test-top-density.js` 里保留了「顶栏维持原状」的断言，避免以后再被顺手改掉。
 
+**参考 LR / ACR 补的六个细节**：`app-histogram.js` 的 `collect()` 把剪切口径从「三通道同时
+纯黑/纯白」改成「任一通道到端点」，同时保留 `loAll/hiAll` 细分；画波形时 `capEnds()` 仍把
+首尾桶夹到相邻高度（否则整片纯黑会把图挤扁），丢掉的信息由 `.histo-clip` 两枚 DOM 角标补回：
+超 0.2% 点亮、悬停给百分比、点击置 `showClip` 在直方图 canvas 两端画强调竖条（不碰照片渲染）。
+`#titlebarFile` 绝对居中且 `pointer-events:none`，所以 `-webkit-app-region:drag` 的命中区不变；
+由 `updateStatusBar()` 写入「文件名 · 第几张」，切图的 `←/→` 早已有，这里只补可见性。
+零点标记由 `initGradePanel()` 按 `defaultValue` 算 `--zero` 写在行上，CSS `::after` 画三角；
+`.rng-vib/.rng-sat` 与 `.rng-temp/.rng-tint` 共用 `var(--rng-bg)` 渐变轨道。
+工具与参数分层：`#histoTools` 的「+ 蒙版」调 `App.addMask('linear')`，`setMaskState()` 在
+`syncMasks()` 里同步编辑态，参数列表仍在 `#grpMask` 折叠组，不复制第二套滑块；
+底部 `#stStyle` 是 `role=button` 的 span，点击走 `setSideMode('border') + buildTree('')`。
+`app-sync.js` 的 `copySettings/pasteSettings` 只存内存、不写系统剪贴板也不落草稿，
+目标取 `selectedIdx`（排除当前张），与 `applyGradeToAll`（调色给全部）和
+`syncToSelected`（边框给多选）三条语义互斥，见文件内注释表。
+
 **与 Lightroom 的数值对照**（`app-xmp.js` 导入 `.xmp` 用同一套口径）：
 
 | 项 | 对齐程度 | 说明 |

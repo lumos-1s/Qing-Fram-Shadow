@@ -160,6 +160,36 @@ async function main() {
     await exec(`(() => { const insp = document.getElementById('inspector'); if (insp) insp.style.width = ''; const b = document.querySelector('.insp-body'); if (b) b.scrollTop = 0; if (window.QfsHistogram) QfsHistogram.redraw(); return true; })()`);
     await sleep(300);
 
+    // 剪切警告点亮态：临时换一张半黑半白图，两角应同时亮起，端点竖条也画出来
+    await exec(`(async () => {
+        const A = window.App;
+        const c = document.createElement('canvas'); c.width = 120; c.height = 80;
+        const g = c.getContext('2d');
+        g.fillStyle = '#000'; g.fillRect(0, 0, 60, 80);
+        g.fillStyle = '#fff'; g.fillRect(60, 0, 60, 80);
+        const el = new Image();
+        await new Promise((r) => { el.onload = r; el.src = c.toDataURL(); });
+        window.__shotOrig = A.image;
+        A.image = { el, name: 'clip-test.png', w: 120, h: 80, exif: {}, grade: null };
+        if (window.QfsHistogram) window.QfsHistogram.refresh(A.image);
+        return true;
+    })()`);
+    await sleep(400);
+    await exec(`(() => { const b = document.getElementById('gradeClipLo'); if (b && window.QfsHistogram && !window.QfsHistogram.clipMarked()) b.click(); return true; })()`);
+    await sleep(350);
+    await shot('panel-clip', '#inspector');
+    await exec(`(() => {
+        if (window.QfsHistogram && window.QfsHistogram.clipMarked()) {
+            const b = document.getElementById('gradeClipLo'); if (b) b.click();
+        }
+        const A = window.App;
+        A.image = window.__shotOrig;
+        if (window.QfsHistogram) window.QfsHistogram.refresh(A.image);
+        delete window.__shotOrig;
+        return true;
+    })()`);
+    await sleep(350);
+
     // 浅色主题再看一眼：直方图恒深底，参数条与滑轨要跟着主题走
     const themeNow = await exec(`(() => { if (window.App && App.toggleTheme) App.toggleTheme(); return document.documentElement.className; })()`);
     const css = await exec(`(() => { const c = getComputedStyle(document.documentElement); return { root: document.documentElement.className, body: document.body.className, surface: c.getPropertyValue('--surface'), bg: c.getPropertyValue('--bg') }; })()`);
