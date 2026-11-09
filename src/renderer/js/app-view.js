@@ -72,6 +72,9 @@ window.App = Object.assign(window.App || {}, {
         if (name === 'logo') this.renderLogoPools();
         if (name === 'template') this.refreshTemplates();
         if (name === 'puzzle') this.refreshPuzzleUI();
+        // 直方图在页签隐藏时没有宽度，画不出来；切回来要补一次，
+        // 否则从别的页签回来会看到一张空白/上一次尺寸的图。
+        if (name === 'grade' && window.QfsHistogram) window.QfsHistogram.refresh(this.image);
         this.updateExportEntry();
     },
 

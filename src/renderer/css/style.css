@@ -36,6 +36,10 @@
     --border-strong: #CBC4B2;
     --bg-soft: #F4F6F2;
     --thumb-bg: #EBE5D8;
+    /* 滑轨与直方图底：滑轨要比 --thumb-bg 再深一档，否则浅底上几乎看不见 */
+    --track: #D8D1C0;
+    /* 直方图恒用深底：RGB 叠加是加色混合，浅底上会糊成一片 */
+    --histo-bg: #1E2220;
     --shadow-sm: 0 2px 10px rgba(92,80,56,0.08);
     --shadow: 0 12px 32px rgba(92,80,56,0.13);
     --shadow-lg: 0 26px 60px rgba(92,80,56,0.20);
@@ -107,6 +111,9 @@ html.dark {
     --border-strong: #3C433F;
     --bg-soft: #1C201E;
     --thumb-bg: #2B302D;
+    /* 深底上 --thumb-bg 只比面板亮一点，轨道几乎看不见；单独给一档更亮的灰 */
+    --track: #454E49;
+    --histo-bg: #15181A;
     --shadow-sm: 0 2px 10px rgba(0,0,0,0.32);
     --shadow: 0 12px 32px rgba(0,0,0,0.46);
     --shadow-lg: 0 26px 60px rgba(0,0,0,0.58);
@@ -973,10 +980,12 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
     padding: calc(2px * var(--font-scale)) calc(3px * var(--font-scale)); font-size: var(--fs-12); text-align: right;
     font-variant-numeric: tabular-nums; outline: none;
     transition: border-color .12s, background .12s;
-    appearance: textfield; -moz-appearance: textfield;
+    /* appearance:textfield 会让 Chromium 把数字框的上下箭头又画回来（看着像多了一个「+」），
+       这儿的数字是「滑块的可编辑投影」，不该有第二套增减控件。 */
+    appearance: none; -webkit-appearance: none; -moz-appearance: textfield;
 }
 .param-row .pval-num::-webkit-outer-spin-button,
-.param-row .pval-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.param-row .pval-num::-webkit-inner-spin-button { display: none; -webkit-appearance: none; margin: 0; }
 .param-row .pval-num:hover { border-color: var(--border-strong); background: var(--surface); }
 .param-row .pval-num:focus { border-color: var(--primary); background: var(--surface); }
 .param-row .pval-unit { flex: 0 0 auto; color: var(--text-3); font-size: var(--fs-11); }
@@ -1083,6 +1092,112 @@ input[type=range].fine-tuning::-webkit-slider-thumb {
     transform: scale(1.25);
     box-shadow: 0 0 0 4px var(--primary-soft), 0 1px 5px rgba(0,0,0,.30);
 }
+
+/* ═══ 调色页签：Camera Raw 式的直方图 + 分段滑块 ═══
+   参考 Camera Raw「编辑」面板：顶部是 RGB 直方图与参数条，下面是 亮 / 颜色 / 效果
+   三段；每一档的标签与数值同一行、轨道独占下一行整宽。
+   只作用于 #panel-grade：画布/边框/文字那些页签仍走原来的三栏卡片行，
+   它们的控件更杂（下拉、色板、按钮），套这套网格反而会散。 */
+.histo-card {
+    margin: 2px 2px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-m);
+    background: var(--surface);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+.histo-cv { display: block; width: 100%; height: 88px; background: var(--histo-bg); }
+.histo-exif {
+    display: block;
+    padding: 3px 10px 6px;
+    font-size: var(--fs-11); color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.histo-exif .he-sep { color: var(--text-3); opacity: .7; margin: 0 5px; }
+.histo-exif .he-empty { color: var(--text-3); }
+#inspector.no-image .histo-card { display: none; }
+
+/* 段头：比 .pg-title 低一档，靠一条发丝线分隔，右侧复位按钮默认隐身 */
+.pg-sub { margin-top: 2px; }
+.pg-sub-head {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 2px; padding: 9px 2px 5px;
+    border-top: 1px solid var(--border);
+    cursor: pointer; user-select: none;
+}
+.pg-sub:first-of-type .pg-sub-head { border-top: 0; padding-top: 3px; }
+.pg-sub-head::before {
+    content: '▾'; flex: 0 0 auto;
+    font-size: var(--fs-10); color: var(--text-3);
+    transition: transform .15s;
+}
+.pg-sub.collapsed .pg-sub-head::before { transform: rotate(-90deg); }
+/* 收起：调色页签里的行是 grid（见下），权重比通用的 .param-group.collapsed 高，
+   这里必须带上 #panel-grade 才能压过它，否则折了还有行露在外面。 */
+#panel-grade .param-group.collapsed > :not(.pg-title),
+#panel-grade .pg-sub.collapsed > :not(.pg-sub-head) { display: none; }
+.pg-sub-name {
+    flex: 1 1 auto; min-width: 0;
+    font-size: var(--fs-12); font-weight: 700;
+    letter-spacing: 1px; color: var(--text);
+}
+.pg-sub-reset {
+    flex: 0 0 auto; opacity: 0; pointer-events: none;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text-3);
+    font-size: var(--fs-10); padding: 1px 7px 2px;
+    cursor: pointer; transition: opacity .12s, color .12s, border-color .12s;
+}
+.pg-sub-head:hover .pg-sub-reset,
+.pg-sub-reset:focus-visible { opacity: 1; pointer-events: auto; }
+/* 这组已经动过：复位按钮常驻，颜色提到 primary，扫一眼就知道哪组不是默认值 */
+.pg-sub.is-dirty .pg-sub-reset { opacity: 1; pointer-events: auto; color: var(--primary-text); border-color: var(--primary-soft); }
+.pg-sub-reset:hover { color: var(--primary-text); border-color: var(--primary); background: var(--primary-soft); }
+
+/* 行：标签 + 数值一行，轨道整宽一行。去掉逐行卡片底，靠发丝线分隔 */
+#panel-grade .param-row:has(> input[type=range]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+        "lbl val unit"
+        "rng rng rng";
+    align-items: center;
+    column-gap: 6px; row-gap: 1px;
+    margin: 0; padding: 5px 4px 7px;
+    background: transparent; border: 0; border-radius: 0;
+    border-bottom: 1px solid var(--border);
+}
+#panel-grade .pg-sub > .param-row:last-child,
+#panel-grade .param-group > .param-row:last-child { border-bottom: 0; }
+#panel-grade .param-row:has(> input[type=range]) > label {
+    grid-area: lbl; flex: none;
+    font-size: var(--fs-12); color: var(--text-2);
+}
+#panel-grade .param-row:has(> input[type=range]) > input[type=range] {
+    grid-area: rng; width: 100%; min-width: 0; height: 16px; margin: 0;
+}
+#panel-grade .param-row:has(> input[type=range]) > .pval-num {
+    grid-area: val; flex: none; width: 52px;
+    padding: 1px calc(4px * var(--font-scale));
+    border-radius: 6px;
+}
+#panel-grade .param-row:has(> input[type=range]) > .pval-unit { grid-area: unit; }
+
+/* 轨道：3px 细线 + 12px 圆点，比原来的 4px/14px 更接近参考图 */
+#panel-grade .param-row > input[type=range]:not(.ctl-hue):not(.rng-cb):not(.rng-mix)::-webkit-slider-runnable-track {
+    height: 3px; border-radius: 2px;
+    background: var(--rng-bg, var(--track));
+    box-shadow: none;
+}
+#panel-grade input[type=range]::-webkit-slider-thumb {
+    width: 12px; height: 12px; margin-top: -4.5px;
+    border: 2px solid var(--surface);
+    box-shadow: 0 1px 4px rgba(0,0,0,.35);
+}
+/* 白平衡两根轴给渐变轨道：左冷右暖 / 左绿右品红，拖到哪一眼能看懂 */
+#panel-grade .rng-temp { --rng-bg: linear-gradient(90deg, #4d7fd6, var(--track) 50%, #e2b45a); }
+#panel-grade .rng-tint { --rng-bg: linear-gradient(90deg, #4fbf85, var(--track) 50%, #d078c6); }
 
 /* ── 复选框 ── */
 .ctl-chk {
@@ -1304,13 +1419,16 @@ html.dark .mini-btn.primary { color: #0c1914; }
 .pool-note b { color: var(--text-2); font-weight: 600; }
 .mode-status {
     display: flex; align-items: center; gap: var(--sp-1-5);
-    margin: 2px 2px var(--sp-2); padding: var(--sp-1-5) var(--sp-2-5);
-    font-size: var(--fs-12); font-weight: 600; color: var(--text);
-    background: var(--primary-soft); border: 1px solid var(--primary-soft);
-    border-left: 3px solid var(--primary); border-radius: 8px;
+    /* 一格「当前配置文件」：以前是整块绿色高亮，比直方图和滑块都抢眼；
+       调色页签顶部需要它做上下文，但不能压过照片本身，故收成细行。 */
+    margin: 0 2px 8px; padding: 3px calc(9px * var(--font-scale));
+    font-size: var(--fs-11); font-weight: 600; color: var(--text-2);
+    background: var(--surface-alt); border: 1px solid var(--border);
+    border-left: 2px solid var(--primary); border-radius: 6px;
+    line-height: 1.5;
 }
 .mode-status::before {
-    content: '◆'; font-size: var(--fs-10); color: var(--primary-text); flex: 0 0 auto;
+    content: '◆'; font-size: var(--fs-8); color: var(--primary-text); flex: 0 0 auto;
 }
 /* 已存模板:缩略图 + 名称占满可读宽度,管理动作收进 ⋯,避免三个按钮挤掉模板名。 */
 .tpl-row {

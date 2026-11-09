@@ -1516,6 +1516,50 @@
             if (this._scheduleGradePresetActive) this._scheduleGradePresetActive();
             // 当前图是不是 RAW 决定「RAW 显影」这一组的显隐与状态，切图时必须同步。
             if (this.syncRawUI) this.syncRawUI();
+            // 顶部的直方图取的就是这次烘焙出来的预览；分组「动过没动过」也在这里标。
+            if (window.QfsHistogram) window.QfsHistogram.refresh(this.image);
+            this.syncGradeSections(p);
+        },
+
+        // 亮 / 颜色 / 效果 三段的「已改」标记：标了才常驻显示复位按钮。
+        // 只认自己那几档，锐化/曲线/混色器各自有组，不掺进来。
+        syncGradeSections(p) {
+            const wrap = document.getElementById('grpGrade');
+            if (!wrap) return;
+            const on = {
+                light: !!(p && (p.exp || p.con || p.hi || p.sh || p.white || p.black || p.gam)),
+                color: !!(p && (p.temp || p.tint || p.vib || p.sat)),
+                fx: !!(p && p.det && (p.det.tex || p.det.clar || p.det.dhz))
+            };
+            const subs = wrap.querySelectorAll('.pg-sub');
+            for (const el of subs) {
+                const k = el.dataset.sub;
+                if (k) el.classList.toggle('is-dirty', !!on[k]);
+            }
+        },
+
+        // 单段复位：Camera Raw 每组标题右侧那个复位箭头。
+        // 走同一条 setGrade，所以撤销、蒙版路由、草稿保存都跟手拖滑块完全一致。
+        resetGradeSection(name) {
+            const im = this.image;
+            if (!im) return false;
+            const p = this.gradeOf(im);
+            if (name === 'fx') {
+                const det = Object.assign({}, (p && p.det) || {});
+                det.tex = 0;
+                det.clar = 0;
+                det.dhz = 0;
+                this.setGrade({ det });
+            } else {
+                const keys = name === 'light' ? ['exp', 'con', 'hi', 'sh', 'white', 'black', 'gam']
+                    : name === 'color' ? ['temp', 'tint', 'vib', 'sat'] : null;
+                if (!keys) return false;
+                const patch = {};
+                for (const k of keys) patch[k] = 0;
+                this.setGrade(patch);
+            }
+            this.setStatus(name === 'light' ? '已复位「亮」' : name === 'color' ? '已复位「颜色」' : '已复位「效果」');
+            return true;
         },
 
         initGrade() {
@@ -1577,6 +1621,29 @@
             }
             const reset = $('btnGradeReset');
             if (reset) reset.addEventListener('click', () => this.resetGrade());
+            // 亮 / 颜色 / 效果：点标题收起，点右侧「复位」只清本段
+            const subs = document.querySelectorAll('#grpGrade .pg-sub');
+            for (const sub of subs) {
+                const head = sub.querySelector('.pg-sub-head');
+                if (!head) continue;
+                head.addEventListener('click', (e) => {
+                    if (e.target.closest('.pg-sub-reset')) return;
+                    sub.classList.toggle('collapsed');
+                    head.setAttribute('aria-expanded', sub.classList.contains('collapsed') ? 'false' : 'true');
+                });
+                head.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    e.preventDefault();
+                    head.click();
+                });
+                const btn = sub.querySelector('.pg-sub-reset');
+                if (btn) {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.resetGradeSection(sub.dataset.sub);
+                    });
+                }
+            }
             const all = $('btnGradeApplyAll');
             if (all) all.addEventListener('click', () => this.applyGradeToAll());
             if (this.initCurve) this.initCurve();

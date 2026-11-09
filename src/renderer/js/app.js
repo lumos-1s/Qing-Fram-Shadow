@@ -3937,7 +3937,11 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
         ui.unit.hidden = hidden;
         ui.val.classList.toggle('pval-sr', !hidden);
         if (hidden) return;
-        const unitText = text.replace(m[0], '').trim();
+        const unitText = text.replace(m[0], '')
+            // 正数标签是「+18」：数字框只认「18」，剩下的「+」不能当成单位塞到右边，
+            // 否则每一档正数后面都会多出一个孤零零的加号。
+            .replace(/^[+\-−]\s*/, '')
+            .trim();
         if (ui.unit.textContent !== unitText) ui.unit.textContent = unitText;
         if ((force || document.activeElement !== ui.num) && ui.num.value !== m[0]) ui.num.value = m[0];
     },
