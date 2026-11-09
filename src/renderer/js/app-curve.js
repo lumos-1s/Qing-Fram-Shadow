@@ -177,6 +177,13 @@
                 this._curveDom.reset.addEventListener('click', () => this.resetCurve());
             }
             this._bindCurvePointer(cvEl);
+            // 画布在面板隐藏时是 0 尺寸，drawCurve 会直接返回（不画兜底位图，避免椭圆）。
+            // 用 ResizeObserver 盯住画布：面板变为可见、拿到真实尺寸的那一刻（以及窗口缩放时）
+            // 自动重画，圆点始终是正圆。这与顶部直方图用 ResizeObserver 即时重画的思路一致。
+            if (typeof ResizeObserver === 'function') {
+                this._curveRO = new ResizeObserver(() => { this.drawCurve(); });
+                this._curveRO.observe(cvEl);
+            }
             this.drawCurve();
         },
 
@@ -256,8 +263,14 @@
                 primary = v('--primary', '#4a8');
             const chanColor = { rgb: line, r: '#e0575b', g: '#4caf6d', b: '#4a86d8' };
 
-            const w = d.canvas.clientWidth || 260;
-            const h = d.canvas.clientHeight || 176;
+            // 面板未布局 / 还隐藏时 clientWidth、clientHeight 为 0。这时候退到兜底尺寸
+            // （旧逻辑 260×176）建位图，等 CSS 把画布拉成真实宽度，正圆就被横向拉成椭圆，
+            // 且之后未必有「可见且尺寸真实」的重绘来纠正——表现为「第一次点开圆点椭圆」。
+            // 所以尺寸为 0 时干脆不画，交给 initCurve 里的 ResizeObserver：面板一可见、
+            // 拿到真实尺寸就自动重画，圆点永远是正圆。
+            const w = d.canvas.clientWidth;
+            const h = d.canvas.clientHeight;
+            if (!w || !h) return;
             const dpr = Math.min(3, window.devicePixelRatio || 1);
             if (d.canvas.width !== Math.round(w * dpr) || d.canvas.height !== Math.round(h * dpr)) {
                 d.canvas.width = Math.round(w * dpr);
