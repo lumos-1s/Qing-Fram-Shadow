@@ -285,25 +285,33 @@
                 <span>参数</span>
             </button>
             <aside id="inspector">
+                <!-- 页签收成一行：主 5 个常驻，其余（样式 / 工具）进「更多」。
+                     原来两行 8 个按钮 + 「工具」标签，窄栏里挤成两排还压着画布。
+                     弹出菜单仍挂在 #inspTabs 内，switchTab 的 .tab[data-tab] 查询照样命中。 -->
                 <div class="tabs" id="inspTabs" role="tablist" aria-label="参数页签">
                     <button class="tab active" data-tab="canvas" role="tab" aria-selected="true">画布</button>
                     <button class="tab" data-tab="text" role="tab" aria-selected="false">文字</button>
                     <button class="tab" data-tab="border" role="tab" aria-selected="false">边框</button>
-
-                    <button class="tab" data-tab="grade" role="tab" aria-selected="false" title="调色：像素调色（曝光/曲线/细节/校准/混色器）+ 氛围（暗角/漏光/颗粒）">调色</button>
-
+                    <button class="tab" data-tab="grade" role="tab" aria-selected="false" title="调色：像素调色（曝光/曲线/锐化/校准/混色器）+ 氛围（暗角/漏光/颗粒）">调色</button>
                     <button class="tab" data-tab="logo" role="tab" aria-selected="false">Logo</button>
-                    <button class="tab" data-tab="template" role="tab" aria-selected="false">样式</button>
-                    <div class="tab-sep" role="separator" aria-label="工具"></div>
-                    <span class="tabs-tool-label">工具</span>
-                    <button class="tab tab-tool" data-tab="puzzle" role="tab" aria-selected="false" title="拼图：把多张照片拼成一张成品">
-                        <svg class="tab-ico" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
-                        拼图
-                    </button>
-                    <button class="tab tab-tool" data-tab="grid" role="tab" aria-selected="false" title="切图：把一张照片切成九宫格或自定义网格">
-                        <svg class="tab-ico" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M6 2v12M10 2v12M2 6h12M2 10h12"/></svg>
-                        切图
-                    </button>
+                    <div class="tab-more-wrap" id="tabMoreWrap">
+                        <button class="tab tab-more" id="btnTabMore" type="button" aria-haspopup="true" aria-expanded="false" title="更多页签与工具">更多 ▾</button>
+                        <div class="tab-more-menu" id="tabMoreMenu" hidden>
+                            <button class="tab tab-overflow" data-tab="template" role="tab" aria-selected="false" title="我的样式：保存 / 导入 / 管理模板">样式</button>
+                            <div class="tab-more-sep" role="separator"></div>
+                            <div class="tab-more-label">工具</div>
+                            <button class="tab tab-overflow" data-tab="puzzle" role="tab" aria-selected="false" title="拼图：把多张照片拼成一张成品">
+                                <svg class="tab-ico" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
+                                拼图
+                            </button>
+                            <button class="tab tab-overflow" data-tab="grid" role="tab" aria-selected="false" title="切图：把一张照片切成九宫格或自定义网格">
+                                <svg class="tab-ico" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M6 2v12M10 2v12M2 6h12M2 10h12"/></svg>
+                                切图
+                            </button>
+                            <div class="tab-more-sep" role="separator"></div>
+                            <button type="button" class="tab-more-action" id="btnMenuFoldReset" title="把低频参数组恢复成默认收起">恢复默认折叠</button>
+                        </div>
+                    </div>
                     <span class="tabs-spacer"></span>
                     <button id="btnInspectorCollapse" class="tab tab-collapse" type="button" title="收起参数栏 (Ctrl+])" aria-label="收起参数栏">
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>
@@ -1260,7 +1268,16 @@
                              参数条只在读得到 EXIF 时出现，读不到就退成一行灰字。 -->
                         <div class="histo-card" id="gradeHistoCard">
                             <canvas id="gradeHisto" class="histo-cv" aria-label="RGB 直方图"></canvas>
-                            <div class="histo-exif" id="gradeExif" title="照片的 EXIF 参数"></div>
+                            <div class="histo-foot">
+                                <div class="histo-exif" id="gradeExif" title="照片的 EXIF 参数"></div>
+                                <span class="histo-raw" id="gradeRawTag" hidden></span>
+                            </div>
+                        </div>
+                        <!-- 低频组默认收起后的唯一提示：一行写完「收了几组、怎么展开」。
+                             全部展开后这行消失，不常驻占位。 -->
+                        <div class="fold-notice" id="foldNotice" hidden>
+                            <span id="foldNoticeText"></span>
+                            <button type="button" class="mini-btn" id="btnExpandAll" title="把调色页所有参数组展开">全部展开</button>
                         </div>
                         <div class="param-group" id="grpMask">
                             <div class="pg-title collapsible">蒙版</div>
@@ -1731,6 +1748,7 @@
         <footer id="statusbar">
             <span id="stRes" class="st-item">分辨率 --</span>
             <span id="stInfo" class="st-item">未导入照片</span>
+            <span id="stStyle" class="st-item st-style" hidden></span>
             <span id="stCanvas" class="st-item grow">画布 --×--</span>
             <button id="btnCompare" class="st-btn" title="按住查看原图（触屏可点按，空格 按住）/ 松开恢复"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 1.8v12.4"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4" fill="currentColor" fill-opacity=".25" stroke="none"/></svg>对比原图</button>
             <div class="progress-wrap"><div id="progressBar" class="progress-bar"></div></div>
@@ -1874,6 +1892,17 @@
                                 <button class="mini-btn" id="btnFontScaleReset" type="button" title="恢复默认 100%">恢复默认</button>
                             </div>
 <!--                            <div class="settings-hint">放大界面字号与内边距（80%–140%），字号和按钮会一起变宽。仅影响显示，不改变导出尺寸。</div>-->
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <div class="settings-label">参数栏密度</div>
+                        <div class="settings-control">
+                            <div class="density-btns">
+                                <button class="mini-btn active" id="btnDensityAuto" type="button" aria-pressed="true" title="调色页签紧凑、其余页签舒适">自动</button>
+                                <button class="mini-btn" id="btnDensityCompact" type="button" aria-pressed="false" title="所有页签都用紧凑行距">紧凑</button>
+                                <button class="mini-btn" id="btnDensityComfortable" type="button" aria-pressed="false" title="所有页签都用舒适行距">舒适</button>
+                            </div>
+                            <div class="settings-hint">紧凑只压缩纵向行距与组内边距，不改字号、不改导出。</div>
                         </div>
                     </div>
                     <div class="settings-row">
@@ -2274,6 +2303,7 @@
     <script src="js/app-acr-shadows.js"></script>
     <script src="js/app-sharpen.js"></script>
     <script src="js/app-histogram.js"></script>
+    <script src="js/app-panel-density.js"></script>
     <script src="js/app-grade.js"></script>
     <script src="js/app-grade-presets.js"></script>
     <script src="js/app-raw.js"></script>

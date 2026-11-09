@@ -205,6 +205,8 @@ window.App = {
         this.setupShortcuts();
         this.setupPanelInteractions();
         this.initPanelCollapse();
+        // 参数栏密度 / 低频组折叠 / 页签收纳 / 状态收敛
+        if (window.QfsPanelDensity) window.QfsPanelDensity.init(this);
         // 工具栏按钮tooltip
         const mod = this.modKeyLabel();
         const tips = {
@@ -224,6 +226,7 @@ window.App = {
                 const g = t.parentElement;
                 if (!g) return;
                 g.classList.toggle('collapsed');
+                if (window.QfsPanelDensity) window.QfsPanelDensity.onFoldChange(g);
                 // 曲线画布折叠时布局尺寸为 0，期间的重绘会按兜底尺寸建 backing store，
                 // 展开后必须按真实尺寸重画一次，否则糊成一片。
                 if (!g.classList.contains('collapsed')
@@ -299,6 +302,8 @@ window.App = {
             if (this.dom.chkKeepGps) this.dom.chkKeepGps.disabled = !(this.dom.chkKeepExif && this.dom.chkKeepExif.checked);
             if (p && typeof p.fontScale === 'number' && p.fontScale > 0) this.applyFontScale(p.fontScale);
             if (p && (p.theme === 'dark' || p.theme === 'light')) this.applyTheme(p.theme);
+            // 密度与折叠状态也来自 prefs；GUI 用例的 get-prefs 返回 {}，于是按默认值落地
+            if (window.QfsPanelDensity) window.QfsPanelDensity.setPrefs(p);
             this.applyPreviewQuality(!!(p && p.previewQuality === 'full'));
             // 更新内容:「已读版本」用来决定按钮上的小红点,读过的版本不再提醒
             this._changelogSeen = (p && typeof p.changelogSeen === 'string') ? p.changelogSeen : '';
@@ -1922,6 +1927,12 @@ window.App = {
                 if (el.classList.contains('pg-title') || el.classList.contains('param-row')) continue;
                 if (shown(el)) content = true;
             }
+            // 用户（或默认折叠）收起的组：行本来就是 display:none，别把它误判成
+            // 「整组没有可见内容」再把标题一起藏掉。
+            if (g.classList.contains('collapsed')) {
+                if (g.dataset.emptyCollapsed === '1') { g.style.display = ''; delete g.dataset.emptyCollapsed; }
+                continue;
+            }
             const collapsed = g.dataset.emptyCollapsed === '1';
             if (content) {
                 if (collapsed) { g.style.display = ''; delete g.dataset.emptyCollapsed; }
@@ -2233,7 +2244,10 @@ window.App = {
                 kind = '图层边框';
                 name = t.templateName || '';
             }
-            ms.style.display = '';
+            // 顶部横幅不再常驻：同样的信息收进底部状态栏的一格，
+            // 每个页签都省下一行。ms 仍留在 DOM 里，兼容老代码与旧草稿检查。
+            if (window.QfsPanelDensity) window.QfsPanelDensity.setStyleLabel(kind + (name ? ' · ' + name : ''));
+            ms.style.display = 'none';
             ms.textContent = '当前样式：' + kind + (name ? ' · ' + name : '');
         }
     },

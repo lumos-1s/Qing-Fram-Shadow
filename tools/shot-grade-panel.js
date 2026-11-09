@@ -104,6 +104,9 @@ async function main() {
             const r = el.getBoundingClientRect();
             return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
         })()`);
+        // 离屏窗口换主题/滚动后合成器可能留着上一帧：先丢掉一张暖机帧
+        await win.webContents.capturePage(box && box.width > 10 ? box : undefined);
+        await sleep(150);
         const image = await win.webContents.capturePage(box && box.width > 10 ? box : undefined);
         const file = path.join(OUT, name + '.png');
         fs.writeFileSync(file, image.toPNG());
@@ -112,7 +115,18 @@ async function main() {
     };
 
     await shot('window-full');
+    // 设置弹窗里的密度三档
+    await exec(`(() => { if (window.App && App.openSettings) App.openSettings(); return true; })()`);
+    await sleep(500);
+    await shot('settings-density', '#settingsModal');
+    await exec(`(() => { if (window.App && App.closeSettings) App.closeSettings(); return true; })()`);
+    await sleep(250);
     await shot('panel-top', '#inspector');
+    // 「更多」弹出菜单：确认不被 .insp-body 裁掉
+    await exec(`(() => { const b = document.getElementById('btnTabMore'); if (b) b.click(); return true; })()`);
+    await sleep(250);
+    await shot('panel-menu', '#inspector');
+    await exec(`(() => { const b = document.getElementById('btnTabMore'); if (b) b.click(); return true; })()`);
     // 滚到 颜色 / 效果 两段，看看滑块与渐变轨道
     for (const [name, top] of [['panel-color', 430], ['panel-fx', 700], ['panel-more', 980]]) {
         await exec(`(() => { const b = document.querySelector('.insp-body'); if (b) b.scrollTop = ${top}; return true; })()`);
@@ -140,8 +154,15 @@ async function main() {
     await sleep(300);
 
     // 浅色主题再看一眼：直方图恒深底，参数条与滑轨要跟着主题走
-    await exec(`(() => { if (window.App && App.toggleTheme) App.toggleTheme(); return true; })()`);
-    await sleep(500);
+    const themeNow = await exec(`(() => { if (window.App && App.toggleTheme) App.toggleTheme(); return document.documentElement.className; })()`);
+    const css = await exec(`(() => { const c = getComputedStyle(document.documentElement); return { root: document.documentElement.className, body: document.body.className, surface: c.getPropertyValue('--surface'), bg: c.getPropertyValue('--bg') }; })()`);
+    console.log('THEME', themeNow, JSON.stringify(css));
+    await sleep(400);
+    // 离屏窗口换主题后合成器可能还留着上一帧，强制重绘再截
+    await exec(`(() => { const b = document.body; b.style.opacity = '0.999'; void b.offsetHeight; return true; })()`);
+    await sleep(120);
+    await exec(`(() => { document.body.style.opacity = ''; return true; })()`);
+    await sleep(600);
     await shot('panel-light-top', '#inspector');
 
     win.destroy();

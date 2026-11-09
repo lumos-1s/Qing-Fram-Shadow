@@ -878,6 +878,9 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
 
 /* ── 右侧:参数(分段页签) ── */
 #inspector {
+    /* --density 只乘纵向间距；字号由 --font-scale 管，两者互不抢。
+       紧凑档把 .78 压在 #inspector 上，面板内所有行距/组距一起缩，其它页签不受影响。 */
+    --density: 1;
     width: 308px; flex: 0 0 auto;
     background: var(--surface); border-left: 1px solid var(--border);
     display: flex; flex-direction: column; min-height: 0;
@@ -887,10 +890,13 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
     container-type: inline-size;
     container-name: inspector;
 }
-/* 页签分两层:上层是"改外观"的属性页,下层是"换工作模式"的工具页。
-   拼图/切图不是样式属性,和边框/光影并排会让人以为只是另一种边框。 */
+#inspector.density-compact { --density: .78; }
+
+/* 页签收成一行：主 5 个常驻 + 「更多」弹出菜单。
+   原来两行 8 个按钮还带「工具」标签，窄栏里挤成两排，压着画布也压着视线。 */
 .tabs {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 3px;
+    position: relative; z-index: 20;
+    display: flex; flex-wrap: nowrap; align-items: center; gap: 3px;
     padding: calc(8px * var(--font-scale)) calc(8px * var(--font-scale)) calc(6px * var(--font-scale));
     border-bottom: 1px solid var(--border);
     background: var(--surface);
@@ -905,16 +911,48 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
 }
 .tab:hover { color: var(--text); background: var(--surface-alt); }
 .tab.active { color: var(--primary-text); font-weight: 600; background: var(--primary-soft); }
-.tab-sep { flex: 0 0 100%; height: 1px; background: var(--border); margin: 5px 2px 3px; }
-.tabs-tool-label {
-    flex: 0 0 auto; padding: 0 calc(3px * var(--font-scale)) 0 calc(6px * var(--font-scale));
-    font-size: var(--fs-10); letter-spacing: 1.4px; color: var(--text-3);
-}
-.tab.tab-tool { flex: 0 0 64px; font-size: var(--fs-11); }
-.tab.tab-tool .tab-ico { flex: 0 0 auto; opacity: .8; }
-.tab.tab-tool.active .tab-ico { opacity: 1; }
-.tabs-spacer { flex: 1 1 auto; }
+.tabs-spacer { flex: 0 0 0; width: 0; }
 .tab.tab-collapse { flex: 0 0 24px; padding: calc(5px * var(--font-scale)); color: var(--text-3); }
+.tab-more-wrap { position: relative; flex: 0 0 auto; }
+.tab.tab-more {
+    flex: 0 0 auto; min-width: 52px;
+    padding-left: calc(5px * var(--font-scale)); padding-right: calc(5px * var(--font-scale));
+    font-size: var(--fs-11); color: var(--text-2);
+    border: 1px solid transparent;
+}
+.tab.tab-more:hover, .tab.tab-more[aria-expanded="true"] { background: var(--surface-alt); border-color: var(--border); }
+.tab.tab-more.has-active { color: var(--primary-text); background: var(--primary-soft); }
+.tab-more-menu {
+    position: absolute; right: 0; top: calc(100% + 5px);
+    min-width: 132px; padding: 5px;
+    background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: var(--r-m); box-shadow: var(--shadow);
+    z-index: 40;
+}
+.tab-more-menu[hidden] { display: none; }
+.tab-more-menu .tab-overflow {
+    display: flex; align-items: center; gap: 7px;
+    width: 100%; flex: 0 0 auto; text-align: left;
+    padding: 7px 9px; border-radius: 8px; font-size: var(--fs-12);
+}
+.tab-more-menu .tab-overflow:hover { background: var(--surface-alt); }
+.tab-more-menu .tab-overflow.active { background: var(--primary-soft); color: var(--primary-text); }
+.tab-more-menu .tab-overflow .tab-ico { flex: 0 0 auto; opacity: .8; }
+.tab-more-sep { height: 1px; background: var(--border); margin: 4px 3px; }
+.tab-more-label {
+    padding: 2px 9px 3px; font-size: var(--fs-10);
+    letter-spacing: 1.2px; color: var(--text-3);
+}
+.tab-more-action {
+    display: block; width: 100%; text-align: left;
+    border: none; background: transparent; color: var(--text-3);
+    font-size: var(--fs-11); padding: 5px 9px; border-radius: 7px; cursor: pointer;
+}
+.tab-more-action:hover { background: var(--surface-alt); color: var(--primary-text); }
+@container inspector (max-width: 300px) {
+    .tabs { padding-left: 4px; padding-right: 4px; }
+    .tab { font-size: var(--fs-11); padding-left: 1px; padding-right: 1px; }
+}
 .tab.tab-collapse:hover { color: var(--primary-text); }
 .insp-body { flex: 1; overflow-y: auto; padding: var(--sp-2) var(--sp-3) calc(18px * var(--font-scale)); }
 .tab-panel { display: none; }
@@ -923,16 +961,16 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
 
 /* ── 参数控件 ── */
 .param-group {
-    margin-bottom: 14px;
+    margin-bottom: calc(14px * var(--density));
     border: 1px solid var(--border);
     border-radius: var(--r-m);
-    padding: var(--sp-1) var(--sp-2-5) var(--sp-2-5);
+    padding: calc(var(--sp-1) * var(--density)) var(--sp-2-5) calc(var(--sp-2-5) * var(--density));
     background: var(--surface);
     box-shadow: var(--shadow-sm);
 }
 .pg-title {
     font-size: var(--fs-13); font-weight: 700; color: var(--text);
-    padding: calc(14px * var(--font-scale)) var(--sp-1) var(--sp-1-5);
+    padding: calc(14px * var(--font-scale) * var(--density)) var(--sp-1) calc(var(--sp-1-5) * var(--density));
     letter-spacing: .5px; margin-bottom: 2px;
     display: flex; align-items: center; gap: 7px;
 }
@@ -948,7 +986,7 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
 }
 .param-row {
     display: flex; align-items: center; gap: var(--sp-2);
-    padding: var(--sp-1-5) calc(9px * var(--font-scale)); margin: var(--sp-1) 0;
+    padding: calc(var(--sp-1-5) * var(--density)) calc(9px * var(--font-scale)); margin: calc(var(--sp-1) * var(--density)) 0;
     background: var(--surface-alt); border: 1px solid var(--border);
     border-radius: 11px;
     transition: border-color .15s;
@@ -1106,14 +1144,34 @@ input[type=range].fine-tuning::-webkit-slider-thumb {
     overflow: hidden;
     box-shadow: var(--shadow-sm);
 }
-.histo-cv { display: block; width: 100%; height: 88px; background: var(--histo-bg); }
-.histo-exif {
-    display: block;
-    padding: 3px 10px 6px;
+.histo-cv { display: block; width: 100%; height: calc(88px * var(--density)); background: var(--histo-bg); }
+.histo-foot {
+    display: flex; align-items: center; gap: 6px;
+    padding-right: 9px;
     font-size: var(--fs-11); color: var(--text-2);
     font-variant-numeric: tabular-nums;
+}
+.histo-exif {
+    flex: 1 1 auto; min-width: 0; display: block;
+    padding: 3px 0 6px 10px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.histo-raw {
+    flex: 0 0 auto; font-size: var(--fs-10); color: var(--text-3);
+    border: 1px solid var(--border); border-radius: 5px;
+    padding: 1px 5px; white-space: nowrap;
+}
+.histo-raw.is-busy { color: var(--primary-text); border-color: var(--primary); }
+.histo-raw.is-err { color: var(--rose-text); border-color: var(--rose); }
+.histo-raw[hidden], .fold-notice[hidden] { display: none; }
+.fold-notice {
+    display: flex; align-items: center; gap: 6px;
+    margin: 0 2px 9px; padding: 4px 6px 4px 9px;
+    border: 1px dashed var(--border-strong); border-radius: 9px;
+    color: var(--text-3); font-size: var(--fs-11);
+}
+.fold-notice > span { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.fold-notice .mini-btn { flex: 0 0 auto; padding: 2px 7px; font-size: var(--fs-10); }
 .histo-exif .he-sep { color: var(--text-3); opacity: .7; margin: 0 5px; }
 .histo-exif .he-empty { color: var(--text-3); }
 #inspector.no-image .histo-card { display: none; }
@@ -1122,7 +1180,7 @@ input[type=range].fine-tuning::-webkit-slider-thumb {
 .pg-sub { margin-top: 2px; }
 .pg-sub-head {
     display: flex; align-items: center; gap: 6px;
-    margin-top: 2px; padding: 9px 2px 5px;
+    margin-top: 2px; padding: calc(9px * var(--density)) 2px calc(5px * var(--density));
     border-top: 1px solid var(--border);
     cursor: pointer; user-select: none;
 }
@@ -1164,7 +1222,7 @@ input[type=range].fine-tuning::-webkit-slider-thumb {
         "rng rng rng";
     align-items: center;
     column-gap: 6px; row-gap: 1px;
-    margin: 0; padding: 5px 4px 7px;
+    margin: 0; padding: calc(5px * var(--density)) 4px calc(7px * var(--density));
     background: transparent; border: 0; border-radius: 0;
     border-bottom: 1px solid var(--border);
 }
@@ -1418,7 +1476,8 @@ html.dark .mini-btn.primary { color: #0c1914; }
 }
 .pool-note b { color: var(--text-2); font-weight: 600; }
 .mode-status {
-    display: flex; align-items: center; gap: var(--sp-1-5);
+    /* 已移到状态栏 #stStyle，参数栏顶部不再常驻一行 */
+    display: none; align-items: center; gap: var(--sp-1-5);
     /* 一格「当前配置文件」：以前是整块绿色高亮，比直方图和滑块都抢眼；
        调色页签顶部需要它做上下文，但不能压过照片本身，故收成细行。 */
     margin: 0 2px 8px; padding: 3px calc(9px * var(--font-scale));
@@ -2874,3 +2933,15 @@ body.platform-darwin .pw-winbtns { display: none; }
     white-space: nowrap; letter-spacing: .02em;
 }
 .pw-hint { flex: 0 0 auto; text-align: center; padding: calc(8px * var(--font-scale)) 0 calc(14px * var(--font-scale)); font-size: var(--fs-11); color: rgba(232,236,241,.34); letter-spacing: .04em; }
+/* 底部状态栏：当前样式并入这一行，不再在参数栏顶部单独占一条横幅 */
+.st-style { color: var(--text-3); max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.st-style[hidden] { display: none; }
+/* RAW 显影组的说明原是三行灰字，状态已写在标题与直方图卡里，说明留一行足够 */
+#grpRaw .hint-box {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    line-height: 1.5; padding-top: calc(4px * var(--font-scale)); padding-bottom: calc(4px * var(--font-scale));
+    margin-top: calc(4px * var(--font-scale)); margin-bottom: calc(4px * var(--font-scale));
+}
+/* 设置里的密度三档 */
+.density-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.density-btns .mini-btn { min-width: 58px; text-align: center; }

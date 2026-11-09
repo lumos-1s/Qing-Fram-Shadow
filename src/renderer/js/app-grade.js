@@ -1519,6 +1519,8 @@
             // 顶部的直方图取的就是这次烘焙出来的预览；分组「动过没动过」也在这里标。
             if (window.QfsHistogram) window.QfsHistogram.refresh(this.image);
             this.syncGradeSections(p);
+            // 带出蒙版（草稿还原/切回照片）时自动展开蒙版组，别让列表藏在折叠里
+            if (window.QfsPanelDensity) window.QfsPanelDensity.syncMasks(this.image);
         },
 
         // 亮 / 颜色 / 效果 三段的「已改」标记：标了才常驻显示复位按钮。

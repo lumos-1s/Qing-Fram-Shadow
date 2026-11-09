@@ -119,6 +119,18 @@
 
 页签内的滑块按 Camera Raw 分成 **亮 / 颜色 / 效果** 三段（`.pg-sub`）：原来 11 档一字排开，白平衡混在曝光与饱和之间，用户找不到；分段后每段可单独收起、单独复位。效果段接管原属「细节」的纹理/清晰度/去薄雾，`#grpDet` 只剩锐化四档。段内每一行是两行网格（标签+数值 / 整宽轨道），只作用于 `#panel-grade`，其余页签仍是原来的三栏卡片行。段复位的键位表在 `resetGradeSection()`，走同一条 `setGrade`，撤销、蒙版路由与草稿保存都自动跟随。
 
+**参数栏减负**（`app-panel-density.js`）：页签收成一行（主 5 个 + `#tabMoreMenu` 内的样式/拼图/切图，
+菜单仍挂在 `#inspTabs` 里，所以 `switchTab` 的 `.tab[data-tab]` 查询与 `app-export.js` 的 `.tab.active` 都不用改）；
+`#modeStatus` 不再常驻，样式名写进状态栏 `#stStyle`，RAW 阶段写进直方图卡 `#gradeRawTag`。
+`--density` 挂在 `#inspector` 上，只乘 `.param-group` / `.pg-title` / `.param-row` / `.pg-sub-head` 的纵向间距，
+字号仍归 `--font-scale`；自动档按 `onTab(name)` 给调色页加 `.density-compact`。
+六组低频档位默认折叠，状态存 `prefs.panelFolds`（`main/state.js` 的 prefs 是字段级合并，不会冲掉主题/缩放；
+GUI 用例的 `get-prefs` 返回 `{}`，测试里点折叠不会污染下次运行）。
+两个配套修正：`syncEmptyGroups()` 必须跳过 `.collapsed` 组（否则行全被折叠规则设为 `display:none`，
+会被误判成「整个组空了」连标题一起藏掉）；带出蒙版时 `syncMasks()` 自动展开蒙版组，
+但用户显式收起过（`panelFolds.grpMask === true`）就不抢决定。
+默认折叠不碰显隐审计的取样行——蒙版那 8 个 `row*` 在冻结基线里 95 个风格本来就全是隐藏。
+
 **与 Lightroom 的数值对照**（`app-xmp.js` 导入 `.xmp` 用同一套口径）：
 
 | 项 | 对齐程度 | 说明 |

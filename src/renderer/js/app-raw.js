@@ -324,6 +324,8 @@
             const im = this.image;
             const on = !!(im && im.raw);
             d.wrap.hidden = !on;
+            // 直方图卡右下角同时显示显影阶段，抬眼就能看到，不必再往下找组
+            if (window.QfsPanelDensity) window.QfsPanelDensity.setRawTag(im);
             if (!on) return;
             if (d.badge) {
                 const ext = String(im.path || '').split('.').pop().toUpperCase();

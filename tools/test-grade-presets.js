@@ -278,7 +278,7 @@ async function main() {
     check(hover.mode === 'grade' && hover.gradeBody && hover.borderBody,
         '左侧「我的调色」模式显示调色列表、隐藏边框列表', JSON.stringify(hover));
     check(hover.previewing && hover.isCanvas && hover.gradeBefore === 0 && hover.gradeDuring === 0,
-        '悬停时画面立即预览，但不写入照片参数', JSON.stringify({ before: hover.gradeBefore, during: hover.gradeDuring }));
+        '悬停时画面立即预览，但不写入照片参数', JSON.stringify(hover));
     check(hover.restored, '移开鼠标后画面与缓存还原');
     check(hover.borderOff && hover.rightGrade,
         '点页签真正切模式，并同步右侧到调色页签', JSON.stringify({ borderOff: hover.borderOff, rightGrade: hover.rightGrade }));
