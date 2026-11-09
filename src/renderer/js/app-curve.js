@@ -228,6 +228,24 @@
 
         syncCurveUI() { this.drawCurve(); },
 
+        // 曲线背后的直方图衬底数据：复用现成的 QfsHistogram.statsOf（与顶部直方图同口径）。
+        // im 引用变化时即失效；拖曲线过程中锁成缓存（用输入分布做参考，避免每帧重采像素）；
+        // 拖别的调色钮时按 160ms 节流重采，直方图会跟着变。
+        getCurveHisto() {
+            const im = this.image;
+            if (!im || !window.QfsHistogram) return null;
+            const now = (window.performance && performance.now) ? performance.now() : Date.now();
+            const cache = this._curveHistoCache;
+            if (cache && cache.im === im) {
+                if (this._curveDragging) return cache.stats;
+                if (now - (cache.t || 0) < 160) return cache.stats;
+            }
+            let stats = null;
+            try { stats = window.QfsHistogram.statsOf(im); } catch (_) { /* 取不到直方图就只画曲线 */ }
+            this._curveHistoCache = { im: im, stats: stats, t: now };
+            return stats;
+        },
+
         // ── 绘制 ──
         drawCurve() {
             const d = this._curveDom;
@@ -251,6 +269,33 @@
             const pad = 8;
             const X = (px) => pad + px * (w - pad * 2);
             const Y = (py) => h - pad - py * (h - pad * 2);
+            const cur = this._curveChan || 'rgb';
+
+            // 直方图衬底：当前通道的输入色调分布，x 轴与曲线对齐（x = 输入亮度）。
+            // 拖曲线时 _curveDragging 为真 → 用缓存里的输入分布做参考，不每帧重采像素；
+            // 拖别的调色钮时按 160ms 节流重采，直方图会跟着变。
+            const st = this.getCurveHisto();
+            if (st) {
+                const arr = cur === 'rgb' ? st.y : st[cur];
+                if (arr && arr.length) {
+                    let mx = 1;
+                    for (let i = 0; i < arr.length; i++) if (arr[i] > mx) mx = arr[i];
+                    const bins = arr.length;
+                    const baseY = Y(0), plotH = baseY - Y(1);
+                    g.beginPath();
+                    g.moveTo(X(0), baseY);
+                    for (let i = 0; i < bins; i++) {
+                        const f = Math.pow(arr[i] / mx, 0.55); // 提升低值可见度，避免暗部糊成一条
+                        g.lineTo(X(i / (bins - 1)), baseY - f * plotH);
+                    }
+                    g.lineTo(X(1), baseY);
+                    g.closePath();
+                    g.fillStyle = cur === 'rgb' ? line : chanColor[cur];
+                    g.globalAlpha = 0.16;
+                    g.fill();
+                    g.globalAlpha = 1;
+                }
+            }
 
             // 网格 4×4
             g.strokeStyle = grid;
@@ -270,7 +315,6 @@
             g.strokeRect(pad + 0.5, pad + 0.5, w - pad * 2 - 1, h - pad * 2 - 1);
 
             // 先画其它通道（淡淡的），再画当前通道
-            const cur = this._curveChan || 'rgb';
             for (const c of window.QfsCurve.CHANS) {
                 if (c.k === cur) continue;
                 const pts = this.curvePoints(c.k);
@@ -344,6 +388,7 @@
             };
             el.addEventListener('pointerdown', (e) => {
                 const p = pos(e);
+                self._curveDragging = true;
                 let idx = hitTest(p);
                 if (idx < 0) {
                     // 空白处按下 = 加一个点。必须立刻写回数据：
@@ -402,6 +447,7 @@
             const up = () => {
                 if (drag < 0) return;
                 drag = -1;
+                self._curveDragging = false;
                 // 停手时把还没跑的那帧立刻烘掉（rAF 可能还没到），
                 // 否则最后一次移动会晚一帧才生效
                 if (self._curveRaf) {
