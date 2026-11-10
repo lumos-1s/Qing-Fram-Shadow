@@ -121,7 +121,7 @@ async function main() {
     check(s0.w > 40 && s0.h > 40, '曲线画布有真实布局尺寸（可测量）', `w=${s0.w} h=${s0.h}`);
     check(Math.abs(s0.w - s0.h) <= 2, '曲线外框恒为正方形（宽≈高，差≤2px）', `w=${s0.w} h=${s0.h}`);
 
-    // ② 加一个中间控制点，右键它 → 菜单出现「删除此控制点」
+    // ② 命中中间控制点右键 → 仍弹菜单，但应是「通道菜单」而非删除项（右键不做控制点删除）
     const menuOnPoint = await exec(`(async () => {
         const A = window.App;
         A.setCurve('rgb', [[0, 0], [0.5, 0.6], [1, 1]]);
@@ -132,29 +132,57 @@ async function main() {
         const pad = 8;
         const px = r.left + pad + 0.5 * (r.width - pad * 2);
         const py = r.top + (r.height - pad - 0.6 * (r.height - pad * 2));
-        const ev = new MouseEvent('contextmenu', { clientX: px, clientY: py, bubbles: true, cancelable: true });
-        cv.dispatchEvent(ev);
+        cv.dispatchEvent(new MouseEvent('contextmenu', { clientX: px, clientY: py, bubbles: true, cancelable: true }));
         const m = document.querySelector('.curve-ctx-menu');
         const items = m ? Array.prototype.slice.call(m.querySelectorAll('.curve-ctx-item')).map((x) => x.textContent) : [];
         return { hasMenu: !!m, items, count: (A.curveOf(A.image) || {}).rgb ? A.curveOf(A.image).rgb.length : 0 };
     })()`);
-    check(menuOnPoint.hasMenu, '右键命中中间控制点 → 弹出右键菜单', JSON.stringify(menuOnPoint));
-    check(menuOnPoint.items.length === 1 && /删除此控制点/.test(menuOnPoint.items[0]),
-        '该菜单只有「删除此控制点」一项（端点不允许删）', JSON.stringify(menuOnPoint.items));
-    check(menuOnPoint.count === 3, '右键前该通道有 3 个控制点（含端点）', `count=${menuOnPoint.count}`);
+    check(menuOnPoint.hasMenu, '命中中间控制点右键 → 仍弹出菜单', JSON.stringify(menuOnPoint));
+    check(menuOnPoint.items.length === 5
+          && /重置该通道/.test(menuOnPoint.items[0])
+          && /重置所有通道/.test(menuOnPoint.items[1])
+          && /复制通道设置/.test(menuOnPoint.items[2])
+          && /粘贴通道设置/.test(menuOnPoint.items[3])
+          && /显示所有曲线/.test(menuOnPoint.items[4])
+          && !/删除此控制点/.test(menuOnPoint.items.join('|')),
+        '该菜单是通道菜单（五项，且不含「删除此控制点」）', JSON.stringify(menuOnPoint.items));
+    check(menuOnPoint.count === 3, '右键不应删除控制点：该通道仍有 3 个控制点', `count=${menuOnPoint.count}`);
 
-    // ③ 点菜单项删除 → 控制点回到 2 个
-    const afterDel = await exec(`(async () => {
+    // ③ 双击中间控制点 → 删除该点（删除入口改为双击，与右键通道菜单分工）
+    const afterDbl = await exec(`(async () => {
         const A = window.App;
-        const item = document.querySelector('.curve-ctx-menu .curve-ctx-item');
-        if (item) item.click();
+        A.setCurve('rgb', [[0, 0], [0.5, 0.6], [1, 1]]);
+        A.drawCurve();
         await new Promise((r) => setTimeout(r, 60));
-        const m = document.querySelector('.curve-ctx-menu');
-        const cv = A.curveOf(A.image);
-        return { menuGone: !m, count: (cv && cv.rgb) ? cv.rgb.length : 0, noRgb: !cv || !cv.rgb };
+        const cv = document.getElementById('curveCanvas');
+        const r = cv.getBoundingClientRect();
+        const pad = 8;
+        const px = r.left + pad + 0.5 * (r.width - pad * 2);
+        const py = r.top + (r.height - pad - 0.6 * (r.height - pad * 2));
+        cv.dispatchEvent(new MouseEvent('dblclick', { clientX: px, clientY: py, bubbles: true, cancelable: true }));
+        await new Promise((r) => setTimeout(r, 60));
+        const cv2 = (A.curveOf(A.image) || {});
+        // 曲线回到线性（[(0,0),(1,1)]）时 rgb 键会被省略存储，故 count 可能为 0（noRgb）
+        return { count: cv2.rgb ? cv2.rgb.length : 0, noRgb: !cv2.rgb };
     })()`);
-    check(afterDel.menuGone, '点完菜单后浮层已关闭', JSON.stringify(afterDel));
-    check(afterDel.noRgb || afterDel.count === 2, '删除后该通道回到 2 个端点（或整条回线性被清掉）', JSON.stringify(afterDel));
+    check(afterDbl.count === 2 || afterDbl.noRgb, '双击中间控制点 → 删除该点，回到 2 个端点（线性时省略存储）', JSON.stringify(afterDbl));
+
+    // ③b 右键按下（button=2）不应在空白处添加控制点（右键只弹通道菜单）
+    const rightDown = await exec(`(async () => {
+        const A = window.App;
+        A.setCurve('rgb', [[0, 0], [1, 1]]);
+        A.drawCurve();
+        await new Promise((r) => setTimeout(r, 60));
+        const cv = document.getElementById('curveCanvas');
+        const r = cv.getBoundingClientRect();
+        const pad = 8;
+        const px = r.left + pad + 0.35 * (r.width - pad * 2);
+        const py = r.top + (r.height - pad - 0.7 * (r.height - pad * 2));
+        cv.dispatchEvent(new PointerEvent('pointerdown', { button: 2, clientX: px, clientY: py, bubbles: true, cancelable: true, pointerId: 1 }));
+        const cv2 = (A.curveOf(A.image) || {});
+        return { count: cv2.rgb ? cv2.rgb.length : 0, noRgb: !cv2.rgb };
+    })()`);
+    check(rightDown.noRgb || rightDown.count === 2, '右键按下（button=2）不会在空白处添加控制点', JSON.stringify(rightDown));
 
     // ④ 空白处右键 → 通道菜单（重置该通道 / 重置所有通道 / 复制通道设置 / 粘贴通道设置 / 显示所有曲线）
     const menuOnBlank = await exec(`(async () => {

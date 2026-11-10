@@ -404,6 +404,9 @@
                 return -1;
             };
             el.addEventListener('pointerdown', (e) => {
+                // 只让左键(0)参与加点/拖拽：右键(2)、中键(1)一律不处理。
+                // 否则右键在空白处会先触发 pointerdown 而「顺手」加一个控制点（右键只该弹通道菜单）。
+                if (e.button > 0) return;
                 const p = pos(e);
                 self._closeCurveCtxMenu();
                 self._curveDragging = true;
@@ -501,64 +504,46 @@
                     self.setCurve(self._curveChan, pts);
                 }
             });
-            // 右键：命中单个控制点 → 删除该点；空白 / 端点 → 通道菜单（重置 / 显示所有曲线）
+            // 右键：统一调出通道菜单（重置 / 复制粘贴 / 显示所有曲线）。
+            // 按需求「右键不能做控制点」——右键不提供删除控制点的入口（删除改由双击控制点完成），
+            // 曲线画布上任意位置右键都弹出通道级菜单，与控制点是否命中无关。
             el.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 self._closeCurveCtxMenu();
-                const p = pos(e);
-                const idx = hitTest(p);
-                const chanPts = self.curvePoints(self._curveChan);
-                if (idx > 0 && idx < chanPts.length - 1) {
-                    // 命中「中间」控制点（端点定义了定义域，不允许删）：弹出针对这一点的菜单
-                    self._openCurveCtxMenu(e.clientX, e.clientY, [
-                        {
-                            label: '删除此控制点', onClick: () => {
-                                const cur = self.curvePoints(self._curveChan);
-                                if (idx > 0 && idx < cur.length - 1) {
-                                    cur.splice(idx, 1);
-                                    self.setCurve(self._curveChan, cur);
-                                    self.setStatus('已删除一个控制点');
-                                }
-                            }
+                const cur = self._curveChan;
+                self._openCurveCtxMenu(e.clientX, e.clientY, [
+                    {
+                        label: '重置该通道', onClick: () => {
+                            self.setCurve(cur, [[0, 0], [1, 1]]);
+                            self.setStatus('已重置「' + self._chanLabel(cur) + '」曲线');
                         }
-                    ]);
-                } else {
-                    // 空白或端点：通道级菜单（对标参考软件的曲线右键菜单）
-                    const cur = self._curveChan;
-                    self._openCurveCtxMenu(e.clientX, e.clientY, [
-                        {
-                            label: '重置该通道', onClick: () => {
-                                self.setCurve(cur, [[0, 0], [1, 1]]);
-                                self.setStatus('已重置「' + self._chanLabel(cur) + '」曲线');
-                            }
-                        },
-                        { label: '重置所有通道', onClick: () => { self.resetCurve(); } },
-                        { sep: true },
-                        {
-                            label: '复制通道设置', onClick: () => {
-                                const src = self.curvePoints(cur);
-                                // 深拷贝，避免后续拖动把缓冲也改了
-                                self._curveCopyBuf = src.map((p) => [p[0], p[1]]);
-                                self.setStatus('已复制「' + self._chanLabel(cur) + '」曲线');
-                            }
-                        },
-                        {
-                            label: '粘贴通道设置', disabled: !self._curveCopyBuf, onClick: () => {
-                                if (!self._curveCopyBuf) return;
-                                // 深拷贝，避免粘贴后拖动当前通道把缓冲也改了
-                                self.setCurve(cur, self._curveCopyBuf.map((p) => [p[0], p[1]]));
-                                self.setStatus('已把复制的曲线粘贴到「' + self._chanLabel(cur) + '」');
-                            }
-                        },
-                        { sep: true },
-                        {
-                            label: '显示所有曲线', checked: !!self._curveShowAll, onClick: () => {
-                                self._curveShowAll = !self._curveShowAll;
-                                self.drawCurve();
-                            }
+                    },
+                    { label: '重置所有通道', onClick: () => { self.resetCurve(); } },
+                    { sep: true },
+                    {
+                        label: '复制通道设置', onClick: () => {
+                            const src = self.curvePoints(cur);
+                            // 深拷贝，避免后续拖动把缓冲也改了
+                            self._curveCopyBuf = src.map((p) => [p[0], p[1]]);
+                            self.setStatus('已复制「' + self._chanLabel(cur) + '」曲线');
                         }
-                    ]);
-                }
+                    },
+                    {
+                        label: '粘贴通道设置', disabled: !self._curveCopyBuf, onClick: () => {
+                            if (!self._curveCopyBuf) return;
+                            // 深拷贝，避免粘贴后拖动当前通道把缓冲也改了
+                            self.setCurve(cur, self._curveCopyBuf.map((p) => [p[0], p[1]]));
+                            self.setStatus('已把复制的曲线粘贴到「' + self._chanLabel(cur) + '」');
+                        }
+                    },
+                    { sep: true },
+                    {
+                        label: '显示所有曲线', checked: !!self._curveShowAll, onClick: () => {
+                            self._curveShowAll = !self._curveShowAll;
+                            self.drawCurve();
+                        }
+                    }
+                ]);
             });
         },
 
