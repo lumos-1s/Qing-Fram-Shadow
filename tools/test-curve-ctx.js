@@ -1,4 +1,4 @@
-// 曲线编辑器：外框恒为正方形 + 右键菜单（单个控制点删除 / 通道菜单）。
+// 曲线编辑器：外框恒为正方形 + 右键菜单（单个控制点删除 / 通道菜单 / 复制粘贴通道设置）。
 // 用法：node tools/run-electron.js tools/test-curve-ctx.js
 'use strict';
 
@@ -156,7 +156,7 @@ async function main() {
     check(afterDel.menuGone, '点完菜单后浮层已关闭', JSON.stringify(afterDel));
     check(afterDel.noRgb || afterDel.count === 2, '删除后该通道回到 2 个端点（或整条回线性被清掉）', JSON.stringify(afterDel));
 
-    // ④ 空白处右键 → 通道菜单（重置该通道 / 重置所有通道 / 显示所有曲线）
+    // ④ 空白处右键 → 通道菜单（重置该通道 / 重置所有通道 / 复制通道设置 / 粘贴通道设置 / 显示所有曲线）
     const menuOnBlank = await exec(`(async () => {
         const A = window.App;
         // 先确保有可调曲线，便于验证「重置该通道」
@@ -172,19 +172,87 @@ async function main() {
         const ev = new MouseEvent('contextmenu', { clientX: px, clientY: py, bubbles: true, cancelable: true });
         cv.dispatchEvent(ev);
         const m = document.querySelector('.curve-ctx-menu');
-        const items = m ? Array.prototype.slice.call(m.querySelectorAll('.curve-ctx-item')).map((x) => x.textContent) : [];
-        return { hasMenu: !!m, items };
+        const items = m ? Array.prototype.slice.call(m.querySelectorAll('.curve-ctx-item')) : [];
+        const texts = items.map((x) => x.textContent);
+        const paste = items.find((x) => /粘贴通道设置/.test(x.textContent));
+        return {
+            hasMenu: !!m, texts,
+            pasteDisabled: !!(paste && paste.classList.contains('is-disabled')),
+            seps: m ? m.querySelectorAll('.curve-ctx-sep').length : 0
+        };
     })()`);
     check(menuOnBlank.hasMenu, '空白处右键 → 弹出通道菜单', JSON.stringify(menuOnBlank));
-    check(menuOnBlank.items.length === 3
-          && /重置该通道/.test(menuOnBlank.items[0])
-          && /重置所有通道/.test(menuOnBlank.items[1])
-          && /显示所有曲线/.test(menuOnBlank.items[2]),
-        '通道菜单含「重置该通道 / 重置所有通道 / 显示所有曲线」三项', JSON.stringify(menuOnBlank.items));
+    check(menuOnBlank.texts.length === 5
+          && /重置该通道/.test(menuOnBlank.texts[0])
+          && /重置所有通道/.test(menuOnBlank.texts[1])
+          && /复制通道设置/.test(menuOnBlank.texts[2])
+          && /粘贴通道设置/.test(menuOnBlank.texts[3])
+          && /显示所有曲线/.test(menuOnBlank.texts[4]),
+        '通道菜单含「重置该通道 / 重置所有通道 / 复制通道设置 / 粘贴通道设置 / 显示所有曲线」五项', JSON.stringify(menuOnBlank.texts));
+    check(menuOnBlank.seps === 2, '菜单有 2 条分隔线（重置组与复制粘贴组、复制粘贴组与显示组）', `seps=${menuOnBlank.seps}`);
+    check(menuOnBlank.pasteDisabled, '还没复制过时「粘贴通道设置」为灰色禁用态', JSON.stringify(menuOnBlank));
 
-    // ⑤ 点「显示所有曲线」→ 开关翻转
+    // ⑤ 复制通道设置 / 粘贴通道设置：把 R 通道的曲线复制到 G 通道
+    const copyPaste = await exec(`(async () => {
+        const A = window.App;
+        const cv = document.getElementById('curveCanvas');
+        const open = (x, y) => cv.dispatchEvent(new MouseEvent('contextmenu',
+            { clientX: x, clientY: y, bubbles: true, cancelable: true }));
+        const rect = () => cv.getBoundingClientRect();
+        const blankPt = () => {
+            const r = rect(); const pad = 8;
+            return { x: r.left + pad + 0.12 * (r.width - pad * 2), y: r.top + (r.height - pad - 0.9 * (r.height - pad * 2)) };
+        };
+        const clickItem = (re) => {
+            const items = Array.prototype.slice.call(document.querySelectorAll('.curve-ctx-menu .curve-ctx-item'));
+            const it = items.find((x) => re.test(x.textContent));
+            if (it && !it.classList.contains('is-disabled')) { it.click(); return true; }
+            return false;
+        };
+        // 给 R 通道一个特征曲线，切到 R
+        A.setCurve('r', [[0, 0], [0.25, 0.7], [0.75, 0.3], [1, 1]]);
+        A._curveChan = 'r';
+        A.drawCurve();
+        await new Promise((r) => setTimeout(r, 40));
+        let p = blankPt(); open(p.x, p.y);
+        await new Promise((r) => setTimeout(r, 20));
+        const copied = clickItem(/复制通道设置/);
+        const bufLen = A._curveCopyBuf ? A._curveCopyBuf.length : 0;
+        // 切到 G，先确保 G 是直线，再粘贴
+        A.setCurve('g', [[0, 0], [1, 1]]);
+        A._curveChan = 'g';
+        A.drawCurve();
+        await new Promise((r) => setTimeout(r, 40));
+        p = blankPt(); open(p.x, p.y);
+        await new Promise((r) => setTimeout(r, 20));
+        const pasted = clickItem(/粘贴通道设置/);
+        const g = (A.curveOf(A.image) || {}).g || null;
+        return {
+            copied, bufLen, pasted,
+            gLen: g ? g.length : 0,
+            gSame: g && g.length === 4
+                && Math.abs(g[1][0] - 0.25) < 1e-6 && Math.abs(g[1][1] - 0.7) < 1e-6
+                && Math.abs(g[2][0] - 0.75) < 1e-6 && Math.abs(g[2][1] - 0.3) < 1e-6,
+            rSameG: (() => {
+                const r2 = (A.curveOf(A.image) || {}).r || [];
+                return g && r2.length === 4
+                    && Math.abs(g[1][0] - r2[1][0]) < 1e-6 && Math.abs(g[1][1] - r2[1][1]) < 1e-6
+                    && Math.abs(g[2][0] - r2[2][0]) < 1e-6 && Math.abs(g[2][1] - r2[2][1]) < 1e-6;
+            })()
+        };
+    })()`);
+    check(copyPaste.copied && copyPaste.bufLen === 4, '右键「复制通道设置」把当前通道（R，4 点）存入缓冲', JSON.stringify(copyPaste));
+    check(copyPaste.pasted && copyPaste.gLen === 4, '右键「粘贴通道设置」把缓冲套到当前通道（G）', JSON.stringify(copyPaste));
+    check(copyPaste.gSame && copyPaste.rSameG, '粘贴后 G 通道曲线与复制的 R 完全一致（含中间点坐标）', JSON.stringify(copyPaste));
+
+    // ⑥ 点「显示所有曲线」→ 开关翻转
     const toggle = await exec(`(async () => {
         const A = window.App;
+        const cv = document.getElementById('curveCanvas');
+        const r = cv.getBoundingClientRect(); const pad = 8;
+        cv.dispatchEvent(new MouseEvent('contextmenu',
+            { clientX: r.left + pad + 0.12 * (r.width - pad * 2), clientY: r.top + (r.height - pad - 0.9 * (r.height - pad * 2)), bubbles: true, cancelable: true }));
+        await new Promise((r) => setTimeout(r, 20));
         const items = Array.prototype.slice.call(document.querySelectorAll('.curve-ctx-menu .curve-ctx-item'));
         const showAll = items.find((x) => /显示所有曲线/.test(x.textContent));
         if (showAll) showAll.click();

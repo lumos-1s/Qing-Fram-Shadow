@@ -185,6 +185,21 @@ async function main() {
     })()`);
     await sleep(450);
     await shot('panel-cal', '#inspector');
+    // 「曲线」右键菜单：确认五项 + 两条分隔线 + 粘贴禁用态。先在曲线空白处右键，
+    // 浮层按 clientX/Y 定位到曲线框内，截全窗口才能拍到这个 fixed 浮层。
+    await exec(`(() => {
+        const grp = document.getElementById('grpCurve');
+        if (grp) grp.classList.remove('collapsed');
+        const b = document.querySelector('.insp-body');
+        if (b) b.scrollTop = Math.max(0, (document.getElementById('grpCurve').getBoundingClientRect().top - b.getBoundingClientRect().top + b.scrollTop) - 8);
+        const cv = document.getElementById('curveCanvas');
+        const r = cv.getBoundingClientRect(); const pad = 8;
+        cv.dispatchEvent(new MouseEvent('contextmenu',
+            { clientX: r.left + pad + 0.12 * (r.width - pad * 2), clientY: r.top + (r.height - pad - 0.9 * (r.height - pad * 2)), bubbles: true, cancelable: true }));
+        return true;
+    })()`);
+    await sleep(280);
+    await shot('panel-curve-ctx', null);
     await exec(`(() => { const b = document.querySelector('.insp-body'); if (b) b.scrollTop = 0; return true; })()`);
     // 侧栏拖到最窄 / 最宽，确认标签与数值不打架
     for (const w of [260, 440]) {

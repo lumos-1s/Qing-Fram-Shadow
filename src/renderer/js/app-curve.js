@@ -160,6 +160,7 @@
             const cvEl = $('curveCanvas');
             if (!cvEl) return;
             this._curveShowAll = false;
+            this._curveCopyBuf = null;   // 曲线渠道复制缓冲：复制通道设置 / 粘贴通道设置
             this._curveDom = {
                 canvas: cvEl, ctx: cvEl.getContext('2d'),
                 chans: $('curveChans'), reset: $('btnCurveReset'),
@@ -532,6 +533,24 @@
                             }
                         },
                         { label: '重置所有通道', onClick: () => { self.resetCurve(); } },
+                        { sep: true },
+                        {
+                            label: '复制通道设置', onClick: () => {
+                                const src = self.curvePoints(cur);
+                                // 深拷贝，避免后续拖动把缓冲也改了
+                                self._curveCopyBuf = src.map((p) => [p[0], p[1]]);
+                                self.setStatus('已复制「' + self._chanLabel(cur) + '」曲线');
+                            }
+                        },
+                        {
+                            label: '粘贴通道设置', disabled: !self._curveCopyBuf, onClick: () => {
+                                if (!self._curveCopyBuf) return;
+                                // 深拷贝，避免粘贴后拖动当前通道把缓冲也改了
+                                self.setCurve(cur, self._curveCopyBuf.map((p) => [p[0], p[1]]));
+                                self.setStatus('已把复制的曲线粘贴到「' + self._chanLabel(cur) + '」');
+                            }
+                        },
+                        { sep: true },
                         {
                             label: '显示所有曲线', checked: !!self._curveShowAll, onClick: () => {
                                 self._curveShowAll = !self._curveShowAll;
@@ -554,15 +573,26 @@
             const menu = document.createElement('div');
             menu.className = 'curve-ctx-menu';
             items.forEach((it) => {
+                if (it.sep) {
+                    const sep = document.createElement('div');
+                    sep.className = 'curve-ctx-sep';
+                    menu.appendChild(sep);
+                    return;
+                }
                 const row = document.createElement('button');
                 row.type = 'button';
-                row.className = 'curve-ctx-item' + (it.checked ? ' checked' : '');
+                row.className = 'curve-ctx-item' + (it.checked ? ' checked' : '') + (it.disabled ? ' is-disabled' : '');
                 row.textContent = it.label;
-                row.addEventListener('click', (ev) => {
-                    ev.stopPropagation();
-                    this._closeCurveCtxMenu();
-                    it.onClick();
-                });
+                if (it.disabled) {
+                    row.disabled = true;
+                    row.setAttribute('aria-disabled', 'true');
+                } else {
+                    row.addEventListener('click', (ev) => {
+                        ev.stopPropagation();
+                        this._closeCurveCtxMenu();
+                        it.onClick();
+                    });
+                }
                 menu.appendChild(row);
             });
             document.body.appendChild(menu);

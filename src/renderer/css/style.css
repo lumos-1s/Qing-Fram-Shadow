@@ -1520,6 +1520,9 @@ input[type=color]::-webkit-color-swatch {
 }
 .curve-ctx-item:hover { background: var(--surface-alt); color: var(--primary-text); }
 .curve-ctx-item.checked::before { content: '✓ '; color: var(--primary); }
+.curve-ctx-sep { height: 1px; background: var(--border); margin: 5px 4px; }
+.curve-ctx-item.is-disabled { color: var(--text-muted, #9aa); opacity: .55; cursor: default; }
+.curve-ctx-item.is-disabled:hover { background: transparent; color: var(--text-muted, #9aa); }
 #grpCurve.curve-on .pg-title { color: var(--primary-text); }
 #grpCurve.curve-on .pg-title::after {
     content: '已调整'; margin-left: 6px; font-size: var(--fs-10);
