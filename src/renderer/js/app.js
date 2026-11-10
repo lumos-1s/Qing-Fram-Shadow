@@ -2177,8 +2177,10 @@ window.App = {
             const vgVal = vgOn ? (le.vignetteStrength || 0) : 0;
             if ($('slVignetteStrength')) $('slVignetteStrength').value = vgVal;
             if ($('slVignetteFeather')) $('slVignetteFeather').value = le.vignetteFeather != null ? le.vignetteFeather : 50;
-            // 双向晕影：正值带 +，负值带 -，0 就是 0（与「亮」段其他双向滑块一致）
-            this.updateLabel('lblVignetteStrength', vgVal === 0 ? '0' : (vgVal > 0 ? '+' + vgVal + '%' : vgVal + '%'));
+            // 「效果」段六行统一成纯数字（与 Camera Raw 一致，也和上面的纹理/清晰度/去薄雾
+            // 在同一列对齐）：负值自带 -，正值不再补 +、也不挂 %，否则零值是「0」而拖出
+            // 数值又变成「+18%」，同一列的单位会跳来跳去。
+            this.updateLabel('lblVignetteStrength', String(vgVal));
             this.updateLabel('lblVignetteFeather', le.vignetteFeather != null ? le.vignetteFeather : 50);
             const lkOn = le.lightLeakEnable === 1;
             const lkVal = lkOn ? (le.lightLeakOpacity || 0) : 0;
@@ -2194,7 +2196,7 @@ window.App = {
             const fgOn = le.filmGrainEnable === 1;
             const fgVal = fgOn ? (le.filmGrainIntensity || 0) : 0;
             if ($('slFilmGrain')) $('slFilmGrain').value = fgVal;
-            this.updateLabel('lblFilmGrain', fgVal + '%');
+            this.updateLabel('lblFilmGrain', String(fgVal));
 
             if ($('cbCornerDecorType')) $('cbCornerDecorType').value = decor.cornerDecorType || 'line';
             if ($('slCornerDecorSize')) $('slCornerDecorSize').value = decor.cornerDecorSize || 30;
@@ -4169,15 +4171,14 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
     },
 
     sliderLiveLabel(id, v) {
-        // 双向滑块（晕影）拖动时也要带符号：+33% / -33% / 0
-        const signedPct = (n) => (n === 0 ? '0' : (n > 0 ? '+' + n + '%' : n + '%'));
         const map = {
             slFillOpacity: ['lblFillOpacity', v + '%'], slGradientAngle: ['lblGradientAngle', v], slTextureScale: ['lblTextureScale', v + '%'],
             slStrokeWidth: ['lblStrokeWidth', v], slStrokeOpacity: ['lblStrokeOpacity', v + '%'],
             slShadowBlur: ['lblShadowBlur', v], slShadowOpacity: ['lblShadowOpacity', v + '%'],
             slGlowBlur: ['lblGlowBlur', v], slGlowOpacity: ['lblGlowOpacity', v + '%'],
 
-            slVignetteStrength: ['lblVignetteStrength', signedPct(v)], slVignetteFeather: ['lblVignetteFeather', v],
+            // 「效果」段用纯数字：晕影拖动时负值自带 -，颗粒同样不挂 %
+            slVignetteStrength: ['lblVignetteStrength', v], slVignetteFeather: ['lblVignetteFeather', v],
             slBrandSize: ['lblBrandSize', v + '%'], slParamScale: ['lblParamScale', v + '%'],
             slGlassSize: ['lblGlassSize', v + '%'],
             slAppleModelSize: ['lblAppleModelSize', v + '%'],
@@ -4185,7 +4186,7 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
             slAppleLogoSize: ['lblAppleLogoSize', v + '%'], slAppleLogoOpacity: ['lblAppleLogoOpacity', v + '%'],
             slAppleLineWidth: ['lblAppleLineWidth', v + '%'],
             slLeakOpacity: ['lblLeakOpacity', v + '%'], slLeakAngle: ['lblLeakAngle', v + '°'],
-            slFilmGrain: ['lblFilmGrain', v + '%'],
+            slFilmGrain: ['lblFilmGrain', v],
             slCornerDecorSize: ['lblCornerDecorSize', v],
             slPuzzleGap: ['lblPuzzleGap', v], slPuzzleCorner: ['lblPuzzleCorner', v + '%'], slCapSize1: ['lblCapSize1', v], slCapSize2: ['lblCapSize2', v],
             slCapSpacing: ['lblCapSpacing', v + '%'], slSlotOffsetX: ['lblSlotOffsetX', v], slSlotOffsetY: ['lblSlotOffsetY', v],

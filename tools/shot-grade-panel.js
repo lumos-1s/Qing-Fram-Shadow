@@ -80,8 +80,11 @@ async function main() {
         App.selectedIdx = [0];
         App.batchSel = [];
         App.imageTemplates = new Map();
+        const useDefault = ${JSON.stringify(process.env.QF_SHOT_TPL === 'default')};
         imgs.forEach((im) => {
-            const tpl = JSON.parse(JSON.stringify(App.presets[0]));
+            // 相框样式（photoFrameStyle）管线不应用光效，晕影/颗粒几行会跟着 .ctl-light-row 隐藏；
+            // 想截「效果」段的完整六行，用 QF_SHOT_TPL=default 切到默认模板再拍。
+            const tpl = useDefault ? App.defaultTemplate() : JSON.parse(JSON.stringify(App.presets[0]));
             im.customSettings = tpl;
             App.imageTemplates.set(im, tpl);
         });
@@ -143,6 +146,18 @@ async function main() {
         await sleep(120);
         await shot(name, '#inspector');
     }
+    await exec(`(() => { const b = document.querySelector('.insp-body'); if (b) b.scrollTop = 0; return true; })()`);
+    // 「效果」段整段对准（默认模板下应当有六行：纹理/清晰度/去薄雾/晕影/羽化/颗粒）
+    await exec(`(() => {
+        const b = document.querySelector('.insp-body');
+        const fx = document.querySelector('#grpGrade .pg-sub[data-sub="fx"]');
+        if (!b || !fx) return false;
+        const top = fx.getBoundingClientRect().top - b.getBoundingClientRect().top + b.scrollTop - 48;
+        b.scrollTop = Math.max(0, top);
+        return true;
+    })()`);
+    await sleep(450);
+    await shot('panel-fx-full', '#inspector');
     await exec(`(() => { const b = document.querySelector('.insp-body'); if (b) b.scrollTop = 0; return true; })()`);
     // 侧栏拖到最窄 / 最宽，确认标签与数值不打架
     for (const w of [260, 440]) {
