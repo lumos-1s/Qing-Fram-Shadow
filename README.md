@@ -1,16 +1,17 @@
 <a id="readme-top"></a>
 <p align="center">
-  <img src="assets/readme/hero.svg" width="100%" alt="清框影 QingFramShadow · Frame Studio — 本地照片加边框工具">
+  <img src="assets/readme/hero.svg" width="100%" alt="清框影 QingFramShadow — 本地照片加框工具">
 </p>
 
 <p align="center">
   <strong>给照片一副好框，给参数一个位置。</strong><br>
-  本地优先的桌面照片加框工具：艺术边框、光影、Logo 水印、EXIF 与签名，一次完成。
+  本地优先的桌面照片加框工具：边框、调色、RAW、水印、EXIF 与签名，一次完成。
 </p>
 
-<p align="center">
-  <sub>A local-first desktop photo framing app. Frames, light, logos, EXIF and signatures — rendered entirely on your machine.</sub>
-</p>
+<p align="center"><sub>
+  A local-first Windows desktop app — 90 presets and 95 frame styles, live colour grading,
+  RAW developing, watermarks and batch export. No account, no uploads.
+</sub></p>
 
 <p align="center">
   <a href="https://github.com/lumos-1s/Qing-Fram-Shadow/stargazers"><img src="https://img.shields.io/github/stars/lumos-1s/Qing-Fram-Shadow?style=flat-square&color=blue" alt="GitHub stars"></a>
@@ -21,101 +22,56 @@
 </p>
 
 <details>
-<summary><strong>目录 · Table of Contents</strong></summary>
+<summary><strong>目录 · Contents</strong></summary>
 
-- [最近更新](#whats-new)
-- [下载](#download)
-- [核心功能](#features)
-- [预设效果](#preset-gallery)
-- [快速开始](#quick-start)
-- [技术栈](#tech-stack)
-- [项目结构](#project-structure)
-- [开发与校验](#development)
-- [代码签名政策](#code-signing)
-- [参与贡献](#contributing)
-- [素材与许可](#assets-license)
+[下载](#download) · [界面](#screenshots) · [能做什么](#features) · [预设效果](#preset-gallery) · [最近更新](#whats-new) · [快速开始](#quick-start) · [技术栈](#tech-stack) · [项目结构](#project-structure) · [开发与校验](#development) · [签名与隐私](#code-signing) · [参与贡献](#contributing) · [素材与许可](#assets-license)
 
 </details>
 
 ---
 
-## 先看效果 · See it in action
-
-<p align="center">
-  <img src="assets/readme/app-ui.png" width="100%" alt="清框影应用界面：左侧预设库、中间套用复古双线边框的示例照片、右侧参数与 EXIF 面板">
-</p>
-
-<p align="center">
-  <sub>真实应用界面 · 套用「复古双线」预设 · 示例照片与参数为演示数据<br>Real UI with the “1970s Double Line” preset · demo photo and data</sub>
-</p>
-
-## 它是什么 · What it is
-
-**清框影 QingFramShadow** 是一款 Windows 桌面照片加框工具。它把「边框」当成一张可编辑的画布：先选一款边框定下气质，再调整边距、圆角、纹理、光影、Logo、相机参数与签名，最后按原图尺寸或指定尺寸导出。
-
-- **想让照片快速成片的人**：90 款边框直接套用，右侧参数实时预览。
-- **在意画质与隐私的人**：Canvas 2D 本地渲染，照片不上传，不登录。
-- **需要成批出图的人**：样式记忆、批量导入、同步到选中，一次导出。
-
-> **English** — A Windows desktop app for framing photos locally: 90 presets, 95 frame styles, live frame/light/logo/EXIF controls, reusable templates, collage, grid slicing and batch export. No account, no uploads.
-
-<a id="whats-new"></a>
-## 最近更新 · What's New
-
-### v0.1.22
-
-- **新增裁切照片** — 自由裁切或按常用比例裁切，支持旋转、翻转，随时可以还原原图。
-- **边框墙分为「有限」和「无限」两种模式** — 有限模式有首有尾、拖到头即止；无限模式循环浏览，按自己的习惯切换。
-- **新增基础调色** — 曝光、白平衡、对比度、高光、阴影、白场、黑场、饱和度逐档可调，拖动即时预览。
-- **新增添加文字** — 画布上想加什么字就加什么字，字体、字号、颜色、效果可调，直接拖拽定位与缩放。
-- **Logo 支持自己导入** — 「Logo」页签新增「导入 Logo 素材包」，一键导入 Eagle 素材包（.eaglepack）里的整包品牌 Logo，素材名即品牌名，导入后按照片 EXIF 自动匹配。
-- **其他优化** — 调色效果进一步对齐 Camera Raw（实测色表 + 真实去薄雾反演）；「继续上次会话」显示恢复进度条；边框面板删掉从未生效的控件与死字段，投影/发光/角饰改为归零即关闭；界面字号与配色统一。
-
-> **English** — v0.1.22 adds photo cropping, finite/infinite preset-wall modes, basic colour grading, a text tool, one-click import of Eagle logo packs, plus Camera Raw–aligned colour, a restore-progress bar and a trimmed border panel.
-
-完整变更与安装包见 [GitHub Releases](https://github.com/lumos-1s/Qing-Fram-Shadow/releases)。
-
 <a id="download"></a>
 ## 下载 · Download
 
-从 [GitHub Releases](https://github.com/lumos-1s/Qing-Fram-Shadow/releases) 下载 Windows 安装版（NSIS）或便携版。
+**当前版本 v0.1.25** — 从 [GitHub Releases](https://github.com/lumos-1s/Qing-Fram-Shadow/releases) 获取 Windows 安装版（NSIS）或便携版。
 
-**当前 Windows 产物未签名。** 安装包由 GitHub Actions 从本仓库构建；首次运行会遇到 SmartScreen「未知发布者」提示，处理方式见下方[安装提示](#smart-screen)，校验方式见[代码签名政策](./CODE_SIGNING.md)。
+> **English** — Grab the Windows installer or portable build from Releases. Everything is rendered on your machine; no account, no upload.
 
-> **English** — Windows builds are currently unsigned (SmartScreen will warn on first run). They are built by GitHub Actions from this repository. See [code signing policy](./CODE_SIGNING.md).
+安装包由 GitHub Actions 从本仓库构建，**目前未签名**，首次运行会出现 SmartScreen「未知发布者」提示。这是未签名软件的正常行为，见[处理方式](#smart-screen)与[签名政策](./CODE_SIGNING.md)。
 
-<a id="smart-screen"></a>
-### 提示「未知发布者」怎么办 · SmartScreen note
-
-未签名软件首次运行会被 SmartScreen 拦截，这是预期行为，不代表文件被篡改：
+<details>
+<summary><a id="smart-screen"></a><strong>SmartScreen 提示「未知发布者」怎么办</strong></summary>
 
 1. 在蓝色提示框点「更多信息 / More info」。
 2. 点「仍要运行 / Run anyway」，再在 UAC 里点「是 / Yes」。
-3. 不放心就先核对文件校验值（`certutil -hashfile <安装包> SHA256`），或改用免安装的便携版。
+3. 想先核对文件，运行 `certutil -hashfile <安装包> SHA256`，或改用免安装的便携版。
+
+</details>
+
+<a id="screenshots"></a>
+## 先看效果 · See it in action
+
+<p align="center">
+  <img src="assets/readme/app-ui.png" width="100%" alt="清框影应用界面：左侧预设库、中间示例照片、右侧参数面板">
+</p>
+
+<p align="center"><sub>真实应用界面 · 示例照片与参数为演示数据 / Real UI, demo photo and data</sub></p>
 
 <a id="features"></a>
-## 核心功能 · Features
+## 能做什么 · Features
 
-- **RAW 直读与显影** — 直接导入 Sony / Canon / Nikon / Fujifilm / Panasonic / Olympus / Pentax / 徕卡 / 大疆等机身的 RAW（arw、cr2、cr3、nef、raf、rw2、orf、pef、dng 等三十余种），解码走 LibRaw 的原始数据而不是相机直出的 JPEG。打开即自动显影：解码时定好曝光基线、压好高光肩，不需要在导入时先选一堆参数；曝光 / 对比 / 高光 / 色温 / 色调只在「调色」里有一套滑块，RAW 与 JPEG 共用，不会出现两套同名参数互相打架。导入先出 1600px 代理（约 0.5 秒），切到这张照片后自动按全尺寸重解，「调色」顶部的「RAW 显影」一组写着当前是代理还是实际像素、正在显影时的脉动提示，也有「按全尺寸显影」按钮可手动重来；状态栏分辨率同样标出 RAW 代理，导出与切图前还会再补齐。显影结果按参数缓存在本地，调回旧值直接命中。RAW 也能裁切与旋转：裁切框按原图归一化坐标记录，代理和全尺寸共用同一份视图，之后再重新显影不会丢构图；视图一起进撤销栈，「还原原图」清空裁切与旋转。解码只用通用色彩矩阵，没有 Adobe 的 DCP 相机配置文件，颜色会比 Lightroom 平一些——差的是一份数据，不是能力。
-- **90 款内置边框 · 95 种风格** — 杂志、拍立得、撕纸、胶带、邮票、报纸、胶片、渐变卡、漫画分镜、3D 卡、签名纪念与头像叠加，以及自动取色边框等快速预设；选中即套用，再继续微调。列表行高 34px，一屏能扫十几行；鼠标在行上停留 0.16 秒就把这个边框套到照片上预览，移开还原，点击才真正应用。
-- **边框墙启动页** — 启动即进入 90 张边框封面墙，方向键、滚轮或拖动浏览，点击直接套用并进入编辑；支持用自定义照片替换封面。支持「本图预览」：用当前照片实时渲染每款边框，随时可切回内置/自定义封面。
-- **参数实时可调** — 圆角、边距、照片缩放/偏移、内/外阴影、描边、投影、画布比例、纹理/渐变填充，改动即时反馈。
-- **背景模糊默认偏好** — 在「跟随边框 / 默认开 / 默认关」之间切换，换边框或重启后仍记住选择。
-- **分区编辑台** — 左侧素材栏可在「边框 / 我的调色」之间切换：边框模式用「图标 + 名字」列出全部边框，鼠标停留即在照片上预览，窄栏也能一屏扫二十来行；右侧按「画布 / 文字 / 边框 / 调色 / Logo / 样式」分区，拼图与切图归入工具行（原「光影」的暗角/漏光/颗粒已并入调色页签）。调色页签顶部是一块 RGB 直方图与 EXIF 参数条，直方图取调色之后的预览，拖滑块时实时变化；下面的滑块按 Camera Raw 分成「亮 / 颜色 / 效果」三段，可分别收起、分别复位；滑块旁可输入精确数值，双击参数名、数字框或滑轨本身即可复位该行，按住 Shift 拖动可微调；右侧页签收成一行（主 5 个常驻，「更多」里放样式 / 拼图 / 切图），低频档位（黑白、色彩平衡、渐变映射、镜头校正、校准、蒙版）默认收起且记住折叠状态，「设置 → 外观」里可切参数栏密度（自动 / 紧凑 / 舒适），当前样式与 RAW 阶段收敛到状态栏和直方图卡；直方图两角有剪切警告（悬停看占比、点击标端点），下方一行是「+ 蒙版」工具入口与编辑态提示，滑块轨道标着默认值位置；标题栏中间显示当前文件名与序号，底部「当前样式」可点；调色页可「复制设置 / 粘贴设置」把调色与边框一起搬到多选照片；左侧边框列表默认只展开当前风格所在组并记住折叠状态；左右侧栏可收起、拖宽并记住上次宽度；多选照片后自动浮出批量操作条。
-- **黑白混色器** — 勾一下就整张转灰度，再用 8 个色相带（红/橙/黄/绿/浅绿/蓝/紫/洋红）分别调「这个颜色转灰后有多亮」；导入 LR 预设时 `ConvertToGrayscale` 与 `GrayMixer*` 会一并套用。
-- **蒙版调色** — 调色面板顶部可加蒙版：线性渐变 / 径向椭圆 / 画笔涂抹 / 亮度范围，可叠多个；选中某个蒙版后，九档滑块只作用在蒙版范围内（曲线/校准/混色器仍是全局），支持羽化、浓度与反相；画布上直接拖渐变方向或涂抹，蒙版范围实时染成绿色预览。
-- **基础调色** — 曝光、对比度、饱和度、色温、色调、高光、阴影、白色、黑色九档滑块（白色/黑色是 Lightroom 那对黑场白场：白色并合高光、黑色抬黑或压死暗部），外加 RGB / 红 / 绿 / 蓝四条可拖动曲线（S 形加对比、抬黑点做褪色灰调、分通道调色）；「效果」段管纹理 / 清晰度 / 去除薄雾，「锐化」只管锐化四档，再往上是「校准」（红/绿/蓝原色 · 色相/饱和）与「混色器」（8 色相带 × 色相/饱和度/明亮度，彩色轨道子页切换）；只作用于当前选中的照片，参数随草稿保存、随时可重置，也可一键复制到本次导入的全部照片，不改动原图。
-- **我的调色（调色预设库）** — 在左侧素材栏点「我的调色」即可看到全部预设，右侧只留调色滑块，照片完整可见。把当前照片的全局调色（曝光、曲线、混色器、校准、细节等，不含蒙版）保存成 XMP 文件，可自选保存位置并自动收录进预设库；预设以 Lightroom / Camera Raw 能直接读取的 `.xmp` 存储，一个按钮即可批量导入 LR 预设，导入时自动跳过重复与无法识别的文件。悬停实时预览，单击套到当前照片，也可批量套到选中或全部照片；列表只显预设名（左侧栏窄，纯文字列表更好扫，也省掉每张预设都跑一遍调色管线）。预设按命名自动归类成可折叠的组（`001-包名` 去掉序号、`包名 (2)` 去掉重复号、`组 - 名` 取前段），同包的收进一组、落单的归入「未分组」，组头带数量与「组内使用中」小点，折叠状态会记住；支持搜索、重命名、删除、另存为 XMP 和打开预设文件夹。
-- **光影与质感** — 暗角、漏光、暖光/冷光、胶片颗粒（在「调色 → 氛围」里，都是常开滑块、强度 0 即关闭，叠加于整张成片含边框），以及纸张、布料等纹理，给整张成片统一的氛围。
-- **Logo、EXIF 与签名** — 品牌 Logo 或自定义图标水印；自动读取品牌、型号、焦距、光圈、ISO、快门，可手动修改；签名与头像组合排版。
-- **样式系统** — 保存/导入/导出 `.qfs` 工程与 `.json`；支持搜索、标签分组、缩略图预览、应用、重命名与带确认的删除。
-- **拼图与切图** — 多图网格拼贴，间距、圆角与字幕可调；切图把当前画布按 2×2 / 3×3 / 4×4 或自定义列 × 行（各 1–12）切成多张，预览确认后导出。
-- **批量处理** — 批量导入（文件或整个文件夹直接拖到窗口任意位置，支持 HEIC 与 RAW，EXIF 自动读取）、逐张记忆样式、同步到选中、装框缩略图，一键批量导出。
-- **沉浸展示** — 把胶片条或勾选的照片铺成模糊照片墙，中央毛玻璃卡片展示当前成片；←/→ 或鼠标滚轮上下切换，鼠标静止 2 秒自动隐藏工具栏与光标，Esc 或关闭按钮退出，退出后不改变当前图、选区和缩放。
-- **导出** — PNG / JPEG / WebP，质量可调；原图、1080、2048、4096、8192px；选好位置后渲染写入，默认原图尺寸。
-- **全本地** — 无需登录、不上传照片；照片、EXIF 与样式都留在本机。
+| | |
+|---|---|
+| **90 款内置边框 · 95 种风格** | 杂志、拍立得、邮票、撕纸、胶片、渐变卡、3D 卡、水印与头像叠加；选中即套用，鼠标悬停先预览 |
+| **调色** | 按 Camera Raw 分成「亮 / 颜色 / 效果」三段：直方图、曲线、混色器、校准、蒙版、黑白、锐化；每段可单独收起与复位 |
+| **RAW 直读显影** | arw / cr2 / cr3 / nef / raf / dng 等三十余种，LibRaw 解码；先出 1600px 代理，切到照片后自动补到全尺寸，可裁切旋转 |
+| **文字 · Logo · EXIF** | 品牌 Logo 与自定义图标、相机参数自动读取、签名与头像排版；文字可拖拽定位、改字号与颜色 |
+| **我的调色** | 把调色存成 Lightroom 可读的 `.xmp`，批量导入、悬停预览、编组搜索、套用到选中或全部照片 |
+| **成批出图** | 多图导入、逐张记忆样式、同步到选中、拼图与切图、沉浸照片墙、一键批量导出 |
+| **导出** | PNG / JPEG / WebP，质量可调；原图尺寸或 1080 / 2048 / 4096 / 8192px |
+| **全本地** | 无需登录、不上传照片；照片、EXIF 与样式都留在本机 |
 
-> **English** — 90 presets and 95 frame styles for magazine, polaroid, torn paper, tape, stamp, newspaper, film, gradient, comic, 3D card, signature and avatar layouts; a preset-wall launcher; live frame, shadow, texture and light controls; remembered background-blur defaults; basic per-photo grading (exposure, contrast, saturation, temperature, tint, highlight, shadow); preset thumbnails, split canvas/text panels, exact numeric slider input, double-click row reset and Shift fine-tuning; collapsible resizable side panels; logo/EXIF/signature layers; `.qfs` and `.json` templates; collage, grid slicing, batch export and an immersive photo-wall presentation with wheel navigation; PNG/JPEG/WebP up to 8192px. Everything local.
+> **English** — Live frame, light and logo controls; per-photo grading with curves, masks and XMP presets; collage, grid slicing, immersive presentation and batch export up to 8192px. Everything stays local.
 
 <a id="preset-gallery"></a>
 ## 预设效果 · Preset Gallery
@@ -124,79 +80,50 @@
   <img src="assets/readme/preset-wall.webp" width="100%" alt="六种预设的真实渲染：VHS 录像带、复古报纸、复古双线、仿古邮票、复古胶片撕裂、老相册角贴">
 </p>
 
-<p align="center">
-  <sub>六种预设的真实渲染 · 示例照片为项目自绘的黄昏湖面<br>Six real engine renders · sample photo: a self-drawn dusk lake</sub>
-</p>
+<p align="center"><sub>六张预设均由引擎实际渲染 · 示例照片为项目自绘 / Six real engine renders, self-drawn sample photo</sub></p>
 
-90 款边框覆盖复古胶片、拍立得、邮票、报纸、杂志、撕纸、胶带、漫画、签名、拼图等方向；每款边框都能继续改边距、圆角、纹理、光影与文字。六张预设图都由引擎实际渲染，不是手工绘制的模拟效果，也没有使用图库或用户照片。
+90 款边框覆盖复古胶片、拍立得、邮票、报纸、杂志、撕纸、胶带、漫画、签名与拼图等方向，每一款都能继续改边距、圆角、纹理、光影与文字。启动时也能直接进入封面墙，用方向键、滚轮或拖动浏览，点一下就进编辑。
+
+<a id="whats-new"></a>
+## 最近更新 · What's New
+
+### v0.1.25 · 2026-11-09
+
+- **RAW 直读与两级显影** — 三十余种 RAW 格式直接导入，代理秒开、切图自动补到全尺寸，不重复解码。
+- **调色面板重排** — 直方图与 EXIF 钉在顶部，参数分「亮 / 颜色 / 效果」三段；曲线外框恒为正方形，端点可设黑白场。
+- **界面减负** — 页签收成一行、低频档位默认收起、预设墙非全屏时顶部栏不再重叠。
+
+完整变更与安装包见 [GitHub Releases](https://github.com/lumos-1s/Qing-Fram-Shadow/releases)；应用内「设置 → 关于 → 更新内容」也有离线版。
 
 <a id="quick-start"></a>
 ## 快速开始 · Quick Start
 
-**直接使用**：从 [Releases](https://github.com/lumos-1s/Qing-Fram-Shadow/releases) 下载 Windows 安装版或便携版。
+**三步出片**：导入照片 → 从封面墙或左侧列表选边框 → 右侧调边距/调色/水印 → 点「导出」。
 
-**三步出片**：
-
-1. 从边框墙选一款边框进入编辑，或导入一张/多张照片；还没照片时可点「先用示例图看看」。
-2. 在左侧换边框；右侧「画布」调边距、缩放与圆角，「文字」调字号与相机 EXIF，「边框 / 调色 / Logo / 样式」继续细化。
-3. 点「导出」，选择 PNG / JPEG / WebP 与导出尺寸。
-
-> **English** — Download a Windows build from Releases, import photos, pick a preset, adjust the frame/light/logo/EXIF, then export as PNG, JPEG or WebP.
-
-**从源码运行**：
+从源码运行：
 
 ```bash
-# 安装依赖 / install dependencies
 npm install
-
-# 开发模式启动 / run in dev mode
-npm run start
-
-# 打包 Windows 安装版 / build installers
-npm run dist
-
-# 仅供便携版 / portable only
-npm run dist:portable
+npm run start:soft     # 开发启动（自动挑可用的 Electron）
+npm run dist           # 打包 Windows 安装版 + 便携版
 ```
 
-构建产物位于 `dist/`。Built artifacts are placed in `dist/`.
+产物在 `dist/`。Windows 上也可以直接双击根目录 `start.bat`。开发启动优先用 `start:soft`；只有 GPU 进程崩溃时才换 `start:sw`（swiftshader 软件渲染，慢但兼容）。
 
-> 开发启动推荐用 `npm run start:soft`：自动挑一个可用的 Electron（项目外同版本副本优先），默认硬件合成。
-> 只有 GPU 进程崩溃时才用 `npm run start:sw`（swiftshader 软件 GL，慢但兼容）。
-> `npm run start` 仍是裸 `electron .`，供 CI / start.bat 使用。
+> **English** — `npm install` → `npm run start:soft` → `npm run dist`. Artifacts land in `dist/`.
 
-> 提示：Windows 上可双击根目录 `start.bat` 直接启动开发环境。
-> Tip: on Windows you can double-click `start.bat` in the project root to launch the dev environment.
-
-### 换边框墙封面照片 · Changing preset-wall cover photos
-
-边框墙（启动页）的封面由 `tools/gen-preset-wall.js` 渲染生成；换照片不用改代码：
-
-1. 把照片按分类名放进 `design/preset-wall-samples/`，例如 `个性.jpg`、`艺术.webp`（支持 jpg / jpeg / png / webp）。
-2. 重新生成（应用开着也能跑，生成器是独立进程）：
-
-```bash
-npm run gen:wall
-```
-
-没放照片的分类继续用 `tools/preset-wall.config.json` 里 `tagSamples` 指定的默认示例图，也可以直接改这个文件调整映射。只想换某一两张预设的封面、不想重新生成时，把图片放进应用数据目录的 `wall-covers/<预设名>.webp`（启动页「换封面」按钮会打开这个目录），重启应用生效。
-
-生成器默认把封面长边压到 560px（配置里的 `coverMax`，或命令行 `--max`），90 张合计约 3MB。
-
-> **English** — Drop photos named after a category into `design/preset-wall-samples/` (e.g. `个性.jpg`), then run `npm run gen:wall`. Categories without an override keep the default sample from `tools/preset-wall.config.json`. For one-off cover changes, put an image in `wall-covers/<preset>.webp` via the in-app “换封面” button and restart.
+换封面照片：把图片按分类名放进 `design/preset-wall-samples/`，运行 `npm run gen:wall`；只想换单张，用应用内「换封面」按钮打开 `wall-covers/` 目录放入 `<预设名>.webp` 后重启。
 
 <a id="tech-stack"></a>
 ## 技术栈 · Tech Stack
 
-[![Tech Stack](https://skillicons.dev/icons?i=js,html,css,electron,nodejs,npm,git,github)](https://skillicons.dev)
-
-| 层 Layer | 技术 Tech |
+| 层 | 技术 |
 |---|---|
-| 桌面壳 Desktop shell | Electron 45（主/渲染进程分离，`contextIsolation` + `sandbox` 开启） |
-| 渲染 Rendering | 原生 HTML / CSS / JavaScript + Canvas 2D 离屏合成 |
-| 打包分发 Packaging | electron-builder（NSIS 安装版 + 便携版） |
-| RAW 解码 RAW decode | LibRaw（`libraw-wasm`，跑在主进程的独立线程里；LGPL-2.1 / CDDL） |
-| 自动更新 Auto-update | electron-updater + GitHub Releases |
+| 桌面壳 | Electron 45（主/渲染分离，`contextIsolation` + `sandbox`） |
+| 渲染 | 原生 HTML / CSS / JavaScript + Canvas 2D 离屏合成 |
+| RAW 解码 | LibRaw（`libraw-wasm`，主进程独立线程；LGPL-2.1 / CDDL） |
+| 打包分发 | electron-builder（NSIS + 便携版） |
+| 自动更新 | electron-updater + GitHub Releases |
 
 没有前端框架，也没有后端服务；边框、光影、文字与导出都在渲染进程的 Canvas 2D 里完成。
 
@@ -204,23 +131,14 @@ npm run gen:wall
 ## 项目结构 · Project Structure
 
 ```
-├─ src/
-│  ├─ main/          # Electron 主进程：窗口、菜单、文件 IPC、模板读写
-│  │                 #   main process: window, menus, file IPC, template I/O
-│  └─ renderer/      # 渲染进程：UI 与 Canvas 渲染引擎
-│                    #   renderer: UI and Canvas rendering engine
-├─ shared/
-│  ├─ presets/       # 90 款内置边框（JSON 描述）
-│  │                 #   90 built-in preset templates (JSON)
-│  ├─ textures/      # 纹理素材 / texture assets (10)
-│  └─ brandlogos/    # 空占位：第三方厂商 Logo 不进仓库，运行时只读用户数据目录
-│                    #   placeholder only; logos live in userData and are never shipped
-├─ assets/readme/    # README 头图、界面截图与预设效果墙
-├─ tools/            # 构建、校验与 Electron 测试辅助脚本
-├─ tests/            # 单元 / 视觉回归等测试
-├─ start.bat         # Windows 快速启动脚本 / quick-launch script
-├─ THIRD-PARTY-ASSETS.md  # 第三方素材归属说明 / asset attribution notice
-└─ package.json
+├─ src/main/          # Electron 主进程：窗口、菜单、文件 IPC、模板读写
+├─ src/renderer/      # 渲染进程：UI 与 Canvas 2D 渲染引擎
+├─ shared/presets/    # 90 built-in preset templates (JSON)
+├─ shared/textures/   # 纹理素材 / texture assets (10)
+├─ assets/readme/     # README 头图、界面截图与预设效果墙
+├─ tools/             # 构建、校验与 Electron 测试辅助脚本
+├─ tests/             # 单元 / 视觉回归测试
+└─ start.bat          # Windows 快速启动脚本
 ```
 
 <a id="development"></a>
@@ -230,69 +148,41 @@ npm run gen:wall
 <summary><strong>发布前自检 · Pre-release checks</strong></summary>
 
 ```bash
-npm run check         # ESLint + 预设/标记/能力表校验 + 主进程 I/O、图标、引擎不变量（纯 Node，不需要 GUI）
-npm test              # check + Electron 用例（面板、拖动、视觉回归等；&& 串联，单点失败即断）
-npm run release       # 未压缩目录 → verify:dist 校验 → 打安装包 → verify:pkg 校验安装包
+npm run check         # ESLint + 预设/能力表计数 + 主进程 I/O、图标、引擎不变量（纯 Node）
+npm run test:ci       # check + 全部 Electron GUI 用例
+npm run release       # 未压缩目录 → verify:dist → 打安装包 → verify:pkg
 ```
 
-`npm run release` 等价于 `app:dir` + `verify:dist` + `dist`（`dist` 内含安装包构建 + `verify:pkg`）。`verify:dist` 会拦截品牌 Logo 泄漏、预设/纹理数量与源码不符、以及产物早于源码改动的情况；一旦发现，不会继续产出安装包。
-
-```bash
-npm run app:dir       # 只产出未压缩目录（供校验用）
-npm run verify:dist   # 检查 dist/ 下所有 app.asar：无品牌 Logo、预设/纹理数量与源码实测一致、产物新鲜
-npm run verify:pkg    # 另加安装包核验：Setup.exe 体积与 latest.yml 一致 + sha512 校验和逐字节复核
-```
-
-`verify:dist` 的退出码：`0` 通过 / `1` 已确定的失败（品牌 Logo 泄漏、预设或纹理数量与源码不符、或没有任何可读产物）/ `2` 无法判定（仅产物早于源码改动这种拿不准的情况）。`verify:pkg`（`--installers` 模式）在此基础上核对安装包与 `latest.yml` 的 size/sha512，不一致即退出码 1——`dist` / `release` / `release:publish` 都已在链尾自动执行。
-
-> 预设与纹理的期望数量从 `shared/` 实测，不写死在脚本里——加了预设就不必再改校验脚本。
+`verify:dist` 会拦截品牌 Logo 泄漏、预设/纹理数量与源码不符、产物早于源码改动；`verify:pkg` 另核对安装包与 `latest.yml` 的 size/sha512。期望数量从 `shared/` 实测，不写死在脚本里。详细流程见 [RELEASE.md](./RELEASE.md)。
 
 </details>
 
 <a id="code-signing"></a>
-## 代码签名政策 · Code signing policy
+## 签名与隐私 · Signing & Privacy
 
-**Windows 产物目前未签名。** 本项目曾向 [SignPath Foundation](https://signpath.org/) 申请开源项目的免费代码签名；因项目公开可见度尚未达到该计划的门槛（其评审看的是 Star、Fork、外部引用与社区活跃度等公开信号），申请未获通过，达到条件后会重新申请。
+**Windows 产物目前未签名。** 曾向 [SignPath Foundation](https://signpath.org/) 申请开源项目免费代码签名，因项目公开可见度未达门槛而未获通过，达到条件后会重新申请。**任何称当前版本已由 SignPath 签名的说法都不成立。** 请只从本仓库 Releases 下载，并按 [`CODE_SIGNING.md`](./CODE_SIGNING.md) 核对校验值。
 
-在获得签名之前：
+- 签名范围、审批与验签：[`CODE_SIGNING.md`](./CODE_SIGNING.md)
+- 联网与隐私说明：[`PRIVACY.md`](./PRIVACY.md)
+- 第三方素材归属：[`THIRD-PARTY-ASSETS.md`](./THIRD-PARTY-ASSETS.md)
 
-- GitHub Releases 上的安装包与便携版都是**未签名产物**，首次运行会出现 SmartScreen「未知发布者」提示；这是未签名软件的正常行为，处理方式见[安装提示](#smart-screen)。
-- 请只从本仓库 Releases 页面下载，并按 [`CODE_SIGNING.md`](./CODE_SIGNING.md#verifying-an-unsigned-release) 核对校验值。
-- **任何称清框影已由 SignPath Foundation 签名的说法，对当前版本都不成立。**
-
-签名范围、审批流程与验签方法（签名启用后适用）见 [`CODE_SIGNING.md`](./CODE_SIGNING.md)；联网与隐私说明见 [`PRIVACY.md`](./PRIVACY.md)。
-
-> **English** — Windows builds are unsigned for now. An application to the SignPath Foundation OSS program was declined because the project does not yet meet the program's public-visibility bar; the project will reapply. Do not describe any current release as signed. See [`CODE_SIGNING.md`](./CODE_SIGNING.md) for verification.
+> **English** — Builds are unsigned for now (a SignPath Foundation application was declined on visibility grounds). Do not describe any current release as signed; verify checksums via `CODE_SIGNING.md`.
 
 <a id="contributing"></a>
 ## 参与贡献 · Contributing
 
-欢迎提交 Issue 或 Pull Request：
-
-1. Fork 本仓库。
-2. 新建分支：`git checkout -b feature/your-feature`。
-3. 提交改动，并运行 `npm run check`；涉及 UI 时再运行对应的 Electron 用例。
-4. 推送分支并创建 Pull Request。
-
-> **English** — Issues and pull requests are welcome. Fork the repo, create a feature branch, run `npm run check`, and open a PR.
+Fork → 新建分支 → 改动后跑 `npm run check`（涉及 UI 再跑对应 Electron 用例）→ 提 PR。Issue 与 PR 都欢迎。
 
 <a id="assets-license"></a>
 ## 素材与许可 · Assets & License
 
-代码采用 [MIT](./LICENSE) 许可。该许可仅覆盖 `src/` 下的源代码与 `shared/presets/` 中的原创模板；`shared/brandlogos/` 与 `shared/textures/` 中的素材不适用，其权利归各自权利人所有。
+代码采用 [MIT](./LICENSE) 许可，覆盖 `src/` 源码与 `shared/presets/` 中的原创模板；`shared/textures/` 素材权利归各自权利人所有。
 
-- **品牌 Logo**：第三方厂商 Logo **不在仓库、也不在安装包内**。软件运行时只读用户数据目录 `%APPDATA%\qingframe-web\brandlogos`（用「Logo → 导入 Logo 素材包」自行导入）。全新克隆或全新安装时该目录为空，软件照常运行，只是「品牌 Logo」选择组为空、「按品牌自动配 Logo」不生效。品牌名称与图形仅用于标识照片的拍摄设备，本软件与任何品牌无授权或合作关系。
-- **纹理素材**：`shared/textures/` 中的纹理不适用 MIT 许可，权利归各自权利人所有。
-- **README 示例图**：示例照片为项目自绘的合成图；界面截图与预设效果由真实应用渲染，未使用图库或用户照片。
-
-详见 [`THIRD-PARTY-ASSETS.md`](./THIRD-PARTY-ASSETS.md)。
-
-> **English** — MIT covers the source code under `src/` and the original presets under `shared/presets/`. Third-party brand logos are never shipped: they are neither in the repo nor in installers, and are only read at runtime from the user-data directory (imported by the user); a fresh clone runs fine without them. Assets under `shared/textures/` are third-party material. See `THIRD-PARTY-ASSETS.md`.
+- **品牌 Logo 不在仓库、也不在安装包内**：运行时只读用户数据目录，需自行用「Logo → 导入 Logo 素材包」导入；全新安装为空目录也能正常运行。品牌名称与图形仅用于标识拍摄设备，本软件与任何品牌无授权或合作关系。
+- **README 示例图**：示例照片为项目自绘合成图，界面截图与预设效果由真实应用渲染，未使用图库或用户照片。
 
 ---
 
-<sub>关键词 / Keywords：照片加边框 · 艺术边框 · 水印 · EXIF 相机参数 · 拼图 · 九宫格切图 · 批量导出 · 桌面工具 · Electron · Canvas 2D · photo frame · watermark · collage · grid slice · batch export</sub>
+<sub>关键词 / Keywords：照片加边框 · 艺术边框 · 水印 · EXIF 相机参数 · 拼图 · 九宫格切图 · 批量导出 · Electron · Canvas 2D · photo frame · watermark · collage · grid slice · batch export</sub>
 
-<p align="center"><a href="#readme-top">回到顶部 ↑</a></p>
-
-<p align="center"><sub>如果清框影对你有帮助，欢迎点一个 ⭐ Star。</sub></p>
+<p align="center"><sub>如果清框影对你有帮助，欢迎点一个 ⭐ Star · <a href="#readme-top">回到顶部 ↑</a></sub></p>
