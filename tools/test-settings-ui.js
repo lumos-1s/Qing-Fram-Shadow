@@ -262,6 +262,57 @@ app.whenReady().then(async () => {
         sel.dispatchEvent(new Event('change', { bubbles: true }));
     })()`);
 
+    // ── A6：排版 —— 标签单行、行距一致、弹窗宽度跟随界面缩放 ──
+    await exec(`(() => { window.App.openSettings(); const b = document.querySelector('#settingsModal .settings-body'); if (b) b.scrollTop = 0; return true; })()`);
+    await sleep(120);
+    const sA6 = await exec(`(() => {
+        const card = document.querySelector('#settingsModal .settings-card');
+        const appearance = [...document.querySelectorAll('#settingsModal .settings-sec')]
+            .find((s) => {
+                const t = s.querySelector('.settings-sec-title');
+                return !!t && t.textContent.trim() === '外观';
+            });
+        const rows = appearance ? [...appearance.querySelectorAll('.settings-row')] : [];
+        const gaps = rows.slice(1).map((r, i) => Math.round(r.getBoundingClientRect().top - rows[i].getBoundingClientRect().bottom));
+        const labels = [...document.querySelectorAll('#settingsModal .settings-label')];
+        const exportBtns = [...document.querySelectorAll('#settingsModal .settings-btns .mini-btn')];
+        return {
+            width: Math.round(card.getBoundingClientRect().width),
+            labelHeights: labels.map((l) => Math.round(l.getBoundingClientRect().height)),
+            labelNowrap: labels[0] ? getComputedStyle(labels[0]).whiteSpace : '',
+            gaps,
+            exportBtnWidths: exportBtns.map((b) => Math.round(b.getBoundingClientRect().width)),
+            emptyHints: [...document.querySelectorAll('#settingsModal .settings-hint')].filter((h) => !h.textContent.trim()).length
+        };
+    })()`);
+    check(sA6.width === 600, '设置弹窗 100% 时宽 600px', String(sA6.width));
+    check(sA6.labelNowrap === 'nowrap', '设置标签不折行', sA6.labelNowrap);
+    check(sA6.labelHeights.length >= 6 && Math.max(...sA6.labelHeights) === Math.min(...sA6.labelHeights),
+        '100% 时所有设置标签等高（均单行）', JSON.stringify(sA6.labelHeights));
+    check(sA6.gaps.length >= 2 && sA6.gaps.every((g) => g === 12),
+        '「外观」区各行统一 12px 行距', JSON.stringify(sA6.gaps));
+    check(sA6.exportBtnWidths.length === 2 && sA6.exportBtnWidths[0] === sA6.exportBtnWidths[1],
+        '导出位置的两颗按钮等宽', JSON.stringify(sA6.exportBtnWidths));
+    check(sA6.emptyHints === 0, '设置里没有空提示占位', String(sA6.emptyHints));
+
+    await exec(`window.App.applyFontScale(1.4)`);
+    await sleep(150);
+    const sA6b = await exec(`(() => {
+        const card = document.querySelector('#settingsModal .settings-card');
+        const labels = [...document.querySelectorAll('#settingsModal .settings-label')];
+        return {
+            width: Math.round(card.getBoundingClientRect().width),
+            heights: labels.map((l) => Math.round(l.getBoundingClientRect().height))
+        };
+    })()`);
+    check(sA6b.width === 840, '设置弹窗宽度跟随界面缩放（140% → 840px）', String(sA6b.width));
+    check(sA6b.heights.length >= 6 && Math.max(...sA6b.heights) === Math.min(...sA6b.heights),
+        '140% 时设置标签仍不折行', JSON.stringify(sA6b.heights));
+    await exec(`window.App.applyFontScale(1)`);
+    await sleep(120);
+    await exec(`window.App.closeSettings()`);
+    await sleep(80);
+
     // ── B：未设置时显示「每次询问」，清除按钮禁用 ──
     await exec(`window.App.openSettings()`);
     await sleep(80);

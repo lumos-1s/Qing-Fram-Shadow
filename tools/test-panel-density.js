@@ -63,7 +63,14 @@ const PROBE = `(async () => {
     const primary = allTabs.filter((t) => !t.closest('#tabMoreMenu')).map((t) => t.dataset.tab);
     const inMenu = allTabs.filter((t) => !!t.closest('#tabMoreMenu')).map((t) => t.dataset.tab);
     const sep = !!document.querySelector('#inspTabs .tab-sep, #inspTabs .tabs-tool-label');
-    const tabsH = Math.round($('inspTabs').getBoundingClientRect().height);
+    const tabsH = $('inspTabs').getBoundingClientRect().height;
+    // 高度取整会卡在 45.5→46 的边界；直接按子项中心点判断是不是同一行。
+    const tabRows = new Set(Array.prototype.slice.call($('inspTabs').children)
+        .filter((el) => el.getBoundingClientRect().width > 0)
+        .map((el) => {
+            const r = el.getBoundingClientRect();
+            return Math.round((r.top + r.bottom) / 2 / 10);
+        })).size;
 
     // ── 2. 更多菜单：打开 / 选中 / 回显 / 关闭 ──
     const moreBtn = $('btnTabMore');
@@ -77,6 +84,25 @@ const PROBE = `(async () => {
     const closed = menu.hidden;
     A.switchTab('grade');
     await wait(60);
+
+    // ── 2b. 调色操作收进标题 + 降级 chip ──
+    const gradeGrp = $('grpGrade');
+    const gradeTitleText = ((gradeGrp.querySelector('.pg-title-text') || {}).textContent || '').trim();
+    const oldActRow = Array.prototype.slice.call(gradeGrp.children)
+        .some((el) => el.classList.contains('param-row') && el.classList.contains('grade-acts'));
+    const gradeActionIds = ['btnGradeApplyAll', 'btnGradeCopySet', 'btnGradePasteSet', 'btnGradeImportXmp']
+        .filter((id) => !!$(id));
+    $('btnGradeMore').click();
+    const gradeMenuOpen = !$('gradeMoreMenu').hidden
+        && $('btnGradeMore').getAttribute('aria-expanded') === 'true'
+        && !gradeGrp.classList.contains('collapsed');
+    document.body.click();
+    const gradeMenuClosed = $('gradeMoreMenu').hidden;
+    const sideDup = !!document.querySelector('.side-subhead > span');
+    A.setEnvTag('简化调色', '测试：色表未加载');
+    const envChip = { text: $('gradeEnvTag').textContent, hidden: $('gradeEnvTag').hidden };
+    A.setEnvTag('');
+    const envOff = $('gradeEnvTag').hidden;
 
     // ── 3. 低频组默认折叠 + 提示行 ──
     const defFolded = D.state().folded.slice();
@@ -143,7 +169,9 @@ const PROBE = `(async () => {
     insp.style.width = '';
 
     return {
-        primary, inMenu, sep, tabsH, opened, onTemplate, label, closed,
+        primary, inMenu, sep, tabsH, tabRows, opened, onTemplate, label, closed,
+        gradeTitleText, oldActRow, gradeActionIds, gradeMenuOpen, gradeMenuClosed,
+        sideDup, envChip, envOff,
         defFolded, noticeShown, noticeText, afterExpand, afterReset, titleAlive, foldAlive,
         autoCanvas, autoGrade, forcedCompact, forcedComfortable, backAuto,
         modeHidden, styleInStatus, rawProxy, rawFull, rawOff,
@@ -175,12 +203,22 @@ async function main() {
     if (res) {
         if (res.missing) check(false, '模块已加载', 'QfsPanelDensity 未定义');
         check(res.primary.join(',') === 'canvas,text,border,grade,logo'
-            && res.inMenu.join(',') === 'template,puzzle,grid' && !res.sep && res.tabsH < 46,
+            && res.inMenu.join(',') === 'template,puzzle,grid' && !res.sep
+            && res.tabRows === 1 && res.tabsH < 60,
             '页签收成一行：主 5 个 + 更多 3 个，高度不再占两排',
-            JSON.stringify({ primary: res.primary, inMenu: res.inMenu, sep: res.sep, h: res.tabsH }));
+            JSON.stringify({ primary: res.primary, inMenu: res.inMenu, sep: res.sep, h: res.tabsH, rows: res.tabRows }));
         check(res.opened && res.onTemplate && res.closed && /样式/.test(res.label),
             '更多菜单可开合，切到隐藏页签后按钮回显当前页签名',
             JSON.stringify({ opened: res.opened, onTemplate: res.onTemplate, closed: res.closed, label: res.label }));
+        check(res.gradeTitleText === '基础' && !res.oldActRow && res.gradeActionIds.length === 4,
+            '调色操作收进组标题，原来的五按钮行不再占位',
+            JSON.stringify({ title: res.gradeTitleText, oldActRow: res.oldActRow, ids: res.gradeActionIds }));
+        check(res.gradeMenuOpen && res.gradeMenuClosed,
+            '调色「⋯」菜单可开合，点标题里的按钮不会误收起整组',
+            JSON.stringify({ open: res.gradeMenuOpen, closed: res.gradeMenuClosed }));
+        check(!res.sideDup && res.envChip.text === '简化调色' && !res.envChip.hidden && res.envOff,
+            '重复的「边框」小标题已移除；降级提示收进直方图 chip',
+            JSON.stringify({ sideDup: res.sideDup, env: res.envChip, off: res.envOff }));
         check(res.defFolded.join(',') === 'grpMask,grpBw,grpCb,grpGm,grpLc,grpCal',
             '六组低频参数默认收起', res.defFolded.join(','));
         check(res.noticeShown && /组已收起/.test(res.noticeText),

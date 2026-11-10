@@ -102,7 +102,8 @@
         if (!box) return;
         const n = gradeGroups().filter((g) => g.classList.contains('collapsed')).length;
         const text = $('foldNoticeText');
-        if (text) text.textContent = n ? `${n} 组已收起 · 点标题展开` : '全部参数组已展开';
+        // 组标题本身有展开箭头，提示只报数量，不再重复「点标题展开」。
+        if (text) text.textContent = n ? `${n} 组已收起` : '全部参数组已展开';
         // 只在调色页签、且确实有组被收起时出现；其它页签不占空间。
         const show = currentTab() === 'grade' && n > 0;
         box.hidden = !show;

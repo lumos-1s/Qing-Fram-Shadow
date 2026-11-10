@@ -167,7 +167,7 @@ async function main() {
                  title: (g.querySelector('.pg-title') || {}).textContent || '' };
     })()`);
     check(grp.inGrade && !grp.inToolbar && grp.hasTab && !grp.isToolTab
-          && grp.active && !grp.canvasStill && /调色/.test(grp.title),
+          && grp.active && !grp.canvasStill && /基础/.test(grp.title),
         '调色挂在「画布」这一行的页签里（不再属于工具行），点击能切到面板', JSON.stringify(grp));
     check(grp.lightGroups === 1 && grp.lightInGrade && grp.noLightPanel && grp.noLightTab,
         '原「光影」三组已并入调色页签：晕影/颗粒进「效果」小节，只剩漏光还是 .ctl-grp-light；独立页签与面板已移除',

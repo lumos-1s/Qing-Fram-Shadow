@@ -36,8 +36,9 @@
     --border-strong: #CBC4B2;
     --bg-soft: #F4F6F2;
     --thumb-bg: #EBE5D8;
-    /* 滑轨与直方图底：滑轨要比 --thumb-bg 再深一档，否则浅底上几乎看不见 */
-    --track: #D8D1C0;
+    /* 滑轨与直方图底：滑轨要比 --thumb-bg 再深两档，否则浅底上几乎看不见。
+       2026-11 又压深了一档：原 #D8D1C0 与浅灰面板只差 1.3:1，拖动时找不到轨道。 */
+    --track: #C4BAA4;
     /* 直方图恒用深底：RGB 叠加是加色混合，浅底上会糊成一片 */
     --histo-bg: #1E2220;
     --shadow-sm: 0 2px 10px rgba(92,80,56,0.08);
@@ -358,11 +359,10 @@ html.dark .tbtn.primary { color: var(--primary-ink); }
 .side-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .side-body[hidden] { display: none; }
 .side-subhead {
-    display: flex; align-items: center; gap: 6px;
-    padding: var(--sp-2) var(--sp-4) 0;
+    display: flex; align-items: center; justify-content: flex-end; gap: 6px;
+    padding: var(--sp-1) var(--sp-3) 0;
     font-size: var(--fs-11); color: var(--text-3);
 }
-.side-subhead > span { flex: 1; font-weight: 600; letter-spacing: .3px; }
 
 .grade-side-actions {
     display: grid; grid-template-columns: 1fr 1fr; gap: 5px;
@@ -477,7 +477,11 @@ html.dark .side-action.primary { color: #0c1914; }
     display: flex; align-items: center; gap: var(--sp-1-5); user-select: none; border-radius: 7px;
 }
 .group-name:hover { color: var(--text-2); background: transparent; }
-.group-name .g-icon { font-size: var(--fs-12); flex: 0 0 auto; line-height: 1; margin-left: 1px; }
+.group-name .g-icon {
+    font-size: var(--fs-12); flex: 0 0 auto; line-height: 1; margin-left: 1px;
+    /* 分类是导航，不该比预设名更抢眼：统一单色几何符，彩色 emoji 留给具体预设。 */
+    color: var(--text-3); opacity: .85; font-variant-emoji: text; filter: grayscale(1);
+}
 .group-name .caret {
     font-size: var(--fs-9); color: var(--text-3); transition: transform .12s;
     display: inline-block; line-height: 1;
@@ -978,6 +982,21 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
     content: ""; width: 4px; height: 13px; border-radius: 2px;
     background: var(--primary); flex: 0 0 auto;
 }
+/* 组标题右侧的操作：调色组只留「重置 / ⋯」，低频操作进弹出菜单。
+   按钮放在标题里，点击时必须阻止冒泡，否则会顺手把整组收起来。 */
+.pg-title-actions { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.pg-title-actions .mini-btn {
+    padding: 2px 7px; font-size: var(--fs-10); line-height: 1.45;
+}
+.pg-title-actions .mini-btn:hover { transform: none; }
+.pg-title-actions .grade-more-btn {
+    min-width: 24px; padding: 2px 5px;
+    font-size: var(--fs-13); line-height: 1.15;
+}
+.grade-more-wrap { position: relative; display: inline-flex; }
+.grade-more-menu { min-width: 142px; }
+.grade-more-menu .tab-more-action { font-size: var(--fs-11); padding: 6px 9px; }
+.param-group.collapsed .pg-title-actions { display: none; }
 /* 面板内的大分区标签（如调色页签里的「氛围」），比组标题低一档 */
 .pg-section-title {
     font-size: var(--fs-11); font-weight: 700; color: var(--text-3);
@@ -1113,7 +1132,8 @@ html.dark .import-progress { background: rgba(30,32,40,.94); }
 input[type=range] { -webkit-appearance: none; appearance: none; height: 18px; background: transparent; cursor: pointer; }
 input[type=range]::-webkit-slider-runnable-track {
     height: 4px; border-radius: 3px;
-    background: var(--thumb-bg); box-shadow: inset 0 1px 2px rgba(0,0,0,.10);
+    background: var(--track);
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.04), inset 0 1px 2px rgba(0,0,0,.14);
 }
 input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
@@ -1186,14 +1206,21 @@ input[type=range].fine-tuning::-webkit-slider-thumb {
 .histo-raw.is-busy { color: var(--primary-text); border-color: var(--primary); }
 .histo-raw.is-err { color: var(--rose-text); border-color: var(--rose); }
 .histo-raw[hidden], .fold-notice[hidden] { display: none; }
+/* 折叠提示只做一行轻量状态，不再用虚线卡片单独占一块：
+   收了几组 + 一个文字入口，组标题上的箭头已经说明怎么展开。 */
 .fold-notice {
-    display: flex; align-items: center; gap: 6px;
-    margin: 0 2px 9px; padding: 4px 6px 4px 9px;
-    border: 1px dashed var(--border-strong); border-radius: 9px;
-    color: var(--text-3); font-size: var(--fs-11);
+    display: flex; align-items: center; gap: 4px;
+    margin: 0 2px 6px; padding: 0 2px 0 9px;
+    color: var(--text-3); font-size: var(--fs-10);
 }
 .fold-notice > span { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.fold-notice .mini-btn { flex: 0 0 auto; padding: 2px 7px; font-size: var(--fs-10); }
+.fold-notice .mini-btn {
+    flex: 0 0 auto; padding: 1px 4px; font-size: var(--fs-10);
+    border-color: transparent; background: transparent; color: var(--primary-text);
+}
+.fold-notice .mini-btn:hover { transform: none; border-color: var(--primary); background: var(--primary-soft); }
+/* 色表 / WebGL 降级：直方图脚注的一枚小 chip，不再把长句塞进状态栏。 */
+.histo-env { color: var(--amber-text); border-color: var(--amber); }
 .histo-exif .he-sep { color: var(--text-3); opacity: .7; margin: 0 5px; }
 .histo-exif .he-empty { color: var(--text-3); }
 /* 直方图留在调色页签内：无图时整卡淡出并不可交互，空态下也成立，不会闪没。 */
@@ -1340,9 +1367,8 @@ input[type=color]::-webkit-color-swatch {
 .mini-btn:active { transform: translateY(0) scale(.97); }
 .mini-btn.danger:hover { border-color: var(--rose); color: var(--rose-text); background: rgba(212,98,122,.10); }
 
-/* 调色：两个操作按钮并排，不跟 .param-row 的三栏网格抢宽度 */
-/* 五个按钮（重置 / 应用到全部 / 复制设置 / 粘贴设置 / 导入 LR 预设）
-   平分一行会把文字压成「导入」「复制」两字，改成按内容宽换行。 */
+/* 调色组的操作已收进标题；这一行现在只给 RAW 显影的「按全尺寸显影」用，
+   保留 flex 换行是为了窄栏下按钮不跟三栏网格抢宽度。 */
 .param-row.grade-acts {
     display: flex; flex-wrap: wrap; gap: 5px;
     padding-top: calc(2px * var(--font-scale));
@@ -1461,7 +1487,7 @@ input[type=color]::-webkit-color-swatch {
 #grpMix[data-m="s"] .mix-row:not([data-m="s"]),
 #grpMix[data-m="l"] .mix-row:not([data-m="l"]) { display: none; }
 /* 滑轨按各自色相画渐变色带（--h 由 app-mix.js 写入），LR 混色器的观感 */
-.rng-mix::-webkit-slider-runnable-track { background: var(--thumb-bg); box-shadow: inset 0 1px 2px rgba(0,0,0,.10); }
+.rng-mix::-webkit-slider-runnable-track { background: var(--track); box-shadow: inset 0 0 0 1px rgba(0,0,0,.04), inset 0 1px 2px rgba(0,0,0,.14); }
 #grpMix[data-m="h"] .rng-mix::-webkit-slider-runnable-track {
     background: linear-gradient(90deg,
         hsl(calc(var(--h) - 50), 70%, 58%),
@@ -1519,7 +1545,7 @@ input[type=color]::-webkit-color-swatch {
     border-radius: 7px; font-size: var(--fs-12); line-height: 1.4;
 }
 .curve-ctx-item:hover { background: var(--surface-alt); color: var(--primary-text); }
-.curve-ctx-item.checked::before { content: '✓ '; color: var(--primary); }
+.curve-ctx-item.checked::before { content: '✓ '; color: var(--primary-text); }
 .curve-ctx-sep { height: 1px; background: var(--border); margin: 5px 4px; }
 .curve-ctx-item.is-disabled { color: var(--text-muted, #9aa); opacity: .55; cursor: default; }
 .curve-ctx-item.is-disabled:hover { background: transparent; color: var(--text-muted, #9aa); }
@@ -1848,9 +1874,9 @@ html.dark .icon-pool .icon-cell {
 .about-body { overflow-y: auto; min-height: 0; font-size: var(--fs-13); line-height: 1.75; color: var(--text); }
 /* 关于区搬进设置弹窗后,滚动交给 settings-body 统一处理,避免嵌套双层滚动条 */
 .settings-card .about-body { overflow: visible; }
-.about-hero { display: flex; align-items: center; gap: 14px; }
+.about-hero { display: flex; align-items: center; gap: calc(14px * var(--font-scale)); }
 .about-logo {
-    width: 56px; height: 56px; flex: 0 0 auto; border-radius: 14px;
+    width: calc(56px * var(--font-scale)); height: calc(56px * var(--font-scale)); flex: 0 0 auto; border-radius: calc(14px * var(--font-scale));
     box-shadow: var(--shadow-sm); background: var(--surface-alt);
 }
 .about-hero-text { min-width: 0; }
@@ -1859,7 +1885,7 @@ html.dark .icon-pool .icon-cell {
 .about-version { margin-top: 3px; font-size: var(--fs-12); color: var(--text-3); }
 .about-tagline { margin-top: 2px; font-size: var(--fs-12); color: var(--text-3); }
 .about-desc { margin-top: calc(9px * var(--font-scale)); font-size: var(--fs-12); line-height: 1.75; color: var(--text-2); }
-.about-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 14px; }
+.about-actions { display: flex; flex-wrap: wrap; align-items: center; gap: calc(7px * var(--font-scale)); margin-top: calc(14px * var(--font-scale)); }
 .about-actions .mini-btn { flex: 0 0 auto; }
 /* 「更新内容」未读小红点：版本号没读过就亮，点开看过即消（prefs.changelogSeen） */
 .about-btn-dot {
@@ -1896,20 +1922,28 @@ html.dark .icon-pool .icon-cell {
 .about-mirror-hint { min-height: 0; margin-top: calc(6px * var(--font-scale)); font-size: var(--fs-11); line-height: 1.6; }
 .about-mirror-hint:empty { display: none; }
 
-/* 设置:分区面板（默认导出位置 / 更新下载源）。关于弹窗只留版本与诊断，设置项集中到这里 */
-.settings-card { width: 560px; max-width: 92vw; max-height: 86vh; display: flex; flex-direction: column; }
+/* 设置:分区面板（默认导出位置 / 更新下载源）。关于弹窗只留版本与诊断，设置项集中到这里。
+   宽度跟随「界面缩放」一起放大缩小：否则 140% 时标签列先被挤成两行，说明文字也会
+   比 100% 多折好几行，整个弹窗看着比实际字号还局促。 */
+.settings-card { width: calc(600px * var(--font-scale)); max-width: 92vw; max-height: 86vh; display: flex; flex-direction: column; }
 .settings-body { overflow-y: auto; min-height: 0; font-size: var(--fs-13); line-height: 1.7; color: var(--text); }
 .settings-sec { padding: calc(13px * var(--font-scale)) 0; border-bottom: 1px solid var(--border); }
 .settings-sec:first-child { padding-top: calc(2px * var(--font-scale)); }
 .settings-sec:last-child { padding-bottom: 0; border-bottom: none; }
-.settings-sec-title { margin-bottom: 9px; font-size: var(--fs-12); font-weight: 700; color: var(--text-2); letter-spacing: .02em; }
-.settings-row { display: flex; gap: 12px; align-items: flex-start; }
-.settings-label { flex: 0 0 92px; padding-top: calc(6px * var(--font-scale)); font-size: var(--fs-12); color: var(--text-3); }
+.settings-sec-title { margin-bottom: calc(9px * var(--font-scale)); font-size: var(--fs-12); font-weight: 700; color: var(--text-2); letter-spacing: .02em; }
+.settings-row { display: flex; gap: calc(12px * var(--font-scale)); align-items: flex-start; }
+/* 行与行之间统一留一口气，不再靠各行有没有说明文字碰运气：
+   原来「主题」下面塞了个空 .settings-hint 占位，间距看着忽大忽小。 */
+.settings-row + .settings-row { margin-top: calc(12px * var(--font-scale)); }
+.settings-label {
+    flex: 0 0 calc(96px * var(--font-scale)); padding-top: calc(6px * var(--font-scale));
+    font-size: var(--fs-12); color: var(--text-3); white-space: nowrap;
+}
 .settings-control { flex: 1 1 auto; min-width: 0; }
 .settings-scale { display: flex; align-items: center; gap: var(--sp-2); }
 /* 滑块自适应填满整行：原先固定 200px，右侧会剩一截参差的空白，看着像没排完 */
-.settings-scale .ctl-rng { flex: 1 1 auto; min-width: calc(120px * var(--font-scale)); max-width: calc(280px * var(--font-scale)); }
-.settings-scale-val { min-width: 44px; text-align: right; color: var(--text); font-size: var(--fs-12); font-variant-numeric: tabular-nums; }
+.settings-scale .ctl-rng { flex: 1 1 auto; min-width: calc(120px * var(--font-scale)); max-width: calc(320px * var(--font-scale)); }
+.settings-scale-val { min-width: calc(44px * var(--font-scale)); text-align: right; color: var(--text); font-size: var(--fs-12); font-variant-numeric: tabular-nums; }
 .settings-path {
     display: block; padding: calc(6px * var(--font-scale)) calc(9px * var(--font-scale)); border-radius: 8px;
     border: 1px solid var(--border); background: var(--bg-soft);
@@ -1918,8 +1952,8 @@ html.dark .icon-pool .icon-cell {
 }
 /* 未设置时是「每次询问」这种说明性文字，降一档颜色区分于真实路径 */
 .settings-path.muted { color: var(--text-3); }
-.settings-btns { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
-.settings-hint { margin-top: 8px; font-size: var(--fs-11); line-height: 1.6; color: var(--text-3); }
+.settings-btns { display: flex; flex-wrap: wrap; gap: calc(7px * var(--font-scale)); margin-top: calc(8px * var(--font-scale)); }
+.settings-hint { margin-top: calc(8px * var(--font-scale)); font-size: var(--fs-11); line-height: 1.6; color: var(--text-3); }
 .settings-hint code { background: var(--surface-2); border-radius: 4px; padding: calc(1px * var(--font-scale)) calc(4px * var(--font-scale)); font-size: var(--fs-11); color: var(--text-2); }
 /* 「两个档位」类说明（如预览画质）：档位名单独成列，避免长句糊成一团读不进去 */
 .settings-hint-dl { display: grid; gap: calc(3px * var(--font-scale)); }
@@ -1932,8 +1966,9 @@ html.dark .icon-pool .icon-cell {
    按内容收缩，剩下的宽度都留给地址输入框，避免长地址被挤没。 */
 .mirror-select { flex: 0 1 auto; min-width: calc(104px * var(--font-scale)); }
 .mirror-select option { color: var(--text); }
-/* 同组里的次级按钮拉到等宽，避免「选择文件夹 / 改回每次询问」宽窄不一显得散 */
-.settings-btns .mini-btn { min-width: calc(92px * var(--font-scale)); text-align: center; }
+/* 同组里的次级按钮拉到等宽，避免「选择文件夹 / 改回每次询问」宽窄不一显得散。
+   宽度也随界面缩放走，否则 140% 时「改回每次询问」会比另一颗宽出一截。 */
+.settings-btns .mini-btn { min-width: calc(104px * var(--font-scale)); text-align: center; }
 .about-details {
     margin-top: var(--sp-2-5); padding: calc(9px * var(--font-scale)) calc(11px * var(--font-scale)); border: 1px solid var(--border);
     border-radius: 10px; background: var(--bg-soft);
@@ -1950,14 +1985,14 @@ html.dark .icon-pool .icon-cell {
 .about-details[open] > summary::before { transform: rotate(90deg); }
 .about-details[open] > summary { margin-bottom: var(--sp-2); }
 .about-shortcuts {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 14px;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: calc(5px * var(--font-scale)) calc(14px * var(--font-scale));
     font-size: var(--fs-12); line-height: 1.55; color: var(--text-2);
 }
 .about-keys { text-align: right; white-space: nowrap; color: var(--text-3); }
 .about-sep { margin: 0 3px; }
 .about-note { margin-top: 7px; font-size: var(--fs-11); line-height: 1.5; color: var(--text-3); }
 .about-kv {
-    display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: var(--sp-1) var(--sp-2-5);
+    display: grid; grid-template-columns: calc(72px * var(--font-scale)) minmax(0, 1fr); gap: var(--sp-1) var(--sp-2-5);
     font-size: var(--fs-12); line-height: 1.6; color: var(--text-3);
 }
 .about-kv b { color: var(--text-2); font-weight: 600; overflow-wrap: anywhere; }
@@ -1981,7 +2016,8 @@ html.dark .icon-pool .icon-cell {
     font-size: var(--fs-11); color: var(--text-3);
 }
 .about-footer .about-link { font-size: var(--fs-11); }
-.about-card kbd {
+/* 快捷键的 kbd 现在长在设置弹窗的「关于」区里，选择器不能只挂在已移除的 .about-card 上 */
+.about-body kbd {
     display: inline-block; min-width: 18px; margin-left: 3px; padding: calc(1px * var(--font-scale)) calc(5px * var(--font-scale));
     border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px;
     background: var(--surface-alt); color: var(--text); font-family: inherit;
@@ -2753,21 +2789,29 @@ body.editing #canvasPane { flex: 1 1 auto; }
     color: #e8ecf1;
     overflow: hidden;
 }
-.pw-head { display: flex; align-items: center; gap: 16px; padding: calc(20px * var(--font-scale)) calc(28px * var(--font-scale)) calc(12px * var(--font-scale)); flex: 0 0 auto; -webkit-app-region: drag; }
+/* 顶部栏用三列网格：左右两列等宽时标题正好落在窗口正中；
+   窗口变窄时右列先按控件的最小内容宽度占位、左列让位，标题自然向左回落，
+   不会出现「标题/副标题压在无限/有限或滑杆上」的重叠（旧版两侧 flex:1 1 0
+   会强行各分一半，右侧控件溢出到标题下面）。 */
+.pw-head {
+    display: grid;
+    grid-template-columns: minmax(min-content, 1fr) auto minmax(min-content, 1fr);
+    align-items: center; gap: 16px;
+    padding: calc(20px * var(--font-scale)) calc(28px * var(--font-scale)) calc(12px * var(--font-scale));
+    flex: 0 0 auto; -webkit-app-region: drag;
+}
 /* 拖拽区里的交互元素必须 no-drag，否则按下去变成拖窗口、按钮点不动 */
 .pw-head button, .pw-mode, .pw-mode-btn { -webkit-app-region: no-drag; }
-/* 与右侧控件群各占一半宽度（flex 1 1 0），标题才能落在窗口正中 —— 见 .pw-head-right 注释 */
-/* 一侧吃满剩余宽度以便把标题顶到正中（flex 1 1 0）。刻意不写 min-width:0 ——
-   写了它就能被压到小于内容宽度，配合 justify-content:flex-end 会让内容向左溢出压住标题；
-   不写则由 flex 的自动最小尺寸兜底，窄窗时保住控件完整、改由品牌栏让位。 */
-.pw-brand { flex: 1 1 0; display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--fs-15); letter-spacing: .02em; color: var(--brand-gold-text); white-space: nowrap; }
+/* 标题居中依赖左右两列等宽（1fr）；窄窗时右列会被右侧控件撑到 min-content，
+   左列让位，标题偏左但保持完整 —— 不再用 flex 强行对半分。 */
+.pw-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--fs-15); letter-spacing: .02em; color: var(--brand-gold-text); white-space: nowrap; }
 /* 标题不再吃满剩余宽度（旧写法 flex:1 会让它只在「剩余空间」里居中而偏左），
    改成按内容占位、可压缩，左右两条等宽栏把它顶在正中。 */
-.pw-head-meta { flex: 0 1 auto; text-align: center; min-width: 0; }
+.pw-head-meta { text-align: center; min-width: 0; }
 .pw-title { margin: 0; font-size: var(--fs-22); font-weight: 600; letter-spacing: .06em; color: #f0f3f7; }
 .pw-sub { margin: 5px 0 0; font-size: var(--fs-12); color: rgba(232,236,241,.52); }
 .pw-skip {
-    flex: 0 0 auto; border: 1px solid rgba(255,255,255,.14); border-radius: 8px;
+    flex: 0 0 auto; white-space: nowrap; border: 1px solid rgba(255,255,255,.14); border-radius: 8px;
     background: rgba(255,255,255,.05); color: rgba(232,236,241,.82);
     font-size: var(--fs-12); padding: calc(6px * var(--font-scale)) calc(14px * var(--font-scale)); cursor: pointer; transition: border-color .15s ease, background .15s ease;
 }
@@ -2780,15 +2824,15 @@ body.editing #canvasPane { flex: 1 1 auto; }
     color: var(--brand-gold-ink);
 }
 .pw-skip.is-on:hover { background: rgba(220,186,121,.24); }
-/* 右侧控件群（浏览方式 / 操作 / 窗口控制）：与左侧品牌各占一半宽度（都是 flex 1 1 0），
-   标题才能落在窗口正中。旧写法是 .pw-head-meta{flex:1} —— 那只是在「剩余空间」里居中，
-   而右侧控件约 576px、品牌仅约 73px，标题会整体偏左一大截、右边空出一片。
-   窗口窄到放不下等宽的一半时，右侧按内容宽度（min-content）占位、品牌让位，
-   标题回落到偏左但不会与控件重叠，属于安全降级。 */
+/* 右侧控件群（浏览方式 / 操作 / 窗口控制）：放在网格第三列。
+   桌面够宽时左右两列等宽，标题居中；窄窗时本列按内容宽度占位，左列让位。 */
 .pw-head-right {
-    flex: 1 1 0;
     display: flex; align-items: center; justify-content: flex-end;
     gap: calc(14px * var(--font-scale));
+    /* 网格列可能比这一组控件窄：没有这条，justify-content:flex-end 会把控件
+       从右侧往左溢出，直接压到标题/副标题上（窄窗口时的重叠根因）。
+       max-content 把本组的最小宽度钉在实际排布宽度，宁可挤左列也不再压标题。 */
+    min-width: max-content;
 }
 /* 组内紧、组间松：把「无限/有限 + 卡片大小」归为浏览方式，「换封面 / 进入工作台」归为操作，
    两组之间加留白与淡分隔线，一眼能分出两类控件（原来四个元素等距排成一串，看不出层次）。 */
@@ -2819,6 +2863,31 @@ body.editing #canvasPane { flex: 1 1 auto; }
 .pw-winbtn.is-max .ico-restore { display: inline-flex; }
 /* mac 有系统红绿灯，这里不重复 */
 body.platform-darwin .pw-winbtns { display: none; }
+/* 窄窗（默认 1400 窗口也在此列）：右侧控件放不下时别硬挤标题。
+   第一行保留「品牌 · 标题 · 窗口按钮」，标题仍在窗口正中；
+   「浏览方式 / 操作」落到第二行、居中排在标题正下方，整栏只高出一行，不压任何文字。
+   宽屏 / 全屏仍是一行，视觉更紧凑。 */
+@media (max-width: 1450px) {
+    .pw-head {
+        grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
+        grid-template-areas:
+            "brand meta meta winbtns"
+            ". tools acts .";
+        row-gap: calc(10px * var(--font-scale));
+    }
+    /* 拆掉右侧外壳，让三组控件直接参与网格排布 */
+    .pw-head-right { display: contents; }
+    .pw-brand { grid-area: brand; }
+    .pw-head-meta { grid-area: meta; }
+    .pw-head-tools { grid-area: tools; }
+    .pw-head-acts { grid-area: acts; }
+    /* 窗口按钮留在第一行右上；第二行只放浏览方式和操作，
+       两组正好落在标题正下方，标题仍在窗口正中。 */
+    .pw-winbtns {
+        grid-area: winbtns; justify-self: end;
+        margin-left: 0; padding-left: 0; border-left: 0;
+    }
+}
 /* 无限 / 有限 切换：分段控件，状态由 aria-pressed + .is-on 双写（读屏和肉眼都拿得到） */
 .pw-mode {
     display: flex; flex: 0 0 auto; gap: 2px; padding: calc(2px * var(--font-scale));
@@ -3035,5 +3104,5 @@ body.platform-darwin .pw-winbtns { display: none; }
     margin-top: calc(4px * var(--font-scale)); margin-bottom: calc(4px * var(--font-scale));
 }
 /* 设置里的密度三档 */
-.density-btns { display: flex; gap: 6px; flex-wrap: wrap; }
-.density-btns .mini-btn { min-width: 58px; text-align: center; }
+.density-btns { display: flex; gap: calc(6px * var(--font-scale)); flex-wrap: wrap; }
+.density-btns .mini-btn { min-width: calc(58px * var(--font-scale)); text-align: center; }

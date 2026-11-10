@@ -1,0 +1,154 @@
+// 预设墙顶部栏：非全屏（窗口变窄 / 界面缩放放大）时，标题与副标题不得被右侧控件压住。
+// 这个 bug 最初是人工截图发现的，这里把量测固化成断言，覆盖窄窗两行布局与宽屏一行布局。
+// 用法: node tools/run-electron.js tools/test-preset-wall-head.js
+'use strict';
+
+const path = require('path');
+const { app, BrowserWindow, ipcMain } = require('electron');
+
+process.stdout.on('error', () => {});
+process.stderr.on('error', () => {});
+
+const ROOT = path.join(__dirname, '..');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const failures = [];
+function check(ok, label, extra) {
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${extra ? ' | ' + extra : ''}`);
+    if (!ok) failures.push(`${label}${extra ? ': ' + extra : ''}`);
+}
+
+ipcMain.handle('list-presets', () => []);
+ipcMain.handle('load-preset', () => null);
+ipcMain.handle('list-logos', () => []);
+ipcMain.handle('list-textures', () => []);
+ipcMain.handle('list-templates', () => []);
+ipcMain.handle('list-wall-covers', () => []);
+ipcMain.handle('list-grade-presets', () => []);
+ipcMain.handle('get-prefs', () => ({}));
+ipcMain.handle('get-user', () => null);
+ipcMain.handle('save-prefs', () => ({ ok: true }));
+ipcMain.handle('load-acr-tables', () => null);
+ipcMain.handle('load-acr-shadows', () => null);
+for (const channel of ['save-image-base64', 'save-images-batch', 'save-template', 'load-template',
+    'delete-template', 'rename-template', 'export-template', 'import-template', 'export-qfs',
+    'open-qfs', 'save-user', 'logout-user', 'open-external', 'open-data-dir', 'copy-text',
+    'check-for-updates', 'start-update-download', 'quit-and-install']) {
+    ipcMain.handle(channel, () => ({ ok: true }));
+}
+for (const channel of ['open-images', 'open-sticker-image', 'pick-export-location',
+    'write-export-files', 'read-exif', 'open-image', 'pick-default-export-dir']) {
+    ipcMain.handle(channel, () => ({ canceled: true }));
+}
+
+const MEASURE = `(() => {
+    const pick = (sel) => {
+        const el = document.querySelector(sel);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        // display:contents 的元素自身没有盒子，仍按 DOM 返回但尺寸为 0，重叠判定会自然跳过
+        return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height),
+                 right: Math.round(r.right), bottom: Math.round(r.bottom), sw: el.scrollWidth, cw: el.clientWidth };
+    };
+    const m = {};
+    for (const k of ['brand', 'meta', 'title', 'sub', 'tools', 'acts', 'winbtns', 'right', 'head']) {
+        const sel = { brand: '.pw-brand', meta: '.pw-head-meta', title: '.pw-title', sub: '.pw-sub',
+            tools: '.pw-head-tools', acts: '.pw-head-acts', winbtns: '.pw-winbtns',
+            right: '.pw-head-right', head: '.pw-head' }[k];
+        m[k] = pick(sel);
+    }
+    m.vw = innerWidth;
+    m.offset = m.title ? Math.round((m.title.x + m.title.right) / 2 - m.vw / 2) : null;
+    m.headStyle = getComputedStyle(document.querySelector('.pw-head')).gridTemplateAreas;
+    return m;
+})()`;
+
+const overlap = (A, B) => !!(A && B && A.w > 0 && B.w > 0
+    && A.right > B.x && B.right > A.x && A.bottom > B.y && B.bottom > A.y);
+
+async function main() {
+    await app.whenReady();
+    const win = new BrowserWindow({
+        width: 1400, height: 900, show: false, paintWhenInitiallyHidden: true,
+        backgroundColor: '#10171a',
+        webPreferences: {
+            preload: path.join(__dirname, 'preload-measure.js'),
+            contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false
+        }
+    });
+    await win.loadFile(path.join(ROOT, 'src', 'renderer', 'index.html'));
+    const exec = (expr) => win.webContents.executeJavaScript(expr);
+    await sleep(400);
+    win.showInactive();
+    await exec(`(() => {
+        try {
+            localStorage.setItem('qfs_intro_done', '1');
+            localStorage.removeItem('qfs_wall_mode');
+            localStorage.removeItem('qfs_wall_card_scale');
+        } catch (_) {}
+        if (window.App && App.closeIntro) App.closeIntro();
+        return true;
+    })()`);
+    await sleep(1400);
+    await exec(`(() => {
+        if (window.App && App.initPresetWall) App.initPresetWall();
+        if (window.App && App.openPresetWall) App.openPresetWall(false);
+        return true;
+    })()`);
+    await sleep(700);
+
+    const verify = async (label, isNarrow) => {
+        const m = await exec(MEASURE);
+        const pairs = [
+            ['brand', 'meta'], ['brand', 'tools'], ['brand', 'acts'], ['brand', 'winbtns'],
+            ['title', 'tools'], ['title', 'acts'], ['title', 'winbtns'],
+            ['sub', 'tools'], ['sub', 'acts'], ['sub', 'winbtns']
+        ];
+        const bad = pairs.filter(([a, b]) => overlap(m[a], m[b])).map((p) => p.join('/'));
+        check(bad.length === 0, `${label}：标题/副标题/品牌与右侧控件无重叠`, JSON.stringify(bad));
+        check(m.title && m.sub && m.title.sw <= m.title.cw + 1 && m.sub.sw <= m.sub.cw + 1,
+            `${label}：标题与副标题文字没有溢出自己的盒子`,
+            JSON.stringify({ title: m.title, sub: m.sub }));
+        check(m.offset !== null && Math.abs(m.offset) <= 4, `${label}：标题水平居中`, `offset=${m.offset}`);
+        check(m.tools && m.acts && m.winbtns && m.head
+            && m.tools.bottom <= m.head.bottom + 1
+            && m.acts.bottom <= m.head.bottom + 1
+            && m.winbtns.bottom <= m.head.bottom + 1,
+            `${label}：三组控件都留在顶部栏内`, JSON.stringify({ head: m.head, tools: m.tools, acts: m.acts }));
+        if (isNarrow) {
+            // 窄窗：控件整组落到第二行，不能和第一行的标题/副标题抢高度
+            check(m.tools && m.sub && m.tools.y >= m.sub.bottom - 2,
+                `${label}：窄窗控件落在第二行，不压标题`,
+                JSON.stringify({ subBottom: m.sub && m.sub.bottom, toolsY: m.tools && m.tools.y }));
+        } else {
+            // 宽屏/全屏：仍是一行布局，控件与标题同一行
+            check(m.tools && m.title && Math.abs(m.tools.y - m.title.y) < 40,
+                `${label}：宽屏仍是一行布局`, JSON.stringify({ titleY: m.title && m.title.y, toolsY: m.tools && m.tools.y }));
+        }
+    };
+
+    for (const w of [1000, 1100, 1200, 1300, 1400, 1600]) {
+        win.setContentSize(w, 780);
+        await sleep(450);
+        await verify(`${w}px`, w <= 1450);
+    }
+
+    // 界面缩放 140% 时，控件变宽最容易把标题挤掉；只测最小宽度这个极端
+    await exec(`(() => { if (window.App && App.applyFontScale) App.applyFontScale(1.4); return true; })()`);
+    await sleep(300);
+    win.setContentSize(1000, 780);
+    await sleep(450);
+    await verify('1000px@140%', true);
+    await exec(`(() => { if (window.App && App.applyFontScale) App.applyFontScale(1); return true; })()`);
+
+    console.log(failures.length
+        ? `\n未通过 ${failures.length} 项：` + failures.map((f) => '\n - ' + f).join('')
+        : '\nALL PASS');
+    win.destroy();
+    app.exit(failures.length ? 1 : 0);
+}
+
+app.whenReady().then(main).catch((e) => {
+    console.error('FAIL', e && e.stack ? e.stack : e);
+    app.exit(1);
+});

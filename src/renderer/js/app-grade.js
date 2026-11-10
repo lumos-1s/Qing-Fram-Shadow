@@ -1692,6 +1692,33 @@
             if (cp) cp.addEventListener('click', () => this.copySettings());
             const ps = $('btnGradePasteSet');
             if (ps) ps.addEventListener('click', () => this.pasteSettings());
+            // 调色操作收进标题右侧：⋯ 菜单负责应用到全部 / 复制 / 粘贴 / 导入 LR。
+            // 标题本身是折叠开关，所以按钮区先拦掉冒泡，避免点操作时把整组收起。
+            const titleActs = $('gradeTitleActions');
+            if (titleActs) titleActs.addEventListener('click', (e) => e.stopPropagation());
+            const moreBtn = $('btnGradeMore');
+            const moreMenu = $('gradeMoreMenu');
+            if (moreBtn && moreMenu) {
+                const closeMore = () => {
+                    moreMenu.hidden = true;
+                    moreBtn.setAttribute('aria-expanded', 'false');
+                };
+                moreBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const open = moreMenu.hidden;
+                    moreMenu.hidden = !open;
+                    moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+                });
+                moreMenu.addEventListener('click', (e) => {
+                    if (e.target.closest('button')) closeMore();
+                });
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('#gradeMoreWrap')) closeMore();
+                });
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') closeMore();
+                });
+            }
             if (this.initCurve) this.initCurve();
             if (this.initGradeExtra) this.initGradeExtra();
             if (this.initColorGrade) this.initColorGrade();
@@ -1706,6 +1733,17 @@
             this.ensureAcrTables();
         },
 
+        // 色表 / WebGL 降级不写状态栏长句：直方图脚注给一枚小 chip，
+        // 具体原因放 title，既不丢信息，也不把画布尺寸挤出视野。
+        setEnvTag(text, title) {
+            const tag = document.getElementById('gradeEnvTag');
+            if (!tag) return;
+            tag.textContent = text || '';
+            tag.title = title || '';
+            tag.hidden = !text;
+            tag.className = 'histo-raw histo-env';
+        },
+
         // 空闲时加载色表（1.8MB，不阻塞启动）；加载完把当前图按真实表重烘一遍，
         // 否则之前用兜底公式算出来的结果会一直挂到下次参数变化才更新。
         ensureAcrTables() {
@@ -1714,20 +1752,24 @@
             const load = () => {
                 A.ensure().then((ok) => {
                     if (!ok) {
-                        this.setStatus('调色色表未加载：混色器/校准/饱和度等档位会按简化公式计算');
+                        this.setEnvTag('简化调色', '调色色表未加载：混色器 / 校准 / 饱和度等档位会按简化公式计算');
                         return;
                     }
                     // GL 不可用时三维表用不上（bakeOne 里 useLut 依赖 usingGL），
                     // 校准与饱和度会退回简化算法 —— 机器上看着就是"拖了没反应"，
                     // 说清楚比让用户以为坏了好。
                     const glOk = !!(window.QfsColor && window.QfsColor.usingGL && window.QfsColor.usingGL());
-                    if (!glOk) this.setStatus('当前环境未启用 WebGL：校准、饱和度等档位会降级计算');
+                    this.setEnvTag(glOk ? '' : '简化调色',
+                        glOk ? '' : '当前环境未启用 WebGL：校准 / 饱和度等档位会降级计算');
                     if (this.image && this.invalidateGrade && this.rebuildGrade) {
                         this.invalidateGrade(this.image);
                         this.rebuildGrade('full');
                         if (this.scheduleRender) this.scheduleRender(true);
                     }
-                }).catch(() => { /* 色表缺失不阻塞使用 */ });
+                }).catch(() => {
+                    // 色表缺失不阻塞使用，但要让用户知道当前是简化路径。
+                    this.setEnvTag('简化调色', '调色色表加载失败：混色器 / 校准 / 饱和度等档位会按简化公式计算');
+                });
             };
             if (typeof requestIdleCallback === 'function') requestIdleCallback(load, { timeout: 2000 });
             else setTimeout(load, 800);

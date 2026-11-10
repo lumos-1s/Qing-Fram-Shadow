@@ -772,10 +772,11 @@ window.App = Object.assign(window.App || {}, {
         if (!order || !order.length) order = DEFAULT_ORDER.slice();
         else for (const g of DEFAULT_ORDER) if (!order.includes(g)) order.push(g);
         const merge = { 创意: '潮流', 奢华: '高级感', 现代: '极简', 排版: '极简', 影院: '胶片', 星空: '氛围' };
+        // 分类图标用单色几何符：彩色 emoji 在灰字分类标题里太跳，会把视线从预设名上带走。
         const groupIcons = {
-            潮流: '🪩', 高级感: '💎', 艺术: '🎨', 极简: '⚪', 胶片: '🎞️', 质感: '🪵', 手作: '✂️',
-            复古: '📻', 杂志: '📰', 水印: '💧', 氛围: '🌙', 光影: '✨', 比例: '📐', 个性: '🪪',
-            票根: '🎫', 其他: '🖼️'
+            潮流: '◇', 高级感: '◆', 艺术: '✦', 极简: '○', 胶片: '▤', 质感: '▦', 手作: '✂',
+            复古: '◷', 杂志: '▥', 水印: '◌', 氛围: '☾', 光影: '✧', 比例: '▭', 个性: '◉',
+            票根: '▣', 其他: '▢'
         };
         const iconFor = name => {
             const kw = [
@@ -852,7 +853,7 @@ window.App = Object.assign(window.App || {}, {
                 gEl.className = 'preset-group' + ((f || isOpen('收藏', true)) ? ' open' : '');
                 const nm = document.createElement('div');
                 nm.className = 'group-name';
-                nm.innerHTML = '<span class="caret">▸</span><span class="g-icon">⭐</span><span>收藏 · ' + favPresets.length + '</span>';
+                nm.innerHTML = '<span class="caret">▸</span><span class="g-icon">★</span><span>收藏 · ' + favPresets.length + '</span>';
                 nm.addEventListener('click', () => { gEl.classList.toggle('open'); remember(gEl, '收藏'); });
                 gEl.appendChild(nm);
                 favPresets.forEach(p => gEl.appendChild(renderItem(p, '收藏')));
@@ -871,7 +872,7 @@ window.App = Object.assign(window.App || {}, {
                 const nm = document.createElement('div');
                 nm.className = 'group-name';
                 nm.title = '只显示最近 4 个 · 点击展开/收起';
-                nm.innerHTML = '<span class="caret">▸</span><span class="g-icon">🕐</span><span>最近使用 · ' + recPresets.length + '</span>';
+                nm.innerHTML = '<span class="caret">▸</span><span class="g-icon">◷</span><span>最近使用 · ' + recPresets.length + '</span>';
                 nm.addEventListener('click', () => { gEl.classList.toggle('open'); remember(gEl, '最近使用'); });
                 gEl.appendChild(nm);
                 recPresets.forEach(p => gEl.appendChild(renderItem(p, '最近使用')));
@@ -891,7 +892,7 @@ window.App = Object.assign(window.App || {}, {
             name.appendChild(caret);
             const gic = document.createElement('span');
             gic.className = 'g-icon';
-            gic.textContent = groupIcons[grp] || '🖼️';
+            gic.textContent = groupIcons[grp] || '▢';
             name.appendChild(gic);
             const tag = document.createElement('span');
             tag.textContent = `${grp} · ${groups.get(grp).length}`;

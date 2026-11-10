@@ -204,7 +204,6 @@
                 </div>
                 <div id="sideBorderBody" class="side-body">
                     <div class="side-subhead">
-                        <span>边框</span>
                         <button id="btnMyTemplates" class="side-title-action" type="button" title="管理我的样式（边框 + 文字 + Logo 的整套外观）">我的样式</button>
                     </div>
                     <div class="side-search"><input id="presetSearch" type="text" placeholder="搜索边框…" /></div>
@@ -1278,6 +1277,7 @@
                             </div>
                             <div class="histo-foot">
                                 <div class="histo-exif" id="gradeExif" title="照片的 EXIF 参数"></div>
+                                <span class="histo-raw histo-env" id="gradeEnvTag" hidden></span>
                                 <span class="histo-raw" id="gradeRawTag" hidden></span>
                             </div>
                         </div>
@@ -1373,7 +1373,7 @@
 <!--                            <div class="hint-box">选中蒙版后，下面 9 档滑块只作用在蒙版范围内；点「全局」回到整图。曲线/校准/混色器始终是全局。</div>-->
                         </div>
                         <!-- RAW 只在这里报状态。显影是解码时自动做的（曝光基线 + 高光肩），
-                             曝光/对比/高光/色温/色调与 JPEG 共用下面「调色」里的同一套滑块：
+                             曝光/对比/高光/色温/色调与 JPEG 共用下面「基础」里的同一套滑块：
                              同名的两套滑块指向同一个概念，方向还不一样，用户只会更糊涂。 -->
                         <div class="param-group" id="grpRaw" hidden>
                             <div class="pg-title">RAW 显影 <span class="raw-badge" id="rawBadge">RAW</span>
@@ -1382,16 +1382,25 @@
                             <div class="param-row grade-acts">
                                 <button id="btnRawDevelop" class="mini-btn" type="button" title="按全尺寸重新解码这张 RAW；平时切到照片后会自动做，导出前也会再确认一次">按全尺寸显影</button>
                             </div>
-                            <div class="hint-box">显影在解码时自动完成：定曝光基线、压高光肩。切到这张照片后会自动按全尺寸显影，也可以点上面的按钮手动来一次。曝光 / 对比 / 高光 / 色温 / 色调都在下面「调色 → 亮 / 颜色」里，只有一套数值。</div>
+                            <div class="hint-box">显影在解码时自动完成：定曝光基线、压高光肩。切到这张照片后会自动按全尺寸显影，也可以点上面的按钮手动来一次。曝光 / 对比 / 高光 / 色温 / 色调都在下面「基础 → 亮 / 颜色」里，只有一套数值。</div>
                         </div>
                         <div class="param-group" id="grpGrade">
-                            <div class="pg-title collapsible">调色</div>
-                            <div class="param-row grade-acts">
-                                <button id="btnGradeReset" class="mini-btn" type="button" title="全部归零，回到照片本色">重置</button>
-                                <button id="btnGradeApplyAll" class="mini-btn" type="button" title="把这套参数复制给本次导入的所有照片">应用到全部</button>
-                                <button id="btnGradeCopySet" class="mini-btn" type="button" title="复制这张照片的调色 + 边框设置（不写系统剪贴板）">复制设置</button>
-                                <button id="btnGradePasteSet" class="mini-btn" type="button" title="把复制的设置粘贴到胶片条里多选的照片">粘贴设置</button>
-                                <button id="btnGradeImportXmp" class="mini-btn" type="button" title="导入 Lightroom / Camera Raw 的 .xmp 调色预设">导入 LR 预设</button>
+                            <!-- 页签已经叫「调色」，组标题不再重复；右侧只留重置与「⋯」，
+                                 其余低频操作收进菜单，参数区直接从「亮」开始。 -->
+                            <div class="pg-title collapsible">
+                                <span class="pg-title-text">基础</span>
+                                <span class="pg-title-actions" id="gradeTitleActions">
+                                    <button id="btnGradeReset" class="mini-btn" type="button" title="全部归零，回到照片本色">重置</button>
+                                    <span class="grade-more-wrap" id="gradeMoreWrap">
+                                        <button id="btnGradeMore" class="mini-btn grade-more-btn" type="button" aria-haspopup="true" aria-expanded="false" title="更多调色操作">⋯</button>
+                                        <span class="tab-more-menu grade-more-menu" id="gradeMoreMenu" hidden>
+                                            <button id="btnGradeApplyAll" class="tab-more-action" type="button" title="把这套参数复制给本次导入的所有照片">应用到全部</button>
+                                            <button id="btnGradeCopySet" class="tab-more-action" type="button" title="复制这张照片的调色 + 边框设置（不写系统剪贴板）">复制设置</button>
+                                            <button id="btnGradePasteSet" class="tab-more-action" type="button" title="把复制的设置粘贴到胶片条里多选的照片">粘贴设置</button>
+                                            <button id="btnGradeImportXmp" class="tab-more-action" type="button" title="导入 Lightroom / Camera Raw 的 .xmp 调色预设">导入 LR 预设</button>
+                                        </span>
+                                    </span>
+                                </span>
                             </div>
 
                             <!-- 三段的划分照 Camera Raw：亮（明暗）/ 颜色（白平衡与饱和）/ 效果（质感）。
@@ -1928,7 +1937,6 @@
                         <div class="settings-label">主题</div>
                         <div class="settings-control">
                             <button class="mini-btn" id="btnThemeToggle" type="button">当前：浅色（点此切深色）</button>
-                            <div class="settings-hint"></div>
                         </div>
                     </div>
                     <div class="settings-row">
@@ -1976,7 +1984,7 @@
                                     <option value="__custom__">自定义…</option>
                                 </select>
                                 <input id="tfUpdateMirror" class="about-mirror-input" type="text" spellcheck="false" autocomplete="off"
-                                       placeholder="留空 = GitHub 直连；例：https://ghproxy.net/{url}" />
+                                       placeholder="留空 = 直连 GitHub" />
                                 <button id="btnSaveUpdateMirror" class="mini-btn" type="button">保存</button>
                             </div>
                             <div id="aboutMirrorHint" class="about-status about-mirror-hint" role="status" aria-live="polite"></div>
