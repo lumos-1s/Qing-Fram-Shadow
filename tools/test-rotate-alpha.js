@@ -414,6 +414,58 @@ async function main() {
     check(noneEmpty.el && noneEmpty.el.blackOpaquePct === 0 && noneEmpty.el.opaquePct === 0,
         '无边框 + 全透明图：旋转后保持透明，没有变成不透明黑', JSON.stringify(noneEmpty.el));
 
+    // 15) 运行时标记：便于确认跑的是含修复的代码（旧进程返回 undefined）
+    const mark = await exec(`(() => window.QFS_ROTATE_FIX || null)()`);
+    check(typeof mark === 'string' && mark.indexOf('rotate-alpha') === 0,
+        '运行时标记 QFS_ROTATE_FIX 存在（可区分新旧进程）', String(mark));
+
+    // 16) 黑图比例探针：彩色≈0、纯黑≈1
+    const blackRatios = await exec(`(async () => {
+        const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+        const g = c.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, 64, 64);
+        const dark = new Image();
+        await new Promise(r => { dark.onload = r; dark.onerror = r; dark.src = c.toDataURL('image/png'); });
+        await window.__setup(800, 600, false, false, false);
+        return { color: window.qfsBlackRatio(window.App.image.el), dark: window.qfsBlackRatio(dark) };
+    })()`);
+    check(blackRatios.color < 0.05 && blackRatios.dark > 0.95,
+        'qfsBlackRatio 判定正确（彩色 / 纯黑）', JSON.stringify(blackRatios));
+
+    // 17) 黑图守卫：模拟旋转结果整片纯黑 → 必须保留原图并给出明确提示
+    const blackGuard = await exec(`(async () => {
+        await window.__setup(800, 600, false, false, false);
+        const A = window.App;
+        const origEl = A.image.el, origW = A.image.w, origH = A.image.h;
+        const origDraw = CanvasRenderingContext2D.prototype.drawImage;
+        let status = '';
+        const origStatus = A.setStatus;
+        A.setStatus = (s) => { status = String(s); return origStatus.call(A, s); };
+        CanvasRenderingContext2D.prototype.drawImage = function () {
+            if (this.canvas && this.canvas.width === 600 && this.canvas.height === 800
+                && this.canvas !== A.dom.canvas) {
+                this.save(); this.setTransform(1, 0, 0, 1, 0, 0);
+                this.fillStyle = '#000'; this.fillRect(0, 0, 600, 800);
+                this.restore();
+                return;
+            }
+            return origDraw.apply(this, arguments);
+        };
+        try { await A.rotateCurrentPhoto(); } catch (e) { status += ' ERR:' + e.message; }
+        finally {
+            CanvasRenderingContext2D.prototype.drawImage = origDraw;
+            A.setStatus = origStatus;
+        }
+        await new Promise(r => setTimeout(r, 150));
+        return { status, sameEl: A.image.el === origEl, w: A.image.w, h: A.image.h,
+            origW, origH, px: window.__px(A.image.el) };
+    })()`);
+    check(blackGuard.sameEl && blackGuard.w === blackGuard.origW && blackGuard.h === blackGuard.origH,
+        '结果全黑被拦下：不替换 im.el，保留原图尺寸', JSON.stringify(blackGuard));
+    check(/全黑/.test(blackGuard.status) && /保留原图/.test(blackGuard.status),
+        '结果全黑被拦下时给出明确提示，而不是静默黑屏', blackGuard.status);
+    check(blackGuard.px && blackGuard.px.blackOpaquePct === 0 && blackGuard.px.colorPct > 90,
+        '结果全黑被拦下后原图内容完好', JSON.stringify(blackGuard.px));
+
     await win.destroy();
     app.quit();
     if (failures.length) {

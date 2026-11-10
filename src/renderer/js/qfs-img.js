@@ -80,4 +80,30 @@
             return opaque / (32 * 32);
         } catch (_) { return null; }
     };
+
+    // 便于确认当前进程跑的是不是含旋转修复的代码：
+    // 开发者工具控制台输入 window.QFS_ROTATE_FIX，返回 undefined 就是旧进程/旧版本。
+    window.QFS_ROTATE_FIX = 'rotate-alpha-v3-20261110';
+
+    // 不透明且近黑的像素比例。旋转前后各量一次，就能识别「源图正常、
+    // 结果却整片纯黑」这种任何上游异常（解码 / 驱动 / 内存）都可能出现的坏图。
+    window.qfsBlackRatio = function (src) {
+        if (!src) return null;
+        const w = src.naturalWidth || src.width || 0;
+        const h = src.naturalHeight || src.height || 0;
+        if (!w || !h) return null;
+        const c = document.createElement('canvas');
+        c.width = 32; c.height = 32;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        if (!g) return null;
+        try {
+            g.drawImage(src, 0, 0, 32, 32);
+            const d = g.getImageData(0, 0, 32, 32).data;
+            let black = 0;
+            for (let i = 0; i < d.length; i += 4) {
+                if (d[i + 3] > 200 && d[i] + d[i + 1] + d[i + 2] < 45) black++;
+            }
+            return black / (32 * 32);
+        } catch (_) { return null; }
+    };
 })();

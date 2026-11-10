@@ -2448,6 +2448,7 @@ window.App = {
             try { await img.decode(); } catch (_) { /* 解码失败走下面的结果校验 */ }
         }
         const before = window.qfsOpaqueRatio ? window.qfsOpaqueRatio(img) : null;
+        const beforeBlack = window.qfsBlackRatio ? window.qfsBlackRatio(img) : null;
         const canvas = document.createElement('canvas');
         canvas.width = H;
         canvas.height = W;
@@ -2458,8 +2459,15 @@ window.App = {
         // 源图明明有内容、结果却全空 = 这次根本没画上。绝不把空图换进 im.el：
         // 保留原图并明确提示，比静默显示一张黑照片好得多。
         const after = window.qfsOpaqueRatio ? window.qfsOpaqueRatio(canvas) : null;
+        const afterBlack = window.qfsBlackRatio ? window.qfsBlackRatio(canvas) : null;
         if (before != null && after != null && before > 0.5 && after < 0.02) {
             this.setStatus('旋转失败：照片还没读取完，已保留原图，请再试一次');
+            return;
+        }
+        // 兜底：源图正常却烘出整片纯黑（解码 / 驱动 / 显存等任何上游异常），
+        // 同样拒绝替换，把「静默黑屏」变成一条能看懂的提示。
+        if (beforeBlack != null && afterBlack != null && beforeBlack < 0.5 && afterBlack > 0.95) {
+            this.setStatus('旋转失败：结果画面异常（全黑），已保留原图，请重试');
             return;
         }
         // 统一走 PNG（保留 alpha）：以前这里用 toDataURL('image/jpeg')，
@@ -2628,6 +2636,7 @@ window.App = {
             try { await img.decode(); } catch (_) { /* 交给下面的结果校验 */ }
         }
         const before = window.qfsOpaqueRatio ? window.qfsOpaqueRatio(img) : null;
+        const beforeBlack = window.qfsBlackRatio ? window.qfsBlackRatio(img) : null;
         // 旋转类(3/6/8,含镜像的 5/7)需要交换宽高;纯翻转(2/4)保持宽高
         const swapsWH = (orientation === 6 || orientation === 8 || orientation === 5 || orientation === 7);
         const canvas = document.createElement('canvas');
@@ -2649,7 +2658,9 @@ window.App = {
         // 与主流转同口径：源图有内容却画出空画布就放弃校正，回退原图，
         // 绝不把空/黑位图当成导入结果（imageFromPick 见到 null 会用原图）。
         const after = window.qfsOpaqueRatio ? window.qfsOpaqueRatio(canvas) : null;
-        if (before != null && after != null && before > 0.5 && after < 0.02) return null;
+        const afterBlack = window.qfsBlackRatio ? window.qfsBlackRatio(canvas) : null;
+        if ((before != null && after != null && before > 0.5 && after < 0.02)
+            || (beforeBlack != null && afterBlack != null && beforeBlack < 0.5 && afterBlack > 0.95)) return null;
         // 与主旋转同口径：PNG 保留 alpha，否则 EXIF 方向校正会把透明区烘成黑块
         const out = await window.qfsCanvasImage(canvas);
         if (!out) return null;
