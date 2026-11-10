@@ -56,4 +56,28 @@
             }
         });
     };
+
+    // 采样统计「有内容的像素」比例（32×32 缩略，成本可忽略）。
+    // 用途：旋转 / EXIF 校正是把源图 drawImage 到新画布，若源图设了
+    // decoding='async' 又还没解码完，drawImage 可能画出一张全透明空画布；
+    // 旧代码再把它编码成 JPEG，就是一整片不透明纯黑（用户看到的「变黑」）。
+    // 前后各量一次即可区分「本来就是透明图」和「这次根本没画上」。
+    // 画布被 tainted 时 getImageData 会抛错，返回 null = 不知道，不拦截。
+    window.qfsOpaqueRatio = function (src) {
+        if (!src) return null;
+        const w = src.naturalWidth || src.width || 0;
+        const h = src.naturalHeight || src.height || 0;
+        if (!w || !h) return null;
+        const c = document.createElement('canvas');
+        c.width = 32; c.height = 32;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        if (!g) return null;
+        try {
+            g.drawImage(src, 0, 0, 32, 32);
+            const d = g.getImageData(0, 0, 32, 32).data;
+            let opaque = 0;
+            for (let i = 3; i < d.length; i += 4) if (d[i] > 8) opaque++;
+            return opaque / (32 * 32);
+        } catch (_) { return null; }
+    };
 })();

@@ -137,6 +137,26 @@ window.__photoBlackPct = () => {
     }
     return { blackPct: Math.round(black * 100 / n), rect: [x0, y0, x1, y1] };
 };
+// 无边框（NONE）：画布直接铺满照片，没有白卡纸，最容易看出「照片本身黑」
+window.__noneSetup = async (mode) => {
+    const A = window.App;
+    let src = await window.__mk(800, 600, mode === 'half', false);
+    if (mode === 'empty') {
+        const c = document.createElement('canvas'); c.width = 800; c.height = 600;
+        src = new Image();
+        await new Promise((r) => { src.onload = r; src.onerror = r; src.src = c.toDataURL('image/png'); });
+    }
+    const im = { el: src, name: 'none.png', path: null, w: 800, h: 600,
+        exif: {}, customSettings: null, grade: null };
+    A.images = [im]; A.image = im; A.currentIdx = 0; A.selectedIdx = [0]; A.batchSel = [0];
+    A.imageTemplates = new Map();
+    if (A.invalidateGrade) A.invalidateGrade(im);
+    const t = A.defaultTemplate();
+    t.photoFrameStyle = 'NONE';
+    A.template = t; A.setTpl(im, t); A.normalizeTemplate(); A.refreshUI();
+    await A.flushRender();
+    return { area: window.__photoBlackPct(), el: window.__px(im.el) };
+};
 true;
 `;
 
@@ -326,6 +346,73 @@ async function main() {
         return window.__photoBlackPct();
     })()`);
     check(artColor.blackPct <= 2, '艺术卡 + 彩色照片：旋转后不黑', JSON.stringify(artColor));
+
+    // 11) 内容比例探针本身要准：彩色≈1、半透明≈0.5、全透明≈0
+    const ratios = await exec(`(async () => {
+        const out = {};
+        for (const [k, mode] of [['color','color'], ['half','half'], ['empty','empty']]) {
+            await window.__noneSetup(mode);
+            out[k] = window.qfsOpaqueRatio(window.App.image.el);
+        }
+        return out;
+    })()`);
+    check(ratios.color > 0.98 && ratios.half > 0.4 && ratios.half < 0.6 && ratios.empty === 0,
+        'qfsOpaqueRatio 判定正确（彩色 / 半透明 / 全透明）', JSON.stringify(ratios));
+
+    // 12) 守卫：模拟 drawImage 没画上（源图有内容、结果画布全空）→ 必须保留原图并提示
+    const guard = await exec(`(async () => {
+        await window.__setup(800, 600, false, false, false);
+        const A = window.App;
+        const origEl = A.image.el, origW = A.image.w, origH = A.image.h;
+        const origDraw = CanvasRenderingContext2D.prototype.drawImage;
+        let status = '';
+        const origStatus = A.setStatus;
+        A.setStatus = (s) => { status = String(s); return origStatus.call(A, s); };
+        // 只让「旋转用的 600×800 离屏画布」这次绘制失效
+        CanvasRenderingContext2D.prototype.drawImage = function () {
+            if (this.canvas && this.canvas.width === 600 && this.canvas.height === 800
+                && this.canvas !== A.dom.canvas) return;
+            return origDraw.apply(this, arguments);
+        };
+        try { await A.rotateCurrentPhoto(); } catch (e) { status += ' ERR:' + e.message; }
+        finally {
+            CanvasRenderingContext2D.prototype.drawImage = origDraw;
+            A.setStatus = origStatus;
+        }
+        await new Promise(r => setTimeout(r, 200));
+        return { status, sameEl: A.image.el === origEl, w: A.image.w, h: A.image.h,
+            origW, origH, px: window.__px(A.image.el) };
+    })()`);
+    check(guard.sameEl && guard.w === guard.origW && guard.h === guard.origH,
+        '空画布被拦下：不替换 im.el，保留原图尺寸', JSON.stringify(guard));
+    check(/保留原图/.test(guard.status), '空画布被拦下时给出明确提示，而不是静默黑屏', guard.status);
+    check(guard.px && guard.px.blackOpaquePct === 0 && guard.px.colorPct > 90,
+        '空画布被拦下后原图内容完好', JSON.stringify(guard.px));
+
+    // 13) 无边框 NONE + 彩色照片：与用户第二张截图同款布局，旋转后不黑
+    const noneColor = await exec(`(async () => {
+        const before = await window.__noneSetup('color');
+        const A = window.App;
+        await A.rotateCurrentPhoto();
+        await A.flushRender();
+        await new Promise(r => setTimeout(r, 200));
+        return { before: before.area, after: window.__photoBlackPct(),
+            el: window.__px(A.image.el), w: A.image.w, h: A.image.h };
+    })()`);
+    check(noneColor.after.blackPct <= 2 && noneColor.w === 600 && noneColor.h === 800,
+        '无边框 + 彩色照片：旋转后不黑、宽高互换', JSON.stringify(noneColor));
+
+    // 14) 无边框 NONE + 全透明图：位图不能被烘成不透明黑
+    const noneEmpty = await exec(`(async () => {
+        await window.__noneSetup('empty');
+        const A = window.App;
+        await A.rotateCurrentPhoto();
+        await A.flushRender();
+        await new Promise(r => setTimeout(r, 200));
+        return { el: window.__px(A.image.el), area: window.__photoBlackPct() };
+    })()`);
+    check(noneEmpty.el && noneEmpty.el.blackOpaquePct === 0 && noneEmpty.el.opaquePct === 0,
+        '无边框 + 全透明图：旋转后保持透明，没有变成不透明黑', JSON.stringify(noneEmpty.el));
 
     await win.destroy();
     app.quit();

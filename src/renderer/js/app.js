@@ -2441,6 +2441,13 @@ window.App = {
         const img = im.el;
         const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
         if (!W || !H) return;
+        // qflocal / RAW 代理图可能设了 decoding='async'：位图还没解码完就
+        // drawImage，会得到一张全透明空画布，旧代码再编码成 JPEG 就是整片纯黑。
+        // 主动等一次解码，把这种间歇性「旋转后变黑」从源头掐掉。
+        if (typeof img.decode === 'function') {
+            try { await img.decode(); } catch (_) { /* 解码失败走下面的结果校验 */ }
+        }
+        const before = window.qfsOpaqueRatio ? window.qfsOpaqueRatio(img) : null;
         const canvas = document.createElement('canvas');
         canvas.width = H;
         canvas.height = W;
@@ -2448,6 +2455,13 @@ window.App = {
         ctx.translate(H / 2, W / 2);
         ctx.rotate(Math.PI / 2);
         ctx.drawImage(img, -W / 2, -H / 2);
+        // 源图明明有内容、结果却全空 = 这次根本没画上。绝不把空图换进 im.el：
+        // 保留原图并明确提示，比静默显示一张黑照片好得多。
+        const after = window.qfsOpaqueRatio ? window.qfsOpaqueRatio(canvas) : null;
+        if (before != null && after != null && before > 0.5 && after < 0.02) {
+            this.setStatus('旋转失败：照片还没读取完，已保留原图，请再试一次');
+            return;
+        }
         // 统一走 PNG（保留 alpha）：以前这里用 toDataURL('image/jpeg')，
         // 透明区域会被烘成黑块，带透明背景/圆角/羽化的图一旋转就「变黑」。
         const out = await window.qfsCanvasImage(canvas);
@@ -2607,6 +2621,13 @@ window.App = {
         if (!orientation || orientation === 1 || orientation === 0) return null;
         orientation = orientation | 0;
         const W = img.naturalWidth, H = img.naturalHeight;
+        if (!W || !H) return null;
+        // 导入时图片刚 onload，可能还设着 decoding='async'；等真正解码完再画，
+        // 否则方向校正会产出一张空画布（旧 JPEG 编码后就是全黑照片）。
+        if (typeof img.decode === 'function') {
+            try { await img.decode(); } catch (_) { /* 交给下面的结果校验 */ }
+        }
+        const before = window.qfsOpaqueRatio ? window.qfsOpaqueRatio(img) : null;
         // 旋转类(3/6/8,含镜像的 5/7)需要交换宽高;纯翻转(2/4)保持宽高
         const swapsWH = (orientation === 6 || orientation === 8 || orientation === 5 || orientation === 7);
         const canvas = document.createElement('canvas');
@@ -2625,6 +2646,10 @@ window.App = {
             default: return null;
         }
         ctx.drawImage(img, -W / 2, -H / 2);
+        // 与主流转同口径：源图有内容却画出空画布就放弃校正，回退原图，
+        // 绝不把空/黑位图当成导入结果（imageFromPick 见到 null 会用原图）。
+        const after = window.qfsOpaqueRatio ? window.qfsOpaqueRatio(canvas) : null;
+        if (before != null && after != null && before > 0.5 && after < 0.02) return null;
         // 与主旋转同口径：PNG 保留 alpha，否则 EXIF 方向校正会把透明区烘成黑块
         const out = await window.qfsCanvasImage(canvas);
         if (!out) return null;
