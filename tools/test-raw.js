@@ -150,7 +150,7 @@ async function main() {
 
     // ── ② 一套滑块：RAW 不再单独摆一套同名的 ──
     // 以前「RAW 显影」和「调色」各有一套曝光/对比/高光/色温/色调：概念重复，
-    // 而且两边的「高光 +」方向相反（显影是压、调色是提）。现在只在调色里留一套。
+    // 而且两边的「高光 +」方向相反（显影是压、调色是提）。现在只在「基础」里留一套。
     const single = await exec(`(async () => {
         const A = window.App;
         const has = (id) => !!document.getElementById(id);
@@ -167,9 +167,11 @@ async function main() {
     check(single.rawSliders.length === 0,
         'RAW 面板不再重复一套曝光/对比/高光/色温/色调滑块', JSON.stringify(single.rawSliders));
     check(single.gradeSliders.length === 5,
-        '这五档只在「调色」里出现一次', JSON.stringify(single.gradeSliders));
-    check(single.panelShown && /调色/.test(single.hint),
-        'RAW 面板保留状态行，并写明这五档去哪里调', single.hint.slice(0, 40));
+        '这五档只在「基础」里出现一次', JSON.stringify(single.gradeSliders));
+    // 页签/分组改名后提示文案把「调色」换成了「基础 → 亮 / 颜色」，
+    // 断言跟着新文案走，别再拿旧词判失败（这是文案改名，不是功能回归）。
+    check(single.panelShown && /基础/.test(single.hint) && /颜色/.test(single.hint),
+        'RAW 面板保留状态行，并写明这五档去哪里调（基础 → 亮 / 颜色）', single.hint.slice(0, 40));
     check(single.params.exposure === 0 && single.params.highlights === 25,
         '解码基线仍是「曝光 0 + 高光肩 25」', JSON.stringify(single.params));
 
