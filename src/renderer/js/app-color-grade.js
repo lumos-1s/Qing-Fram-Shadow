@@ -341,6 +341,11 @@
             glc.addEventListener('webglcontextlost', (e) => {
                 e.preventDefault();
                 gl = null; prog = null; uni = null; tex = null;
+                // LUT 纹理和它的缓存键必须一起作废：上下文重建后 initGL() 会新建
+                // 一张空的 lutTex，但 lutKey 若仍是旧值，passGL 会以为LUT已上传而
+                // 跳过 texImage2D —— shader 采到空纹理，整幅输出纯黑。旋转会换
+                // 烘焙尺寸、又常伴显存压力，正是这个分支最容易被触发的场景。
+                lutTex = null; lutKey = '';
                 shTex = null; shRowsTex = null; floatOK = false;
                 sprogBlur = null; sprogComp = null; suiBlur = null; suiComp = null;
                 sfbo = null; stexA = null; stexB = null; sW = 0; sH = 0; sBroken = false;
@@ -458,11 +463,23 @@
     function passGL(src, p, w, h, lut, haze, sh) {
         if (!initGL()) return null;
         try {
-            if (glc.width !== w || glc.height !== h) { glc.width = w; glc.height = h; }
+            if (gl.isContextLost && gl.isContextLost()) return null;
+            if (glc.width !== w || glc.height !== h) {
+                glc.width = w; glc.height = h;
+                // 改画布尺寸会重建 drawing buffer：强制下次重新上传 LUT，
+                // 不能让 lutKey 把「其实没上传」当成已经上传过。
+                lutKey = '';
+            }
             gl.viewport(0, 0, w, h);
+            // 先清掉上一次残留的 GL 错误，否则下面判断的是旧错误。
+            for (let i = 0; i < 8 && gl.getError() !== gl.NO_ERROR; i++) { /* drain */ }
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, tex);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+            // WebGL 的错误不抛异常：纹理上传失败（超过 MAX_TEXTURE_SIZE、
+            // 显存不足等）只会置 error，继续画就会采到空纹理输出全黑。
+            // 这里显式检查并回退 2D，绝不把黑画面交出去。
+            if (gl.getError() !== gl.NO_ERROR) return null;
             // 实测三维表：校准 / 饱和度 / 自然饱和度 / 混色器 / 颜色分级 都在这里，
             // 于是这几项的手写公式必须让位（否则会叠加两次）。
             const lutOn = !!(lut && lut.rgba && lut.grid > 1);
@@ -867,7 +884,16 @@
     window.QfsColor = {
         pass(src, p, w, h, lut, haze, sh) {
             const out = passGL(src, p, w, h, lut, haze, sh);
-            if (out) return out;
+            if (out) {
+                // 最后一道：GL 偶发吐出整片纯黑（LUT 纹理没上传、上下文刚重建、
+                // 显存不足等）。源图本来不黑却得到全黑，一定是渲染坏了 ——
+                // 丢掉 GL 结果改走 2D，绝不把黑图当成调色结果交给画面。
+                // 用户把照片真的调成全黑时 srcBlack>0.5，不会被误判。
+                const B = window.qfsBlackRatio;
+                const srcBlack = B ? B(src) : null;
+                const outBlack = B ? B(out) : null;
+                if (srcBlack == null || outBlack == null || srcBlack > 0.5 || outBlack < 0.95) return out;
+            }
             // GL 通道没成：阴影本来是在 shader 里施加的，这里补一次再走 2D 兜底，
             // 否则这一帧会整片漏掉阴影（画面突然变平，像没调过色）。
             if (sh && window.QfsShadows) window.QfsShadows.applyCanvas(src, sh.amount, sh.key);
