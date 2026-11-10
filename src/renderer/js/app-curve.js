@@ -433,10 +433,17 @@
                 const pts = self.curvePoints(self._curveChan);
                 const isFirst = drag === 0, isLast = drag === pts.length - 1;
                 let x = p.x, y = p.y;
-                // 端点 x 锁死在 0 / 1，中间点只能在前后两点之间滑动
-                if (isFirst) x = 0;
-                else if (isLast) x = 1;
-                else {
+                // 端点不再把 x 锁死在 0 / 1：允许沿底部 / 顶部左右拉，用来设定黑场 / 白场
+                // （Lightroom、Photoshop 的曲线端点就是这么用的）。约束只有一个：端点必须始终是
+                // 「最左 / 最右」那个点——只卡在相邻点的内侧，留 0.01 余量（顺便避开 sanitize 的
+                // 0.005 合并阈值），这样拖到半路也不会被排序挤掉端点身份、更不会越过邻居。
+                if (isFirst) {
+                    const hi = pts.length > 1 ? pts[1][0] - 0.01 : 1;
+                    x = Math.max(0, Math.min(hi, x));
+                } else if (isLast) {
+                    const lo = pts.length > 1 ? pts[pts.length - 2][0] + 0.01 : 0;
+                    x = Math.max(lo, Math.min(1, x));
+                } else {
                     const lo = pts[drag - 1][0] + 0.01;
                     const hi = pts[drag + 1][0] - 0.01;
                     x = Math.max(lo, Math.min(hi, x));
