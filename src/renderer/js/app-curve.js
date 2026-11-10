@@ -159,6 +159,7 @@
             const $ = (id) => document.getElementById(id);
             const cvEl = $('curveCanvas');
             if (!cvEl) return;
+            this._curveShowAll = false;
             this._curveDom = {
                 canvas: cvEl, ctx: cvEl.getContext('2d'),
                 chans: $('curveChans'), reset: $('btnCurveReset'),
@@ -168,6 +169,7 @@
                 ? Array.prototype.slice.call(this._curveDom.chans.querySelectorAll('.curve-chan')) : [];
             chanBtns.forEach((b) => {
                 b.addEventListener('click', () => {
+                    this._closeCurveCtxMenu();
                     this._curveChan = b.dataset.chan || 'rgb';
                     chanBtns.forEach((x) => x.classList.toggle('active', x === b));
                     this.drawCurve();
@@ -331,7 +333,8 @@
             for (const c of window.QfsCurve.CHANS) {
                 if (c.k === cur) continue;
                 const pts = this.curvePoints(c.k);
-                if (window.QfsCurve.isLinear(pts)) continue;
+                // 「显示所有曲线」开启时，连线性（对角线）通道也画出来；否则只画调过的
+                if (!this._curveShowAll && window.QfsCurve.isLinear(pts)) continue;
                 g.strokeStyle = chanColor[c.k];
                 g.globalAlpha = 0.28;
                 g.lineWidth = 1.4;
@@ -401,6 +404,7 @@
             };
             el.addEventListener('pointerdown', (e) => {
                 const p = pos(e);
+                self._closeCurveCtxMenu();
                 self._curveDragging = true;
                 let idx = hitTest(p);
                 if (idx < 0) {
@@ -496,6 +500,98 @@
                     self.setCurve(self._curveChan, pts);
                 }
             });
+            // 右键：命中单个控制点 → 删除该点；空白 / 端点 → 通道菜单（重置 / 显示所有曲线）
+            el.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                self._closeCurveCtxMenu();
+                const p = pos(e);
+                const idx = hitTest(p);
+                const chanPts = self.curvePoints(self._curveChan);
+                if (idx > 0 && idx < chanPts.length - 1) {
+                    // 命中「中间」控制点（端点定义了定义域，不允许删）：弹出针对这一点的菜单
+                    self._openCurveCtxMenu(e.clientX, e.clientY, [
+                        {
+                            label: '删除此控制点', onClick: () => {
+                                const cur = self.curvePoints(self._curveChan);
+                                if (idx > 0 && idx < cur.length - 1) {
+                                    cur.splice(idx, 1);
+                                    self.setCurve(self._curveChan, cur);
+                                    self.setStatus('已删除一个控制点');
+                                }
+                            }
+                        }
+                    ]);
+                } else {
+                    // 空白或端点：通道级菜单（对标参考软件的曲线右键菜单）
+                    const cur = self._curveChan;
+                    self._openCurveCtxMenu(e.clientX, e.clientY, [
+                        {
+                            label: '重置该通道', onClick: () => {
+                                self.setCurve(cur, [[0, 0], [1, 1]]);
+                                self.setStatus('已重置「' + self._chanLabel(cur) + '」曲线');
+                            }
+                        },
+                        { label: '重置所有通道', onClick: () => { self.resetCurve(); } },
+                        {
+                            label: '显示所有曲线', checked: !!self._curveShowAll, onClick: () => {
+                                self._curveShowAll = !self._curveShowAll;
+                                self.drawCurve();
+                            }
+                        }
+                    ]);
+                }
+            });
+        },
+
+        _chanLabel(k) {
+            const c = window.QfsCurve.CHANS.find((x) => x.k === k);
+            return c ? c.label : k;
+        },
+
+        // 轻量右键菜单：复用同一个浮层元素，自动处理定位、越界、外部点击 / Esc / resize 关闭
+        _openCurveCtxMenu(x, y, items) {
+            this._closeCurveCtxMenu();
+            const menu = document.createElement('div');
+            menu.className = 'curve-ctx-menu';
+            items.forEach((it) => {
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'curve-ctx-item' + (it.checked ? ' checked' : '');
+                row.textContent = it.label;
+                row.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    this._closeCurveCtxMenu();
+                    it.onClick();
+                });
+                menu.appendChild(row);
+            });
+            document.body.appendChild(menu);
+            const mw = menu.offsetWidth, mh = menu.offsetHeight;
+            menu.style.left = Math.min(x, window.innerWidth - mw - 6) + 'px';
+            menu.style.top = Math.min(y, window.innerHeight - mh - 6) + 'px';
+            this._curveMenu = menu;
+            const close = (ev) => {
+                if (ev.type === 'keydown' && ev.key === 'Escape') this._closeCurveCtxMenu();
+                else if (ev.type === 'resize') this._closeCurveCtxMenu();
+                else if (!this._curveMenu || !this._curveMenu.contains(ev.target)) this._closeCurveCtxMenu();
+            };
+            // 用 capture 在第一个 pointerdown 就拦下，避免点菜单项时先触发别处的隐藏逻辑
+            document.addEventListener('pointerdown', close, true);
+            document.addEventListener('keydown', close, true);
+            window.addEventListener('resize', close, true);
+            menu._closers = close;
+        },
+
+        _closeCurveCtxMenu() {
+            const m = this._curveMenu;
+            if (!m) return;
+            if (m._closers) {
+                document.removeEventListener('pointerdown', m._closers, true);
+                document.removeEventListener('keydown', m._closers, true);
+                window.removeEventListener('resize', m._closers, true);
+            }
+            if (m.parentNode) m.parentNode.removeChild(m);
+            this._curveMenu = null;
         },
 
         QfsClamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }

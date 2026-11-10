@@ -133,6 +133,18 @@ async function main() {
     await exec(`(() => { if (window.App && App.closeSettings) App.closeSettings(); return true; })()`);
     await sleep(250);
     await shot('panel-top', '#inspector');
+    // 「曲线」组：确认外框是正方形。展开后滚到该组顶部再拍。
+    await exec(`(() => {
+        const grp = document.getElementById('grpCurve');
+        if (grp) grp.classList.remove('collapsed');
+        const b = document.querySelector('.insp-body');
+        const top = grp.getBoundingClientRect().top - b.getBoundingClientRect().top + b.scrollTop - 8;
+        b.scrollTop = Math.max(0, top);
+        if (window.App && window.App.drawCurve) window.App.drawCurve();
+        return true;
+    })()`);
+    await sleep(450);
+    await shot('panel-curve', '#inspector');
     // 「更多」弹出菜单：确认不被 .insp-body 裁掉
     await exec(`(() => { const b = document.getElementById('btnTabMore'); if (b) b.click(); return true; })()`);
     await sleep(250);
