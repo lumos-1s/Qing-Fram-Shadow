@@ -976,7 +976,7 @@ async function main() {
         '晕影/羽化/颗粒并入「效果」段：无开关复选框、默认 0/50/0、晕影为 -100..100 双向',
         JSON.stringify(moodUi));
     check(moodUi.above && moodUi.leakGroups.length === 1 && moodUi.leakGroups[0] === '漏光',
-        '「效果」排在「曲线」上方；漏光仍是独立组（相框样式下随光效一起隐藏）',
+        '「效果」排在「曲线」上方；漏光仍是唯一的独立光效组',
         JSON.stringify(moodUi.leakGroups));
 
     // 滑块即开关：非 0 自动启用（正负都算）、回 0 自动关闭（enable 是引擎唯一认的标志）
@@ -1112,6 +1112,56 @@ async function main() {
           && Math.abs(vigPix.back.corner - vigPix.off.corner) <= 5,
         '晕影双向：-85 四角明显压暗、+85 四角明显提亮（中心都不动），归零后完全恢复',
         JSON.stringify(vigPix));
+
+    // 相框样式管线同样要吃光效。以前 engine-styles 完全不调 applyGlobalLight，这几档对相框预设
+    // 是死控件，面板只能整组隐藏（用户「看不到」的就是这批风格）。现在补在成片之上、文字之下，
+    // 所以：① 行必须露出来；② 像素必须真的变。
+    const frameVig = await exec(`(async () => {
+        const A = window.App;
+        A.template = A.defaultTemplate();
+        A.template.photoFrameStyle = 'POLAROID_HAND';
+        A.template.lightEffect.vignetteSignV2 = 2;
+        A.template.lightEffect.vignetteEnable = 0;
+        A.template.lightEffect.vignetteStrength = 0;
+        A.template.lightEffect.vignetteFeather = 50;
+        A.setTpl(A.image, A.template);
+        if (A.updatePersonalVisibility) A.updatePersonalVisibility();
+        if (A.applyModeControls) A.applyModeControls();
+        const ids = ['slVignetteStrength', 'slVignetteFeather', 'slFilmGrain', 'slLeakOpacity'];
+        const shown = ids.map((id) => {
+            const el = document.getElementById(id);
+            const row = el && el.closest('.param-row');
+            return !!(row && getComputedStyle(row).display !== 'none');
+        });
+        const flush = async () => {
+            A._renderDirty = true;
+            if (typeof A._drainRenderQueue === 'function') A._drainRenderQueue();
+            await new Promise((r) => setTimeout(r, 150));
+        };
+        await flush();
+        const sample = () => {
+            const cv = A.dom.canvas;
+            const s = document.createElement('canvas'); s.width = 120; s.height = 120;
+            const gg = s.getContext('2d'); gg.drawImage(cv, 0, 0, 120, 120);
+            const at = (x, y) => { const d = gg.getImageData(x, y, 1, 1).data; return (d[0] + d[1] + d[2]) / 3; };
+            const corner = (at(4, 4) + at(115, 4) + at(4, 115) + at(115, 115)) / 4;
+            return { corner: +corner.toFixed(1), center: +at(60, 60).toFixed(1) };
+        };
+        const off = sample();
+        A.template.lightEffect.vignetteEnable = 1;
+        A.template.lightEffect.vignetteStrength = -85;
+        A.setTpl(A.image, A.template);
+        await flush();
+        const dark = sample();
+        A.template = A.defaultTemplate();
+        A.setTpl(A.image, A.template);
+        if (A.applyModeControls) A.applyModeControls();
+        await flush();
+        return { shown, off, dark };
+    })()`);
+    check(frameVig.shown.every(Boolean) && frameVig.dark.corner < frameVig.off.corner - 12,
+        '相框样式下光效行照样露出，晕影真的压在成片上（相框预设有白边，四角同样变暗）',
+        JSON.stringify(frameVig));
 
     // ── 24. 每个分组都能折叠（曲线/混色器曾因 CSS 白名单漏项折不动）──
     const collapse = await exec(`(() => {

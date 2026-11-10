@@ -8637,6 +8637,17 @@ const w = natW;
             g.scale(finalScale, finalScale);
             g.drawImage(out, 0, 0);
             g.restore();
+            // 光效（晕影 / 漏光 / 颗粒）必须叠在整张成片之上：相框样式走的是这条管线，
+            // 以前完全不调 applyGlobalLight，"暗角/漏光/胶片颗粒"三组对相框预设是死控件，
+            // 面板只好把整组藏起来（见 app.js 的 applyModeControls）。现在按默认管线的
+            // 同一顺序补上：先成片（含白边/边框/补边），再光效，最后才是文字/Logo 叠层
+            // （engine.js 的 renderTemplateStyle 也是 applyGlobalLight 在 drawUserElements 之前）。
+            // 坐标取设备的 canvas.width/height：此时 g 的 transform 已 restore 回单位矩阵。
+            // 90 个预设里只有「波普漫画风」是相框样式且声明了颗粒，其余都 enable:0，
+            // 所以这条改动对既有预设的画面几乎无影响（那款本来就写着有颗粒，现在真的画出来）。
+            if (typeof applyGlobalLight === 'function') {
+                applyGlobalLight(g, t.lightEffect, canvas.width, canvas.height);
+            }
             drawUserElements(g, t, canvas.width, canvas.height);
             app.applyZoomStyle();
         } catch (e) {

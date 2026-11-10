@@ -82,8 +82,9 @@ async function main() {
         App.imageTemplates = new Map();
         const useDefault = ${JSON.stringify(process.env.QF_SHOT_TPL === 'default')};
         imgs.forEach((im) => {
-            // 相框样式（photoFrameStyle）管线不应用光效，晕影/颗粒几行会跟着 .ctl-light-row 隐藏；
-            // 想截「效果」段的完整六行，用 QF_SHOT_TPL=default 切到默认模板再拍。
+            // 默认取第一个预设（3D卡片，相框样式）：光效行现在在所有管线里都露出，
+            // 所以两种模板都能拍到完整的「效果」六行；QF_SHOT_TPL=default 只是换一张
+            // 没有相框白边的底图，便于对比调色/效果本身。
             const tpl = useDefault ? App.defaultTemplate() : JSON.parse(JSON.stringify(App.presets[0]));
             im.customSettings = tpl;
             App.imageTemplates.set(im, tpl);
