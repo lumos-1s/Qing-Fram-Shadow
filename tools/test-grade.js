@@ -1034,6 +1034,29 @@ async function main() {
         '老预设 enable:0+强度:35 显示 0；老「启用+正 35」迁移为 -35（仍压暗）；新版正值 20 不被误翻',
         JSON.stringify(legacyMood));
 
+    // 84 个预设存着 enable:0 + 强度:35（模板默认值，从未生效）。「效果」段的 is-dirty
+    // 若只看强度，整库预设一打开就亮着「已改」、复位按钮常驻 —— 必须带 enable 判断。
+    const fxDirty = await exec(`(() => {
+        const A = window.App;
+        const le = A.template.lightEffect;
+        const fxEl = () => document.querySelector('#grpGrade .pg-sub[data-sub="fx"]');
+        A.resetGrade();
+        le.vignetteEnable = 0; le.vignetteStrength = 35; le.vignetteSignV2 = 2;
+        le.filmGrainEnable = 0; le.filmGrainIntensity = 10;
+        A.syncGradeSections(A.gradeOf(A.image));
+        const stale = fxEl().classList.contains('is-dirty');
+        le.vignetteEnable = 1; le.vignetteStrength = -33;
+        A.syncGradeSections(A.gradeOf(A.image));
+        const on = fxEl().classList.contains('is-dirty');
+        le.vignetteEnable = 0; le.vignetteStrength = 0; le.filmGrainIntensity = 0;
+        A.syncGradeSections(A.gradeOf(A.image));
+        const off = fxEl().classList.contains('is-dirty');
+        return { stale, on, off };
+    })()`);
+    check(fxDirty.stale === false && fxDirty.on === true && fxDirty.off === false,
+        '预设残留 enable:0+强度:35 不算「已改」；真启用晕影才亮「效果」的复位按钮',
+        JSON.stringify(fxDirty));
+
     // 真画出来：强度 85 时四角变暗、中心不动，归零后恢复。
     // 注意两点（这条用例曾经是"假阳性"）：
     // ① 必须自己重建一张干净的图，不能吃前序用例剩下的状态；

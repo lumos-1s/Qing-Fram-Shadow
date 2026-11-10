@@ -1535,7 +1535,9 @@
                 light: !!(p && (p.exp || p.con || p.hi || p.sh || p.white || p.black || p.gam)),
                 color: !!(p && (p.temp || p.tint || p.vib || p.sat)),
                 fx: !!(p && p.det && (p.det.tex || p.det.clar || p.det.dhz))
-                    || Math.abs(Number(le.vignetteStrength) || 0) > 0
+                    // 必须带 enable：84 个预设存着 enable:0 + 强度:35 的模板默认值，
+                    // 只看强度会让整库预设一打开就亮着「已改」。
+                    || (le.vignetteEnable === 1 && Math.abs(Number(le.vignetteStrength) || 0) > 0)
                     || (le.filmGrainEnable === 1 && Number(le.filmGrainIntensity) > 0)
             };
             const subs = wrap.querySelectorAll('.pg-sub');
