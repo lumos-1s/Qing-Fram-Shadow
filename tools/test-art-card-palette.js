@@ -136,7 +136,20 @@ async function main() {
         const src2 = window.photoSrcOf(item);
         const ver2 = src2 && src2._qfsGradeKey;
 
-        return { before, gray, restored, ver0, ver1, ver2,
+        // 缓存上限压力：连续换 20 组参数（每组都会新增一批 imgKey），
+        // 超过上限后缓存轮换，取色结果仍必须正确、不能崩。
+        let stressErr = '';
+        try {
+            for (let i = 0; i < 20; i++) {
+                A.setGrade({ sat: -90 + i * 4 });
+                await A.flushRender();
+            }
+            A.setGrade({ sat: 0 });
+            await A.flushRender();
+        } catch (e) { stressErr = String(e && e.message || e); }
+        const stressed = stats();
+
+        return { before, gray, restored, stressed, stressErr, ver0, ver1, ver2,
             srcKinds: [src0 && src0.tagName, src1 && src1.tagName, src2 && src2.tagName],
             geom: { cw: cv.width, ch: cv.height, pr, sc, y0 } };
     })()`);
@@ -151,6 +164,9 @@ async function main() {
     check(r.restored.color > r.gray.color * 1.5 || r.restored.avgSat > r.gray.avgSat * 1.4,
         '调回中性后色卡恢复（缓存没有把旧结果钉死）',
         JSON.stringify({ gray: r.gray, restored: r.restored, src2: r.srcKinds[2] }));
+    check(!r.stressErr && Math.abs(r.stressed.color - r.before.color) < r.before.color * 0.15,
+        '连续 20 组调色后取色仍正确（缓存有上限、不会无限堆）',
+        JSON.stringify({ err: r.stressErr, before: r.before.color, stressed: r.stressed.color }));
 
     console.log(failures.length
         ? `\n未通过 ${failures.length} 项：` + failures.map((f) => '\n - ' + f).join('')

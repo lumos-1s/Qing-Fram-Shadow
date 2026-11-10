@@ -195,11 +195,26 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
     }
 
     // ── 渲染缓存(对齐 Java ConvolveOp/取色缓存):照片不变时模糊底与取色结果不重算 ──
-    const _smallCache = {};
-    const _edgeCache = {};
-    const _bottomCache = {};
-    const _domCache = {};
-    const _multiCache = {};
+    // 带上限的取色缓存。调色后 imgKey 会带上内容签名，每拖一次滑块就产生新 key；
+    // 这些缓存原本只在切图/裁切时整体清空，长时间调色会一路堆条目。超过 64 条就
+    // 整表清空重来 —— 存的都是 64px 缩略图 / 直方图，重算成本可以忽略。
+    function boundedCache() {
+        const store = {};
+        return new Proxy(store, {
+            set(t, k, v) {
+                if (!Object.prototype.hasOwnProperty.call(t, k) && Object.keys(t).length >= 64) {
+                    Object.keys(t).forEach((old) => delete t[old]);
+                }
+                t[k] = v;
+                return true;
+            }
+        });
+    }
+    const _smallCache = boundedCache();
+    const _edgeCache = boundedCache();
+    const _bottomCache = boundedCache();
+    const _domCache = boundedCache();
+    const _multiCache = boundedCache();
     // 调色后的取源是 Canvas（没有 src），而且同一个 canvas 对象会被反复重绘。
     // 只按尺寸做 key 会让所有调色画面共用一个取色缓存 —— 艺术卡右下角色卡永远
     // 停在第一次取色，拖调色滑块"不能实时调整"。photoSrcOf 会把当前烘焙签名
