@@ -136,7 +136,8 @@ const PROBE = `(async () => {
     };
     const lightOk = inside('light', ['slGradeExp', 'slGradeCon', 'slGradeHi', 'slGradeSh', 'slGradeWhite', 'slGradeBlack', 'slGradeGam']);
     const colorOk = inside('color', ['slGradeTemp', 'slGradeTint', 'slGradeVib', 'slGradeSat']);
-    const fxOk = inside('fx', ['slDetTex', 'slDetClar', 'slDetDhz']);
+    const fxOk = inside('fx', ['slDetTex', 'slDetClar', 'slDetDhz',
+        'slVignetteStrength', 'slVignetteFeather', 'slFilmGrain']);
     const detOnlySharpen = !$('grpDet').contains($('slDetClar')) && !!$('grpDet').contains($('slDetShp'));
 
     // ── 5. 分段复位只清自己那几档 ──
@@ -146,11 +147,20 @@ const PROBE = `(async () => {
     const afterLight = A.gradeOf(im);
     const lightReset = afterLight.exp === 0 && afterLight.con === 0;
     const othersKept = afterLight.temp === 20 && afterLight.det.tex === 30;
+    // 晕影/颗粒也属于「效果」段：先给非零值，复位后应一起归零
+    A.template.lightEffect = Object.assign({}, A.template.lightEffect, {
+        vignetteSignV2: 2, vignetteEnable: 1, vignetteStrength: -33,
+        vignetteFeather: 70, filmGrainEnable: 1, filmGrainIntensity: 18
+    });
     A.resetGradeSection('fx');
     const afterFx = A.gradeOf(im);
     // 三段全零后 det 会被 sanitizeDet 收成 null（= 这组没开），读的时候按空对象兜底
     const fxDet = afterFx.det || {};
-    const fxReset = (fxDet.tex || 0) === 0 && (fxDet.clar || 0) === 0 && afterFx.temp === 20;
+    const leFx = A.template.lightEffect || {};
+    const fxReset = (fxDet.tex || 0) === 0 && (fxDet.clar || 0) === 0 && afterFx.temp === 20
+        && (leFx.vignetteStrength || 0) === 0 && (leFx.vignetteEnable || 0) === 0
+        && (leFx.vignetteFeather == null ? 50 : leFx.vignetteFeather) === 50
+        && (leFx.filmGrainIntensity || 0) === 0;
     A.resetGradeSection('color');
     const afterColor = A.gradeOf(im);
     const colorReset = afterColor.temp === 0 && afterColor.tint === 0;
@@ -274,13 +284,13 @@ async function main() {
         check(res.exifEmpty === '未读取到 EXIF 参数', '没有 EXIF 时参数条给一句说明', res.exifEmpty);
         check(res.keys.join(',') === 'light,color,fx', '调色分成 亮 / 颜色 / 效果 三段', res.keys.join(','));
         check(res.lightOk && res.colorOk && res.fxOk,
-            '三段各自装着自己的滑块（效果段接管纹理/清晰度/去薄雾）',
+            '三段各自装着自己的滑块（效果段接管纹理/清晰度/去薄雾/晕影/颗粒）',
             JSON.stringify({ lightOk: res.lightOk, colorOk: res.colorOk, fxOk: res.fxOk }));
         check(res.detOnlySharpen, '「锐化」组只剩锐化四档');
         check(res.lightReset && res.othersKept,
             '「亮」复位只清曝光/对比度等，颜色与效果保持不动',
             JSON.stringify({ lightReset: res.lightReset, othersKept: res.othersKept }));
-        check(res.fxReset, '「效果」复位只清纹理/清晰度/去薄雾');
+        check(res.fxReset, '「效果」复位清纹理/清晰度/去薄雾/晕影/颗粒，颜色保持不动');
         check(res.colorReset, '「颜色」复位只清白平衡与饱和');
         check(res.collapsed && res.expanded, '段标题可收起再展开', JSON.stringify({ c: res.collapsed, e: res.expanded }));
         check(res.layout.labelAbove && res.layout.fullWidth && res.layout.valueRight && res.layout.labelLeft,

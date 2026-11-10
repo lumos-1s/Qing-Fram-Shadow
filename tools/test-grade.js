@@ -169,8 +169,8 @@ async function main() {
     check(grp.inGrade && !grp.inToolbar && grp.hasTab && !grp.isToolTab
           && grp.active && !grp.canvasStill && /调色/.test(grp.title),
         '调色挂在「画布」这一行的页签里（不再属于工具行），点击能切到面板', JSON.stringify(grp));
-    check(grp.lightGroups === 3 && grp.lightInGrade && grp.noLightPanel && grp.noLightTab,
-        '原「光影」三组（暗角/漏光/颗粒）已并入调色页签，独立页签与面板已移除',
+    check(grp.lightGroups === 1 && grp.lightInGrade && grp.noLightPanel && grp.noLightTab,
+        '原「光影」三组已并入调色页签：晕影/颗粒进「效果」小节，只剩漏光还是 .ctl-grp-light；独立页签与面板已移除',
         JSON.stringify({ n: grp.lightGroups, inGrade: grp.lightInGrade, noPanel: grp.noLightPanel, noTab: grp.noLightTab }));
     await exec(`(() => { if (window.App.switchTab) window.App.switchTab('canvas'); })()`);
 
@@ -946,29 +946,40 @@ async function main() {
     check(cgPersist.cleared && cgPersist.exp === 1,
         'XMP 导入用 replace：未写进预设的颜色分级被清零', JSON.stringify(cgPersist));
 
-    // ── 23. 氛围三组：滑块常开（无复选框）、默认 0、排在曲线上方 ──
+    // ── 23. 效果段并入晕影/颗粒：滑块常开（无复选框）、默认 0，漏光仍是独立组 ──
     const moodUi = await exec(`(() => {
         const A = window.App;
         A.template = A.defaultTemplate();
+        if (A.normalizeTemplate) A.normalizeTemplate();
         if (A.refreshUI) A.refreshUI();
         const grp = document.getElementById('panel-grade');
-        const light = Array.prototype.slice.call(grp.querySelectorAll('.ctl-grp-light'));
-        const chks = grp.querySelectorAll('.ctl-grp-light input[type=checkbox]');
-        const vals = ['slVignetteStrength', 'slLeakOpacity', 'slFilmGrain'].map((id) => {
+        const fx = grp.querySelector('.pg-sub[data-sub="fx"]');
+        const inFx = ['slVignetteStrength', 'slVignetteFeather', 'slFilmGrain'].every((id) => {
+            const el = document.getElementById(id);
+            const row = el && el.closest('.param-row');
+            return !!(row && fx.contains(row));
+        });
+        const chks = fx.querySelectorAll('input[type=checkbox]').length;
+        const vals = ['slVignetteStrength', 'slVignetteFeather', 'slFilmGrain'].map((id) => {
             const el = document.getElementById(id);
             return el ? el.value : null;
         });
+        const vg = document.getElementById('slVignetteStrength');
+        const bidir = !!vg && vg.min === '-100' && vg.max === '100';
+        const leakGroups = Array.prototype.slice.call(grp.querySelectorAll('.ctl-grp-light'))
+            .map((x) => ((x.querySelector('.pg-title') || {}).textContent || '').trim());
         const curveEl = document.getElementById('grpCurve');
-        const above = light.length > 0
-            && !!(light[0].compareDocumentPosition(curveEl) & Node.DOCUMENT_POSITION_FOLLOWING);
-        return { n: light.length, chks: chks.length, vals, above,
-                 titles: light.map((x) => ((x.querySelector('.pg-title') || {}).textContent || '').trim()) };
+        const above = !!(fx.compareDocumentPosition(curveEl) & Node.DOCUMENT_POSITION_FOLLOWING);
+        return { inFx, chks, vals, bidir, leakGroups, above };
     })()`);
-    check(moodUi.n === 3 && moodUi.chks === 0 && moodUi.vals.every((v) => v === '0'),
-        '氛围三组改为常开滑块：没有开关复选框、默认全 0', JSON.stringify(moodUi));
-    check(moodUi.above, '「氛围」排在「曲线」上方', JSON.stringify(moodUi.titles));
+    check(moodUi.inFx && moodUi.chks === 0 && moodUi.vals.join(',') === '0,50,0' && moodUi.bidir,
+        '晕影/羽化/颗粒并入「效果」段：无开关复选框、默认 0/50/0、晕影为 -100..100 双向',
+        JSON.stringify(moodUi));
+    check(moodUi.above && moodUi.leakGroups.length === 1 && moodUi.leakGroups[0] === '漏光',
+        '「效果」排在「曲线」上方；漏光仍是独立组（相框样式下随光效一起隐藏）',
+        JSON.stringify(moodUi.leakGroups));
 
-    // 滑块即开关：>0 自动启用、回 0 自动关闭（enable 是引擎唯一认的标志）
+    // 滑块即开关：非 0 自动启用（正负都算）、回 0 自动关闭（enable 是引擎唯一认的标志）
     const moodToggle = await exec(`(() => {
         const A = window.App;
         const s = document.getElementById('slVignetteStrength');
@@ -978,32 +989,49 @@ async function main() {
         };
         s.value = '60'; fire();
         const on = Object.assign({}, A.template.lightEffect);
+        s.value = '-45'; fire();
+        const neg = Object.assign({}, A.template.lightEffect);
         s.value = '0'; fire();
         const off = Object.assign({}, A.template.lightEffect);
         return { onEn: on.vignetteEnable, onVal: on.vignetteStrength,
+                 negEn: neg.vignetteEnable, negVal: neg.vignetteStrength,
                  offEn: off.vignetteEnable, offVal: off.vignetteStrength };
     })()`);
-    check(moodToggle.onEn === 1 && moodToggle.onVal === 60 && moodToggle.offEn === 0
-          && moodToggle.offVal === 0,
-        '滑块即开关：拖到 60 自动启用，回 0 自动关闭', JSON.stringify(moodToggle));
+    check(moodToggle.onEn === 1 && moodToggle.onVal === 60
+          && moodToggle.negEn === 1 && moodToggle.negVal === -45
+          && moodToggle.offEn === 0 && moodToggle.offVal === 0,
+        '滑块即开关：+60 / -45 都自动启用，回 0 自动关闭', JSON.stringify(moodToggle));
 
-    // 老预设（enable:0 + 强度:35 的模板默认值）载入后必须显示 0，不能凭空冒出暗角
+    // 老预设（enable:0 + 强度:35 的模板默认值）载入后必须显示 0，不能凭空冒出暗角；
+    // 老数据「enable:1 + 正 35」= 压暗，迁移后应变 -35（新版负值才是压暗）。
     const legacyMood = await exec(`(() => {
         const A = window.App;
         A.template.lightEffect = Object.assign({}, A.template.lightEffect,
             { vignetteEnable: 0, vignetteStrength: 35 });
+        delete A.template.lightEffect.vignetteSignV2;
+        A.normalizeTemplate();
         A.refreshUI();
         const shownOff = document.getElementById('slVignetteStrength').value;
-        A.template.lightEffect.vignetteEnable = 1;
+        // 老「已启用 + 正 35」→ 迁移成 -35
+        A.template.lightEffect = Object.assign({}, A.template.lightEffect,
+            { vignetteEnable: 1, vignetteStrength: 35 });
+        delete A.template.lightEffect.vignetteSignV2;
+        A.normalizeTemplate();
         A.refreshUI();
-        const shownOn = document.getElementById('slVignetteStrength').value;
+        const shownLegacyOn = document.getElementById('slVignetteStrength').value;
+        // 新版数据（带标记）里的正值不能被迁移翻掉：+20 = 提亮
+        A.template.lightEffect = Object.assign({}, A.template.lightEffect,
+            { vignetteEnable: 1, vignetteStrength: 20, vignetteSignV2: 2 });
+        A.normalizeTemplate();
+        A.refreshUI();
+        const shownV2 = document.getElementById('slVignetteStrength').value;
         A.template.lightEffect.vignetteEnable = 0;
         A.template.lightEffect.vignetteStrength = 0;
         A.refreshUI();
-        return { shownOff, shownOn };
+        return { shownOff, shownLegacyOn, shownV2 };
     })()`);
-    check(legacyMood.shownOff === '0' && legacyMood.shownOn === '35',
-        '老预设 enable:0+强度:35 载入显示 0（观感不变）；enable:1 时正常回显 35',
+    check(legacyMood.shownOff === '0' && legacyMood.shownLegacyOn === '-35' && legacyMood.shownV2 === '20',
+        '老预设 enable:0+强度:35 显示 0；老「启用+正 35」迁移为 -35（仍压暗）；新版正值 20 不被误翻',
         JSON.stringify(legacyMood));
 
     // 真画出来：强度 85 时四角变暗、中心不动，归零后恢复。
@@ -1036,22 +1064,30 @@ async function main() {
             return { corner: +corner.toFixed(1), center: +at(60, 60).toFixed(1) };
         };
         const off = sample();
+        // 新版语义：负值压暗、正值提亮。带标记，避免被「老数据迁移」翻掉符号。
+        A.template.lightEffect.vignetteSignV2 = 2;
         A.template.lightEffect.vignetteEnable = 1;
+        A.template.lightEffect.vignetteStrength = -85;
+        A.setTpl(A.image, A.template);
+        await flush();
+        const dark = sample();
         A.template.lightEffect.vignetteStrength = 85;
         A.setTpl(A.image, A.template);
         await flush();
-        const on = sample();
+        const light = sample();
         A.template.lightEffect.vignetteEnable = 0;
         A.template.lightEffect.vignetteStrength = 0;
         A.setTpl(A.image, A.template);
         await flush();
         const back = sample();
-        return { off, on, back };
+        return { off, dark, light, back };
     })()`);
-    check(vigPix.on.corner < vigPix.off.corner - 25
-          && Math.abs(vigPix.on.center - vigPix.off.center) <= 8
+    check(vigPix.dark.corner < vigPix.off.corner - 25
+          && Math.abs(vigPix.dark.center - vigPix.off.center) <= 8
+          && vigPix.light.corner > vigPix.off.corner + 20
+          && Math.abs(vigPix.light.center - vigPix.off.center) <= 8
           && Math.abs(vigPix.back.corner - vigPix.off.corner) <= 5,
-        '强度 85 时四角明显变暗（中心不动），归零后完全恢复',
+        '晕影双向：-85 四角明显压暗、+85 四角明显提亮（中心都不动），归零后完全恢复',
         JSON.stringify(vigPix));
 
     // ── 24. 每个分组都能折叠（曲线/混色器曾因 CSS 白名单漏项折不动）──

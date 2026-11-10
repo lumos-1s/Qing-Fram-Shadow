@@ -816,17 +816,30 @@ function applyFilmGrain(ctx, light, cw, ch) {
 function applyGlobalLight(ctx, light, cw, ch) {
     if (!light) return;
     if (light.vignetteEnable === 1) {
-        const s = light.vignetteStrength / 100;
-        const r = Math.max(cw, ch) / 2;
-        const grad = ctx.createRadialGradient(cw / 2, ch / 2, 0, cw / 2, ch / 2, r);
-        grad.addColorStop(0, 'rgba(0,0,0,0)');
-        grad.addColorStop(Math.max(0, 1 - s), 'rgba(0,0,0,0)');
-        grad.addColorStop(1, `rgba(0,0,0,${Math.min(1, s)})`);
-        ctx.save();
-        ctx.globalCompositeOperation = 'multiply';
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, cw, ch);
-        ctx.restore();
+        // 双向晕影（与 Lightroom / Camera Raw 同向）：负值压暗四角，正值提亮四角。
+        // 老数据只有 0..100 的正值，走同一分支，观感不变。
+        const raw = (Number(light.vignetteStrength) || 0) / 100;
+        const s = Math.abs(raw);
+        if (s > 0) {
+            // 羽化：以前只存不用（死滑块）。这里把它接上，且特意让「50」还原旧几何
+            // （内圈透明止点 = 1 - s），所以老预设/老草稿的画面不会因为这次改动而变。
+            // <50 收得更紧（暗角更贴边），>50 过渡起点更早（更柔、覆盖更大）。
+            const feather = light.vignetteFeather != null ? Number(light.vignetteFeather) : 50;
+            const mid = Math.max(0, Math.min(1, 1 - s * (0.5 + (isFinite(feather) ? feather : 50) / 100)));
+            const r = Math.max(cw, ch) / 2;
+            const grad = ctx.createRadialGradient(cw / 2, ch / 2, 0, cw / 2, ch / 2, r);
+            const tint = raw < 0 ? '0,0,0' : '255,255,255';
+            grad.addColorStop(0, `rgba(${tint},0)`);
+            grad.addColorStop(mid, `rgba(${tint},0)`);
+            grad.addColorStop(1, `rgba(${tint},${Math.min(1, s)})`);
+            ctx.save();
+            // 压暗走 multiply、提亮走 screen：两者都是「以原图为准」的混合，
+            // 不会像 lighter 那样把亮的角落直接烧成纯白。
+            ctx.globalCompositeOperation = raw < 0 ? 'multiply' : 'screen';
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, cw, ch);
+            ctx.restore();
+        }
     }
     if (light.lightLeakEnable === 1) {
         const op = light.lightLeakOpacity / 100;

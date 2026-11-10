@@ -1471,7 +1471,7 @@
                             <div class="pg-sub" data-sub="fx">
                                 <div class="pg-sub-head" role="button" tabindex="0" aria-expanded="true">
                                     <span class="pg-sub-name">效果</span>
-                                    <button type="button" class="pg-sub-reset" data-sub-reset="fx" title="把「效果」这组归零：纹理 / 清晰度 / 去除薄雾">复位</button>
+                                    <button type="button" class="pg-sub-reset" data-sub-reset="fx" title="把「效果」这组归零：纹理 / 清晰度 / 去除薄雾 / 晕影 / 颗粒">复位</button>
                                 </div>
                                 <div class="param-row">
                                     <label>纹理</label>
@@ -1488,14 +1488,27 @@
                                     <input type="range" id="slDetDhz" class="ctl-rng" min="-100" max="100" step="1" value="0" />
                                     <span class="pval" id="lblDetDhz">0</span>
                                 </div>
+                                <!-- 晕影 / 颗粒照 Camera Raw 收进「效果」：质感→光效→颗粒一条线，
+                                     不用再到下面「氛围」几个独立组里来回找。晕影改成双向：
+                                     负值压暗四角、正值提亮四角（与 LR / ACR 同向）。 -->
+                                <div class="param-row ctl-light-row">
+                                    <label>晕影</label>
+                                    <input type="range" id="slVignetteStrength" class="ctl-rng" min="-100" max="100" step="1" value="0" />
+                                    <span class="pval" id="lblVignetteStrength">0</span>
+                                </div>
+                                <div class="param-row ctl-light-row">
+                                    <label>羽化</label>
+                                    <input type="range" id="slVignetteFeather" class="ctl-rng" min="0" max="100" step="1" value="50" />
+                                    <span class="pval" id="lblVignetteFeather">50</span>
+                                </div>
+                                <div class="param-row ctl-light-row">
+                                    <label>颗粒</label>
+                                    <input type="range" id="slFilmGrain" class="ctl-rng" min="0" max="100" step="1" value="0" />
+                                    <span class="pval" id="lblFilmGrain">0</span>
+                                </div>
                             </div>
                         </div>
 <!--                        <div class="pg-section-title">氛围</div>-->
-                        <div class="param-group ctl-grp-light">
-                            <div class="pg-title collapsible">暗角</div>
-                            <div class="param-row"><label>强度</label><input type="range" id="slVignetteStrength" class="ctl-rng" min="0" max="100" value="0" /><span class="pval" id="lblVignetteStrength"></span></div>
-                            <div class="param-row"><label>羽化</label><input type="range" id="slVignetteFeather" class="ctl-rng" min="0" max="100" value="50" /><span class="pval" id="lblVignetteFeather"></span></div>
-                        </div>
                         <div class="param-group ctl-grp-light">
                             <div class="pg-title collapsible">漏光</div>
                             <div class="param-row">
@@ -1508,10 +1521,6 @@
                             </div>
                             <div class="param-row"><label>强度</label><input type="range" id="slLeakOpacity" class="ctl-rng" min="0" max="100" value="0" /><span class="pval" id="lblLeakOpacity"></span></div>
                             <div class="param-row"><label>角度</label><input type="range" id="slLeakAngle" class="ctl-rng" min="0" max="360" value="225" /><span class="pval" id="lblLeakAngle"></span></div>
-                        </div>
-                        <div class="param-group ctl-grp-light">
-                            <div class="pg-title collapsible">胶片颗粒</div>
-                            <div class="param-row"><label>强度</label><input type="range" id="slFilmGrain" class="ctl-rng" min="0" max="100" value="0" /><span class="pval" id="lblFilmGrain"></span></div>
                         </div>
 <!--                        <div class="hint-box"></div>-->
                         <div class="param-group" id="grpCurve">

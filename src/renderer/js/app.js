@@ -1718,9 +1718,13 @@ window.App = {
         // 暗角/漏光/颗粒统一为「滑块常开型」:没有独立开关,强度 0 即关闭。
         // enable 标志仍然要写(引擎只认它):老预设里大量存在
         // enable:0 + 强度:35(模板默认值,从未生效),只看强度会把整库预设的暗角全打开。
+        // 晕影改成双向：负值压暗四角、正值提亮四角，所以开关按绝对值判断 ——
+        // 不能再写 vgv > 0，否则 -33 会被当成「关闭」，画面一点变化都没有。
         const vgv = $('slVignetteStrength') ? parseInt($('slVignetteStrength').value, 10) : 0;
         le.vignetteStrength = vgv;
-        le.vignetteEnable = vgv > 0 ? 1 : 0;
+        le.vignetteEnable = Math.abs(vgv) > 0 ? 1 : 0;
+        // 新版符号约定标记：负值压暗 / 正值提亮。归一化时看到它就不再对老数据做翻转。
+        le.vignetteSignV2 = 2;
         le.vignetteFeather = $('slVignetteFeather') ? parseInt($('slVignetteFeather').value, 10) : 50;
         const lkv = $('slLeakOpacity') ? parseInt($('slLeakOpacity').value, 10) : 0;
         le.lightLeakEnable = lkv > 0 ? 1 : 0;
@@ -1748,6 +1752,11 @@ window.App = {
         decor.cornerDecorSize = $('slCornerDecorSize') ? parseInt($('slCornerDecorSize').value, 10) : 30;
 
         this.syncPuzzleFromUI();
+        // 晕影 / 颗粒已并入「效果」段：拖动它们也要点亮该段的「已改」标记，
+        // 否则「效果」右侧的复位按钮不会出现（它只在 is-dirty 时常驻）。
+        if (this.syncGradeSections && this.gradeOf && this.image) {
+            this.syncGradeSections(this.gradeOf(this.image));
+        }
     },
 
     syncManualExif() {
@@ -2168,7 +2177,8 @@ window.App = {
             const vgVal = vgOn ? (le.vignetteStrength || 0) : 0;
             if ($('slVignetteStrength')) $('slVignetteStrength').value = vgVal;
             if ($('slVignetteFeather')) $('slVignetteFeather').value = le.vignetteFeather != null ? le.vignetteFeather : 50;
-            this.updateLabel('lblVignetteStrength', vgVal + '%');
+            // 双向晕影：正值带 +，负值带 -，0 就是 0（与「亮」段其他双向滑块一致）
+            this.updateLabel('lblVignetteStrength', vgVal === 0 ? '0' : (vgVal > 0 ? '+' + vgVal + '%' : vgVal + '%'));
             this.updateLabel('lblVignetteFeather', le.vignetteFeather != null ? le.vignetteFeather : 50);
             const lkOn = le.lightLeakEnable === 1;
             const lkVal = lkOn ? (le.lightLeakOpacity || 0) : 0;
@@ -2217,7 +2227,9 @@ window.App = {
         const showLight = !frame;
         const q = (sel) => Array.prototype.slice.call(document.querySelectorAll(sel));
         q('.ctl-grp-layers').forEach(el => { el.style.display = showLayers ? '' : 'none'; });
-        q('.ctl-grp-light').forEach(el => { el.style.display = showLight ? '' : 'none'; });
+        // 晕影 / 颗粒已并入「效果」段（不再是独立的 .ctl-grp-light 组），
+        // 但相框样式管线同样不应用光效，所以要跟着一起隐藏，不能只按组类名找。
+        q('.ctl-grp-light, .ctl-light-row').forEach(el => { el.style.display = showLight ? '' : 'none'; });
         // 「照片同步画幅」只有默认图层管线（engine.js 的 drawOriginImage）读 canvasSync。
         // 相框风格自己排版照片、卡片/模糊底走 renderCardStyle，两条管线都不看这个字段：
         // 露出来只会是“勾了没反应”。这里按当前实际渲染管线隐藏，切回默认模板时自动恢复。
@@ -4157,13 +4169,15 @@ bindBtn('btnResetAllSlots', () => this.resetAllSlots());
     },
 
     sliderLiveLabel(id, v) {
+        // 双向滑块（晕影）拖动时也要带符号：+33% / -33% / 0
+        const signedPct = (n) => (n === 0 ? '0' : (n > 0 ? '+' + n + '%' : n + '%'));
         const map = {
             slFillOpacity: ['lblFillOpacity', v + '%'], slGradientAngle: ['lblGradientAngle', v], slTextureScale: ['lblTextureScale', v + '%'],
             slStrokeWidth: ['lblStrokeWidth', v], slStrokeOpacity: ['lblStrokeOpacity', v + '%'],
             slShadowBlur: ['lblShadowBlur', v], slShadowOpacity: ['lblShadowOpacity', v + '%'],
             slGlowBlur: ['lblGlowBlur', v], slGlowOpacity: ['lblGlowOpacity', v + '%'],
 
-            slVignetteStrength: ['lblVignetteStrength', v + '%'], slVignetteFeather: ['lblVignetteFeather', v],
+            slVignetteStrength: ['lblVignetteStrength', signedPct(v)], slVignetteFeather: ['lblVignetteFeather', v],
             slBrandSize: ['lblBrandSize', v + '%'], slParamScale: ['lblParamScale', v + '%'],
             slGlassSize: ['lblGlassSize', v + '%'],
             slAppleModelSize: ['lblAppleModelSize', v + '%'],

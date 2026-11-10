@@ -287,6 +287,19 @@ window.App = Object.assign(window.App || {}, {
         for (const k of ['baseMargin', 'cornerConfig', 'filmTearConfig', 'lightEffect', 'decorConfig']) {
             if (!isObj(t[k])) t[k] = {};
         }
+        // 晕影符号迁移：旧版「0..100，正值 = 压暗」，新版对齐 Camera Raw 改成
+        // 「-100..100，负值压暗 / 正值提亮」。老模板没有 vignetteSignV2 标记，
+        // 这里把「已启用且为正」的强度翻成负值，观感保持不变；写入标记后不再重复翻转。
+        // 内置预设里有 6 个是 enable:1 + 正值（NOMO复古相机/双胶片条/暗夜星空/
+        // 极光渐变/电影宽荧幕/金箔奢华），靠这段迁移继续压暗，不需要改 JSON。
+        // 放在 coerceTemplate 而不是 normalizeTemplate：草稿恢复 / 打开 .qfs / 导入
+        // 配置都会先走这里纠形，保证 refreshUI 读到的已经是迁移后的值。
+        const le = t.lightEffect;
+        if (!le.vignetteSignV2) {
+            le.vignetteSignV2 = 2;
+            const vs = Number(le.vignetteStrength) || 0;
+            if (Number(le.vignetteEnable) === 1 && vs > 0) le.vignetteStrength = -vs;
+        }
         if (t._draftText) delete t._draftText;
         if (!Array.isArray(t.layerList)) t.layerList = [];
         t.layerList = t.layerList.filter(isObj).slice(0, 200);

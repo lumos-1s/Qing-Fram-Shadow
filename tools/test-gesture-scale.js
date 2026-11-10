@@ -131,18 +131,22 @@ app.whenReady().then(async () => {
             rows.push({ name: p.name || p._fileName, style: p.photoFrameStyle, before, during, after });
         }
 
-        // 默认模板管线(没有 photoFrameStyle):暗角/漏光/颗粒这些滑块走
+        // 默认模板管线(没有 photoFrameStyle):晕影/漏光/颗粒这些滑块走
         // bindRanges → beginGesture(displayMax 900)。以前 setupCanvas 的 _logW
         // 也跟着 900 算,屏幕上就缩成一半(松手才弹回)。相框风格管线早已有
         // displayScale 保护,默认模板/卡片/拼图管线此前没覆盖。
         A.template = A.defaultTemplate();
+        A.template.lightEffect.vignetteEnable = 0;
         A.template.lightEffect.vignetteStrength = 0;
         A._forceFitNext = true;
         await A.flushRender(); await sleep(320);
         {
             const before = snap();
             A.beginGesture();
-            A.template.lightEffect.vignetteStrength = 55;
+            // 负值 = 压暗（新版双向语义）；enable 显式打开，保证 applyGlobalLight 真的在跑
+            A.template.lightEffect.vignetteSignV2 = 2;
+            A.template.lightEffect.vignetteEnable = 1;
+            A.template.lightEffect.vignetteStrength = -55;
             A.scheduleRender(true);
             await A.flushRender(); await sleep(280);
             const during = snap();
@@ -150,7 +154,7 @@ app.whenReady().then(async () => {
             A.scheduleRender(true);
             await A.flushRender(); await sleep(320);
             const after = snap();
-            rows.push({ name: '默认模板（暗角滑块）', style: 'NONE', before, during, after });
+            rows.push({ name: '默认模板（晕影滑块）', style: 'NONE', before, during, after });
         }
         return JSON.stringify(rows);
     })()`);

@@ -1528,10 +1528,15 @@
         syncGradeSections(p) {
             const wrap = document.getElementById('grpGrade');
             if (!wrap) return;
+            // 晕影 / 颗粒并入「效果」后，它们挂在模板的 lightEffect 上（不归 grade 管），
+            // 所以这里要单独读一份，否则拖了晕影「效果」段还显示「没动过」、复位按钮不出现。
+            const le = (this.template && this.template.lightEffect) || {};
             const on = {
                 light: !!(p && (p.exp || p.con || p.hi || p.sh || p.white || p.black || p.gam)),
                 color: !!(p && (p.temp || p.tint || p.vib || p.sat)),
                 fx: !!(p && p.det && (p.det.tex || p.det.clar || p.det.dhz))
+                    || Math.abs(Number(le.vignetteStrength) || 0) > 0
+                    || (le.filmGrainEnable === 1 && Number(le.filmGrainIntensity) > 0)
             };
             const subs = wrap.querySelectorAll('.pg-sub');
             for (const el of subs) {
@@ -1551,6 +1556,26 @@
                 det.tex = 0;
                 det.clar = 0;
                 det.dhz = 0;
+                // 晕影 / 颗粒也在「效果」段里：一起归零，并把滑块与标签同步回来。
+                // 它们存在模板的 lightEffect 上、不经过 grade 的 normalizeGrade，
+                // 所以必须手动写回 + 手动回填；否则下一次 collect() 会把滑块上的旧值又写回去。
+                const le = Object.assign({}, this.template.lightEffect || {});
+                le.vignetteStrength = 0;
+                le.vignetteEnable = 0;
+                le.vignetteFeather = 50;
+                le.filmGrainIntensity = 0;
+                le.filmGrainEnable = 0;
+                this.template.lightEffect = le;
+                const $ = (id) => document.getElementById(id);
+                const vg = $('slVignetteStrength'), vf = $('slVignetteFeather'), fg = $('slFilmGrain');
+                if (vg) vg.value = '0';
+                if (vf) vf.value = '50';
+                if (fg) fg.value = '0';
+                if (this.updateLabel) {
+                    this.updateLabel('lblVignetteStrength', '0');
+                    this.updateLabel('lblVignetteFeather', '50');
+                    this.updateLabel('lblFilmGrain', '0');
+                }
                 this.setGrade({ det });
             } else {
                 const keys = name === 'light' ? ['exp', 'con', 'hi', 'sh', 'white', 'black', 'gam']
@@ -1560,6 +1585,8 @@
                 for (const k of keys) patch[k] = 0;
                 this.setGrade(patch);
             }
+            // 复位后「已改」标记要立刻收掉（效果段还包含模板上的晕影/颗粒）
+            if (this.syncGradeSections) this.syncGradeSections(this.gradeOf(im));
             this.setStatus(name === 'light' ? '已复位「亮」' : name === 'color' ? '已复位「颜色」' : '已复位「效果」');
             return true;
         },
