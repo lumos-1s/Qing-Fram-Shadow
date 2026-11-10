@@ -96,6 +96,47 @@ window.__setup = async (w, h, halfTransparent, softEdge, graded) => {
     await new Promise(r => setTimeout(r, 350));
     return { el: window.__px(im.el), canvas: window.__px(A.dom.canvas) };
 };
+// 艺术卡：照片直接画在白卡纸上，整张透明被 JPEG 烘黑后就会 1:1 呈现「纯黑照片」
+window.__artSetup = async (mode) => {
+    const A = window.App;
+    const el = await window.__mk(800, 600, mode === 'half', false);
+    if (mode === 'color') {
+        // __mk 的 half=false 已经是彩色四象限，这里不额外处理
+    }
+    const empty = document.createElement('canvas');
+    empty.width = 800; empty.height = 600;
+    const src = mode === 'empty' ? await (async () => {
+        const im = new Image();
+        await new Promise((r) => { im.onload = r; im.onerror = r; im.src = empty.toDataURL('image/png'); });
+        return im;
+    })() : el;
+    const im = { el: src, name: 'art.png', path: null, w: 800, h: 600,
+        exif: { model: 'ILCE-6000' }, customSettings: null, grade: null };
+    A.images = [im]; A.image = im; A.currentIdx = 0; A.selectedIdx = [0]; A.batchSel = [0];
+    A.imageTemplates = new Map();
+    if (A.invalidateGrade) A.invalidateGrade(im);
+    const t = A.defaultTemplate();
+    t.photoFrameStyle = 'ART_CARD'; t.photoFrameBorderSize = 80; t.templateName = '艺术卡';
+    A.template = t; A.setTpl(im, t); A.normalizeTemplate(); A.refreshUI();
+    await A.flushRender();
+    return window.__photoBlackPct();
+};
+window.__photoBlackPct = () => {
+    const A = window.App, cv = A.dom.canvas;
+    const pr = A._photoRect || { x: 0, y: 0, w: cv.width, h: cv.height };
+    const sc = A._canvasScale || 1;
+    const x0 = Math.max(0, Math.round((pr.x + pr.w * 0.15) * sc));
+    const x1 = Math.min(cv.width, Math.round((pr.x + pr.w * 0.85) * sc));
+    const y0 = Math.max(0, Math.round((pr.y + pr.h * 0.15) * sc));
+    const y1 = Math.min(cv.height, Math.round((pr.y + pr.h * 0.85) * sc));
+    const d = cv.getContext('2d').getImageData(x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0)).data;
+    let black = 0, n = 0;
+    for (let i = 0; i < d.length; i += 4) {
+        if (d[i] + d[i+1] + d[i+2] < 60) black++;
+        n++;
+    }
+    return { blackPct: Math.round(black * 100 / n), rect: [x0, y0, x1, y1] };
+};
 true;
 `;
 
@@ -122,6 +163,7 @@ async function main() {
     })()`);
     await sleep(1000);
     await exec(HELPERS);
+    await exec(`(async () => { await window.App.loadPresets(); return true; })()`);
 
     // 0) 基线：造出来的图确实带透明区（否则后面的断言全是空跑）
     const base = await exec(`(async () => await window.__setup(800, 600, true, false, false))()`);
@@ -236,6 +278,54 @@ async function main() {
     check(!crop.err && crop.w === 600 && crop.h === 800,
         '裁切弹窗旋转 90° 后应用：宽高互换', JSON.stringify(crop));
     check(clean(crop.p), '裁切弹窗旋转后透明区仍保留（共用入口没退化）', JSON.stringify(crop.p));
+
+    // 8) 反向自检：把编码换回 0.1.25 的 JPEG，整张透明图 + 艺术卡必须复现「整张黑」。
+    //    证明下面第 9 条的断言真的能抓住这个 bug，而不是空跑。
+    const legacy = await exec(`(async () => {
+        const orig = window.qfsCanvasImage;
+        window.qfsCanvasImage = (canvas) => new Promise((res) => {
+            const im = new Image();
+            im.onload = () => res(im.naturalWidth ? im : null);
+            im.onerror = () => res(null);
+            im.src = canvas.toDataURL('image/jpeg', 0.95);
+        });
+        let out;
+        try {
+            await window.__artSetup('empty');
+            await window.App.rotateCurrentPhoto();
+            await window.App.flushRender();
+            out = window.__photoBlackPct();
+        } finally { window.qfsCanvasImage = orig; }
+        return out;
+    })()`);
+    check(legacy.blackPct >= 90,
+        '反向自检：旧 JPEG 编码会复现艺术卡整张纯黑（与用户截图一致）', JSON.stringify(legacy));
+
+    // 9) 当前实现：同一场景必须保持白卡纸，不出现整张黑
+    const artBefore = await exec(`(async () => await window.__artSetup('empty'))()`);
+    const artAfter = await exec(`(async () => {
+        const A = window.App;
+        await A.rotateCurrentPhoto();
+        await A.flushRender();
+        await new Promise(r => setTimeout(r, 200));
+        return { area: window.__photoBlackPct(), el: window.__px(A.image.el) };
+    })()`);
+    check(artBefore.blackPct <= 2, '艺术卡 + 全透明图：旋转前照片区不是黑的', JSON.stringify(artBefore));
+    check(artAfter.area.blackPct <= 2,
+        '艺术卡 + 全透明图：旋转后照片区不出现整张黑（整张黑回归）', JSON.stringify(artAfter.area));
+    check(artAfter.el.blackOpaquePct === 0,
+        '艺术卡场景：旋转后位图仍保持透明，没有被烘成不透明黑', JSON.stringify(artAfter.el));
+
+    // 10) 艺术卡 + 彩色图：正常照片旋转后画面内容不受影响
+    const artColor = await exec(`(async () => {
+        await window.__artSetup('color');
+        const A = window.App;
+        await A.rotateCurrentPhoto();
+        await A.flushRender();
+        await new Promise(r => setTimeout(r, 200));
+        return window.__photoBlackPct();
+    })()`);
+    check(artColor.blackPct <= 2, '艺术卡 + 彩色照片：旋转后不黑', JSON.stringify(artColor));
 
     await win.destroy();
     app.quit();
