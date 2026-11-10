@@ -175,6 +175,14 @@
 
     // ── UI：细节 / 校准 / 混色器三组滑块 ─────────────────────────
     function fmt(v) { return v === 0 ? '0' : (v > 0 ? '+' + v : String(v)); }
+    // 「效果」段的纹理 / 清晰度 / 去除薄雾与同组晕影、颗粒对齐，用纯数字；
+    // 其余（锐化 / 校准 / 混色器）沿用带符号整数或各自的 fmt。
+    const PLAIN_DET_KEYS = new Set(['tex', 'clar', 'dhz']);
+    const labelText = (rec, v) => {
+        const n = Number(v) || 0;
+        if (rec.fmt) return rec.fmt(n);
+        return rec.plain ? String(n) : fmt(n);
+    };
 
     Object.assign(window.App || (window.App = {}), {
         _mixMetric: 'h',
@@ -182,7 +190,15 @@
         initGradeExtra() {
             const $ = (id) => document.getElementById(id);
             this._gradeExtra = { det: {}, cal: {}, mix: {} };
-            const bind = (inp, lbl, apply) => {
+            const showLabel = (rec) => {
+                const lbl = rec && rec.lbl;
+                if (!lbl) return;
+                const text = labelText(rec, rec.inp.value);
+                // 与 syncGradeExtraUI 一样走 updateLabel：它是数字框(.pval-num)的唯一同步入口。
+                if (lbl.id && typeof this.updateLabel === 'function') this.updateLabel(lbl.id, text);
+                else lbl.textContent = text;
+            };
+            const bind = (inp, rec, apply) => {
                 if (!inp) return;
                 let settle = 0;
                 const thumb = () => {
@@ -194,16 +210,20 @@
                 };
                 inp.addEventListener('input', () => {
                     apply(Number(inp.value) || 0);
+                    // 拖动时即时回填：只靠 syncGradeExtraUI（切图/撤销/套预设才跑）
+                    // 会让标签在整个拖动过程里停在旧值，看上去像控件没反应。
+                    showLabel(rec);
                     clearTimeout(settle);
                     settle = setTimeout(() => { this.rebuildGrade('full'); thumb(); }, 220);
                 });
                 inp.addEventListener('change', () => {
                     clearTimeout(settle);
                     apply(Number(inp.value) || 0);
+                    showLabel(rec);
                     this.rebuildGrade('full');
                     thumb();
                 });
-                void lbl;
+                showLabel(rec);
             };
             // 细节 / 校准：扁平参数组，patch 进 grade.det / grade.cal
             const bindGroup = (spec, key) => {
@@ -212,8 +232,9 @@
                     if (inp) {
                         // fmt：半径这类小数字段要自己决定显示（+0.5 不合适），
                         // 没有就用默认的「带符号整数」
-                        this._gradeExtra[key][it.k] = { inp, lbl, fmt: it.fmt };
-                        bind(inp, lbl, (v) => {
+                        const rec = { inp, lbl, fmt: it.fmt, plain: !!it.plain };
+                        this._gradeExtra[key][it.k] = rec;
+                        bind(inp, rec, (v) => {
                             const cur = this.gradeOf(this.image);
                             const g = Object.assign({}, cur[key] || {}, { [it.k]: v });
                             this.setGrade({ [key]: g });
@@ -223,7 +244,8 @@
             };
             // fmt 要一起带过去：半径是小数，默认的「带符号整数」会显示成 +0.8
             bindGroup(this.DET_FIELDS.map((f) => ({
-                k: f.k, id: 'Det' + f.k.charAt(0).toUpperCase() + f.k.slice(1), fmt: f.fmt
+                k: f.k, id: 'Det' + f.k.charAt(0).toUpperCase() + f.k.slice(1), fmt: f.fmt,
+                plain: PLAIN_DET_KEYS.has(f.k)
             })), 'det');
             bindGroup(this.CAL_FIELDS.map((f) => ({ k: f.k, id: 'Cal' + f.k.toUpperCase() })), 'cal');
             // 混色器：24 个滑块（8 带 × 3 项），patch 进 grade.mix
@@ -233,8 +255,9 @@
                     const inp = $('sl' + id), lbl = $('lbl' + id);
                     if (inp) {
                         inp.style.setProperty('--h', String(b.hue));
-                        this._gradeExtra.mix[b.k + '.' + mt.k] = { inp, lbl };
-                        bind(inp, lbl, (v) => {
+                        const rec = { inp, lbl };
+                        this._gradeExtra.mix[b.k + '.' + mt.k] = rec;
+                        bind(inp, rec, (v) => {
                             const cur = this.gradeOf(this.image);
                             const m = Object.assign({}, cur.mix || {});
                             m[b.k] = Object.assign({ h: 0, s: 0, l: 0 }, m[b.k] || {}, { [mt.k]: v });
@@ -278,7 +301,7 @@
             const setOne = (rec, v) => {
                 if (!rec) return;
                 rec.inp.value = String(v);
-                const text = rec.fmt ? rec.fmt(Number(v)) : fmt(v);
+                const text = labelText(rec, v);
                 const id = rec.lbl ? rec.lbl.id : null;
                 if (id && typeof this.updateLabel === 'function') this.updateLabel(id, text);
                 else if (rec.lbl) rec.lbl.textContent = text;

@@ -1,3 +1,6 @@
+// 未接入 test:gui（2026-11-10 筛查）：当前 40 PASS / 2 FAIL，失败的两项是
+// 「跳过清单含 SharpenAmount」与「按钮标题提到颜色分级」，均为 UI 文案/清单变化
+// 导致的断言过时；同步断言后再接入。
 // XMP 导入功能测试：映射正确性 + 颜色分级 UI
 const { app, BrowserWindow } = require('electron');
 const path = require('path');

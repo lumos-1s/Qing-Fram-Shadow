@@ -1,3 +1,5 @@
+// 未接入 test:gui（2026-11-10 筛查）：一次性量测脚本，无断言，且依赖桌面外部 JPG
+// （ps修后图片/DSC09381_边框_2.jpg）。仅人工对比 LR 导出时使用，不能进 CI。
 // 用 CPU 三线性插值复现 WebGL 的三维色表通道，从而在无 GL 环境下量到真实管线的结果
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
