@@ -737,14 +737,10 @@ window.App = Object.assign(window.App || {}, {
         const ctx = c.getContext('2d');
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(st.src, x, y, w, h, 0, 0, w, h);
-        // PNG 而不是 JPEG：裁切不该顺手做一次有损压缩（导出格式由导出设置决定）
-        const blob = await new Promise((resolve) => c.toBlob(resolve, 'image/png'));
-        if (!blob) { this.setStatus('裁切失败：无法生成图片'); return false; }
-        const url = URL.createObjectURL(blob);
-        const out = window.qfsImage();
-        await new Promise((r) => { out.onload = r; out.onerror = r; out.src = url; });
-        URL.revokeObjectURL(url);
-        if (!out.naturalWidth) { this.setStatus('裁切失败：图片解码出错'); return false; }
+        // 统一走 qfsCanvasImage：PNG 保留 alpha（JPEG 会把透明区烘成黑块），
+        // 也不顺手做一次有损压缩（导出格式由导出设置决定）。
+        const out = await window.qfsCanvasImage(c);
+        if (!out) { this.setStatus('裁切失败：无法生成图片'); return false; }
 
         im.el = out;                 // 渲染/导出/拼图都直接取 im.el，换掉即全面生效
         im.w = w;

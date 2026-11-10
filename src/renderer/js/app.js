@@ -2448,9 +2448,10 @@ window.App = {
         ctx.translate(H / 2, W / 2);
         ctx.rotate(Math.PI / 2);
         ctx.drawImage(img, -W / 2, -H / 2);
-        const out = window.qfsImage();
-        await new Promise(r => { out.onload = r; out.onerror = r; out.src = canvas.toDataURL('image/jpeg', 0.95); });
-        if (!out.naturalWidth) { this.setStatus('旋转失败'); return; }
+        // 统一走 PNG（保留 alpha）：以前这里用 toDataURL('image/jpeg')，
+        // 透明区域会被烘成黑块，带透明背景/圆角/羽化的图一旋转就「变黑」。
+        const out = await window.qfsCanvasImage(canvas);
+        if (!out) { this.setStatus('旋转失败'); return; }
         // 旋转同样不可撤销，留一份原图供「还原原图」用（app-crop.js）
         if (this.savePhotoOrigin) this.savePhotoOrigin(im);
         im.el = out;
@@ -2624,9 +2625,9 @@ window.App = {
             default: return null;
         }
         ctx.drawImage(img, -W / 2, -H / 2);
-        const out = window.qfsImage();
-        await new Promise(res => { out.onload = res; out.onerror = res; out.src = canvas.toDataURL('image/jpeg', 0.95); });
-        if (!out.naturalWidth) return null;
+        // 与主旋转同口径：PNG 保留 alpha，否则 EXIF 方向校正会把透明区烘成黑块
+        const out = await window.qfsCanvasImage(canvas);
+        if (!out) return null;
         return { el: out, w: canvas.width, h: canvas.height };
     },
 
