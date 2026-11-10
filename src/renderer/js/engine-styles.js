@@ -200,7 +200,16 @@ ctx.font = px + 'px ' + (mono ? 'monospace' : 'sans-serif');
     const _bottomCache = {};
     const _domCache = {};
     const _multiCache = {};
-    const imgKey = img => (img && img.src ? img.src : '') + '@' + img.naturalWidth + 'x' + img.naturalHeight;
+    // 调色后的取源是 Canvas（没有 src），而且同一个 canvas 对象会被反复重绘。
+    // 只按尺寸做 key 会让所有调色画面共用一个取色缓存 —— 艺术卡右下角色卡永远
+    // 停在第一次取色，拖调色滑块"不能实时调整"。photoSrcOf 会把当前烘焙签名
+    // （参数 + 源图版本）打在 _qfsGradeKey 上，纳入 key 即可精准失效；
+    // 原图仍走 src，未调色时的缓存行为完全不变。
+    const imgKey = img => {
+        if (!img) return '';
+        const ver = img._qfsGradeKey ? '#' + img._qfsGradeKey : '';
+        return (img.src ? img.src : 'canvas') + ver + '@' + img.naturalWidth + 'x' + img.naturalHeight;
+    };
     function smallImageCached(img, maxEdge) {
         const key = imgKey(img) + ':' + maxEdge;
         let e = _smallCache[key];

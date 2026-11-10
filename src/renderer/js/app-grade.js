@@ -1083,11 +1083,20 @@
         if (app && app._previewUseOriginal && im === app.image) return im.el || null;
         const g = im._grade;
         if (g && !g.neutral) {
-            if (g.canvas) return g.canvas;
+            // 烘焙画布是 Canvas（没有 src），样式引擎的取色缓存只认 src+尺寸会永远命中。
+            // 把当前烘焙签名挂在画布上，imgKey 据此区分不同调色结果 —— 艺术卡色卡、
+            // 主色/边缘取色等都会随调色实时更新。签名一变，旧缓存自然失效，不必全清。
+            if (g.canvas) {
+                g.canvas._qfsGradeKey = g.fullKey || g.lowKey || '';
+                return g.canvas;
+            }
             // low 只在 lowKey 仍有效时才可信：invalidateGrade(换底图/还原/重设等)会清空
             // lowKey 却保留旧 low 画布,若直接返回会拿到裁切前/旋转前的旧图当"已调色结果"
             // —— 表现就是调色像没了,碰一下滑块才回来。
-            if (g.low && g.lowKey) return g.low;
+            if (g.low && g.lowKey) {
+                g.low._qfsGradeKey = g.lowKey;
+                return g.low;
+            }
         }
         return im.el || null;
     };
