@@ -1282,6 +1282,16 @@ input[type=range].fine-tuning::-webkit-slider-thumb {
 /* 饱和类也上渐变：左端去色、中点回到中性、右端加艳 */
 #panel-grade .rng-vib { --rng-bg: linear-gradient(90deg, #6b7d78, var(--track) 50%, #d9a14b); }
 #panel-grade .rng-sat { --rng-bg: linear-gradient(90deg, #7d8581, var(--track) 50%, #e0524a); }
+/* 校准：六条滑轨按各自原色着色，与 ACR「校准」面板一致 ——
+   色相轨是色环上绕原色的一段（-100 往一端偏、+100 往另一端偏），
+   饱和轨是「灰 → 该原色」（左去色、右加艳）。红偏品红↔橙、绿偏黄↔青、
+   蓝偏青↔品红。id 权重压过 1269 行的通用 3px 灰轨，无需额外改 HTML。 */
+#panel-grade #slCalRH::-webkit-slider-runnable-track { background: linear-gradient(90deg, hsl(330,85%,52%), hsl(0,85%,52%), hsl(40,85%,52%)); }
+#panel-grade #slCalRS::-webkit-slider-runnable-track { background: linear-gradient(90deg, hsl(0,0%,60%), hsl(0,85%,52%), hsl(0,100%,46%)); }
+#panel-grade #slCalGH::-webkit-slider-runnable-track { background: linear-gradient(90deg, hsl(70,85%,52%), hsl(120,85%,52%), hsl(170,85%,52%)); }
+#panel-grade #slCalGS::-webkit-slider-runnable-track { background: linear-gradient(90deg, hsl(120,0%,60%), hsl(120,85%,52%), hsl(120,100%,46%)); }
+#panel-grade #slCalBH::-webkit-slider-runnable-track { background: linear-gradient(90deg, hsl(195,85%,52%), hsl(240,85%,52%), hsl(290,85%,52%)); }
+#panel-grade #slCalBS::-webkit-slider-runnable-track { background: linear-gradient(90deg, hsl(240,0%,60%), hsl(240,85%,52%), hsl(240,100%,46%)); }
 /* 零点小三角：LR 在轨道的默认值位置留一枚刻度，拖动时能看出偏了多少，
    也顺带暴露「锐化 0-150 / 去薄雾 -100~100 的默认点并不在中点」。
    --zero 由 initGradePanel 按 defaultValue 算好；6px 补偿 thumb 半径。 */

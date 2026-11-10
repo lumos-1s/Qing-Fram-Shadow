@@ -159,6 +159,20 @@ async function main() {
     })()`);
     await sleep(450);
     await shot('panel-fx-full', '#inspector');
+    // 「校准」段：六条滑轨应按红/绿/蓝原色着色（色相是色环一段、饱和是灰→原色）
+    await exec(`(() => {
+        const cal = document.getElementById('grpCal');
+        if (!cal) return false;
+        // 折叠态先展开（.pg-title.collapsible 点击切换），否则截到的是标题
+        const title = cal.querySelector('.pg-title');
+        if (title && cal.classList.contains('collapsed')) title.click();
+        const b = document.querySelector('.insp-body');
+        const top = cal.getBoundingClientRect().top - b.getBoundingClientRect().top + b.scrollTop - 8;
+        b.scrollTop = Math.max(0, top);
+        return true;
+    })()`);
+    await sleep(450);
+    await shot('panel-cal', '#inspector');
     await exec(`(() => { const b = document.querySelector('.insp-body'); if (b) b.scrollTop = 0; return true; })()`);
     // 侧栏拖到最窄 / 最宽，确认标签与数值不打架
     for (const w of [260, 440]) {
