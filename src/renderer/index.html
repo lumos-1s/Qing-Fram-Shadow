@@ -1860,6 +1860,12 @@
                            aria-label="自定义裁切比例" spellcheck="false" autocomplete="off" />
                 </div>
                 <div class="crop-tools">
+                    <label class="crop-angle" title="拖动拉直：把倾斜的地平线转正（-45°~45°，双击归零）">
+                        <span class="crop-angle-label">角度</span>
+                        <input id="cropAngle" class="crop-angle-range" type="range" min="-45" max="45" step="0.1"
+                               value="0" aria-label="裁切角度（拉直）">
+                        <b id="cropAngleVal" class="crop-angle-val">0°</b>
+                    </label>
                     <button id="cropRotate" class="mini-btn" type="button" title="把照片顺时针转 90°（只影响本次裁切）">旋转 90°</button>
                     <button id="cropRevert" class="mini-btn" type="button" title="清掉框选与旋转，回到手里这张（裁过就是裁过的）">还原</button>
                     <button id="cropRestoreOriginal" class="mini-btn" type="button" hidden title="回到裁切 / 旋转之前的原图">还原原图</button>

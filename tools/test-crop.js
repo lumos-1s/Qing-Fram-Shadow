@@ -556,6 +556,138 @@ async function main() {
     check(rename.ok && rename.w === 800 && rename.h === 600 && !rename.hasOrig,
         '右键「还原原图」直接把照片换回原图', `${rename.w}×${rename.h} orig=${rename.hasOrig}`);
 
+    // 19. 任意角度拉直：滑块 / 平面尺寸 / 归零 / 双击重置
+    const angle = await exec(`(async () => {
+        const A = window.App;
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        A.openCrop(); await wait(220);
+        const d = document.getElementById('cropAngle');
+        const label = document.getElementById('cropAngleVal');
+        const initial = { disabled: d.disabled, val: d.value, label: label.textContent, W: A._crop.W, H: A._crop.H };
+        A.setCropAngle(5); await wait(80);
+        const at5 = { angle: A._crop.angle, W: A._crop.W, H: A._crop.H, box: { ...A._crop.box },
+            val: d.value, label: label.textContent, inside: A.cropBoxInContent(A._crop.box) };
+        A.setCropAngle(0); await wait(80);
+        const back = { W: A._crop.W, H: A._crop.H, box: { ...A._crop.box } };
+        d.value = '10';
+        d.dispatchEvent(new Event('input', { bubbles: true }));
+        await wait(80);
+        const set10 = A._crop.angle;
+        d.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        await wait(80);
+        const reset = { angle: A._crop.angle, label: label.textContent };
+        A.closeCrop();
+        return { initial, at5, back, set10, reset };
+    })()`);
+    const rad5 = (5 * Math.PI) / 180;
+    check(angle.initial.disabled === false && angle.initial.val === '0' && angle.initial.label === '0°',
+        '角度滑块可拖、默认 0°', JSON.stringify(angle.initial));
+    check(Math.abs(angle.at5.angle - 5) < 1e-6
+        && Math.abs(angle.at5.W - (800 * Math.cos(rad5) + 600 * Math.sin(rad5))) < 0.5
+        && Math.abs(angle.at5.H - (800 * Math.sin(rad5) + 600 * Math.cos(rad5))) < 0.5,
+        '拉直 5°：取景平面 = 旋转后的包围盒',
+        `${angle.at5.W.toFixed(1)}×${angle.at5.H.toFixed(1)} (angle=${angle.at5.angle})`);
+    check(angle.at5.inside === true && Number(angle.at5.val) === 5 && angle.at5.label === '+5°',
+        '拉直后裁切框自动收进画面内，滑块与读数同步',
+        JSON.stringify({ inside: angle.at5.inside, val: angle.at5.val, label: angle.at5.label }));
+    check(Math.abs(angle.back.W - 800) < 0.01 && Math.abs(angle.back.H - 600) < 0.01
+        && Math.abs(angle.back.box.w - 800) < 0.6 && Math.abs(angle.back.box.h - 600) < 0.6,
+        '角度归零：平面与框都回到原图（拉直不该永久吃掉画面）',
+        `${angle.back.W}×${angle.back.H} box=${angle.back.box.w.toFixed(1)}×${angle.back.box.h.toFixed(1)}`);
+    check(Math.abs(angle.set10 - 10) < 1e-6 && angle.reset.angle === 0 && angle.reset.label === '0°',
+        '双击滑块角度归零', JSON.stringify(angle.reset));
+
+    // 20. 拉直后应用：输出绕中心旋转，四角不透明（不会带出透明角）
+    await setupImage();
+    const apply5 = await exec(`(async () => {
+        const A = window.App;
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        // 中心白块、其余全黑：旋转绕画面中心，中心必须还是白的
+        const c = document.createElement('canvas'); c.width = 800; c.height = 600;
+        const g = c.getContext('2d');
+        g.fillStyle = '#000'; g.fillRect(0, 0, 800, 600);
+        g.fillStyle = '#fff'; g.fillRect(380, 280, 40, 40);
+        const el = new Image();
+        await new Promise((r) => { el.onload = r; el.onerror = r; el.src = c.toDataURL('image/png'); });
+        const im = A.image;
+        im.el = el; im.w = 800; im.h = 600; im.thumb = null; im._thumbEl = null;
+        if (A.invalidateGrade) A.invalidateGrade(im);
+        A.openCrop(); await wait(220);
+        A.setCropAngle(5); await wait(100);
+        const box = { ...A._crop.box };
+        await A.applyCrop(); await wait(400);
+        const out = A.image.el;
+        const oc = document.createElement('canvas');
+        oc.width = out.naturalWidth; oc.height = out.naturalHeight;
+        const og = oc.getContext('2d');
+        og.drawImage(out, 0, 0);
+        const pick = (x, y) => Array.from(og.getImageData(x, y, 1, 1).data);
+        const W = oc.width, H = oc.height;
+        return { box, w: W, h: H, center: pick(W >> 1, H >> 1),
+            alpha: [pick(1, 1)[3], pick(W - 2, 1)[3], pick(1, H - 2)[3], pick(W - 2, H - 2)[3]],
+            rgb: [pick(1, 1), pick(W - 2, H - 2)] };
+    })()`);
+    check(Math.abs(apply5.w - apply5.box.w) <= 1 && Math.abs(apply5.h - apply5.box.h) <= 1,
+        '拉直后应用：输出尺寸 = 收好的框', `${apply5.w}×${apply5.h} box=${apply5.box.w.toFixed(1)}×${apply5.box.h.toFixed(1)}`);
+    check(apply5.center[0] > 200 && apply5.center[1] > 200 && apply5.center[2] > 200,
+        '拉直绕画面中心转：中心白块仍在中心', `rgba=${apply5.center.join(',')}`);
+    check(apply5.alpha.every((a) => a === 255),
+        '拉直后四角不透明（框已被收进画面，没有透明角）', `alpha=${apply5.alpha.join(',')}`);
+    check(apply5.w < 800 && apply5.h < 600,
+        '拉直会牺牲一点边缘：输出比原图小', `${apply5.w}×${apply5.h}`);
+
+    // 21. 旋转方向：左红右蓝，顺时针 90° 后应变成上红下蓝
+    await setupImage();
+    const dir = await exec(`(async () => {
+        const A = window.App;
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const c = document.createElement('canvas'); c.width = 800; c.height = 600;
+        const g = c.getContext('2d');
+        g.fillStyle = '#d22'; g.fillRect(0, 0, 400, 600);
+        g.fillStyle = '#25d'; g.fillRect(400, 0, 400, 600);
+        const el = new Image();
+        await new Promise((r) => { el.onload = r; el.onerror = r; el.src = c.toDataURL('image/png'); });
+        const im = A.image;
+        im.el = el; im.w = 800; im.h = 600; im.thumb = null; im._thumbEl = null;
+        if (A.invalidateGrade) A.invalidateGrade(im);
+        A.openCrop(); await wait(220);
+        document.getElementById('cropRotate').click();
+        await wait(80);
+        await A.applyCrop(); await wait(400);
+        const out = A.image.el;
+        const oc = document.createElement('canvas');
+        oc.width = out.naturalWidth; oc.height = out.naturalHeight;
+        const og = oc.getContext('2d'); og.drawImage(out, 0, 0);
+        const W = oc.width, H = oc.height;
+        const pick = (x, y) => Array.from(og.getImageData(x, y, 1, 1).data);
+        return { w: W, h: H, top: pick(W >> 1, 4), bottom: pick(W >> 1, H - 5) };
+    })()`);
+    check(dir.w === 600 && dir.h === 800, '90° 旋转后应用：600×800', `${dir.w}×${dir.h}`);
+    check(dir.top[0] > 180 && dir.top[2] < 80 && dir.bottom[2] > 180 && dir.bottom[0] < 80,
+        '顺时针 90°：原左半（红）转到上方', `top=${dir.top.join(',')} bottom=${dir.bottom.join(',')}`);
+
+    // 22. 90° 与拉直角叠加：总角度 = turns×90 + angle，两个入口共用同一套几何
+    await setupImage();
+    const mix = await exec(`(async () => {
+        const A = window.App;
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        A.openCrop(); await wait(220);
+        A.rotateCropImage(); await wait(60);
+        A.setCropAngle(8); await wait(80);
+        const out = { angle: A._crop.angle, turns: A._crop.turns, W: A._crop.W, H: A._crop.H,
+            rad: A.cropAngleRad(), inside: A.cropBoxInContent(A._crop.box) };
+        A.closeCrop();
+        return out;
+    })()`);
+    const rad98 = (98 * Math.PI) / 180;
+    check(mix.turns === 1 && Math.abs(mix.angle - 8) < 1e-6 && Math.abs(mix.rad - rad98) < 1e-6,
+        '90° + 拉直 8°：总角度合成 98°', `turns=${mix.turns} angle=${mix.angle}`);
+    check(Math.abs(mix.W - (800 * Math.abs(Math.cos(rad98)) + 600 * Math.abs(Math.sin(rad98)))) < 0.5
+        && Math.abs(mix.H - (800 * Math.abs(Math.sin(rad98)) + 600 * Math.abs(Math.cos(rad98)))) < 0.5
+        && mix.inside === true,
+        '90° + 拉直：平面仍是最小包围盒，框在画面内',
+        `${mix.W.toFixed(1)}×${mix.H.toFixed(1)} inside=${mix.inside}`);
+
     console.log(failures.length ? `\n${failures.length} FAILURE(S)` : '\nALL PASS');
     app.exit(failures.length ? 1 : 0);
 }

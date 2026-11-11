@@ -2238,7 +2238,21 @@ button:disabled, input:disabled, select:disabled, textarea:disabled {
 .crop-ratio-inp:focus { border-color: var(--primary); background: var(--surface); }
 .crop-ratio-inp.is-on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-text); }
 .crop-ratio-inp.is-bad { border-color: var(--rose); color: var(--rose-text); background: rgba(212,98,122,.10); }
-.crop-tools, .crop-actions { display: flex; gap: 6px; }
+.crop-tools, .crop-actions { display: flex; gap: 6px; align-items: center; }
+/* 拉直角度：滑块和数字一组，双击滑块或数字归零。
+   宽度压在 100px 内，免得把「旋转 90° / 还原 / 应用」挤到第二行去 */
+.crop-angle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.crop-angle-label { font-size: var(--fs-12); color: var(--text-3); white-space: nowrap; }
+.crop-angle-range {
+    width: 100px; height: 16px; margin: 0; padding: 0;
+    accent-color: var(--primary); cursor: pointer;
+}
+.crop-angle-range:disabled { opacity: .38; cursor: not-allowed; }
+.crop-angle-val {
+    min-width: 36px; text-align: right;
+    font-size: var(--fs-12); font-weight: 600; color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+}
 .crop-size { margin-left: auto; font-size: var(--fs-12); color: var(--text-3); font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) {
     .crop-size { order: 3; width: 100%; margin-left: 0; }

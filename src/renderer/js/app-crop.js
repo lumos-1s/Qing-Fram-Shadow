@@ -18,6 +18,7 @@ window.App = Object.assign(window.App || {}, {
             overlay: $('cropModal'),
             stage: $('cropStage'), canvas: $('cropCanvas'),
             size: $('cropSize'), ratios: $('cropRatios'), ratioInp: $('cropRatioCustom'),
+            angle: $('cropAngle'), angleVal: $('cropAngleVal'),
             rotate: $('cropRotate'), reset: $('cropRevert'), restoreOrig: $('cropRestoreOriginal'),
             cancel: $('cropDiscard'), apply: $('cropApply'), close: $('cropClose')
         };
@@ -33,6 +34,12 @@ window.App = Object.assign(window.App || {}, {
         if (dom.cancel) dom.cancel.addEventListener('click', () => this.closeCrop());
         if (dom.apply) dom.apply.addEventListener('click', () => this.applyCrop());
         if (dom.rotate) dom.rotate.addEventListener('click', () => this.rotateCropImage());
+        // 任意角度拉直：滑块 -45°~45°，双击归零。90° 用上面的按钮（它同时写 RAW 的 rotate 参数）
+        if (dom.angle) {
+            dom.angle.addEventListener('input', () => this.setCropAngle(Number(dom.angle.value)));
+            dom.angle.addEventListener('dblclick', () => this.setCropAngle(0));
+        }
+        if (dom.angleVal) dom.angleVal.addEventListener('dblclick', () => this.setCropAngle(0));
         if (dom.reset) dom.reset.addEventListener('click', () => this.resetCrop());
         if (dom.restoreOrig) dom.restoreOrig.addEventListener('click', () => this.restoreCropSource());
         // 点弹层空白（不是卡片）也算取消：和系统弹窗一致，别逼用户找按钮
@@ -98,6 +105,10 @@ window.App = Object.assign(window.App || {}, {
         if (!d) return false;
         this._crop = {
             open: true, src: im.el, W, H,
+            // sw/sh：底图本身的像素尺寸（不随旋转变）；W/H：旋转后的取景平面尺寸。
+            // 角度为 0 且没转 90° 时两者相等，所有老逻辑照旧。
+            sw: W, sh: H,
+            angle: 0, anglePrev: null,
             box: { x: 0, y: 0, w: W, h: H },
             ratio: 0, ratioKey: 'free', customText: '',
             // 最小框边长：照片本身比 8px 还小时不能让下限比图还大
@@ -110,6 +121,17 @@ window.App = Object.assign(window.App || {}, {
         };
         d.overlay.style.display = 'flex';
         if (d.ratioInp) { d.ratioInp.value = ''; d.ratioInp.classList.remove('is-bad', 'is-on'); }
+        // RAW 的裁切是归一化显影参数（只认 90° 整数次），角度拉直没法无损记录，
+        // 与其让用户拉完发现"应用不了"，不如一开始就说明白。
+        if (d.angle) {
+            const raw = !!im.raw;
+            d.angle.disabled = raw;
+            d.angle.title = raw
+                ? 'RAW 的裁切是显影参数，只支持 90° 旋转；角度拉直请先导出为 JPEG 再处理'
+                : '拖动拉直：把倾斜的地平线转正（-45°~45°，双击归零）';
+            d.angle.value = '0';
+        }
+        this.syncCropAngle();
         this.syncCropChips();
         this.syncCropSize();
         this.syncCropOriginalBtn();
@@ -145,6 +167,9 @@ window.App = Object.assign(window.App || {}, {
     layoutCrop() {
         const st = this._crop, d = this._cropDom;
         if (!st || !st.open || !d || !d.stage) return;
+        // 取景平面 = 底图按当前角度（90° 倍数 + 拉直角）旋转后的包围盒。
+        // 角度一变平面就变大，这里统一刷新，省得每个入口各算一遍。
+        this.cropUpdatePlane();
         const rect = d.stage.getBoundingClientRect();
         const vw = Math.max(1, Math.round(rect.width));
         const vh = Math.max(1, Math.round(rect.height));
@@ -165,6 +190,8 @@ window.App = Object.assign(window.App || {}, {
         st.fit = Math.min(fit, 8);
         st.ox = (vw - st.W * st.fit) / 2;
         st.oy = (vh - st.H * st.fit) / 2;
+        // 旋转后画面四角是空的：框越界就收回来，免得预览/导出出现透明角
+        if (this.cropFitBoxToContent()) this.syncCropSize();
         this.drawCrop();
     },
 
@@ -192,7 +219,18 @@ window.App = Object.assign(window.App || {}, {
         ctx.fillRect(0, 0, W, H);
         // 底图：先整张画出来，再由遮罩把框外压暗（比"只画框内"更接近取景器手感）
         ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(st.src, st.ox, st.oy, st.W * st.fit, st.H * st.fit);
+        const rad = this.cropAngleRad();
+        if (rad) {
+            // 绕取景平面中心转：平面尺寸本来就是旋转后的包围盒，转完正好铺满
+            ctx.save();
+            ctx.translate(st.ox + (st.W * st.fit) / 2, st.oy + (st.H * st.fit) / 2);
+            ctx.rotate(rad);
+            const dw = st.sw * st.fit, dh = st.sh * st.fit;
+            ctx.drawImage(st.src, -dw / 2, -dh / 2, dw, dh);
+            ctx.restore();
+        } else {
+            ctx.drawImage(st.src, st.ox, st.oy, st.W * st.fit, st.H * st.fit);
+        }
 
         const r = this.cropRectOnScreen();
         const bx = r.x, by = r.y, bw = r.w, bh = r.h;
@@ -254,6 +292,144 @@ window.App = Object.assign(window.App || {}, {
             ctx.rect(p[0] - hs / 2, p[1] - hs / 2, hs, hs);
             ctx.fill();
             ctx.stroke();
+        }
+    },
+
+    /* ══ 角度（拉直）几何 ══ */
+    // 总旋转角 = 90° 整数次 + 拉直细角度。统一成一个弧度值，
+    // 绘制、命中、应用三处都走它，避免某个环节漏掉 turns。
+    cropAngleRad() {
+        const st = this._crop;
+        if (!st) return 0;
+        const deg = (Number(st.turns) || 0) * 90 + (Number(st.angle) || 0);
+        return (deg * Math.PI) / 180;
+    },
+
+    // 旋转后的包围盒（= 取景平面尺寸）。角度 0 时原样返回底图尺寸，
+    // 所以老行为的每个数字都不会因为引入这个函数而漂移。
+    cropPlaneSize(rad) {
+        const st = this._crop;
+        const w = (Number(st && st.sw) || 0) || (Number(st && st.W) || 0) || 1;
+        const h = (Number(st && st.sh) || 0) || (Number(st && st.H) || 0) || 1;
+        const c = Math.abs(Math.cos(rad || 0));
+        const s = Math.abs(Math.sin(rad || 0));
+        return { W: Math.max(1, w * c + h * s), H: Math.max(1, w * s + h * c) };
+    },
+
+    // 把取景平面尺寸刷新到当前角度。所有会改角度的地方都先调它再动框。
+    cropUpdatePlane() {
+        const st = this._crop;
+        if (!st || !st.sw || !st.sh) return;
+        const pl = this.cropPlaneSize(this.cropAngleRad());
+        st.W = pl.W;
+        st.H = pl.H;
+    },
+
+    // 取景平面坐标 → 底图坐标（逆变换）。应用裁切时按这个取向，
+    // 预览时用它判断框有没有伸到旋转后的空白角里。
+    cropPlaneToSource(x, y, rad) {
+        const st = this._crop;
+        const th = rad == null ? this.cropAngleRad() : rad;
+        const cos = Math.cos(th), sin = Math.sin(th);
+        const dx = x - st.W / 2, dy = y - st.H / 2;
+        return {
+            x: dx * cos + dy * sin + st.sw / 2,
+            y: -dx * sin + dy * cos + st.sh / 2
+        };
+    },
+
+    // 框是否完全落在旋转后的画面里。矩形是凸的、画面也是凸的，
+    // 所以只要四角都在里面，整块就在里面。
+    cropBoxInContent(box, rad) {
+        const st = this._crop;
+        if (!st) return false;
+        const th = rad == null ? this.cropAngleRad() : rad;
+        if (!th) return true;
+        const pad = 0.5;
+        const pts = [
+            [box.x, box.y], [box.x + box.w, box.y],
+            [box.x, box.y + box.h], [box.x + box.w, box.y + box.h]
+        ];
+        for (const p of pts) {
+            const s = this.cropPlaneToSource(p[0], p[1], th);
+            if (s.x < -pad || s.y < -pad || s.x > st.sw + pad || s.y > st.sh + pad) return false;
+        }
+        return true;
+    },
+
+    // 框越界（角度变大 / 拖到角上）就绕中心等比收回来。
+    // 用二分找最大可用缩放，不写闭式解：任何比例、任何角度都不用重新推导公式。
+    cropFitBoxToContent() {
+        const st = this._crop;
+        if (!st || !st.open) return false;
+        const w0 = st.box.w, h0 = st.box.h;
+        if (!(w0 > 0) || !(h0 > 0)) return false;
+        let cx = st.box.x + w0 / 2, cy = st.box.y + h0 / 2;
+        cx = Math.max(0, Math.min(st.W, cx));
+        cy = Math.max(0, Math.min(st.H, cy));
+        const fits = (k) => {
+            const w = w0 * k, h = h0 * k;
+            const x = cx - w / 2, y = cy - h / 2;
+            if (x < -0.01 || y < -0.01 || x + w > st.W + 0.01 || y + h > st.H + 0.01) return false;
+            return this.cropBoxInContent({ x, y, w, h });
+        };
+        if (fits(1)) return false;
+        // 极端情况（框贴在空白角上）：中心挪到画面正中再收
+        if (!fits(0.001)) {
+            cx = st.W / 2; cy = st.H / 2;
+            if (!fits(0.001)) return false;
+        }
+        let lo = 0.001, hi = 1;
+        for (let i = 0; i < 26; i++) {
+            const mid = (lo + hi) / 2;
+            if (fits(mid)) lo = mid; else hi = mid;
+        }
+        st.box = { x: cx - (w0 * lo) / 2, y: cy - (h0 * lo) / 2, w: w0 * lo, h: h0 * lo };
+        return true;
+    },
+
+    setCropAngle(deg) {
+        const st = this._crop, d = this._cropDom;
+        if (!st || !st.open) return false;
+        if (d && d.angle && d.angle.disabled) return false;
+        let v = Number(deg);
+        if (!isFinite(v)) v = 0;
+        v = Math.round(Math.max(-45, Math.min(45, v)) * 10) / 10;
+        if (v === (Number(st.angle) || 0)) { this.syncCropAngle(); return false; }
+        st.angle = v;
+        // 角度回调时，把上次为了腾地方缩掉的框还回去：调回 0 就恢复整张，
+        // 而不是"拉直一次，画面永久小一圈"。用户中途拖过框就不还（否则会把他
+        // 刚拖好的框放大），所以先比对一下框还是不是上次留下的那个。
+        const prev = { x: st.box.x, y: st.box.y, w: st.box.w, h: st.box.h };
+        const keep = st.anglePrev;
+        const same = keep && ['x', 'y', 'w', 'h'].every((k) => Math.abs(prev[k] - keep.box[k]) < 0.6);
+        if (same) {
+            const cx = prev.x + prev.w / 2, cy = prev.y + prev.h / 2;
+            st.box = { x: cx - keep.w0 / 2, y: cy - keep.h0 / 2, w: keep.w0, h: keep.h0 };
+        }
+        // 平面随角度变大，中心也跟着挪。框的坐标是平面坐标，不补偿的话
+        // 整张框会相对照片偏掉（5° 时中心偏 24px，裁出来就是"取景器看着居中、
+        // 结果偏了半格"）。按中心位移整体搬一下，框住的还是原来那块。
+        const oldW = st.W, oldH = st.H;
+        this.cropUpdatePlane();
+        st.box.x += (st.W - oldW) / 2;
+        st.box.y += (st.H - oldH) / 2;
+        const preFit = { w: st.box.w, h: st.box.h };
+        // 平面尺寸变了：重排取景（内部会把框收回画面、必要时刷新尺寸标签）
+        this.layoutCrop();
+        st.anglePrev = { box: { ...st.box }, w0: preFit.w, h0: preFit.h };
+        this.syncCropAngle();
+        this.drawCrop();
+        return true;
+    },
+
+    syncCropAngle() {
+        const d = this._cropDom, st = this._crop;
+        if (!d || !d.angle || !st) return;
+        const v = Number(st.angle) || 0;
+        if (Number(d.angle.value) !== v) d.angle.value = String(v);
+        if (d.angleVal) {
+            d.angleVal.textContent = (v > 0 ? '+' : '') + (Math.round(v * 10) / 10).toFixed(1).replace(/\.0$/, '') + '°';
         }
     },
 
@@ -358,6 +534,7 @@ window.App = Object.assign(window.App || {}, {
             });
         }
         st.drag = null;
+        this.cropFitBoxToContent();
         this.syncCropSize();
         this.drawCrop();
     },
@@ -461,6 +638,8 @@ window.App = Object.assign(window.App || {}, {
             const h = w / ratio;
             st.box = { x: (st.W - w) / 2, y: (st.H - h) / 2, w, h };
         }
+        // 有拉直角时，最大框会顶到旋转后的空白角，收回来
+        this.cropFitBoxToContent();
         this.syncCropChips();
         this.syncCropSize();
         this.drawCrop();
@@ -520,40 +699,43 @@ window.App = Object.assign(window.App || {}, {
         if (!d || !d.size || !st || !st.open) return;
         const w = Math.max(1, Math.round(st.box.w));
         const h = Math.max(1, Math.round(st.box.h));
-        const pct = Math.round((w * h * 100) / (st.W * st.H));
+        // 分母用底图像素而不是取景平面：拉直后平面会比照片大一圈，
+        // 拿它当分母会让"整张裁"显示成 60%，看着像平白丢了一小半。
+        const base = (st.sw * st.sh) || (st.W * st.H) || 1;
+        const pct = Math.round((w * h * 100) / base);
         d.size.textContent = w + ' × ' + h + ' px · ' + pct + '%';
     },
 
-    // 旋转只作用于这次裁切：把工作位图转 90°，框重置为整张（比例锁保留）
+    // 旋转 90°：只记次数，不再把像素烘进一张新画布。
+    // 以前这里是「转一次画一次」，好处是应用时直接按坐标取；代价是每转一次多一份
+    // 位图拷贝，而且和拉直角叠加时会连转两次。现在绘制/应用都按 turns+angle 的
+    // 总角度算，预览和应用走同一套几何，90° 和 0.5° 没有区别。
     rotateCropImage() {
         const st = this._crop;
         if (!st || !st.open) return;
-        const c = document.createElement('canvas');
-        c.width = st.H;
-        c.height = st.W;
-        const ctx = c.getContext('2d');
-        ctx.translate(st.H / 2, st.W / 2);
-        ctx.rotate(Math.PI / 2);
-        ctx.drawImage(st.src, -st.W / 2, -st.H / 2);
-        st.src = c;
         st.turns = ((Number(st.turns) || 0) + 1) % 4;
-        const W = st.W;
-        st.W = st.H;
-        st.H = W;
+        // 先把平面换成新角度下的尺寸，再把框设成整张 —— 顺序反了会拿旧尺寸的框
+        // 去套新平面，被当成"越界"白缩一圈（400×300 转完只剩 200×150）。
+        this.cropUpdatePlane();
         st.box = { x: 0, y: 0, w: st.W, h: st.H };
-        if (st.ratioKey === 'orig') { st.ratio = st.W / st.H; }
-        // 先按新宽高重算 fit，再套用比例：否则 1:1 的框会按旋转前的缩放画一次
         this.layoutCrop();
         if (st.ratio > 0) this.applyCropRatioValue(st.ratio, st.ratioKey);
+        this.cropFitBoxToContent();
         this.syncCropSize();
+        this.syncCropAngle();
+        this.drawCrop();
     },
 
     resetCrop() {
         const st = this._crop, im = this.image;
         if (!st || !st.open || !im || !im.el) return;
         st.src = im.el;
-        st.W = im.el.naturalWidth || im.w || st.W;
-        st.H = im.el.naturalHeight || im.h || st.H;
+        st.sw = im.el.naturalWidth || im.w || st.sw;
+        st.sh = im.el.naturalHeight || im.h || st.sh;
+        st.W = st.sw;
+        st.H = st.sh;
+        st.angle = 0;
+        st.anglePrev = null;
         st.box = { x: 0, y: 0, w: st.W, h: st.H };
         st.ratio = 0;
         st.ratioKey = 'free';
@@ -565,6 +747,7 @@ window.App = Object.assign(window.App || {}, {
             this._cropDom.ratioInp.classList.remove('is-bad');
         }
         this.syncCropChips();
+        this.syncCropAngle();
         this.layoutCrop();
         this.syncCropSize();
     },
@@ -639,8 +822,12 @@ window.App = Object.assign(window.App || {}, {
         const st = this._crop, im = this.image;
         if (!st || !st.open || !im || !im.orig) return false;
         st.src = im.orig.el;
-        st.W = im.orig.w || im.orig.el.naturalWidth || st.W;
-        st.H = im.orig.h || im.orig.el.naturalHeight || st.H;
+        st.sw = im.orig.w || im.orig.el.naturalWidth || st.sw;
+        st.sh = im.orig.h || im.orig.el.naturalHeight || st.sh;
+        st.W = st.sw;
+        st.H = st.sh;
+        st.angle = 0;
+        st.anglePrev = null;
         st.minSide = Math.max(1, Math.min(CROP_MIN_SRC, st.W, st.H));
         st.box = { x: 0, y: 0, w: st.W, h: st.H };
         st.ratio = 0;
@@ -653,6 +840,7 @@ window.App = Object.assign(window.App || {}, {
             this._cropDom.ratioInp.classList.remove('is-bad');
         }
         this.syncCropChips();
+        this.syncCropAngle();
         this.layoutCrop();
         this.syncCropSize();
         this.setStatus('已切回原图，按原图重新框选后点应用；直接应用则撤销之前的裁切');
@@ -701,20 +889,25 @@ window.App = Object.assign(window.App || {}, {
     async applyCrop() {
         const st = this._crop, im = this.image;
         if (!st || !st.open || !im) return false;
+        // 拖到旋转后的空白角上再点应用会导出透明块：先收框，按收好的框裁
+        this.cropFitBoxToContent();
         const x = Math.max(0, Math.round(st.box.x));
         const y = Math.max(0, Math.round(st.box.y));
         const w = Math.max(1, Math.min(st.W - x, Math.round(st.box.w)));
         const h = Math.max(1, Math.min(st.H - y, Math.round(st.box.h)));
-        const fullBox = x === 0 && y === 0 && w === st.W && h === st.H;
+        // 平面尺寸带小数（旋转后是包围盒），比整型尺寸时留一点容差
+        const fullBox = x === 0 && y === 0
+            && Math.abs(w - st.W) < 0.01 && Math.abs(h - st.H) < 0.01;
+        const angled = !!(Number(st.angle) || 0) || !!(Number(st.turns) || 0);
         // 点了「还原原图」又没重新框、也没旋转：直接换回原图，别绕一圈重新编码
-        if (st.useOrig && fullBox && !st.turns) {
+        if (st.useOrig && fullBox && !angled) {
             const ok = this.restoreOriginalPhoto(im, { silent: true });
             this.closeCrop(true);
             this.setStatus(ok ? '已还原为原图' : '没有改动，照片未做处理');
             return ok;
         }
         // 没动过框也没旋转：不重编码，避免"点一下应用，画质掉一层"
-        const untouched = st.src === im.el && fullBox;
+        const untouched = st.src === im.el && fullBox && !angled;
         if (untouched) {
             this.closeCrop(true);
             this.setStatus('没有改动，照片未做处理');
@@ -725,6 +918,10 @@ window.App = Object.assign(window.App || {}, {
         // RAW 不烘像素：把框记成归一化显影参数，再让主进程按原图重解。
         // 这样后面拖任何显影滑块都不会把裁切冲掉，导出也还是全尺寸。
         if (im.raw && this.rawRecordCrop) {
+            if (Number(st.angle)) {
+                this.setStatus('RAW 的裁切只支持 90° 旋转，角度拉直请先导出为 JPEG');
+                return false;
+            }
             const ok = await this.rawRecordCrop(im, st, { x, y, w, h });
             this.closeCrop(true);
             this.setStatus(ok ? '已更新 RAW 裁切，正在按新构图显影' : '裁切已记录，但显影失败，请稍后重试');
@@ -736,7 +933,16 @@ window.App = Object.assign(window.App || {}, {
         c.height = h;
         const ctx = c.getContext('2d');
         ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(st.src, x, y, w, h, 0, 0, w, h);
+        const rad = this.cropAngleRad();
+        if (rad) {
+            // 输出画布原点 = 取景平面里的 (x,y)：先把平面搬过来，再转回底图取向
+            ctx.translate(-x, -y);
+            ctx.translate(st.W / 2, st.H / 2);
+            ctx.rotate(rad);
+            ctx.drawImage(st.src, -st.sw / 2, -st.sh / 2);
+        } else {
+            ctx.drawImage(st.src, x, y, w, h, 0, 0, w, h);
+        }
         // 裁切同样是纯几何操作：画布直接当图源，不再 PNG 编码再重载。
         // 24MP 上那一次 toBlob 要 470ms 左右，而裁切本身是个位图拷贝。
         // alpha 也天然保留（以前用 JPEG 才会把透明区烘成黑块）。
