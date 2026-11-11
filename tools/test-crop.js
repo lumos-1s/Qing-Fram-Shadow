@@ -688,6 +688,86 @@ async function main() {
         '90° + 拉直：平面仍是最小包围盒，框在画面内',
         `${mix.W.toFixed(1)}×${mix.H.toFixed(1)} inside=${mix.inside}`);
 
+    // 23. 四角旋转手柄：位于角外侧、可拖动绕中心旋转；RAW 上不出现
+    await setupImage();
+    const rotateHandles = await exec(`(async () => {
+        const A = window.App;
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        A.openCrop(); await wait(240);
+        const st = A._crop;
+        const r = A.cropRectOnScreen();
+        const hs = A.cropRotateHandles();
+        const cornerOf = {
+            nw: [r.x, r.y, -1, -1], ne: [r.x + r.w, r.y, 1, -1],
+            se: [r.x + r.w, r.y + r.h, 1, 1], sw: [r.x, r.y + r.h, -1, 1]
+        };
+        const shape = hs.map((h) => {
+            const c = cornerOf[h.key] || [0, 0, 0, 0];
+            const dx = h.x - c[0], dy = h.y - c[1];
+            return { key: h.key, outside: dx * c[2] > 0 && dy * c[3] > 0, dist: Math.hypot(dx, dy) };
+        });
+        const cv = document.getElementById('cropCanvas');
+        const cr = cv.getBoundingClientRect();
+        const center = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+        const at = (x, y) => ({ clientX: cr.left + x, clientY: cr.top + y });
+        const polar = (rad, ang) => ({ x: center.x + Math.cos(ang) * rad, y: center.y + Math.sin(ang) * rad });
+        const drag = async (from, to) => {
+            cv.dispatchEvent(new MouseEvent('mousedown', { ...at(from.x, from.y), bubbles: true, button: 0 }));
+            window.dispatchEvent(new MouseEvent('mousemove', { ...at(to.x, to.y), bubbles: true }));
+            window.dispatchEvent(new MouseEvent('mouseup', { ...at(to.x, to.y), bubbles: true }));
+            await wait(80);
+        };
+        const h0 = hs.find((h) => h.key === 'nw');
+        // 悬停：手变抓取、手柄高亮（截图里看得见的那层反馈）
+        window.dispatchEvent(new MouseEvent('mousemove', { ...at(h0.x, h0.y), bubbles: true }));
+        await wait(60);
+        const hover = { hit: A.cropHitTest({ x: h0.x, y: h0.y }), cursor: cv.style.cursor, hot: st.hover };
+        // 从手柄当前位置沿弧顺时针拖 20°
+        const rad0 = Math.hypot(h0.x - center.x, h0.y - center.y);
+        const a0 = Math.atan2(h0.y - center.y, h0.x - center.x);
+        const d20 = (20 * Math.PI) / 180;
+        await drag(polar(rad0, a0), polar(rad0, a0 + d20));
+        const at20 = { angle: st.angle, slider: document.getElementById('cropAngle').value,
+            inside: A.cropBoxInContent(st.box), W: st.W, H: st.H, box: { ...st.box } };
+        // 右下角手柄再逆时针拖 10°：角度应回到 10 左右
+        const h1 = A.cropRotateHandles().find((h) => h.key === 'se');
+        const c2 = { x: A.cropRectOnScreen().x + A.cropRectOnScreen().w / 2,
+                     y: A.cropRectOnScreen().y + A.cropRectOnScreen().h / 2 };
+        const rad1 = Math.hypot(h1.x - c2.x, h1.y - c2.y);
+        const a1 = Math.atan2(h1.y - c2.y, h1.x - c2.x);
+        const hit1 = A.cropHitTest({ x: h1.x, y: h1.y });
+        await drag({ x: h1.x, y: h1.y }, { x: c2.x + Math.cos(a1 - d20 / 2) * rad1, y: c2.y + Math.sin(a1 - d20 / 2) * rad1 });
+        const at10 = { angle: st.angle, inside: A.cropBoxInContent(st.box), box: { ...st.box } };
+        // RAW：角度写不进显影参数，手柄必须彻底不出现（不是画出来但拖不动）
+        document.getElementById('cropAngle').disabled = true;
+        const rawHandles = { count: A.cropRotateHandles().length, hit: A.cropHitTest({ x: h1.x, y: h1.y }) };
+        document.getElementById('cropAngle').disabled = false;
+        A.closeCrop();
+        return { keys: hs.map((h) => h.key).join(','), radius: hs[0] && hs[0].r, shape, hover,
+                 at20, hit1, at10, rawHandles };
+    })()`);
+    check(rotateHandles.keys === 'nw,ne,se,sw' && rotateHandles.radius > 6,
+        '四个角各有一个旋转手柄', `${rotateHandles.keys} r=${rotateHandles.radius}`);
+    check(rotateHandles.shape.length === 4 && rotateHandles.shape.every((s) => s.outside && s.dist > 13 && s.dist < 42),
+        '手柄在四角外侧，不压住缩放手柄',
+        rotateHandles.shape.map((s) => `${s.key}:${s.dist.toFixed(0)}`).join(' '));
+    check(rotateHandles.hover.hit === 'rot-nw' && rotateHandles.hover.cursor === 'grab' && rotateHandles.hover.hot === 'rot-nw',
+        '悬停手柄：命中旋转、光标变抓取、手柄高亮',
+        `hit=${rotateHandles.hover.hit} cursor=${rotateHandles.hover.cursor} hot=${rotateHandles.hover.hot}`);
+    check(Math.abs(rotateHandles.at20.angle - 20) < 0.4
+        && Math.abs(Number(rotateHandles.at20.slider) - rotateHandles.at20.angle) < 0.11,
+        '拖左上角手柄：绕中心转 20°，滑块同步',
+        `angle=${rotateHandles.at20.angle} slider=${rotateHandles.at20.slider}`);
+    check(rotateHandles.at20.inside === true && rotateHandles.at20.box.w < 800 && rotateHandles.at20.box.w > 100,
+        '旋转后裁切框自动收回画面内（不出现透明角）',
+        `box=${rotateHandles.at20.box.w.toFixed(0)}×${rotateHandles.at20.box.h.toFixed(0)} inside=${rotateHandles.at20.inside}`);
+    check(rotateHandles.hit1 === 'rot-se' && Math.abs(rotateHandles.at10.angle - 10) < 0.4,
+        '右下角手柄反向拖动：角度能往回转',
+        `hit=${rotateHandles.hit1} angle=${rotateHandles.at10.angle}`);
+    check(rotateHandles.rawHandles.count === 0 && String(rotateHandles.rawHandles.hit).indexOf('rot-') !== 0,
+        'RAW 下不画旋转手柄（细角度存不进显影参数）',
+        `count=${rotateHandles.rawHandles.count} hit=${rotateHandles.rawHandles.hit}`);
+
     console.log(failures.length ? `\n${failures.length} FAILURE(S)` : '\nALL PASS');
     app.exit(failures.length ? 1 : 0);
 }

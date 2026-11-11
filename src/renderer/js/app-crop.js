@@ -76,7 +76,7 @@ window.App = Object.assign(window.App || {}, {
         // 鼠标：按下在 canvas，移动/抬起挂 window —— 拖出窗口再松手不能把状态留在"拖拽中"
         dom.canvas.addEventListener('mousedown', (e) => this._cropDown(e));
         window.addEventListener('mousemove', (e) => this._cropMove(e));
-        window.addEventListener('mouseup', () => this._cropUp());
+        window.addEventListener('mouseup', (e) => this._cropUp(e));
 
         // 弹层尺寸变化（窗口缩放 / 侧栏折叠）后 canvas 要跟着改，否则坐标全错
         if (typeof ResizeObserver === 'function' && dom.stage) {
@@ -117,7 +117,7 @@ window.App = Object.assign(window.App || {}, {
             // 弹层里转了几次 90°：只作用于这次裁切。RAW 要把这个次数一起算进显影参数，
             // 非 RAW 则直接烘进像素，不写回 im.rotate。
             turns: 0,
-            drag: null, viewW: 0, viewH: 0, fit: 1, ox: 0, oy: 0, dpr: 1
+            drag: null, hover: null, viewW: 0, viewH: 0, fit: 1, ox: 0, oy: 0, dpr: 1
         };
         d.overlay.style.display = 'flex';
         if (d.ratioInp) { d.ratioInp.value = ''; d.ratioInp.classList.remove('is-bad', 'is-on'); }
@@ -128,14 +128,17 @@ window.App = Object.assign(window.App || {}, {
             d.angle.disabled = raw;
             d.angle.title = raw
                 ? 'RAW 的裁切是显影参数，只支持 90° 旋转；角度拉直请先导出为 JPEG 再处理'
-                : '拖动拉直：把倾斜的地平线转正（-45°~45°，双击归零）';
+                : '拖动拉直：把倾斜的地平线转正，也可以直接拖四角外侧的圆形手柄（-45°~45°，双击归零）';
             d.angle.value = '0';
         }
         this.syncCropAngle();
         this.syncCropChips();
         this.syncCropSize();
         this.syncCropOriginalBtn();
-        // 先量再画：display:none → flex 之后才拿得到真实尺寸
+        // display:none → flex 之后读一次尺寸就会强制布局，所以这里同步量一次：
+        // 只靠 rAF 的话，窗口被遮挡/后台时那一帧可能推迟，用户先看到一张没缩放的大图
+        // （四角的旋转手柄还会画到画布外、点都点不到）。rAF 那次留着做第二遍校正 + 聚焦。
+        this.layoutCrop();
         requestAnimationFrame(() => {
             if (!this._crop || !this._crop.open) return;
             this.layoutCrop();
@@ -182,9 +185,12 @@ window.App = Object.assign(window.App || {}, {
         cv.style.width = vw + 'px';
         cv.style.height = vh + 'px';
         st.viewW = vw; st.viewH = vh; st.dpr = dpr;
-        // 图片等比放进裁切区（留 20px 呼吸），小图允许放大——否则 300px 的小图在
-        // 1000px 的弹层里只有指甲盖大，根本抠不准框
-        const pad = 20;
+        // 图片等比放进裁切区（留出 34px 呼吸），小图允许放大——否则 300px 的小图在
+        // 1000px 的弹层里只有指甲盖大，根本抠不准框。
+        // 34 不是随手写的：四角旋转手柄沿 45° 外移最多 30×0.707≈21px、半径 8.5px，
+        // 留 34px 才能保证正方形照片上那四个圆也不被画布边缘裁掉半个（曾经 20px 时
+        // 上下两个手柄正好画在画布外，点都点不到）。
+        const pad = 34;
         let fit = Math.min((vw - pad * 2) / st.W, (vh - pad * 2) / st.H);
         if (!isFinite(fit) || fit <= 0) fit = 1;
         st.fit = Math.min(fit, 8);
@@ -205,6 +211,33 @@ window.App = Object.assign(window.App || {}, {
             w: b.w * st.fit,
             h: b.h * st.fit
         };
+    },
+
+    // 四个角的旋转手柄：放在角的外侧，和角上那 4 个缩放手柄错开命中区
+    // （重叠的话小框永远拖不到缩放）。偏移量跟着框的大小走：小框不至于把
+    // 手柄甩到很远，大框又不会贴着角看不清。
+    // RAW 的裁切是归一化显影参数、只认 90°，细角度存不进去（见 openCrop），
+    // 所以这类照片干脆不画旋转手柄——不能让用户拖完一圈、点应用才被拒。
+    cropRotateHandles() {
+        const st = this._crop, d = this._cropDom;
+        if (!st || !st.open || !st.box) return [];
+        if (d && d.angle && d.angle.disabled) return [];
+        const r = this.cropRectOnScreen();
+        if (!(r.w > 0) || !(r.h > 0)) return [];
+        // 沿屏幕 45° 斜向外放：和框的长宽比无关（长短边不一时手柄不会忽远忽近），
+        // 再用画布余量夹一下——贴边的框也不会把手柄画到画布外、被裁掉一半。
+        const off = Math.max(14, Math.min(30, Math.min(r.w, r.h) * 0.22 + 11)) * Math.SQRT1_2;
+        const roomX = Math.min(r.x, st.viewW - (r.x + r.w));
+        const roomY = Math.min(r.y, st.viewH - (r.y + r.h));
+        const keep = 10.5;      // 手柄半径 8.5 + 2px 余量：贴着画布边也别被切掉
+        const dx = Math.max(0, Math.min(off, roomX - keep));
+        const dy = Math.max(0, Math.min(off, roomY - keep));
+        return [
+            ['nw', r.x, r.y, -1, -1], ['ne', r.x + r.w, r.y, 1, -1],
+            ['se', r.x + r.w, r.y + r.h, 1, 1], ['sw', r.x, r.y + r.h, -1, 1]
+        ].map(([key, x, y, sx, sy]) => ({
+            key, x: x + sx * dx, y: y + sy * dy, r: 8.5
+        }));
     },
 
     drawCrop() {
@@ -292,6 +325,39 @@ window.App = Object.assign(window.App || {}, {
             ctx.rect(p[0] - hs / 2, p[1] - hs / 2, hs, hs);
             ctx.fill();
             ctx.stroke();
+        }
+
+        // 四角旋转手柄：圆形把手 + 顺时针箭头。悬停时反色，明确"这个能拖"
+        if (!(d.angle && d.angle.disabled)) {
+            ctx.save();
+            ctx.lineCap = 'round';
+            for (const h of this.cropRotateHandles()) {
+                const hot = st.hover === 'rot-' + h.key;
+                ctx.beginPath();
+                ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2);
+                ctx.fillStyle = hot ? 'rgba(255,255,255,.95)' : 'rgba(16,20,19,.66)';
+                ctx.fill();
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = hot ? 'rgba(16,20,19,.9)' : 'rgba(255,255,255,.92)';
+                ctx.stroke();
+                // 弧留一个缺口，末端补两笔当箭头（16px 的把手画不下完整图标）
+                const rr = h.r - 3.4;
+                const a1 = Math.PI * 0.55;
+                ctx.beginPath();
+                ctx.arc(h.x, h.y, rr, -Math.PI * 0.62, a1);
+                ctx.strokeStyle = hot ? '#16201D' : '#fff';
+                ctx.lineWidth = 1.4;
+                ctx.stroke();
+                const ex = h.x + Math.cos(a1) * rr, ey = h.y + Math.sin(a1) * rr;
+                const tx = -Math.sin(a1), ty = Math.cos(a1);
+                const nx = Math.cos(a1), ny = Math.sin(a1);
+                ctx.beginPath();
+                ctx.moveTo(ex - tx * 3.4 - nx * 2.1, ey - ty * 3.4 - ny * 2.1);
+                ctx.lineTo(ex, ey);
+                ctx.lineTo(ex - tx * 3.4 + nx * 2.1, ey - ty * 3.4 + ny * 2.1);
+                ctx.stroke();
+            }
+            ctx.restore();
         }
     },
 
@@ -450,10 +516,15 @@ window.App = Object.assign(window.App || {}, {
         return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     },
 
-    // 命中顺序：手柄 > 框内 > 框外（框外算"重新框选"，和 PS 一致）
+    // 命中顺序：旋转手柄 > 缩放手柄 > 框内 > 框外（框外算"重新框选"，和 PS 一致）
     cropHitTest(p) {
         const st = this._crop;
         if (!st || !st.open) return null;
+        // 旋转手柄优先：它在角的外侧，正常不会和缩放手柄重叠；
+        // 框极小时两者会挤在一起，这时以旋转为准（否则小框永远转不动）
+        for (const h of this.cropRotateHandles()) {
+            if (Math.hypot(p.x - h.x, p.y - h.y) <= h.r + 3.5) return 'rot-' + h.key;
+        }
         const r = this.cropRectOnScreen();
         const hs = 10;
         const near = (x, y) => Math.abs(p.x - x) <= hs && Math.abs(p.y - y) <= hs;
@@ -472,6 +543,7 @@ window.App = Object.assign(window.App || {}, {
     cropCursor(hit) {
         if (!hit) return 'crosshair';
         if (hit === 'move') return 'move';
+        if (hit.indexOf('rot-') === 0) return 'grab';
         if (hit === 'nw' || hit === 'se') return 'nwse-resize';
         if (hit === 'ne' || hit === 'sw') return 'nesw-resize';
         if (hit === 'n' || hit === 's') return 'ns-resize';
@@ -486,6 +558,19 @@ window.App = Object.assign(window.App || {}, {
         const hit = this.cropHitTest(p);
         const src = this.cropPointToSource(p);
         if (hit) {
+            if (hit.indexOf('rot-') === 0) {
+                // 绕框中心转：记下按下的角度基准，move 时只算增量，
+                // 中途框被收回也不会让角度跳一下
+                const r = this.cropRectOnScreen();
+                const center = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+                st.drag = {
+                    mode: 'rotate', center,
+                    a0: Math.atan2(p.y - center.y, p.x - center.x),
+                    angle0: Number(st.angle) || 0
+                };
+                if (this._cropDom && this._cropDom.canvas) this._cropDom.canvas.style.cursor = 'grabbing';
+                return;
+            }
             st.drag = { mode: hit, start: src, box0: { x: st.box.x, y: st.box.y, w: st.box.w, h: st.box.h } };
             return;
         }
@@ -501,13 +586,28 @@ window.App = Object.assign(window.App || {}, {
         if (!st || !st.open) return;
         const p = this.cropEventPoint(e);
         if (!st.drag) {
+            const hit = this.cropHitTest(p);
             if (this._cropDom && this._cropDom.canvas) {
-                this._cropDom.canvas.style.cursor = this.cropCursor(this.cropHitTest(p));
+                this._cropDom.canvas.style.cursor = this.cropCursor(hit);
             }
+            // 悬停在高亮手柄上时反色，否则用户看不出那是能拖的东西
+            const hot = hit && hit.indexOf('rot-') === 0 ? hit : null;
+            if (hot !== (st.hover || null)) { st.hover = hot; this.drawCrop(); }
             return;
         }
         const src = this.cropPointToSource(p);
         const mode = st.drag.mode;
+        if (mode === 'rotate') {
+            // 指针相对框中心转过的角度就是旋转量：顺时针拖 → 画面同向转（跟手）。
+            // 夹到 ±45°、重算取景平面、把框收回画面全交给 setCropAngle，
+            // 和工具条滑块走同一条路，两个入口永远不会算出两个结果。
+            const a = Math.atan2(p.y - st.drag.center.y, p.x - st.drag.center.x);
+            let deg = ((a - st.drag.a0) * 180) / Math.PI;
+            while (deg > 180) deg -= 360;
+            while (deg < -180) deg += 360;
+            this.setCropAngle(st.drag.angle0 + deg);
+            return;
+        }
         if (mode === 'move') {
             const dx = src.x - st.drag.start.x;
             const dy = src.y - st.drag.start.y;
@@ -523,20 +623,27 @@ window.App = Object.assign(window.App || {}, {
         this.drawCrop();
     },
 
-    _cropUp() {
+    _cropUp(e) {
         const st = this._crop;
         if (!st || !st.open || !st.drag) return;
         const minS = st.minSide || CROP_MIN_SRC;
-        // 点一下没拖动（框外单击）会把框收成 0 尺寸 —— 按最小尺寸兜一下，别留一个点
-        if (st.box.w < minS || st.box.h < minS) {
+        // 点一下没拖动（框外单击）会把框收成 0 尺寸 —— 按最小尺寸兜一下，别留一个点。
+        // 旋转不改框的尺寸，这里必须跳过：否则角度一大、框被收回画面后
+        // 会被误判成"小了"，一键弹回拖拽前的整张框。
+        if (st.drag.mode !== 'rotate' && (st.box.w < minS || st.box.h < minS)) {
             st.box = st.drag.box0.w >= minS ? st.drag.box0 : this.cropBoxFromDrag(st.drag.start, {
                 x: st.drag.start.x + minS, y: st.drag.start.y + minS
             });
         }
         st.drag = null;
+        st.hover = null;
         this.cropFitBoxToContent();
         this.syncCropSize();
         this.drawCrop();
+        // 松手后手柄可能已经随框缩走了，光标按当前位置重算，别留着"抓取中"
+        if (e && e.clientX != null && this._cropDom && this._cropDom.canvas) {
+            this._cropDom.canvas.style.cursor = this.cropCursor(this.cropHitTest(this.cropEventPoint(e)));
+        }
     },
 
     // 框外拖拽：从起点到当前点归一化；锁比例时按较长边补成目标比例，
