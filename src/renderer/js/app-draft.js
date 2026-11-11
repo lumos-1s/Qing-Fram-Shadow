@@ -91,6 +91,10 @@ window.App = Object.assign(window.App || {}, {
                 images: savable.map(im => ({
                     name: im.name, path: im.path, w: im.w, h: im.h,
                     grade: (im.grade && !this.isNeutralGrade(im.grade)) ? im.grade : undefined,
+                    // 几何编辑（旋转 / 裁切）记成可重放的数字日志：以前草稿只存
+                    // path + 调色，恢复时从原文件重解码，裁切和旋转会静默丢失。
+                    geo: (!im.raw && im.geoOps && im.geoOps.length)
+                        ? JSON.parse(JSON.stringify(im.geoOps)) : undefined,
                     // RAW 只存显影参数 + 视图(几个数字),像素由主进程按参数重解,草稿不会因此变大
                     raw: (this.rawSnapshotOf ? this.rawSnapshotOf(im) : null) || undefined
                 })),
@@ -310,6 +314,18 @@ window.App = Object.assign(window.App || {}, {
                 rotate: rawView ? rawView.rotate : 0,
                 grade: meta.grade || null
             };
+            // 重放几何编辑：起点是这张照片解码（含 EXIF 方向校正）后的原图，
+            // 日志里全是数字，重放结果与当时逐次烘出来的位图逐像素一致。
+            // orig 也一并留好，恢复后仍能继续「还原原图」和 Ctrl+Z。
+            if (!rawInfo && Array.isArray(meta.geo) && meta.geo.length && window.qfsApplyGeo) {
+                im.orig = { el: useEl, w: im.w, h: im.h, raw: null };
+                im.geoOps = JSON.parse(JSON.stringify(meta.geo));
+                const g = window.qfsApplyGeo(useEl, im.geoOps);
+                im.el = g.el;
+                im.w = g.w;
+                im.h = g.h;
+                im.rotate = g.turns;
+            }
             // 有调色参数：只作废旧缓存（草稿里没有像素）。真正的重烘在 restoreDraft()
             // 里按当前张 / 其余张分别补，之后用户切图再由 selectImage 兜底。
             if (im.grade && this.invalidateGrade) this.invalidateGrade(im);

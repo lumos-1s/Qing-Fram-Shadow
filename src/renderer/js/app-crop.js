@@ -902,6 +902,8 @@ window.App = Object.assign(window.App || {}, {
     savePhotoOrigin(im) {
         const t = im || this.image;
         if (!t || !t.el || t.orig) return false;
+        // 几何操作日志以这张原图为重放起点；草稿恢复时已经带 ops，别清空。
+        if (!t.geoOps) t.geoOps = [];
         t.orig = {
             el: t.el,
             w: t.el.naturalWidth || t.w || 0,
@@ -941,10 +943,13 @@ window.App = Object.assign(window.App || {}, {
         t.el = t.orig.el;
         t.w = t.orig.w;
         t.h = t.orig.h;
+        t.geoOps = [];           // 回到原图 = 几何操作日志清空，草稿/撤销都得同步
+        t.rotate = 0;
         delete t.orig;
         t.thumb = null;
         t._thumbEl = null;
         t._tqAt = 0;
+        if (this.scheduleDraft) this.scheduleDraft();
         // 底图换了：调色缓存作废，参数保留 —— 渲染时在新底图上重放。
         // 不清的话 photoSrcOf 会优先返回旧烘焙画布（还是裁切前那张），
         // 用户看到的是「点了还原原图，画面纹丝不动」，导出的也是裁切图。
@@ -1056,8 +1061,9 @@ window.App = Object.assign(window.App || {}, {
             this.setStatus('没有改动，照片未做处理');
             return false;
         }
-        // 换掉位图之前先留一份原图：裁切本身不可撤销，但"回到原图"必须一直可用
+        // 换掉位图之前先留一份原图 + 压一次撤销快照（几何编辑可撤销，见 __geo）
         this.savePhotoOrigin(im);
+        if (this.pushUndo) this.pushUndo();
         // RAW 不烘像素：把框记成归一化显影参数，再让主进程按原图重解。
         // 这样后面拖任何显影滑块都不会把裁切冲掉，导出也还是全尺寸。
         if (im.raw && this.rawRecordCrop) {
@@ -1071,21 +1077,18 @@ window.App = Object.assign(window.App || {}, {
             this.syncCropOriginalBtn();
             return ok;
         }
-        const c = document.createElement('canvas');
-        c.width = w;
-        c.height = h;
-        const ctx = c.getContext('2d');
-        ctx.imageSmoothingQuality = 'high';
         const rad = this.cropAngleRad();
-        if (rad) {
-            // 输出画布原点 = 取景平面里的 (x,y)：先把平面搬过来，再转回底图取向
-            ctx.translate(-x, -y);
-            ctx.translate(st.W / 2, st.H / 2);
-            ctx.rotate(rad);
-            ctx.drawImage(st.src, -st.sw / 2, -st.sh / 2);
-        } else {
-            ctx.drawImage(st.src, x, y, w, h, 0, 0, w, h);
-        }
+        // 裁切也走共享几何函数：把这次的全部数值记成一条操作，撤销和草稿恢复
+        // 都能从原图按序重放出同一张位图，不必再碰渲染/导出/拼图那五条消费链。
+        const geoOp = {
+            t: 'c', x, y, w, h, rad,
+            sw: st.sw, sh: st.sh, W: st.W, H: st.H,
+            reset: !!st.useOrig
+        };
+        const c = window.qfsGeoCrop
+            ? window.qfsGeoCrop(st.src, geoOp, im.orig && im.orig.el)
+            : null;
+        if (!c) { this.setStatus('裁切失败：无法生成画布'); return false; }
         // 裁切同样是纯几何操作：画布直接当图源，不再 PNG 编码再重载。
         // 24MP 上那一次 toBlob 要 470ms 左右，而裁切本身是个位图拷贝。
         // alpha 也天然保留（以前用 JPEG 才会把透明区烘成黑块）。
@@ -1095,6 +1098,8 @@ window.App = Object.assign(window.App || {}, {
         im.el = out;                 // 渲染/导出/拼图都直接取 im.el，换掉即全面生效
         im.w = w;
         im.h = h;
+        if (!im.geoOps) im.geoOps = [];
+        im.geoOps.push(geoOp);
         // 缩略图必须重做：不清掉 thumb 的话 queueThumb 会认为"350ms 内刚做过"直接跳过
         im.thumb = null;
         im._thumbEl = null;
@@ -1107,6 +1112,7 @@ window.App = Object.assign(window.App || {}, {
         if (this.queueThumb) this.queueThumb(im);
         if (this.buildThumbnails) this.buildThumbnails();
         this.scheduleRender(true);
+        if (this.scheduleDraft) this.scheduleDraft();
         this.setStatus('已裁切为 ' + w + ' × ' + h + '，导出与拼图都用这张');
         this.syncCropOriginalBtn();
         return true;

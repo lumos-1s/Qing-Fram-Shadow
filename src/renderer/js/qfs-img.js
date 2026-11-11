@@ -168,6 +168,66 @@
         return canvas;
     };
 
+    // ── 几何操作日志与重放 ──
+    // 旋转/裁切以前只留下「换掉后的那张位图」：撤销栈不认它，草稿也没有它，
+    // 于是 Ctrl+Z 撤不掉、重启后照片悄悄回到没裁没转的样子。
+    // 这里把操作记成纯数字参数，任何时候都能从原图按序重放出同一张位图；
+    // 渲染/导出/拼图/缩略图仍只认 im.el，不用改五条消费链。
+    window.qfsGeoRotate = function (src, opts) {
+        const w = src.naturalWidth || src.width || 0;
+        const h = src.naturalHeight || src.height || 0;
+        if (!w || !h) return null;
+        const c = document.createElement('canvas');
+        c.width = h; c.height = w;
+        const g = c.getContext('2d', opts && opts.willReadFrequently ? { willReadFrequently: true } : undefined);
+        if (!g) return null;
+        g.imageSmoothingQuality = 'high';
+        g.translate(h / 2, w / 2);
+        g.rotate(Math.PI / 2);
+        g.drawImage(src, -w / 2, -h / 2);
+        return c;
+    };
+
+    // op 里存的都是数字，不依赖裁切弹层的状态：
+    //   sw/sh = 被裁源图尺寸，W/H = 旋转后的取景平面，rad = 总旋转角，
+    //   x/y/w/h = 取整后的裁切框，reset = 这次是从「还原原图」开始裁的。
+    window.qfsGeoCrop = function (src, op, base) {
+        const w = Math.max(1, Math.round(op.w));
+        const h = Math.max(1, Math.round(op.h));
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const g = c.getContext('2d');
+        if (!g) return null;
+        g.imageSmoothingQuality = 'high';
+        const from = op.reset && base ? base : src;
+        if (op.rad) {
+            g.translate(-op.x, -op.y);
+            g.translate(op.W / 2, op.H / 2);
+            g.rotate(op.rad);
+            g.drawImage(from, -op.sw / 2, -op.sh / 2);
+        } else {
+            g.drawImage(from, op.x, op.y, w, h, 0, 0, w, h);
+        }
+        return c;
+    };
+
+    // 从原图按序重放所有几何操作。返回结果直接可以交给 im.el / im.w / im.h。
+    window.qfsApplyGeo = function (base, ops) {
+        let el = base;
+        let w = base.naturalWidth || base.width || 0;
+        let h = base.naturalHeight || base.height || 0;
+        let turns = 0;
+        for (const op of (ops || [])) {
+            let c = null;
+            if (op && op.t === 'r') { c = window.qfsGeoRotate(el); turns = (turns + 1) % 4; }
+            else if (op && op.t === 'c') { c = window.qfsGeoCrop(el, op, base); turns = op.reset ? 0 : turns; }
+            if (!c) continue;
+            el = window.qfsCanvasSource(c);
+            w = c.width; h = c.height;
+        }
+        return { el, w, h, turns };
+    };
+
     // 不透明且近黑的像素比例。旋转前后各量一次，就能识别「源图正常、
     // 结果却整片纯黑」这种任何上游异常（解码 / 驱动 / 内存）都可能出现的坏图。
     window.qfsBlackRatio = function (src) {

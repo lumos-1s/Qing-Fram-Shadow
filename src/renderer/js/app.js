@@ -2438,17 +2438,10 @@ window.App = {
         if (!srcIsCanvas && typeof img.decode === 'function') {
             try { await img.decode(); } catch (_) { /* 解码失败走下面的结果校验 */ }
         }
-        const canvas = document.createElement('canvas');
-        canvas.width = H;
-        canvas.height = W;
-        // willReadFrequently：这张画布接下来一定要被读像素（qfsAlphaStats 条带检测），
-        // 而且马上要当图源再画一次。标了以后 Chromium 会让中小尺寸图留在 CPU 内存，
-        // 读像素接近免费。24MP 这种超大画布它仍会走分块/落定（实测省不掉），
-        // 但那笔落定本来就要在「绘制到屏幕」时付一次，提前付掉并不亏。
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.translate(H / 2, W / 2);
-        ctx.rotate(Math.PI / 2);
-        ctx.drawImage(img, -W / 2, -H / 2);
+        // 绘制走 qfsGeoRotate 这个共享函数：撤销 / 草稿恢复要靠同一套数学重放，
+        // 两处各写一遍迟早会画出不一样的结果。
+        const canvas = window.qfsGeoRotate ? window.qfsGeoRotate(img, { willReadFrequently: true }) : null;
+        if (!canvas) { this.setStatus('旋转失败：无法生成画布'); return; }
         // 只测**结果**画布。以前源图和结果各测两次（透明率 + 黑率），
         // 而每次 drawImage(整图 → 32×32) 都得先把整张画布落定，24MP 上就是
         // 140~200ms 一笔 —— 光检测就吃掉半秒。现在只在结果上测一次，源图留到
@@ -2477,12 +2470,16 @@ window.App = {
         // 以前用 JPEG 就是因为这一步，现在连编码都不需要了。
         const out = window.qfsCanvasSource ? window.qfsCanvasSource(canvas) : await window.qfsCanvasImage(canvas);
         if (!out) { this.setStatus('旋转失败'); return; }
-        // 旋转同样不可撤销，留一份原图供「还原原图」用（app-crop.js）
+        // 先留原图 + 压一次撤销快照，几何编辑从此可撤销、可重放（参见 app-state.js 的 __geo）
         if (this.savePhotoOrigin) this.savePhotoOrigin(im);
+        if (this.pushUndo) this.pushUndo();
         im.el = out;
         im.w = canvas.width;
         im.h = canvas.height;
         im.rotate = ((im.rotate || 0) + 1) % 4;
+        // 几何操作日志：只记一个数字，重放时从 im.orig.el 按序执行即可得到同一张位图
+        if (!im.geoOps) im.geoOps = [];
+        im.geoOps.push({ t: 'r' });
         // 底图换了：旧缩略图必须作废，否则胶片条还是旋转前那张（与画布不一致）
         im.thumb = null;
         im._thumbEl = null;
@@ -2495,8 +2492,9 @@ window.App = {
         // thumb 已清空：立刻重排一张旋转后的装框缩略图（buildThumbnails 先用原图占位）
         if (this.queueThumb) this.queueThumb(im);
         this.scheduleRender(true);
+        if (this.scheduleDraft) this.scheduleDraft();
         if (this.syncCropOriginalBtn) this.syncCropOriginalBtn();
-        this.setStatus('照片已旋转 90°(再次右键可继续旋转)');
+        this.setStatus('照片已旋转 90°(再次右键可继续旋转，Ctrl+Z 可撤销)');
     },
 
     /* ══ 照片导入(拖拽/文件夹/多选共用) ══ */

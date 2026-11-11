@@ -206,6 +206,11 @@ window.App = Object.assign(window.App || {}, {
         // RAW 显影参数 + 裁切/旋转也是这张图的状态，撤销必须一起回退。
         const raw = this.rawSnapshotOf ? this.rawSnapshotOf(im) : null;
         Object.defineProperty(t, '__raw', { value: raw, enumerable: false, configurable: true, writable: true });
+        // 非 RAW 的几何编辑（旋转 / 裁切）以前只改位图，撤销栈完全看不见：
+        // Ctrl+Z 撤不掉、重开软件还悄悄丢。把操作日志深拷贝进快照，
+        // 撤销时从 im.orig.el 按序重放就能回到任意一步（qfs-img.js 的 qfsApplyGeo）。
+        const geo = (im && !im.raw && im.geoOps) ? JSON.parse(JSON.stringify(im.geoOps)) : null;
+        Object.defineProperty(t, '__geo', { value: geo, enumerable: false, configurable: true, writable: true });
         // 记录快照属于哪张图。非枚举，不会被 setTpl/JSON 序列化带进模板文件。
         Object.defineProperty(t, '__image', { value: im || null, enumerable: false, configurable: true, writable: true });
         return t;
@@ -227,7 +232,9 @@ window.App = Object.assign(window.App || {}, {
         const sg = snap.__grade;
         if (JSON.stringify(cur || null) !== JSON.stringify(sg || null)) return false;
         const rawCur = this.rawSnapshotOf ? this.rawSnapshotOf(im) : null;
-        return JSON.stringify(rawCur) === JSON.stringify(snap.__raw || null);
+        if (JSON.stringify(rawCur) !== JSON.stringify(snap.__raw || null)) return false;
+        const geoCur = (im && !im.raw && im.geoOps) ? im.geoOps : null;
+        return JSON.stringify(geoCur || null) === JSON.stringify(snap.__geo || null);
     },
 
     // 应用一个撤销/重做快照。旧栈里可能存着「只有模板」的老格式，按缺失处理。
@@ -239,6 +246,11 @@ window.App = Object.assign(window.App || {}, {
         this.template = snap;
         this.normalizeTemplate();
         const im = this.image;
+        // 位图先还原，再重放调色：否则 rebuildGrade 会在旧底图上烘一遍，白等一秒。
+        // RAW 走自己的显影通道（__raw），不参与几何重放。
+        if (im && !im.raw && snap && '__geo' in snap) {
+            this.rebuildGeoFromOps(im, snap.__geo);
+        }
         // 同一份快照如果会触发 RAW 重解，像素换好后 _rawReload 会重建调色；
         // 这里先烘一次全尺寸只是白等 1~3 秒。
         const reloadRaw = !!(im && im.raw && snap && '__raw' in snap && snap.__raw);
@@ -256,6 +268,29 @@ window.App = Object.assign(window.App || {}, {
             // 恢复显影参数和视图；像素由主进程按快照重解（异步，不阻塞撤销栈）
             if (this.rawApplyUndo) this.rawApplyUndo(im, snap.__raw);
         }
+    },
+
+    // 从原图按日志重放几何操作，把 im.el 换回快照对应的那张位图。
+    // 只存数字日志、不存整张位图：一张 24MP 画布约 96MB，撤销 20 步不能真存 20 份。
+    rebuildGeoFromOps(im, ops) {
+        const base = im.orig && im.orig.el;
+        if (!base || !window.qfsApplyGeo) return false;
+        const list = ops ? JSON.parse(JSON.stringify(ops)) : [];
+        const out = window.qfsApplyGeo(base, list);
+        im.el = out.el;
+        im.w = out.w;
+        im.h = out.h;
+        im.rotate = out.turns;
+        im.geoOps = list;
+        im.thumb = null;
+        im._thumbEl = null;
+        im._tqAt = 0;
+        if (this.invalidateStyleCaches) this.invalidateStyleCaches();
+        if (this.invalidateGrade) this.invalidateGrade(im);
+        if (this.buildThumbnails) this.buildThumbnails();
+        if (this.queueThumb) this.queueThumb(im);
+        if (this.scheduleDraft) this.scheduleDraft();
+        return true;
     },
 
     /* ══ 每图模板唯一存取口 ══ */
