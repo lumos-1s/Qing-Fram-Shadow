@@ -3208,20 +3208,27 @@ window.App = {
             cb.title = '勾选用于批量放图';
             cb.checked = isSel;
             cb.addEventListener('click', e => { e.stopPropagation(); this.toggleBatch(i, cb); });
-            // 桌面右键菜单:同步边框 / 删除
-            // 右键落在"已勾选"的缩略图上且勾了多张(Ctrl+A 全选)→ 对这一整批操作,
-            // 否则只对右键的这一张操作(与旧行为一致)。
+            // 桌面右键菜单：三种同步 + 删除。目标沿用旧口径——右键落在「已勾选且
+            // 勾了多张」的缩略图上就对整批操作，否则只对右键的这一张操作。
+            // 三条同步分别是：只调色 / 边框+调色 / 只边框，中间用分隔线和删除隔开。
             const ctxI = i;
             wrap.addEventListener('contextmenu', e => {
                 e.preventDefault();
                 e.stopPropagation();
                 const many = this.batchSel.length > 1 && this.batchSel.includes(ctxI);
                 const targets = many ? this.batchSel.slice() : [ctxI];
-                // 同步源 = 当前编辑图,不计入目标数(与 app-sync.js 的目标集口径一致)
+                // 同步源 = 当前编辑图，不计入目标数（与 app-sync.js 的目标集口径一致）
                 const syncN = many ? targets.filter(k => k !== this.currentIdx).length : 1;
+                const tail = many ? `（${syncN} 张）` : '';
                 this.openCtx(e.clientX, e.clientY, [
+                    [`同步调色参数${tail}`, () => this.applyGradeToTargets(targets),
+                        '只把当前照片的调色参数（曲线 / 混色器 / 蒙版等）复制给目标，边框不动'],
+                    [`同步边框 + 调色${tail}`, () => this.syncSettingsToTargets(targets),
+                        '边框和调色参数一起复制；目标自己的贴纸、自由文字、拼图仍保留'],
                     [many ? `同步边框（${syncN} 张）` : '同步边框',
-                        () => many ? this.applyBorderToSelected() : this.syncBorderTo(ctxI)],
+                        () => many ? this.applyBorderToSelected() : this.syncBorderTo(ctxI),
+                        '只复制边框与参数条，调色参数不动'],
+                    ['—', null],
                     [many ? `删除选中 ${targets.length} 张` : '删除',
                         () => many ? this.confirmRemoveImages(targets) : this.removeImage(ctxI)],
                 ]);

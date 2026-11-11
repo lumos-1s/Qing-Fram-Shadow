@@ -909,6 +909,8 @@ window.App = Object.assign(window.App || {}, {
             const b = document.createElement('button');
             b.type = 'button';
             b.textContent = it[0];
+            // 第三项可选：悬停说明。多数老菜单没传，保持兼容。
+            if (it[2]) b.title = it[2];
             b.addEventListener('click', () => { this.closeCtx(); it[1](); });
             m.appendChild(b);
         });

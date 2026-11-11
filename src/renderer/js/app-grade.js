@@ -1492,7 +1492,8 @@
             }
             if (this.buildThumbnails) this.buildThumbnails();
             if (this.scheduleDraft) this.scheduleDraft();
-            this.setStatus(message(n));
+            // message 传 null 表示调用方自己写状态（例如「边框 + 调色」只报一次）
+            if (message) this.setStatus(typeof message === 'function' ? message(n) : message);
             return true;
         },
 
@@ -1525,6 +1526,22 @@
             }
             return this._applyGradeTo(targets,
                 (n) => n ? ('调色已应用到选中的 ' + n + ' 张照片') : '选中的照片无需应用');
+        },
+
+        // 缩略图右键菜单用：目标由右键位置直接给出（单张或整批勾选），
+        // 不读 selectedIdx/batchSel —— 右键落在未勾选的那张时只该影响那一张。
+        // opts.silent 给「边框 + 调色」组合用，避免连报两条状态。
+        applyGradeToTargets(idxs, opts) {
+            const max = (this.images || []).length;
+            const list = Array.from(new Set((idxs || []).filter((i) =>
+                Number.isInteger(i) && i >= 0 && i < max && i !== this.currentIdx)));
+            if (!list.length) {
+                if (!(opts && opts.silent)) this.setStatus('右键目标就是当前编辑的这张，无需同步调色参数');
+                return false;
+            }
+            const silent = !!(opts && opts.silent);
+            return this._applyGradeTo(list, silent ? null
+                : ((n) => '调色参数已同步到 ' + n + ' 张照片'));
         },
 
         syncGradeUI() {

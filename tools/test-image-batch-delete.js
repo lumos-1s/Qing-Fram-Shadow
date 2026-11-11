@@ -62,8 +62,8 @@ const setup = (n) => `(async () => {
 })()
 `;
 
-// 右键缩略图并点菜单里的第 k 项
-const rightClick = (idx, itemIdx) => `(async () => {
+// 右键缩略图并点菜单里指定文案的那一项（不按下标：菜单已经扩成 4 项）
+const rightClick = (idx, label) => `(async () => {
     const A = window.App;
     const wrap = document.querySelectorAll('#thumbStrip .thumb-item')[${idx}];
     if (!wrap) return { error: '缩略图不存在' };
@@ -71,10 +71,21 @@ const rightClick = (idx, itemIdx) => `(async () => {
     await new Promise(r => setTimeout(r, 50));
     const items = Array.from(document.querySelectorAll('.ctx-menu button'));
     const labels = items.map(b => b.textContent);
-    const btn = items[${itemIdx}];
+    const btn = items.find(b => b.textContent === ${JSON.stringify(label)})
+        || items.find(b => b.textContent.startsWith(${JSON.stringify(label)}));
     if (btn) btn.click();
     await new Promise(r => setTimeout(r, 300));
     A.closeCtx();
+    return { labels, found: !!btn };
+})()`;
+// 找菜单里以指定文案开头的按钮并点它（用于内联脚本）
+const clickCtx = (label) => `(async () => {
+    const items = Array.from(document.querySelectorAll('.ctx-menu button'));
+    const labels = items.map(b => b.textContent);
+    const btn = items.find(b => b.textContent === ${JSON.stringify(label)})
+        || items.find(b => b.textContent.startsWith(${JSON.stringify(label)}));
+    if (btn) btn.click();
+    await new Promise(r => setTimeout(r, 300));
     return { labels };
 })()`;
 
@@ -148,11 +159,15 @@ app.whenReady().then(async () => {
         `batchSel=${a.batch}  状态「${a.status}」`, 'batchSel=4');
 
     // ② 右键任一张 → 菜单出现「删除选中 4 张」→ 点它 → 全删 + 回到空状态
-    const m2 = await win.webContents.executeJavaScript(rightClick(1, 1));
+    const m2 = await win.webContents.executeJavaScript(rightClick(1, '删除选中 4 张'));
     a = await win.webContents.executeJavaScript(READ);
     const c2 = [
-        ['菜单项=2', m2.labels && m2.labels.length === 2],
-        ['第二项=删除选中 4 张', /^删除选中 4 张$/.test((m2.labels && m2.labels[1]) || '')],
+        ['菜单项=4(3 同步 + 删除)', m2.labels && m2.labels.length === 4],
+        ['前 3 项是三种同步', /^同步调色参数/.test((m2.labels && m2.labels[0]) || '')
+            && /^同步边框 \+ 调色/.test((m2.labels && m2.labels[1]) || '')
+            && /^同步边框（/.test((m2.labels && m2.labels[2]) || '')],
+        ['末项=删除选中 4 张', /^删除选中 4 张$/.test((m2.labels && m2.labels[3]) || '')],
+        ['按文案点中了删除', !!m2.found],
         ['images=0', a.images === 0],
         ['image 清空', !a.image],
         ['template 清空', !a.template],
@@ -176,22 +191,16 @@ app.whenReady().then(async () => {
     s = await win.webContents.executeJavaScript(setup(3));
     await win.webContents.executeJavaScript(`(() => { const w = document.querySelectorAll('#thumbStrip .thumb-item')[0]; w.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 120 })); return 1; })()`);
     a = await win.webContents.executeJavaScript(READ); // 只为拿到 status 前状态,忽略
-    const m4 = await win.webContents.executeJavaScript(`(async () => {
-        const items = Array.from(document.querySelectorAll('.ctx-menu button'));
-        const labels = items.map(b => b.textContent);
-        items[1].click();
-        await new Promise(r => setTimeout(r, 300));
-        return { labels };
-    })()`);
+    const m4 = await win.webContents.executeJavaScript(clickCtx('删除'));
     a = await win.webContents.executeJavaScript(READ);
-    line(m4.labels.length === 2 && m4.labels[1] === '删除' && a.images === 2,
+    line(m4.labels.length === 4 && m4.labels[3] === '删除' && a.images === 2,
         '④ 未勾选时右键删除只删右键那一张(菜单文案为「删除」)',
         `菜单=${JSON.stringify(m4.labels)}  images ${s.images}→${a.images}`, 'images=2 且菜单第二项=「删除」');
 
     // ⑤ 只剩 1 张时也能删掉(旧代码在这里被"至少保留一张照片"挡住)
     s = await win.webContents.executeJavaScript(setup(1));
     await win.webContents.executeJavaScript(`(() => { const w = document.querySelectorAll('#thumbStrip .thumb-item')[0]; w.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 120 })); return 1; })()`);
-    await win.webContents.executeJavaScript(`(async () => { const items = Array.from(document.querySelectorAll('.ctx-menu button')); items[1].click(); await new Promise(r => setTimeout(r, 300)); return 1; })()`);
+    await win.webContents.executeJavaScript(clickCtx('删除'));
     a = await win.webContents.executeJavaScript(READ);
     line(s.images === 1 && a.images === 0 && !a.image && a.status != null && !/至少保留/.test(a.status),
         '⑤ 只剩 1 张也能删(不再被"至少保留一张照片"挡住)',

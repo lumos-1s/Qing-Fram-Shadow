@@ -1,6 +1,8 @@
-// 同步模块：边框同步 —— 两条入口共用同一核心（从 app.js / app-templates.js 拆出）
+// 同步模块：边框同步 —— 各入口共用同一核心（从 app.js / app-templates.js 拆出）
 //   · 右键菜单「同步边框」/ Ctrl 单张场景：syncBorderTo —— 单张，不弹覆盖确认
 //   · 「同步到选中」按钮 / Ctrl+D 批量：syncToSelected / applyBorderToSelected —— 覆盖已有边框时先确认
+//   · 缩略图右键另两条：applyGradeToTargets（只调色）、syncSettingsToTargets（边框+调色）
+//     目标由右键位置决定，见 app.js 的 buildThumbnails
 //
 // 同步语义（唯一权威定义；改行为必须改这里并同步更新上方入口与状态文案）：
 //   · 带过去（源图 → 目标图）：全部边框与参数 + logoElements（多图统一元素布局用）；
@@ -138,13 +140,35 @@ window.App = Object.assign(window.App || {}, {
         this.setStatus(n
             ? `已将当前边框同步到 ${n} 张照片（含 Logo；贴纸/文字/拼图保留各图自有）`
             : '没有需要同步的选中照片');
-    },
+        },
 
-    // 「复制设置 / 粘贴设置」：LR 左栏底部那对按钮的等价物。
-    // 与现有三条能力互补，不重复：
+        // 缩略图右键「同步边框 + 调色」：一步把当前照片的边框和调色参数都给目标图，
+        // 不用先「复制设置」再「粘贴设置」，也不会动系统剪贴板。
+        // 两套语义分别复用 _syncTplToTargets（保留目标自己的贴纸/文字/拼图、
+        // EXIF 三级规则、横竖自适应）和 _applyGradeTo（曲线/混色器/蒙版深拷贝），
+        // 不在右键里另写一份复制逻辑，免得以后只修其中一处。
+        syncSettingsToTargets(idxs) {
+            const max = (this.images || []).length;
+            const list = Array.from(new Set((idxs || []).filter((i) =>
+                Number.isInteger(i) && i >= 0 && i < max && i !== this.currentIdx)));
+            if (!list.length) {
+                this.setStatus('右键目标就是当前编辑的这张，无需同步');
+                return false;
+            }
+            const nTpl = this._syncTplToTargets(list, { confirm: false });
+            if (nTpl < 0) return false;   // 覆盖确认被取消（当前不弹，留好口子）
+            if (this.applyGradeToTargets) this.applyGradeToTargets(list, { silent: true });
+            if (this.buildThumbnails) this.buildThumbnails();
+            this.setStatus('已将当前边框 + 调色参数同步到 ' + list.length + ' 张照片');
+            return true;
+        },
+
+        // 「复制设置 / 粘贴设置」：LR 左栏底部那对按钮的等价物。
+    // 与现有几条能力互补，不重复：
     //   · 应用到全部   = 只搬调色，目标是全部照片
     //   · 应用到选中   = 只搬调色，目标是胶片条多选照片（调色组 ⋯ 菜单）
     //   · 同步到选中   = 只搬边框，目标是多选照片
+    //   · 缩略图右键   = 调色 / 边框 / 两者都同步，目标看右键落在哪张（单张或整批）
     //   · 复制/粘贴设置 = 调色 + 边框一起搬，目标由胶片条多选决定
     // 只存内存、不写系统剪贴板、不落草稿：重启即失效，和 LR 一致。
     copySettings() {
