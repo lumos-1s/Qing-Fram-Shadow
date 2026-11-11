@@ -10,6 +10,9 @@
 // 与 we-cropper 的差别：它是「裁切框固定、拖图片」，这里是「图片固定、框自由」。
 // 桌面端鼠标直接拉框更直觉，也不需要 pinch 缩放那套；比例锁定时改由锚点+宽高比反算另一条边。
 const CROP_MIN_SRC = 8;      // 裁切框最小边长（源像素）
+// 运行时标记：开发者工具控制台输入 QFS_CROP_ROTATE，返回下面这串才是带「四角旋转手柄」的进程。
+// 返回 undefined 说明窗口还是改代码之前启动的，关掉重开 npm start 即可（页面不会热重载）。
+window.QFS_CROP_ROTATE = 'corner-handles-v2-20261111';
 
 window.App = Object.assign(window.App || {}, {
     initCrop() {
@@ -131,6 +134,13 @@ window.App = Object.assign(window.App || {}, {
                 : '拖动拉直：把倾斜的地平线转正，也可以直接拖四角外侧的圆形手柄（-45°~45°，双击归零）';
             d.angle.value = '0';
         }
+        // RAW 上四角旋转手柄是故意不画的，把工具条上的「角度」也写明原因，
+        // 免得用户以为手柄没加载出来（这确实是「看不到手柄」的一种正常情况）。
+        const angleLabel = document.querySelector('.crop-angle-label');
+        if (angleLabel) angleLabel.textContent = im.raw ? '角度（RAW 不可用）' : '角度';
+        this.setStatus(im.raw
+            ? '裁切：RAW 只支持 90° 旋转，角度拉直请先导出为 JPEG'
+            : '裁切：拖四角的绿色圆点旋转，拖白方块缩放，双击角度归零');
         this.syncCropAngle();
         this.syncCropChips();
         this.syncCropSize();
@@ -185,12 +195,12 @@ window.App = Object.assign(window.App || {}, {
         cv.style.width = vw + 'px';
         cv.style.height = vh + 'px';
         st.viewW = vw; st.viewH = vh; st.dpr = dpr;
-        // 图片等比放进裁切区（留出 34px 呼吸），小图允许放大——否则 300px 的小图在
+        // 图片等比放进裁切区（留出 38px 呼吸），小图允许放大——否则 300px 的小图在
         // 1000px 的弹层里只有指甲盖大，根本抠不准框。
-        // 34 不是随手写的：四角旋转手柄沿 45° 外移最多 30×0.707≈21px、半径 8.5px，
-        // 留 34px 才能保证正方形照片上那四个圆也不被画布边缘裁掉半个（曾经 20px 时
+        // 38 不是随手写的：四角旋转手柄沿 45° 外移最多 30×0.707≈21px、半径 11px，
+        // 留 38px 才能保证正方形照片上那四个圆也不被画布边缘裁掉半个（最早 20px 时
         // 上下两个手柄正好画在画布外，点都点不到）。
-        const pad = 34;
+        const pad = 38;
         let fit = Math.min((vw - pad * 2) / st.W, (vh - pad * 2) / st.H);
         if (!isFinite(fit) || fit <= 0) fit = 1;
         st.fit = Math.min(fit, 8);
@@ -229,14 +239,14 @@ window.App = Object.assign(window.App || {}, {
         const off = Math.max(14, Math.min(30, Math.min(r.w, r.h) * 0.22 + 11)) * Math.SQRT1_2;
         const roomX = Math.min(r.x, st.viewW - (r.x + r.w));
         const roomY = Math.min(r.y, st.viewH - (r.y + r.h));
-        const keep = 10.5;      // 手柄半径 8.5 + 2px 余量：贴着画布边也别被切掉
+        const keep = 13;       // 手柄半径 11 + 2px 余量：贴着画布边也别被切掉
         const dx = Math.max(0, Math.min(off, roomX - keep));
         const dy = Math.max(0, Math.min(off, roomY - keep));
         return [
             ['nw', r.x, r.y, -1, -1], ['ne', r.x + r.w, r.y, 1, -1],
             ['se', r.x + r.w, r.y + r.h, 1, 1], ['sw', r.x, r.y + r.h, -1, 1]
         ].map(([key, x, y, sx, sy]) => ({
-            key, x: x + sx * dx, y: y + sy * dy, r: 8.5
+            key, x: x + sx * dx, y: y + sy * dy, r: 11
         }));
     },
 
@@ -327,34 +337,60 @@ window.App = Object.assign(window.App || {}, {
             ctx.stroke();
         }
 
-        // 四角旋转手柄：圆形把手 + 顺时针箭头。悬停时反色，明确"这个能拖"
+        // 四角旋转手柄：主色实心圆 + 深色顺时针箭头，再加一条从角连过去的细虚线。
+        // 第一版是 17px 的深色圆 + 白细环，压在深色遮罩上太隐蔽，用户反馈「没看到」；
+        // 现在用主题主色填满并放大到 22px，一眼就能把「这四个圆」和「裁切框的角」认成一组。
         if (!(d.angle && d.angle.disabled)) {
+            if (!st.accent) {
+                const cs = getComputedStyle(document.documentElement);
+                st.accent = (cs.getPropertyValue('--primary') || '').trim() || '#3DD9B0';
+            }
+            const box = this.cropRectOnScreen();
+            const corners = {
+                nw: [box.x, box.y], ne: [box.x + box.w, box.y],
+                se: [box.x + box.w, box.y + box.h], sw: [box.x, box.y + box.h]
+            };
             ctx.save();
             ctx.lineCap = 'round';
             for (const h of this.cropRotateHandles()) {
                 const hot = st.hover === 'rot-' + h.key;
+                const R = h.r + (hot ? 1 : 0);
+                // 角 → 手柄的引线：让人一眼看出这是「这个角」的手柄，不是漂浮的按钮
+                const c = corners[h.key];
+                const vx = h.x - c[0], vy = h.y - c[1];
+                const len = Math.hypot(vx, vy) || 1;
+                const ux = vx / len, uy = vy / len;
+                ctx.setLineDash([2, 3]);
                 ctx.beginPath();
-                ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2);
-                ctx.fillStyle = hot ? 'rgba(255,255,255,.95)' : 'rgba(16,20,19,.66)';
+                ctx.moveTo(c[0] + ux * 5, c[1] + uy * 5);
+                ctx.lineTo(h.x - ux * (R + 2), h.y - uy * (R + 2));
+                ctx.strokeStyle = hot ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.55)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.setLineDash([]);
+                // 圆：主色实心 + 深色描边，落在亮照片或暗遮罩上都跳得出来
+                ctx.beginPath();
+                ctx.arc(h.x, h.y, R, 0, Math.PI * 2);
+                ctx.fillStyle = hot ? '#fff' : st.accent;
                 ctx.fill();
                 ctx.lineWidth = 1.5;
-                ctx.strokeStyle = hot ? 'rgba(16,20,19,.9)' : 'rgba(255,255,255,.92)';
+                ctx.strokeStyle = 'rgba(8,14,12,.75)';
                 ctx.stroke();
-                // 弧留一个缺口，末端补两笔当箭头（16px 的把手画不下完整图标）
-                const rr = h.r - 3.4;
+                // 弧留一个缺口，末端补两笔当箭头
+                const rr = R - 4.4;
                 const a1 = Math.PI * 0.55;
                 ctx.beginPath();
                 ctx.arc(h.x, h.y, rr, -Math.PI * 0.62, a1);
-                ctx.strokeStyle = hot ? '#16201D' : '#fff';
-                ctx.lineWidth = 1.4;
+                ctx.strokeStyle = '#10201B';
+                ctx.lineWidth = 1.7;
                 ctx.stroke();
                 const ex = h.x + Math.cos(a1) * rr, ey = h.y + Math.sin(a1) * rr;
                 const tx = -Math.sin(a1), ty = Math.cos(a1);
                 const nx = Math.cos(a1), ny = Math.sin(a1);
                 ctx.beginPath();
-                ctx.moveTo(ex - tx * 3.4 - nx * 2.1, ey - ty * 3.4 - ny * 2.1);
+                ctx.moveTo(ex - tx * 4 - nx * 2.6, ey - ty * 4 - ny * 2.6);
                 ctx.lineTo(ex, ey);
-                ctx.lineTo(ex - tx * 3.4 + nx * 2.1, ey - ty * 3.4 + ny * 2.1);
+                ctx.lineTo(ex - tx * 4 + nx * 2.6, ey - ty * 4 + ny * 2.6);
                 ctx.stroke();
             }
             ctx.restore();

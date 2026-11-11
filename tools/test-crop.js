@@ -708,6 +708,10 @@ async function main() {
         });
         const cv = document.getElementById('cropCanvas');
         const cr = cv.getBoundingClientRect();
+        // 真去读画布像素：手柄必须是「画上去的主色实心圆」，不能只是坐标算对了却没绘制
+        const pg = cv.getContext('2d');
+        const h0pix = Array.from(pg.getImageData(Math.round(hs[0].x * st.dpr), Math.round(hs[0].y * st.dpr), 1, 1).data);
+        const marker = window.QFS_CROP_ROTATE;
         const center = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
         const at = (x, y) => ({ clientX: cr.left + x, clientY: cr.top + y });
         const polar = (rad, ang) => ({ x: center.x + Math.cos(ang) * rad, y: center.y + Math.sin(ang) * rad });
@@ -744,10 +748,14 @@ async function main() {
         document.getElementById('cropAngle').disabled = false;
         A.closeCrop();
         return { keys: hs.map((h) => h.key).join(','), radius: hs[0] && hs[0].r, shape, hover,
-                 at20, hit1, at10, rawHandles };
+                 at20, hit1, at10, rawHandles, h0pix, marker };
     })()`);
-    check(rotateHandles.keys === 'nw,ne,se,sw' && rotateHandles.radius > 6,
-        '四个角各有一个旋转手柄', `${rotateHandles.keys} r=${rotateHandles.radius}`);
+    check(rotateHandles.keys === 'nw,ne,se,sw' && rotateHandles.radius >= 10,
+        '四个角各有一个足够大的旋转手柄', `${rotateHandles.keys} r=${rotateHandles.radius}`);
+    check(String(rotateHandles.marker).indexOf('corner-handles') === 0,
+        '运行时标记存在（控制台可区分新旧进程）', String(rotateHandles.marker));
+    check(rotateHandles.h0pix[1] > 120,
+        '手柄真的画成了主题主色实心圆（不是深色细环）', `rgba=${rotateHandles.h0pix.join(',')}`);
     check(rotateHandles.shape.length === 4 && rotateHandles.shape.every((s) => s.outside && s.dist > 13 && s.dist < 42),
         '手柄在四角外侧，不压住缩放手柄',
         rotateHandles.shape.map((s) => `${s.key}:${s.dist.toFixed(0)}`).join(' '));
