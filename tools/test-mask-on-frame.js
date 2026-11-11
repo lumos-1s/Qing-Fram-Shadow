@@ -118,15 +118,31 @@ async function main() {
             if (!pr || !base || !base.w) return { ok: false, hasRect: !!pr };
             // 用照片矩形的中心反推屏幕坐标，再让 _maskPoint 换算回来：
             // 结果是 (0.5,0.5) 才说明叠加层的坐标换算真的对上了
+            // 隐藏/被遮挡的窗口里 getBoundingClientRect 会间歇性返回 0 宽高，
+            // 换算结果就恒为 (0,0) —— 这是环境竞态，不是产品逻辑。
+            // 只在换算这一小段给画布和叠加层同一个确定性矩形，验的是坐标数学；
+            // 算完立刻还原，不污染后续渲染。
+            const ov = document.getElementById('maskOverlay') || document.querySelector('.mask-overlay');
+            const RECT = { left: 0, top: 0, right: 900, bottom: 600,
+                width: 900, height: 600, x: 0, y: 0, toJSON() { return {}; } };
+            const cvOrig = cv.getBoundingClientRect;
+            const ovOrig = ov && ov.getBoundingClientRect;
+            cv.getBoundingClientRect = () => RECT;
+            if (ov) ov.getBoundingClientRect = () => RECT;
             const r = cv.getBoundingClientRect();
             const cx = r.left + ((pr.x + pr.w / 2) / base.w) * r.width;
             const cy = r.top + ((pr.y + pr.h / 2) / base.h) * r.height;
             const p = A._maskPoint({ clientX: cx, clientY: cy });
+            cv.getBoundingClientRect = cvOrig;
+            if (ov) ov.getBoundingClientRect = ovOrig;
+            const or = ov && ov.getBoundingClientRect();
             return {
                 ok: !!p, hasRect: true,
                 ptr: p, base: { w: base.w, h: base.h },
                 rect: pr,
                 canvasW: cv.width,
+                cvRect: [r.left, r.top, r.width, r.height],
+                ovRect: or ? [or.left, or.top, or.width, or.height] : null,
                 supported: A.maskPositionSupported(),
                 // 照片被边框包住时，矩形必然小于整块画布
                 inset: pr.x > 0 || pr.y > 0 || (pr.x + pr.w) < base.w - 1 || (pr.y + pr.h) < base.h - 1

@@ -4,8 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { app, BrowserWindow, ipcMain, protocol, net, nativeImage } = require('electron');
-const { pathToFileURL } = require('url');
+const { app, BrowserWindow, ipcMain, protocol, nativeImage } = require('electron');
 
 process.stdout.on('error', () => {});
 process.stderr.on('error', () => {});
@@ -29,7 +28,7 @@ function grayPng(name) {
 const PATHS = [grayPng('g0.png'), grayPng('g1.png'), grayPng('g2.png')];
 
 protocol.registerSchemesAsPrivileged([
-    { scheme: 'qflocal', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
+    { scheme: 'qflocal', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
 ]);
 ipcMain.handle('list-presets', () => []);
 ipcMain.handle('load-preset', () => null);
@@ -101,6 +100,10 @@ const PROBE = `(async () => {
     await wait(350);
 
     const cur = A.image;
+    if (!cur) return { error: '恢复后 A.image 仍为 null', images: A.images.length,
+        status: String(A.statusMsg || ''), restoring: !!A._restoringDraft,
+        draftLen: (draft.images || []).length,
+        metas: (draft.images || []).filter(m => m && m.path).length };
     const src = window.photoSrcOf(cur);
     const origPx = px(cur.el);
     const outPx = src ? px(src) : 0;
@@ -126,13 +129,22 @@ const PROBE = `(async () => {
 })()`;
 
 async function main() {
+    // 必须和 src/main/index.js 的 qflocal 处理一样带 CORS 头：
+    // qfsImage() 设了 crossOrigin='anonymous'，缺这个头会让草稿恢复时
+    // 三张图全部加载失败，restoreDraft 拿到 0 张 → A.image 为 null。
+    const CORS = {
+        'access-control-allow-origin': '*',
+        'cross-origin-resource-policy': 'cross-origin',
+        'x-content-type-options': 'nosniff'
+    };
     protocol.handle('qflocal', (req) => {
         try {
             const u = new URL(req.url);
             const p = u.searchParams.get('p');
-            if (!p || !fs.existsSync(p)) return new Response('NF', { status: 404 });
-            return net.fetch(pathToFileURL(p).href);
-        } catch (_) { return new Response('NF', { status: 404 }); }
+            if (!p || !fs.existsSync(p)) return new Response('NF', { status: 404, headers: CORS });
+            return new Response(fs.readFileSync(p),
+                { headers: Object.assign({ 'content-type': 'image/png' }, CORS) });
+        } catch (_) { return new Response('NF', { status: 404, headers: CORS }); }
     });
     const win = new BrowserWindow({
         width: 1400, height: 900, show: false, paintWhenInitiallyHidden: true,

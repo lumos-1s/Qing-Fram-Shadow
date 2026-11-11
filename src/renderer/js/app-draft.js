@@ -255,7 +255,13 @@ window.App = Object.assign(window.App || {}, {
             this.setStatus('已恢复上次会话草稿（' + restored.length + ' 张照片）');
         } catch (e) {
             this.finishImportProgress('恢复未完成');
-            /* 恢复失败不阻塞启动 */
+            // 以前这里完全静默：草稿恢复半途抛异常时 A.image 停在 null，
+            // 用户只看到空工作台、连「恢复失败」都不知道，测试也只报一句
+            // "Cannot read properties of null"。把原因留在状态栏和控制台。
+            const msg = String((e && e.message) || e || '未知错误');
+            if (this.diagLog) this.diagLog('草稿恢复失败: ' + msg);
+            console.error('[draft] restore failed:', e && e.stack ? e.stack : msg);
+            this.setStatus('草稿恢复失败：' + msg);
         } finally {
             this._restoringDraft = false;
             const btn = document.getElementById('btnRestoreDraft');

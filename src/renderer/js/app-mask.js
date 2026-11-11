@@ -775,6 +775,10 @@
             const ov = overlayEl();
             if (!ov) return null;
             const r = ov.getBoundingClientRect();
+            // 叠加层还没布局出来时（窗口被遮挡 / 首帧之前）别把指针夹到角落：
+            // 0 宽高算出来的 x/y 是垃圾值，clamp01 会把它变成 (0,0)，
+            // 表现为「点哪儿都选到左上角」。直接忽略这次指针事件。
+            if (!(r.width > 0) || !(r.height > 0)) return null;
             const base = this._baseSize();
             // 叠加层就是画布的视觉矩形：比例直接乘基准宽高即可回到照片矩形所在的坐标
             const x = (e.clientX - r.left) / Math.max(1, r.width) * base.w;
