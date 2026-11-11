@@ -1466,13 +1466,15 @@
             return true;
         },
 
-        // 把当前照片的调色参数复制给所有照片（批量洗图的常见诉求）
-        applyGradeToAll() {
+        // 把当前照片的调色参数复制给指定下标。「应用到全部」和「应用到选中」
+        // 共用这一份深拷贝逻辑，避免两个入口各写一遍、以后只修一处。
+        _applyGradeTo(targets, message) {
             const im = this.image;
             if (!im) return false;
             const p = normalizeGrade(im.grade);
             let n = 0;
-            for (const it of (this.images || [])) {
+            for (const idx of new Set(targets || [])) {
+                const it = (this.images || [])[idx];
                 if (!it || it === im) continue;
                 // 曲线是点数组的嵌套结构、混色器是两层的带参数结构，必须深拷贝：
                 // 浅拷贝会让所有照片共用同一份数据互相串台
@@ -1490,8 +1492,39 @@
             }
             if (this.buildThumbnails) this.buildThumbnails();
             if (this.scheduleDraft) this.scheduleDraft();
-            this.setStatus(n ? ('调色已应用到其余 ' + n + ' 张照片') : '只有一张照片，无需批量应用');
+            this.setStatus(message(n));
             return true;
+        },
+
+        // 把当前照片的调色参数复制给所有照片（批量洗图的常见诉求）
+        applyGradeToAll() {
+            return this._applyGradeTo(
+                (this.images || []).map((_, i) => i),
+                (n) => n ? ('调色已应用到其余 ' + n + ' 张照片') : '只有一张照片，无需批量应用'
+            );
+        },
+
+        // 胶片条多选的目标（去掉当前编辑图：它是同步源，不是目标）。
+        // selectedIdx 同时被「单击缩略图」写，单选时只有 1 项，这里会被自然过滤掉。
+        _gradeSelectedTargets() {
+            const raw = (this.selectedIdx && this.selectedIdx.length)
+                ? this.selectedIdx : (this.batchSel || []);
+            const max = (this.images || []).length;
+            return Array.from(new Set((raw || []).filter((i) =>
+                Number.isInteger(i) && i >= 0 && i < max && i !== this.currentIdx)));
+        },
+
+        // 只把这套调色参数给勾选的照片：以前 ⋯ 菜单只有「应用到全部」，
+        // 想洗其中几张就得先「应用到全部」再逐张改回来（或者走会连边框一起搬的
+        // 复制/粘贴设置）。顶栏「同步到选中」只搬边框，两者互不替代。
+        applyGradeToSelected() {
+            const targets = this._gradeSelectedTargets();
+            if (!targets.length) {
+                this.setStatus('请先在胶片条多选要应用调色的照片（Ctrl / Shift + 单击，或 Ctrl+A 全选）');
+                return false;
+            }
+            return this._applyGradeTo(targets,
+                (n) => n ? ('调色已应用到选中的 ' + n + ' 张照片') : '选中的照片无需应用');
         },
 
         syncGradeUI() {
@@ -1697,11 +1730,14 @@
             });
             const all = $('btnGradeApplyAll');
             if (all) all.addEventListener('click', () => this.applyGradeToAll());
+            const some = $('btnGradeApplySelected');
+            if (some) some.addEventListener('click', () => this.applyGradeToSelected());
             const cp = $('btnGradeCopySet');
             if (cp) cp.addEventListener('click', () => this.copySettings());
             const ps = $('btnGradePasteSet');
             if (ps) ps.addEventListener('click', () => this.pasteSettings());
-            // 调色操作收进标题右侧：⋯ 菜单负责应用到全部 / 复制 / 粘贴 / 导入 LR。
+            // 调色操作收进标题右侧：⋯ 菜单负责应用到全部 / 应用到选中 /
+            // 复制 / 粘贴 / 导入 LR。
             // 标题本身是折叠开关，所以按钮区先拦掉冒泡，避免点操作时把整组收起。
             const titleActs = $('gradeTitleActions');
             if (titleActs) titleActs.addEventListener('click', (e) => e.stopPropagation());

@@ -90,7 +90,7 @@ const PROBE = `(async () => {
     const gradeTitleText = ((gradeGrp.querySelector('.pg-title-text') || {}).textContent || '').trim();
     const oldActRow = Array.prototype.slice.call(gradeGrp.children)
         .some((el) => el.classList.contains('param-row') && el.classList.contains('grade-acts'));
-    const gradeActionIds = ['btnGradeApplyAll', 'btnGradeCopySet', 'btnGradePasteSet', 'btnGradeImportXmp']
+    const gradeActionIds = ['btnGradeApplyAll', 'btnGradeApplySelected', 'btnGradeCopySet', 'btnGradePasteSet', 'btnGradeImportXmp']
         .filter((id) => !!$(id));
     $('btnGradeMore').click();
     const gradeMenuOpen = !$('gradeMoreMenu').hidden
@@ -210,7 +210,7 @@ async function main() {
         check(res.opened && res.onTemplate && res.closed && /样式/.test(res.label),
             '更多菜单可开合，切到隐藏页签后按钮回显当前页签名',
             JSON.stringify({ opened: res.opened, onTemplate: res.onTemplate, closed: res.closed, label: res.label }));
-        check(res.gradeTitleText === '基础' && !res.oldActRow && res.gradeActionIds.length === 4,
+        check(res.gradeTitleText === '基础' && !res.oldActRow && res.gradeActionIds.length === 5,
             '调色操作收进组标题，原来的五按钮行不再占位',
             JSON.stringify({ title: res.gradeTitleText, oldActRow: res.oldActRow, ids: res.gradeActionIds }));
         check(res.gradeMenuOpen && res.gradeMenuClosed,

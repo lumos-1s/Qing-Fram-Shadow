@@ -1390,6 +1390,7 @@
                                         <button id="btnGradeMore" class="mini-btn grade-more-btn" type="button" aria-haspopup="true" aria-expanded="false" title="更多调色操作">⋯</button>
                                         <span class="tab-more-menu grade-more-menu" id="gradeMoreMenu" hidden>
                                             <button id="btnGradeApplyAll" class="tab-more-action" type="button" title="把这套参数复制给本次导入的所有照片">应用到全部</button>
+                                            <button id="btnGradeApplySelected" class="tab-more-action" type="button" title="只把这套调色参数复制给胶片条里多选的照片（不含当前照片）">应用到选中</button>
                                             <button id="btnGradeCopySet" class="tab-more-action" type="button" title="复制这张照片的调色 + 边框设置（不写系统剪贴板）">复制设置</button>
                                             <button id="btnGradePasteSet" class="tab-more-action" type="button" title="把复制的设置粘贴到胶片条里多选的照片">粘贴设置</button>
                                             <button id="btnGradeImportXmp" class="tab-more-action" type="button" title="导入 Lightroom / Camera Raw 的 .xmp 调色预设">导入 LR 预设</button>
@@ -1644,7 +1645,7 @@
                                 <span class="pval" id="lblCgBalance">0</span>
                             </div>
                         </div>
-<!--                        <div class="hint-box">调色只作用于当前选中的照片，参数是记录值（随草稿保存），随时可重置，不破坏原图。「应用到全部」把这组数值复制给本次导入的所有照片。</div>-->
+<!--                        <div class="hint-box">调色只作用于当前选中的照片，参数是记录值（随草稿保存），随时可重置，不破坏原图。「应用到全部」把这组数值复制给本次导入的所有照片，「应用到选中」只给胶片条里勾选的那几张。</div>-->
                         <div class="param-group" id="grpBw">
                             <div class="pg-title collapsible">黑白</div>
                             <div class="param-row chk-row">
