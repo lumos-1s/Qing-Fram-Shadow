@@ -228,6 +228,31 @@
         return { el, w, h, turns };
     };
 
+    // 画布是否「每个像素都完全不透明」。JPEG 没有 alpha 通道：只要有一个
+    // alpha<255 的像素，直接 toDataURL('image/jpeg') 就会把它写成黑块。
+    // 用 8 条横带 + 四个角取样；任何一处发现半透明就交给铺白底的路径。
+    window.qfsAllOpaque = function (canvas) {
+        if (!canvas || !canvas.width || !canvas.height || typeof canvas.getContext !== 'function') return false;
+        const g = canvas.getContext('2d', { willReadFrequently: true });
+        if (!g) return false;
+        const w = canvas.width, h = canvas.height;
+        const probe = (x, y, bw, bh) => {
+            const d = g.getImageData(x, y, bw, bh).data;
+            for (let i = 3; i < d.length; i += 4) if (d[i] !== 255) return false;
+            return true;
+        };
+        try {
+            for (let b = 0; b < 8; b++) {
+                const y = Math.min(h - 1, Math.round((b + 0.5) * (h - 1) / 8));
+                if (!probe(0, y, w, 1)) return false;
+            }
+            // 圆角 / 羽化边框的透明区常常只在最角上，横带可能刚好绕开
+            if (!probe(0, 0, 2, 2) || !probe(w - 2, 0, 2, 2)
+                || !probe(0, h - 2, 2, 2) || !probe(w - 2, h - 2, 2, 2)) return false;
+        } catch (_) { return false; }
+        return true;
+    };
+
     // 不透明且近黑的像素比例。旋转前后各量一次，就能识别「源图正常、
     // 结果却整片纯黑」这种任何上游异常（解码 / 驱动 / 内存）都可能出现的坏图。
     window.qfsBlackRatio = function (src) {

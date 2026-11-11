@@ -1,10 +1,10 @@
 // .qfs 模块:自包含工程文件(单文件 JSON:bundle 模板 + 源照片 base64 + 每图模板)
 window.App = Object.assign(window.App || {}, {
-    // 能不能直接拿 im.el 当编码源?仅当它是一块尺寸与 im.w/im.h 完全一致的 canvas ——
-    // 也就是 applyOrientation 旋转后的产物(app.js:1302 建的 canvas,内容来自 JPEG 解码,必然不透明)。
-    // 那种情况下"新建同尺寸画布 + 铺白底 + 1:1 blit"整步都是空操作,直接对原 canvas 编码得到的是
-    // **逐字节相同**的 JPEG,却省掉一整块全分辨率画布(24MP ≈ 96MB)和一次全分辨率 blit。
-    // 返回 null 表示必须走建画布的老路:源是 <img>,可能有 alpha,需要白底。
+    // 能不能直接拿 im.el 当编码源？只判结构（尺寸吻合的 canvas），
+    // 不判 alpha —— 是否真的能复用由 imageToQfsBase64 里的 qfsAllOpaque 决定。
+    // 早先这里假设「canvas 一定来自不透明的 JPEG」，但旋转/裁切透明 PNG、
+    // 艺术卡、羽化边框产生的 canvas 带 alpha，直接编码 JPEG 会整片发黑。
+    // 返回 null 表示必须走建画布 + 铺白底的老路。
     qfsReusableSource(im) {
         const el = im && im.el;
         if (!el || el.tagName !== 'CANVAS') return null;
@@ -18,7 +18,12 @@ window.App = Object.assign(window.App || {}, {
         // 工程文件要存调色后的成品：先补出全分辨率烘焙，再拿它当编码源
         if (window.ensureFullGrade) window.ensureFullGrade(im);
         const gradedCanvas = (im._grade && !im._grade.neutral && im._grade.canvas) ? im._grade.canvas : null;
-        const reuse = gradedCanvas ? null : this.qfsReusableSource(im);
+        let reuse = gradedCanvas ? null : this.qfsReusableSource(im);
+        // qfsReusableSource 只判「是 canvas、尺寸吻合」，没法知道它带不带 alpha。
+        // 旋转/裁切透明 PNG、艺术卡、羽化边框后 im.el 也是 canvas 且带 alpha，
+        // 直接编码 JPEG 会把这些区域写成黑 —— 和之前修过的「旋转变黑」是同一根因，
+        // 只是发生在存工程文件时。拿不准就别复用，走下面铺白底的安全路径。
+        if (reuse && (!window.qfsAllOpaque || !window.qfsAllOpaque(reuse))) reuse = null;
         if (reuse) return reuse.toDataURL(mime, quality).split(',')[1];
         const imSrc = gradedCanvas || im.el;
         const c = document.createElement('canvas');
