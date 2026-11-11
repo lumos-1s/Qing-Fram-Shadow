@@ -474,7 +474,6 @@ window.App = {
             canvas: $('previewCanvas'), canvasPane: $('canvasPane'), placeholder: $('placeholder'), inspector: $('inspector'),
             stage: document.querySelector('.stage'),
             thumbStrip: $('thumbStrip'), dropOverlay: $('dropOverlay'),
-            batchBar: $('batchBar'), batchBarText: $('batchBarText'),
             sidebar: $('sidebar'), inspectorRail: $('btnInspectorRail'), sidebarRail: $('btnSidebarRail'),
             importProgress: $('importProgress'), importProgressFill: $('importProgressFill'), importProgressText: $('importProgressText'),
             tabs: $('inspTabs'), panels: Array.from(document.querySelectorAll('.tab-panel')),
@@ -508,15 +507,6 @@ window.App = {
         const pickSample = this.$('btnSamplePhoto');
         if (pickSample) pickSample.addEventListener('click', () => this.loadSamplePhoto());
         if (d.btnOpenFolder) d.btnOpenFolder.addEventListener('click', () => this.openImageFolder());
-        const batchApply = this.$('btnBatchApply');
-        if (batchApply) batchApply.addEventListener('click', () => this.syncToSelected());
-        const batchClear = this.$('btnBatchClear');
-        if (batchClear) batchClear.addEventListener('click', () => {
-            this.batchSel = [];
-            this.selectedIdx = [];
-            this.buildThumbnails();
-            this.setStatus('已取消多选');
-        });
         d.btnSave.addEventListener('click', () => this.doExport());
         if (d.btnCopy) d.btnCopy.addEventListener('click', () => this.copyImage());
         if (d.btnExportSettings && d.exportPop) {
@@ -3249,16 +3239,8 @@ window.App = {
         });
         this._thumbEls = elMap;
         strip.style.display = this.images.length > 1 ? 'flex' : 'none';
-        // 多选操作条:只在「真的选了多张」时出现,把「同步到选中」从顶栏挪到缩略图上方。
-        // 选 1 张时它就是当前编辑图,同步没有目标,不显示。
-        const bar = this.dom.batchBar;
-        if (bar) {
-            const n = this.batchSel.length;
-            bar.hidden = !(n > 1);
-            if (n > 1 && this.dom.batchBarText) {
-                this.dom.batchBarText.textContent = `已选 ${n} 张`;
-            }
-        }
+        // 多选不再弹浮动操作条（它压在照片下沿）：批量同步走顶栏「同步到选中」/Ctrl+D，
+        // 批量删除走右键菜单或 Delete，取消多选直接单击任一缩略图或再按一次 Ctrl+A。
         if (typeof this.updateExportEntry === 'function') this.updateExportEntry();
         if (typeof this.updateImmersiveEntry === 'function') this.updateImmersiveEntry();
     },
