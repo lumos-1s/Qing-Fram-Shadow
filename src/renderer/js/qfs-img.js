@@ -83,7 +83,90 @@
 
     // 便于确认当前进程跑的是不是含旋转修复的代码：
     // 开发者工具控制台输入 window.QFS_ROTATE_FIX，返回 undefined 就是旧进程/旧版本。
-    window.QFS_ROTATE_FIX = 'rotate-alpha-v3-20261110';
+    window.QFS_ROTATE_FIX = 'rotate-fast-v4-20261111';
+
+    // 一次性拿到「有内容比例」和「不透明近黑比例」。
+    //
+    // 为什么不能沿用 qfsOpaqueRatio 的 drawImage(整图 → 32×32)：
+    // 对一张刚 drawImage 画完的 24MP 画布，那一步要先把它整张落定/读回，
+    // 6000×4000 实测 140ms/次；而 getImageData 只读**请求的那几行**，同样图上 0.7ms。
+    // 旋转一次要判两次（源图 + 结果），正好差出 ~300ms —— 也就是用户感觉到的「慢」。
+    //
+    // canvas 源走条带；Image 源读不到像素，只能退回缩放采样（~140ms）——
+    // 那条路径只在「结果异常、回头诊断源图」时才走，正常旋转碰不到。
+    window.qfsAlphaStats = function (src) {
+        if (!src) return null;
+        const w = src.naturalWidth || src.width || 0;
+        const h = src.naturalHeight || src.height || 0;
+        if (!w || !h) return null;
+        const isCanvas = typeof src.getContext === 'function';
+        if (!isCanvas) {
+            // Image：先缩到小画布再读。保持老口径（32×32），只合并成一次遍历。
+            const c = document.createElement('canvas');
+            c.width = 32; c.height = 32;
+            const g = c.getContext('2d', { willReadFrequently: true });
+            if (!g) return null;
+            try {
+                g.drawImage(src, 0, 0, 32, 32);
+                const d = g.getImageData(0, 0, 32, 32).data;
+                let opaque = 0, black = 0;
+                for (let i = 0; i < d.length; i += 4) {
+                    if (d[i + 3] > 8) opaque++;
+                    if (d[i + 3] > 200 && d[i] + d[i + 1] + d[i + 2] < 45) black++;
+                }
+                return { opaque: opaque / 1024, black: black / 1024, samples: 1024, method: 'scale' };
+            } catch (_) { return null; }
+        }
+        const g = src.getContext('2d');
+        if (!g) return null;
+        // 8 条 × 2px：24MP 上总共 6.4 万样本，足够判「全空 / 全黑」——
+        // 要区分的是"根本没画上"和"整片纯黑"，不是统计细节。
+        // 16×4 要遍历 38 万像素，纯 JS 循环本身就吃掉几十毫秒，不值。
+        const bands = 8;
+        const bh = Math.max(1, Math.min(2, h));
+        const span = Math.max(1, h - bh);
+        let opaque = 0, black = 0, n = 0;
+        try {
+            for (let b = 0; b < bands; b++) {
+                const y = Math.round((b + 0.5) * span / bands);
+                const d = g.getImageData(0, y, w, bh).data;
+                for (let i = 0; i < d.length; i += 4) {
+                    if (d[i + 3] > 8) opaque++;
+                    if (d[i + 3] > 200 && d[i] + d[i + 1] + d[i + 2] < 45) black++;
+                }
+                n += d.length / 4;
+            }
+        } catch (_) { return null; }
+        if (!n) return null;
+        return { opaque: opaque / n, black: black / n, samples: n, method: 'bands' };
+    };
+
+    // 把离屏画布直接当成图源交出去 —— 旋转、EXIF 方向校正这类**纯几何**操作
+    // 根本不需要经过一次 PNG 压缩再解码。以前统一走 qfsCanvasImage：
+    // 24MP 的 toBlob('image/png') 要 471ms，再重载解码 25ms，全花在「给像素搬家」上，
+    // 而真正转那一下只要 13ms。
+    //
+    // 下游一律按 HTMLImageElement 读 el，所以这里把 canvas 缺的几个字段补齐
+    // （engine.js 里的烘焙画布早就是这么干的）：naturalWidth/naturalHeight 给
+    // 各处算比例用，complete 给预设墙的「这张图能出图吗」判断用 ——
+    // canvas 没有 complete 会得到 undefined，`!undefined` 直接把整面墙判成未就绪。
+    //
+    // src 故意不伪造：canvas 没有 URL 可言，下游读 im.el.src 的地方已经各自兜底
+    // （缩略图占位 / 预设墙缓存 key / 壁纸兜底都是 `|| ''`）。
+    window.qfsCanvasSource = function (canvas) {
+        if (!canvas) return null;
+        if (!canvas.width || !canvas.height) return null;
+        if (canvas.naturalWidth !== canvas.width) {
+            try { canvas.naturalWidth = canvas.width; } catch (_) { /* 只读属性就跳过 */ }
+        }
+        if (canvas.naturalHeight !== canvas.height) {
+            try { canvas.naturalHeight = canvas.height; } catch (_) { /* 同上 */ }
+        }
+        if (canvas.complete === undefined) {
+            try { canvas.complete = true; } catch (_) { /* 同上 */ }
+        }
+        return canvas;
+    };
 
     // 不透明且近黑的像素比例。旋转前后各量一次，就能识别「源图正常、
     // 结果却整片纯黑」这种任何上游异常（解码 / 驱动 / 内存）都可能出现的坏图。

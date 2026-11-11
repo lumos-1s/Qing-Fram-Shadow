@@ -737,9 +737,10 @@ window.App = Object.assign(window.App || {}, {
         const ctx = c.getContext('2d');
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(st.src, x, y, w, h, 0, 0, w, h);
-        // 统一走 qfsCanvasImage：PNG 保留 alpha（JPEG 会把透明区烘成黑块），
-        // 也不顺手做一次有损压缩（导出格式由导出设置决定）。
-        const out = await window.qfsCanvasImage(c);
+        // 裁切同样是纯几何操作：画布直接当图源，不再 PNG 编码再重载。
+        // 24MP 上那一次 toBlob 要 470ms 左右，而裁切本身是个位图拷贝。
+        // alpha 也天然保留（以前用 JPEG 才会把透明区烘成黑块）。
+        const out = window.qfsCanvasSource ? window.qfsCanvasSource(c) : await window.qfsCanvasImage(c);
         if (!out) { this.setStatus('裁切失败：无法生成图片'); return false; }
 
         im.el = out;                 // 渲染/导出/拼图都直接取 im.el，换掉即全面生效

@@ -69,6 +69,7 @@
     "test:hasselblad": "node tools/run-electron.js tools/test-hasselblad.js",
     "test:fxlabels": "node tools/run-electron.js tools/test-grade-fx-labels.js",
     "test:artpalette": "node tools/run-electron.js tools/test-art-card-palette.js",
+    "bench:rotate": "node tools/run-electron.js tools/bench-rotate.js",
     "test:rotatealpha": "node tools/run-electron.js tools/test-rotate-alpha.js",
     "test:glblack": "node tools/run-electron.js tools/test-grade-gl-black.js",
     "test:panel:audit": "node tools/run-electron.js tools/test-panel-visibility.js --audit",

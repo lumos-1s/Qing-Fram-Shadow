@@ -299,27 +299,23 @@ async function main() {
         '裁切弹窗旋转 90° 后应用：宽高互换', JSON.stringify(crop));
     check(clean(crop.p), '裁切弹窗旋转后透明区仍保留（共用入口没退化）', JSON.stringify(crop.p));
 
-    // 8) 反向自检：把编码换回 0.1.25 的 JPEG，整张透明图 + 艺术卡必须复现「整张黑」。
-    //    证明下面第 9 条的断言真的能抓住这个 bug，而不是空跑。
+    // 8) 反向自检：JPEG 没有 alpha 通道，透明像素会被写成不透明纯黑 ——
+    //    正是 0.1.25 里「旋转后整张黑」的真凶。这里直接验证这个机制本身：
+    //    以后谁想把 qfsCanvasSource 换回 toBlob('image/jpeg')，这条会立刻亮。
+    //    （旋转已改成画布直持、连编码都不做，所以不再需要 mock 入口来复现。）
     const legacy = await exec(`(async () => {
-        const orig = window.qfsCanvasImage;
-        window.qfsCanvasImage = (canvas) => new Promise((res) => {
-            const im = new Image();
-            im.onload = () => res(im.naturalWidth ? im : null);
-            im.onerror = () => res(null);
-            im.src = canvas.toDataURL('image/jpeg', 0.95);
-        });
-        let out;
-        try {
-            await window.__artSetup('empty');
-            await window.App.rotateCurrentPhoto();
-            await window.App.flushRender();
-            out = window.__photoBlackPct();
-        } finally { window.qfsCanvasImage = orig; }
-        return out;
+        const src = await window.__mk(800, 600, true, false);   // 左半彩色、右半全透明
+        // __mk 交回来的是 Image，要重新画到画布上才能编码（Image 没有 toDataURL）
+        const c = document.createElement('canvas');
+        c.width = 800; c.height = 600;
+        c.getContext('2d').drawImage(src, 0, 0);
+        const im = new Image();
+        await new Promise((r) => { im.onload = r; im.onerror = r; im.src = c.toDataURL('image/jpeg', 0.95); });
+        return window.__px(im);
     })()`);
-    check(legacy.blackPct >= 90,
-        '反向自检：旧 JPEG 编码会复现艺术卡整张纯黑（与用户截图一致）', JSON.stringify(legacy));
+    check(legacy.blackOpaquePct > 20,
+        '反向自检：JPEG 编码把透明区烘成不透明黑（这就是不能回退 JPEG 的原因）',
+        JSON.stringify(legacy));
 
     // 9) 当前实现：同一场景必须保持白卡纸，不出现整张黑
     const artBefore = await exec(`(async () => await window.__artSetup('empty'))()`);
@@ -416,7 +412,7 @@ async function main() {
 
     // 15) 运行时标记：便于确认跑的是含修复的代码（旧进程返回 undefined）
     const mark = await exec(`(() => window.QFS_ROTATE_FIX || null)()`);
-    check(typeof mark === 'string' && mark.indexOf('rotate-alpha') === 0,
+    check(typeof mark === 'string' && /^rotate-(alpha|fast)-v\d/.test(mark),
         '运行时标记 QFS_ROTATE_FIX 存在（可区分新旧进程）', String(mark));
 
     // 16) 黑图比例探针：彩色≈0、纯黑≈1
@@ -465,6 +461,47 @@ async function main() {
         '结果全黑被拦下时给出明确提示，而不是静默黑屏', blackGuard.status);
     check(blackGuard.px && blackGuard.px.blackOpaquePct === 0 && blackGuard.px.colorPct > 90,
         '结果全黑被拦下后原图内容完好', JSON.stringify(blackGuard.px));
+
+    // 18) 画布直持契约：旋转结果是一个 canvas，但下游一律按 Image 读它，
+    //     缺的字段必须补齐 —— naturalWidth/naturalHeight 给各处算比例，
+    //     complete 给预设墙的「能出图吗」判断（缺了会被判成未就绪，整面墙空掉）。
+    const asSrc = await exec(`(async () => {
+        await window.__noneSetup('color');
+        const A = window.App;
+        await A.rotateCurrentPhoto();
+        const el = A.image.el;
+        return {
+            isCanvas: !!(el && el.getContext && el.getContext('2d')),
+            w: el && el.width, h: el && el.height,
+            nw: el && el.naturalWidth, nh: el && el.naturalHeight,
+            complete: el && el.complete,
+            imW: A.image.w, imH: A.image.h,
+            px: window.__px(el)
+        };
+    })()`);
+    check(asSrc.isCanvas === true, '旋转结果直接是 canvas（不再走 PNG 编解码往返）', JSON.stringify(asSrc));
+    check(asSrc.w === 600 && asSrc.h === 800 && asSrc.nw === 600 && asSrc.nh === 800,
+        'canvas 补齐 naturalWidth/naturalHeight，下游按 Image 算比例不会错', JSON.stringify(asSrc));
+    check(asSrc.complete === true,
+        'canvas 补齐 complete（预设墙靠它判断「能出图」，缺了整面墙会空）', JSON.stringify(asSrc));
+    check(asSrc.px && asSrc.px.opaquePct > 95 && asSrc.px.blackOpaquePct === 0,
+        '画布直持后像素内容仍正确（不透明彩色图原样保留）', JSON.stringify(asSrc.px));
+
+    // 19) 连转两次：第二次的源是 canvas 而不是 Image，不能要求它 decode，
+    //     也不能因为「源不是 Image」就拒绝或画出空图。
+    const twice = await exec(`(async () => {
+        await window.__noneSetup('color');
+        const A = window.App;
+        await A.rotateCurrentPhoto();
+        const first = { w: A.image.w, h: A.image.h };
+        await A.rotateCurrentPhoto();
+        return { first, w: A.image.w, h: A.image.h, px: window.__px(A.image.el),
+            isCanvas: !!(A.image.el && A.image.el.getContext) };
+    })()`);
+    check(twice.first.w === 600 && twice.w === 800 && twice.h === 600,
+        '连续旋转两次：宽高各换两次，回到原始朝向', JSON.stringify(twice));
+    check(twice.px && twice.px.opaquePct > 95 && twice.px.blackOpaquePct === 0,
+        '连续旋转两次：第二次以 canvas 为源也不出空图/黑图', JSON.stringify(twice.px));
 
     await win.destroy();
     app.quit();
