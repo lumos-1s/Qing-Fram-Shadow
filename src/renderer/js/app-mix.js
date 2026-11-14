@@ -195,12 +195,16 @@
             gl.viewport(0, 0, w, h);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
             const bands = (window.App && window.App.MIX_BANDS) || [];
+            // mix 可能是 null（defaultGrade / sanitizeMix 都给 null），直接下标会抛
+            // TypeError，被下面的 catch 吞成「pass 返回 null」，于是整张图退回原样 ——
+            // 表现就是「点颜色调了没反应」。这里先兜成空对象。
             // 三维表可用时色带已经在表里，这里只补样本 —— 把带的三档全部置 0，
             // 权重仍算但不产生位移（乘法 1、加法 0），就不用给着色器加分支。
+            const mv = mix || {};
             const bandsOn = withBands !== false;
             const dh = [], ds = [], dl = [], hc = [], hw = [];
             for (const b of bands) {
-                const v = (bandsOn && (mix[b.k] || {})) || {};
+                const v = (bandsOn && (mv[b.k] || {})) || {};
                 dh.push((Number(v.h) || 0) / 100);
                 ds.push((Number(v.s) || 0) / 100);
                 dl.push((Number(v.l) || 0) / 100);

@@ -382,6 +382,63 @@ async function main() {
         check(blueKept, '⑫ 邻近色不受影响（蓝色保持）', `blue=${px.blue}`);
     }
 
+    /* ⑬ 端到端：样本经 setGrade 进管线后，烘出来的像素必须真的变
+       ⑫ 只验了 QfsMix.pass 本身；这条盯的是 bakeOne 那次调用有没有被执行 ——
+       mix 为 null 时 pass 抛 TypeError 被吞成 null，画面会静默退回原图。 */
+    const e2e = await exec(`(async () => {
+        const A = window.App, im = A.image;
+        const cv = (im._grade || {}).low || (im._grade || {}).canvas;
+        if (!cv) return { ok: false, why: 'no-low' };
+        const w = cv.width, h = cv.height;
+        const data = cv.getContext('2d').getImageData(0, 0, w, h).data;
+        const rgb2hsl = (r, g, b) => {
+            r /= 255; g /= 255; b /= 255;
+            const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+            const d = mx - mn;
+            if (d < 1e-6) return { h: 0, s: 0, l: l };
+            const s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+            let hh;
+            if (mx === r) hh = ((g - b) / d) % 6;
+            else if (mx === g) hh = (b - r) / d + 2;
+            else hh = (r - g) / d + 4;
+            hh *= 60;
+            if (hh < 0) hh += 360;
+            return { h: hh, s: s, l: l };
+        };
+        // 找一个明显有色的像素当样本中心，别落在灰面上
+        let pick = null;
+        for (let y = Math.floor(h * 0.2); y < h * 0.8 && !pick; y += 4) {
+            for (let x = Math.floor(w * 0.2); x < w * 0.8; x += 4) {
+                const i = (y * w + x) * 4;
+                const c = rgb2hsl(data[i], data[i + 1], data[i + 2]);
+                if (c.s > 0.5 && c.l > 0.15 && c.l < 0.85) { pick = { x: x, y: y, r: data[i], g: data[i + 1], b: data[i + 2], hsl: c }; break; }
+            }
+        }
+        if (!pick) return { ok: false, why: 'no-color-pixel' };
+        const before = [pick.r, pick.g, pick.b].join(',');
+        A.setGrade({ samples: [{ hue: Math.round(pick.hsl.h), sat: pick.hsl.s, light: pick.hsl.l,
+            range: 60, dh: 50, ds: 0, dl: 0, dv: 0 }] });
+        await A.flushRender();
+        await new Promise((r) => setTimeout(r, 240));
+        const after = (im._grade || {}).low;
+        if (!after) return { ok: false, why: 'no-low-after' };
+        const d2 = after.getContext('2d').getImageData(pick.x, pick.y, 1, 1).data;
+        return { ok: true, before: before, after: [d2[0], d2[1], d2[2]].join(','),
+            hue: Math.round(pick.hsl.h), at: pick.x + ',' + pick.y };
+    })()`);
+    const e2eDelta = (() => {
+        if (!e2e.ok) return 0;
+        const a = e2e.before.split(',').map(Number), b = e2e.after.split(',').map(Number);
+        return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
+    })();
+    // 没有 WebGL 时整组混色器本来就不可用（QfsMix.pass 恒返回 null），不算缺陷
+    if (!glOk) {
+        skip('⑬ 端到端像素验证（本环境没有 WebGL，混色器整组不可用）');
+    } else {
+        check(e2e.ok && e2eDelta > 12, '⑬ 样本进了烘焙管线后画面真的变了',
+            e2e.ok ? `hue=${e2e.hue} ${e2e.before} -> ${e2e.after} @${e2e.at}` : `why=${e2e.why}`);
+    }
+
     console.log('────────────────────────────────────────────────────────────');
     if (skips.length) console.log(`SKIP ${skips.length} 项（环境不支持，见上）`);
     console.log(failures.length ? `FAILED: ${failures.length}` : 'ALL PASS');
