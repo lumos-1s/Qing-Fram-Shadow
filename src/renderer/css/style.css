@@ -1485,7 +1485,8 @@ input[type=color]::-webkit-color-swatch {
         hsl(var(--h), 65%, 88%));
 }
 /* WebGL 不可用：整组只留一句说明 */
-#grpMix.mix-na #mixRows, #grpMix.mix-na .curve-bar, #grpMix.mix-na .hint-box { display: none; }
+#grpMix.mix-na #mixRows, #grpMix.mix-na .curve-bar, #grpMix.mix-na #mixTabs,
+#grpMix.mix-na #pcPanel, #grpMix.mix-na .hint-box { display: none; }
 #grpMix.mix-na .mix-na-note { display: block; }
 
 /* 混色器吸管（对齐 LR 的 TAT）：激活后在画面上取色、上下拖动调这条色带。
@@ -1508,6 +1509,58 @@ input[type=color]::-webkit-color-swatch {
 #canvasPane.mix-picking #previewCanvas,
 #canvasPane.mix-picking #maskOverlay { cursor: crosshair !important; }
 .mix-na-note { display: none; font-size: var(--fs-11); color: var(--text-2); padding: calc(6px * var(--font-scale)) 0; }
+
+/* ── 混色器 / 点颜色 一级页签（对齐 LR：同一组里两个子页）──────────── */
+.mix-tabs {
+    display: flex; gap: 3px; margin-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--border);
+}
+.mix-tab {
+    flex: 1 1 0; min-width: 0; cursor: pointer;
+    border: 0; border-bottom: 2px solid transparent; background: transparent;
+    color: var(--text-2); font-size: var(--fs-11);
+    padding: calc(5px * var(--font-scale)) 0 calc(4px * var(--font-scale));
+    transition: color .15s, border-color .15s;
+}
+.mix-tab:hover { color: var(--text); }
+.mix-tab.active { color: var(--primary-text); border-bottom-color: var(--primary); font-weight: 600; }
+#grpMix[data-tab="pc"] .curve-bar,
+#grpMix[data-tab="pc"] #mixRows { display: none; }
+#grpMix:not([data-tab="pc"]) #pcPanel { display: none; }
+
+/* 点颜色：取样按钮 + 当前样本色块 + 样本列表按钮 */
+.pc-head { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-2) 0; }
+.pc-pick {
+    flex: none; display: inline-flex; align-items: center; gap: 3px;
+    padding-left: calc(5px * var(--font-scale)); padding-right: calc(5px * var(--font-scale));
+    font-size: var(--fs-11); white-space: nowrap;
+}
+.pc-pick svg { flex: none; opacity: .8; }
+.pc-pick.active { border-color: var(--primary); color: var(--primary-text); background: var(--primary-soft); }
+.pc-swatch {
+    width: 28px; height: 18px; flex: none; border-radius: 5px;
+    border: 1px solid var(--border); background: var(--surface-alt);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.35);
+}
+.pc-list-btn { flex: none; width: 26px; padding-left: 0; padding-right: 0; }
+.pc-list-btn[aria-expanded="true"] { border-color: var(--primary); color: var(--primary-text); }
+.pc-empty { display: none; font-size: var(--fs-11); color: var(--text-3); padding: 0 0 var(--sp-2); }
+#pcPanel.pc-none .pc-list-btn { display: none; }
+#pcPanel.pc-none .pc-empty { display: block; }
+#pcPanel.pc-none #pcRows { display: none; }
+.pc-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--sp-2); }
+.pc-item {
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    padding: calc(3px * var(--font-scale)) calc(5px * var(--font-scale));
+    border-radius: 7px; font-size: var(--fs-11); color: var(--text-2);
+}
+.pc-item:hover { background: var(--surface-alt); }
+.pc-item.active { background: var(--primary-soft); color: var(--primary-text); }
+.pc-item .pc-dot { width: 12px; height: 12px; border-radius: 3px; flex: none; border: 1px solid rgba(0,0,0,.16); }
+.pc-item .pc-name { flex: 1 1 auto; }
+.pc-item .pc-val { color: var(--text-3); }
+.pc-item .pc-del { border: 0; background: transparent; color: var(--text-3); cursor: pointer; font-size: var(--fs-11); padding: 0 2px; border-radius: 4px; }
+.pc-item .pc-del:hover { color: var(--danger, #e5484d); }
 
 /* 曲线编辑器：通道切换 + 画布 */
 .curve-bar { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }

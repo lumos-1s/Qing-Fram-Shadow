@@ -24,6 +24,10 @@
         'uniform sampler2D uT;',
         'uniform float uDh[8];uniform float uDs[8];uniform float uDl[8];',
         'uniform float uHc[8];uniform float uHw[8];',
+        // 点颜色（LR 的 Point Color）：样本中心色 + 范围 + 四档调整，最多 8 个样本
+        'uniform int uSn;',
+        'uniform float uPH[8];uniform float uPS[8];uniform float uPL[8];uniform float uPR[8];',
+        'uniform float uPDh[8];uniform float uPDs[8];uniform float uPDl[8];uniform float uPDv[8];',
         // LR 的「混色器」在 **HSL** 空间（色相/饱和度/明亮度），不是 HSV。
         // 用 HSV 的 V 当"明亮度"会出两个偏差：高饱和色 V 已经是 1，提亮完全提不动
         // （纯红 +24 明亮度在 LR 里会变亮变粉，我们纹丝不动）；低饱和色的 S 又偏高。
@@ -75,6 +79,41 @@
         // 明亮度直接加到 L：L 与感知亮度同构，不需要 HSV 那套"提亮抑制亮端"的补丁。
         // 0.42 是满档幅度，1−0.9L 让接近纯白时收力，避免整片糊成白。
         '    hsl.z=clamp(hsl.z+dl/wsum*0.42*(1.0-0.9*hsl.z),0.0,1.0);',
+        '  }',
+        // ── 点颜色样本 ──
+        // 权重 = 色相距离（由「范围」决定半宽）+ 饱和度/亮度接近度衰减；
+        // 颜色越接近样本色权重越高，所以一片同色会被整体带动，邻近色只被扫到一点。
+        '  if(uSn>0&&hsl.y>0.003&&hsl.z>0.01&&hsl.z<0.99){',
+        '    float ws=0.0,sh=0.0,ss=0.0,sl=0.0,sv=0.0,ha=0.0,sa=0.0,la=0.0;',
+        '    for(int k=0;k<8;k++){',
+        '      float live=step(float(k)+0.5,float(uSn));',
+        '      float d2=abs(hsl.x*360.0-uPH[k]);d2=min(d2,360.0-d2);',
+        '      float hw=6.0+uPR[k]*0.72;',
+        '      float w2=clamp(1.0-d2/hw,0.0,1.0);w2=w2*w2*(3.0-2.0*w2);',
+        // 范围越窄，饱和/亮度也要更接近才算同一个颜色；范围拉宽则放宽容差
+        '      float rt=1.0-uPR[k]*0.01;',
+        '      float dsa=abs(hsl.y-uPS[k])/(0.18+0.42*rt);',
+        '      w2*=clamp(1.0-dsa*dsa,0.0,1.0);',
+        '      float dla=abs(hsl.z-uPL[k])/(0.30+0.55*rt);',
+        '      w2*=clamp(1.0-dla*dla,0.0,1.0);',
+        '      w2*=live;',
+        '      ws+=w2;sh+=w2*uPDh[k];ss+=w2*uPDs[k];sl+=w2*uPDl[k];sv+=w2*uPDv[k];',
+        '      ha+=w2*uPH[k];sa+=w2*uPS[k];la+=w2*uPL[k];',
+        '    }',
+        '    if(ws>0.001){',
+        '      float t=min(ws,1.0);',
+        '      hsl.x=fract(hsl.x+(sh/ws)*0.1111*t);',
+        '      hsl.y=clamp(hsl.y*(1.0+(ss/ws)*t),0.0,1.0);',
+        '      hsl.z=clamp(hsl.z+(sl/ws)*0.42*(1.0-0.9*hsl.z)*t,0.0,1.0);',
+        // 变量：负值把范围内颜色向样本中心收拢、正值增强彼此的差异（LR 的「变异」）
+        '      float vv=(sv/ws)*t;',
+        '      if(abs(vv)>0.001){',
+        '        float hd=hsl.x-ha/ws;hd=hd-floor(hd+0.5);',
+        '        hsl.x=fract(hsl.x+vv*0.5*hd);',
+        '        hsl.y=clamp(hsl.y+vv*0.5*(hsl.y-sa/ws),0.0,1.0);',
+        '        hsl.z=clamp(hsl.z+vv*0.35*(hsl.z-la/ws),0.0,1.0);',
+        '      }',
+        '    }',
         '  }',
         '  gl_FragColor=vec4(hsl2rgb(hsl),1.0);',
         '}'
@@ -130,7 +169,16 @@
                 ds: gl.getUniformLocation(prog, 'uDs'),
                 dl: gl.getUniformLocation(prog, 'uDl'),
                 hc: gl.getUniformLocation(prog, 'uHc'),
-                hw: gl.getUniformLocation(prog, 'uHw')
+                hw: gl.getUniformLocation(prog, 'uHw'),
+                sn: gl.getUniformLocation(prog, 'uSn'),
+                pH: gl.getUniformLocation(prog, 'uPH'),
+                pS: gl.getUniformLocation(prog, 'uPS'),
+                pL: gl.getUniformLocation(prog, 'uPL'),
+                pR: gl.getUniformLocation(prog, 'uPR'),
+                pDh: gl.getUniformLocation(prog, 'uPDh'),
+                pDs: gl.getUniformLocation(prog, 'uPDs'),
+                pDl: gl.getUniformLocation(prog, 'uPDl'),
+                pDv: gl.getUniformLocation(prog, 'uPDv')
             };
             gl.uniform1i(gl.getUniformLocation(prog, 'uT'), 0);
             return true;
@@ -140,16 +188,19 @@
         }
     }
 
-    function pass(src, mix, w, h) {
+    function pass(src, mix, samples, w, h, withBands) {
         if (!init()) return null;
         try {
             if (glc.width !== w || glc.height !== h) { glc.width = w; glc.height = h; }
             gl.viewport(0, 0, w, h);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
             const bands = (window.App && window.App.MIX_BANDS) || [];
+            // 三维表可用时色带已经在表里，这里只补样本 —— 把带的三档全部置 0，
+            // 权重仍算但不产生位移（乘法 1、加法 0），就不用给着色器加分支。
+            const bandsOn = withBands !== false;
             const dh = [], ds = [], dl = [], hc = [], hw = [];
             for (const b of bands) {
-                const v = mix[b.k] || {};
+                const v = (bandsOn && (mix[b.k] || {})) || {};
                 dh.push((Number(v.h) || 0) / 100);
                 ds.push((Number(v.s) || 0) / 100);
                 dl.push((Number(v.l) || 0) / 100);
@@ -161,9 +212,33 @@
             gl.uniform1fv(uni.dl, new Float32Array(dl));
             gl.uniform1fv(uni.hc, new Float32Array(hc));
             gl.uniform1fv(uni.hw, new Float32Array(hw));
+            // 样本：固定上传 8 组，用 uSn 截断实际生效个数（未用的位置填中性值）
+            const list = Array.isArray(samples) ? samples.slice(0, 8) : [];
+            const pH = [], pS = [], pL = [], pR = [];
+            const pDh = [], pDs = [], pDl = [], pDv = [];
+            for (let i = 0; i < 8; i++) {
+                const s = list[i];
+                pH.push(s ? ((((Number(s.hue) || 0) % 360) + 360) % 360) / 360 : 0);
+                pS.push(s ? Math.max(0, Math.min(1, Number(s.sat) || 0)) : 0);
+                pL.push(s ? Math.max(0.01, Math.min(0.99, Number(s.light) || 0.5)) : 0.5);
+                pR.push(s ? Math.max(0, Math.min(100, Number(s.range) || 0)) : 0);
+                pDh.push(s ? (Number(s.dh) || 0) / 100 : 0);
+                pDs.push(s ? (Number(s.ds) || 0) / 100 : 0);
+                pDl.push(s ? (Number(s.dl) || 0) / 100 : 0);
+                pDv.push(s ? (Number(s.dv) || 0) / 100 : 0);
+            }
+            gl.uniform1i(uni.sn, list.length);
+            gl.uniform1fv(uni.pH, new Float32Array(pH));
+            gl.uniform1fv(uni.pS, new Float32Array(pS));
+            gl.uniform1fv(uni.pL, new Float32Array(pL));
+            gl.uniform1fv(uni.pR, new Float32Array(pR));
+            gl.uniform1fv(uni.pDh, new Float32Array(pDh));
+            gl.uniform1fv(uni.pDs, new Float32Array(pDs));
+            gl.uniform1fv(uni.pDl, new Float32Array(pDl));
+            gl.uniform1fv(uni.pDv, new Float32Array(pDv));
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             return glc;
-        } catch (_) {
+        } catch (e) {
             return null;
         }
     }
@@ -291,6 +366,8 @@
             // 吸管取色（LR 的 TAT）：必须在混色器滑块绑定之后，
             // 它要读写 _mixMetric 与 _gradeExtra.mix 的那一套 id。
             this._initMixPicker();
+            // 点颜色（LR 的 Point Color）：取色建样本，和上面那套互斥
+            this._initPointColor();
             // WebGL 不可用：混色器整组禁用并说明原因，其余功能照常
             const grpMix = $('grpMix');
             if (grpMix && window.QfsMix && !window.QfsMix.available()) {
@@ -330,6 +407,7 @@
 
             const setOn = (on) => {
                 st.on = !!on;
+                if (st.on && this._pc && this._pc.setOn) this._pc.setOn(false);
                 btn.classList.toggle('active', st.on);
                 btn.setAttribute('aria-pressed', st.on ? 'true' : 'false');
                 if (pane) pane.classList.toggle('mix-picking', st.on);
@@ -340,6 +418,7 @@
                     this._mixPickHot(null);
                 }
             };
+            st.setOn = setOn;
 
             const onDown = (e) => {
                 if (!st.on || e.button !== 0) return;
@@ -515,6 +594,247 @@
             if (row) row.classList.add('mix-hot');
         },
 
+        /* ── 点颜色（对齐 LR 的 Point Color）────────────────────────────
+         * 和混色器的 8 个固定色带是两件事：这里的样本中心色就是「用户点到的那个
+         * 颜色」，最多 8 个；样本自己的 色相/饱和度/明亮度/变量 只作用在够接近
+         * 它的像素上，「范围」决定"够接近"有多宽。
+         *
+         * 采样复用 _mixPickSample：同一套坐标口径、同样从烘焙结果取样，
+         * 所以取色取到的就是屏幕上看到的那个颜色。
+         */
+        _initPointColor() {
+            const $ = (id) => document.getElementById(id);
+            const cv = this.dom && this.dom.canvas;
+            const ov = document.getElementById('maskOverlay');
+            const pane = (this.dom && this.dom.canvasPane) || document.getElementById('canvasPane');
+            const btn = $('btnPcPick');
+            const grp = $('grpMix');
+            if (!btn || !grp) return;
+            const tmp = document.createElement('canvas');
+            tmp.width = 1; tmp.height = 1;
+            const st = this._pc = {
+                on: false, idx: 0,
+                ctx: tmp.getContext('2d', { willReadFrequently: true })
+            };
+            // 滑块拖动走 rAF 节流：这份「还没落地」的快照必须在样本集合变化时作废，
+            // 否则一个排在队列里的旧快照会把刚删掉 / 刚新增的样本覆盖回去。
+            let raf = 0, pending = null, settle = 0;
+            const dropPending = () => {
+                pending = null;
+                if (raf) { cancelAnimationFrame(raf); raf = 0; }
+                clearTimeout(settle);
+                settle = 0;
+            };
+            st.dropPending = dropPending;
+
+            const setOn = (on) => {
+                st.on = !!on;
+                // 两套取色互斥：同时开着会抢同一个画布按下事件
+                if (st.on && this._mixPick && this._mixPick.setOn) this._mixPick.setOn(false);
+                btn.classList.toggle('active', st.on);
+                btn.setAttribute('aria-pressed', st.on ? 'true' : 'false');
+                if (pane) pane.classList.toggle('mix-picking', st.on);
+                if (st.on) this.setStatus('点颜色取样：在照片上点一下取这个颜色（Esc 退出）');
+            };
+            st.setOn = setOn;
+
+            const onDown = (e) => {
+                if (!st.on || e.button !== 0) return;
+                if (this._mixPick && this._mixPick.on) return;
+                const s = this._mixPickSample(e);
+                e.preventDefault(); e.stopPropagation();
+                if (!s) { this.setStatus('点在照片范围内取色（这里落在画布或边框上）'); return; }
+                if (s.flat) { this.setStatus('这里接近中性灰，没有可归属的颜色'); return; }
+                dropPending();
+                const list = this._pcSamples().slice();
+                let near = -1;
+                for (let i = 0; i < list.length; i++) {
+                    const x = list[i];
+                    let d = Math.abs((x.hue || 0) - s.hue);
+                    d = Math.min(d, 360 - d);
+                    if (d < 8 && Math.abs((x.sat || 0) - s.sat) < 0.08
+                        && Math.abs((x.light || 0.5) - s.light) < 0.15) { near = i; break; }
+                }
+                if (near >= 0) {
+                    st.idx = near;
+                    st.on = false;
+                    btn.classList.remove('active');
+                    btn.setAttribute('aria-pressed', 'false');
+                    if (pane) pane.classList.remove('mix-picking');
+                    this.setStatus('这个颜色已经有样本（' + Math.round(list[near].hue) + '°），直接调它就行');
+                    this._pcRefresh();
+                    return;
+                }
+                const smp = {
+                    hue: Math.round(s.hue),
+                    sat: Math.round(s.sat * 1000) / 1000,
+                    light: Math.round(s.light * 1000) / 1000,
+                    range: 30, dh: 0, ds: 0, dl: 0, dv: 0
+                };
+                if (list.length >= 8) list[st.idx] = smp;     // 满了就替换当前选中的那个
+                else { list.push(smp); st.idx = list.length - 1; }
+                this.setGrade({ samples: list });
+                setOn(false);
+                this._pcRefresh();
+                this.setStatus('已取样 ' + smp.hue + '° · 用下面四个滑块单独调它');
+            };
+
+            for (const el of [cv, ov]) {
+                if (!el) continue;
+                el.addEventListener('mousedown', onDown, true);
+            }
+            btn.addEventListener('click', () => setOn(!st.on));
+
+            // 一级页签：混色器 / 点颜色
+            const tabs = $('mixTabs');
+            if (tabs) {
+                const tset = Array.prototype.slice.call(tabs.querySelectorAll('.mix-tab'));
+                tset.forEach((b) => {
+                    b.addEventListener('click', () => {
+                        const t = b.dataset.tab || 'mix';
+                        grp.dataset.tab = t;
+                        tset.forEach((x) => x.classList.toggle('active', x === b));
+                        dropPending();
+                        if (t !== 'pc') setOn(false);
+                        else { this._pcRefresh(); this.setStatus('点颜色：取样后单独调那个颜色'); }
+                    });
+                });
+            }
+
+            // 样本列表展开 / 收起
+            const listBtn = $('btnPcList');
+            const box = $('pcList');
+            if (listBtn && box) {
+                listBtn.addEventListener('click', () => {
+                    const open = box.hasAttribute('hidden');
+                    if (open) { box.removeAttribute('hidden'); listBtn.setAttribute('aria-expanded', 'true'); }
+                    else { box.setAttribute('hidden', ''); listBtn.setAttribute('aria-expanded', 'false'); }
+                });
+                box.addEventListener('click', (e) => {
+                    const del = e.target.closest ? e.target.closest('[data-del]') : null;
+                    if (del) {
+                        e.preventDefault(); e.stopPropagation();
+                        dropPending();
+                        const i = Number(del.dataset.del) || 0;
+                        const list = this._pcSamples().slice();
+                        list.splice(i, 1);
+                        this.setGrade({ samples: list.length ? list : null });
+                        if (st.idx >= list.length) st.idx = Math.max(0, list.length - 1);
+                        this._pcRefresh();
+                        this.setStatus(list.length ? '已删除这个样本' : '样本已清空');
+                        return;
+                    }
+                    const item = e.target.closest ? e.target.closest('.pc-item') : null;
+                    if (item) { st.idx = Number(item.dataset.i) || 0; this._pcRefresh(); }
+                });
+            }
+
+            // 五个滑块：改的是「当前样本」的那一项，拖动走 rAF 节流，松手补全分辨率
+            const FIELDS = [
+                { id: 'slPcH', k: 'dh', plain: false },
+                { id: 'slPcS', k: 'ds', plain: false },
+                { id: 'slPcL', k: 'dl', plain: false },
+                { id: 'slPcVar', k: 'dv', plain: false },
+                { id: 'slPcRange', k: 'range', plain: true }
+            ];
+            const pushFrame = (list) => {
+                pending = list;
+                if (raf) return;
+                raf = requestAnimationFrame(() => {
+                    raf = 0;
+                    if (!pending) return;
+                    this.setGrade({ samples: pending });
+                    pending = null;
+                });
+            };
+            for (const f of FIELDS) {
+                const inp = $(f.id);
+                if (!inp) continue;
+                const lbl = $(f.id.replace('sl', 'lbl'));
+                const show = (v) => { if (lbl) lbl.textContent = f.plain ? String(v) : fmt(v); };
+                inp.addEventListener('input', () => {
+                    const v = Number(inp.value) || 0;
+                    show(v);
+                    const list = this._pcSamples().slice();
+                    const cur = list[st.idx];
+                    if (!cur) return;
+                    list[st.idx] = Object.assign({}, cur, { [f.k]: v });
+                    pushFrame(list);
+                    clearTimeout(settle);
+                    settle = setTimeout(() => { this.rebuildGrade('full'); }, 220);
+                });
+                inp.addEventListener('change', () => {
+                    clearTimeout(settle);
+                    const v = Number(inp.value) || 0;
+                    show(v);
+                    const list = this._pcSamples().slice();
+                    const cur = list[st.idx];
+                    if (cur) {
+                        list[st.idx] = Object.assign({}, cur, { [f.k]: v });
+                        this.setGrade({ samples: list });
+                    }
+                    this.rebuildGrade('full');
+                });
+            }
+
+            document.addEventListener('keydown', (e) => {
+                if (st.on && e.key === 'Escape') { setOn(false); this.setStatus('已退出取样'); }
+            });
+            this._pcRefresh();
+        },
+
+        _pcSamples() {
+            const g = this.gradeOf(this.image);
+            return (g && Array.isArray(g.samples)) ? g.samples : [];
+        },
+
+        _pcCss(s) {
+            return 'hsl(' + Math.round(s.hue) + ',' + Math.round((s.sat || 0) * 100) + '%,'
+                + Math.round((Number.isFinite(s.light) ? s.light : 0.5) * 100) + '%)';
+        },
+
+        /* 把当前样本回填到色块 / 五个滑块 / 样本列表（切图、撤销、套预设后也要跑）*/
+        _pcRefresh() {
+            const list = this._pcSamples();
+            if (!this._pc) return;
+            this._pc.idx = Math.min(this._pc.idx, Math.max(0, list.length - 1));
+            const cur = list[this._pc.idx] || null;
+            const panel = document.getElementById('pcPanel');
+            if (panel) panel.classList.toggle('pc-none', !list.length);
+            const sw = document.getElementById('pcSwatch');
+            if (sw) sw.style.background = cur ? this._pcCss(cur) : 'var(--surface-alt)';
+            const set = (id, k, plain) => {
+                const inp = document.getElementById(id);
+                const v = cur ? (Number(cur[k]) || 0) : (k === 'range' ? 30 : 0);
+                if (inp) inp.value = String(v);
+                const lbl = document.getElementById(id.replace('sl', 'lbl'));
+                if (lbl) lbl.textContent = plain ? String(v) : fmt(v);
+            };
+            set('slPcH', 'dh');
+            set('slPcS', 'ds');
+            set('slPcL', 'dl');
+            set('slPcVar', 'dv');
+            set('slPcRange', 'range', true);
+            this._pcRenderList();
+        },
+
+        _pcRenderList() {
+            const box = document.getElementById('pcList');
+            if (!box) return;
+            const list = this._pcSamples();
+            const idx = this._pc ? this._pc.idx : 0;
+            let html = '';
+            for (let i = 0; i < list.length; i++) {
+                const s = list[i];
+                html += '<div class="pc-item' + (i === idx ? ' active' : '') + '" data-i="' + i + '">'
+                    + '<span class="pc-dot" style="background:' + this._pcCss(s) + '"></span>'
+                    + '<span class="pc-name">' + Math.round(s.hue) + '°　范围 ' + (s.range || 0) + '</span>'
+                    + '<button type="button" class="pc-del" data-del="' + i + '" title="删除这个样本">×</button>'
+                    + '</div>';
+            }
+            box.innerHTML = html;
+        },
+
         syncGradeExtraUI(p) {
             const ex = this._gradeExtra;
             if (!ex) return;
@@ -540,6 +860,7 @@
             if (det) det.classList.toggle('grade-on', this.isDetActive(p.det));
             if (cal) cal.classList.toggle('grade-on', this.isCalActive(p.cal));
             if (mix) mix.classList.toggle('grade-on', this.isMixActive(p.mix));
+            if (this._pcRefresh) this._pcRefresh();
         }
     });
 })();

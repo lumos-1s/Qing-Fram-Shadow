@@ -489,6 +489,40 @@
         }
         return any ? out : null;
     }
+
+    // ── 点颜色（对齐 LR 的 Point Color）：在画面上取一次色就建一个样本 ──
+    // 与混色器的 8 个固定色带不同：样本中心是"用户点到的那个颜色"，
+    // 每个样本自己有 色相/饱和度/明亮度/变量 四档调整，外加「范围」决定多大一片算这个颜色。
+    // range 存 0~100 原样（0 是极窄而非"未设置"），着色器里再换算成角度/容差。
+    const SAMPLES_MAX = 8;
+    function clampSm(v) {
+        const n = Math.round(Number(v) || 0);
+        return Math.max(-100, Math.min(100, n));
+    }
+    function sanitizeSamples(v) {
+        if (!Array.isArray(v)) return null;
+        const out = [];
+        for (const s of v) {
+            if (!s || typeof s !== 'object') continue;
+            const hue = Number(s.hue);
+            if (!Number.isFinite(hue)) continue;
+            const light = Number(s.light);
+            out.push({
+                hue: Math.round(((hue % 360) + 360) % 360),
+                sat: Math.max(0, Math.min(1, Number(s.sat) || 0)),
+                light: Number.isFinite(light) ? Math.max(0.01, Math.min(0.99, light)) : 0.5,
+                range: Math.max(0, Math.min(100, Math.round(Number(s.range) || 0))),
+                dh: clampSm(s.dh), ds: clampSm(s.ds), dl: clampSm(s.dl), dv: clampSm(s.dv)
+            });
+            if (out.length >= SAMPLES_MAX) break;
+        }
+        return out.length ? out : null;
+    }
+    function samplesActive(v) {
+        if (!Array.isArray(v)) return false;
+        for (const s of v) if (s && (s.dh || s.ds || s.dl || s.dv)) return true;
+        return false;
+    }
     function sanitizeGroup(p, def) {
         if (!p) return null;
         const out = def();
@@ -548,6 +582,7 @@
         out.cal = sanitizeGroup(p.cal, defaultCal);
         out.det = sanitizeDet(p.det);
         out.mix = sanitizeMix(p.mix);
+        out.samples = sanitizeSamples(p.samples);
         out.cg = sanitizeCg(p.cg);
         out.bw = sanitizeBw(p.bw);
         out.cb = sanitizeCb(p.cb);
@@ -577,7 +612,8 @@
         if (window.QfsMask && window.QfsMask.activeMasks(p.masks).length) return false;
         if (bwActive(p.bw)) return false;
         if (cbActive(p.cb) || gmActive(p.gm) || lcActive(p.lc)) return false;
-        return !calActive(p.cal) && !detActive(p.det) && !mixActive(p.mix) && !cgActive(p.cg);
+        return !calActive(p.cal) && !detActive(p.det) && !mixActive(p.mix) && !cgActive(p.cg)
+            && !samplesActive(p.samples);
     }
 
     function signature(p) {
@@ -591,6 +627,11 @@
             const v = p.mix[b.k] || {};
             return (v.h || 0) + '.' + (v.s || 0) + '.' + (v.l || 0);
         }).join(',');
+        // 点颜色样本：中心色与范围都进签名，否则改样本/改范围不会触发重烘
+        if (Array.isArray(p.samples) && p.samples.length) s += '/p' + p.samples.map((v) => [
+            Math.round(v.hue), Math.round((v.sat || 0) * 100), Math.round((v.light || 0) * 100),
+            Math.round(v.range || 0), v.dh || 0, v.ds || 0, v.dl || 0, v.dv || 0
+        ].join('.')).join(',');
         if (bwActive(p.bw)) s += '/bw' + BW_KEYS.map((k) => (Number(p.bw[k]) || 0)).join(',');
         if (cbActive(p.cb)) s += '/cb' + CB_ZONES.map((z) => CB_AXES.map((a) => Number(p.cb[z.k][a.k]) || 0).join('.')).join(',')
             + '.' + (p.cb.preserve ? 1 : 0);
@@ -885,8 +926,11 @@
         const useLut = !!lut && !!(window.QfsColor && window.QfsColor.usingGL());
         if (!useLut) lut = null;
         // 混色器已并进三维表，就不再需要前置的 GL 混色 pass
-        if (!useLut && mixActive(params.mix) && window.QfsMix) {
-            drawSrc = window.QfsMix.pass(src, params.mix, tw, th) || src;
+        // 点颜色样本没进三维表（样本是用户随取的，网格做不出来），始终走前置 GL pass：
+        // 有三维表时先只施加样本、让表去管 8 个色带；没有表时一次把带与样本都施加掉。
+        if (window.QfsMix && (samplesActive(params.samples)
+            || (!useLut && mixActive(params.mix)))) {
+            drawSrc = window.QfsMix.pass(src, params.mix, params.samples, tw, th, !useLut) || src;
         }
         const c = document.createElement('canvas');
         c.width = tw; c.height = th;

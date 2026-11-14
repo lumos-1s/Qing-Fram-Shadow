@@ -1568,8 +1568,13 @@
                                  这里只管锐化，效果段管质感。绑定按 id 走，挪 DOM 不影响功能。 -->
                         </div>
 
-                        <div class="param-group" id="grpMix" data-m="h">
+                        <div class="param-group" id="grpMix" data-m="h" data-tab="mix">
                             <div class="pg-title collapsible">混色器</div>
+                            <!-- 一级页签：混色器（8 个固定色带）/ 点颜色（取色建样本，对齐 LR 的 Point Color） -->
+                            <div class="mix-tabs" id="mixTabs">
+                                <button type="button" class="mix-tab active" data-tab="mix">混色器</button>
+                                <button type="button" class="mix-tab" data-tab="pc">点颜色</button>
+                            </div>
                             <div class="curve-bar">
                                 <button type="button" class="mini-btn mix-pick" id="btnMixPick" title="吸管取色：在照片上点一下锁定颜色，再上下拖动单独调这条色带；Esc 退出" aria-pressed="false"><svg class="mix-pick-ico" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.4 3.1 12.9 5.6"/><path d="M9.2 6.5 12.9 3.1a1.7 1.7 0 0 1 2.4 2.4L11.5 9.2"/><path d="M9.2 6.5 3.4 12.3v2h2L11 9.2"/></svg><span>吸管</span></button>
                                 <div class="curve-chans" id="mixMetrics">
@@ -1604,6 +1609,24 @@
                                 <div class="param-row mix-row" data-m="l"><label>蓝色</label><input type="range" id="slMixBL" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixBL">0</span></div>
                                 <div class="param-row mix-row" data-m="l"><label>紫色</label><input type="range" id="slMixPL" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixPL">0</span></div>
                                 <div class="param-row mix-row" data-m="l"><label>洋红</label><input type="range" id="slMixML" class="ctl-rng rng-mix" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblMixML">0</span></div>
+                            </div>
+                            <!-- 点颜色：一次取色 = 一个样本。中心色来自取样，范围决定多接近才算这个颜色，
+                                 色相/饱和度/明亮度/变量是这个样本自己的调整。 -->
+                            <div id="pcPanel">
+                                <div class="pc-head">
+                                    <button type="button" class="mini-btn pc-pick" id="btnPcPick" title="在照片上点一下取这个颜色，之后单独调它；Esc 退出" aria-pressed="false"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.4 3.1 12.9 5.6"/><path d="M9.2 6.5 12.9 3.1a1.7 1.7 0 0 1 2.4 2.4L11.5 9.2"/><path d="M9.2 6.5 3.4 12.3v2h2L11 9.2"/></svg><span>取样</span></button>
+                                    <span class="pc-swatch" id="pcSwatch" title="当前样本颜色"></span>
+                                    <button type="button" class="mini-btn pc-list-btn" id="btnPcList" aria-expanded="false" title="已取的样本（最多 8 个）">▾</button>
+                                </div>
+                                <div class="pc-empty" id="pcEmpty">点「取样」在照片上取一个颜色，就能单独调它</div>
+                                <div class="pc-list" id="pcList" hidden></div>
+                                <div id="pcRows">
+                                    <div class="param-row pc-row"><label>色相</label><input type="range" id="slPcH" class="ctl-rng" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblPcH">0</span></div>
+                                    <div class="param-row pc-row"><label>饱和度</label><input type="range" id="slPcS" class="ctl-rng" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblPcS">0</span></div>
+                                    <div class="param-row pc-row"><label>明亮度</label><input type="range" id="slPcL" class="ctl-rng" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblPcL">0</span></div>
+                                    <div class="param-row pc-row"><label>变量</label><input type="range" id="slPcVar" class="ctl-rng" min="-100" max="100" step="1" value="0" /><span class="pval" id="lblPcVar">0</span></div>
+                                    <div class="param-row pc-row"><label>范围</label><input type="range" id="slPcRange" class="ctl-rng" min="0" max="100" step="1" value="30" /><span class="pval" id="lblPcRange">30</span></div>
+                                </div>
                             </div>
                             <div class="mix-na-note">此环境不支持 WebGL，混色器不可用（其余调色功能不受影响）。</div>
 <!--                            <div class="hint-box">按色相带调整：橙/红管肤色，蓝管天色，绿管植物。负明亮度压暗 + 正饱和度是「加深某色」的常用组合。</div>-->
