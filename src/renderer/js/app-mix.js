@@ -288,11 +288,231 @@
                     this.setStatus('已重置混色器');
                 });
             }
+            // 吸管取色（LR 的 TAT）：必须在混色器滑块绑定之后，
+            // 它要读写 _mixMetric 与 _gradeExtra.mix 的那一套 id。
+            this._initMixPicker();
             // WebGL 不可用：混色器整组禁用并说明原因，其余功能照常
             const grpMix = $('grpMix');
             if (grpMix && window.QfsMix && !window.QfsMix.available()) {
                 grpMix.classList.add('mix-na');
             }
+        },
+
+        /* ── 吸管取色（对齐 LR 的目标调整工具 / TAT）────────────────────
+         * LR 的 HSL 面板有个「在图上点一下就锁到那条色带」的工具：点一处颜色，
+         * 它按该像素的色相判断属于哪条带，之后上下拖就只改这一条。
+         *
+         * 这里照同一套：① 取色从**当前烘焙结果**采样（所见即所得，调过色相
+         * 之后仍点得中眼睛看到的那个色）；② 命中判定用与 GL 着色器**完全
+         * 相同**的带权重公式（clamp(1-d/hw) 再 smoothstep），保证"点中的那条"
+         * 就是"着色器认为权重最大的那条"；③ 拖动只写当前子页的指标
+         * （色相/饱和度/明亮度），与面板状态一致。
+         *
+         * 事件全走 capture 阶段并 stopPropagation：否则按下会被画布的平移/
+         * 元素拖动接走，吸管就成了"点一下画面就跳"。
+         */
+        _initMixPicker() {
+            const btn = document.getElementById('btnMixPick');
+            const cv = this.dom && this.dom.canvas;
+            if (!btn || !cv) return;
+            const ov = document.getElementById('maskOverlay');
+            const pane = (this.dom && this.dom.canvasPane) || document.getElementById('canvasPane');
+            // 1×1 采样画布：只读回一个像素，比 getImageData 整幅便宜一个数量级
+            const tmp = document.createElement('canvas');
+            tmp.width = 1; tmp.height = 1;
+            const st = this._mixPick = {
+                on: false, band: null, metric: 'h', y0: 0, v0: 0, hue: 0,
+                moved: false, raf: 0, pending: 0,
+                ctx: tmp.getContext('2d', { willReadFrequently: true })
+            };
+            const METRIC_LABEL = { h: '色相', s: '饱和度', l: '明亮度' };
+            let lastHover = 0;
+
+            const setOn = (on) => {
+                st.on = !!on;
+                btn.classList.toggle('active', st.on);
+                btn.setAttribute('aria-pressed', st.on ? 'true' : 'false');
+                if (pane) pane.classList.toggle('mix-picking', st.on);
+                if (st.on) {
+                    this.setStatus('吸管：在照片上点一下取色，再上下拖动单独调这条色带（Esc 退出）');
+                } else {
+                    st.band = null;
+                    this._mixPickHot(null);
+                }
+            };
+
+            const onDown = (e) => {
+                if (!st.on || e.button !== 0) return;
+                const s = this._mixPickSample(e);
+                if (!s) {
+                    e.preventDefault(); e.stopPropagation();
+                    this.setStatus('点在照片范围内取色（这里落在画布或边框上）');
+                    return;
+                }
+                e.preventDefault(); e.stopPropagation();
+                st.band = s.band;
+                st.metric = this._mixMetric || 'h';
+                st.y0 = e.clientY;
+                st.v0 = this._mixPickValue(s.band.k, st.metric);
+                st.hue = s.hue;
+                st.moved = false;
+                st.pending = st.v0;
+                this._mixPickHot(s.band, st.metric);
+                this.setStatus('已锁定「' + s.band.label + '」· 上下拖动调' +
+                    (METRIC_LABEL[st.metric] || '数值') +
+                    (s.flat ? '（此处接近中性灰，幅度有限）' : ''));
+                document.addEventListener('mousemove', onDrag, true);
+                document.addEventListener('mouseup', onUp, true);
+            };
+
+            const onDrag = (e) => {
+                if (!st.on || !st.band) return;
+                e.preventDefault(); e.stopPropagation();
+                const dy = st.y0 - e.clientY;
+                // 3px 死区：单击（或手抖）不该改数值，只用来锁色带
+                if (!st.moved && Math.abs(dy) < 3) return;
+                st.moved = true;
+                const val = Math.max(-100, Math.min(100, Math.round(st.v0 + dy * 0.5)));
+                if (val === st.pending) return;
+                st.pending = val;
+                if (st.raf) return;
+                // 一帧只烘一次：拖动时 mousemove 比 rAF 密得多，逐条 setGrade 会白烘好几遍
+                st.raf = requestAnimationFrame(() => {
+                    st.raf = 0;
+                    const band = st.band;
+                    if (!band || !st.on) return;
+                    const cur = this.gradeOf(this.image);
+                    const m = Object.assign({}, cur.mix || {});
+                    m[band.k] = Object.assign({ h: 0, s: 0, l: 0 }, m[band.k] || {},
+                        { [st.metric]: st.pending });
+                    this.setGrade({ mix: m });
+                    this.setStatus('「' + band.label + '」' + (METRIC_LABEL[st.metric] || '') +
+                        ' ' + fmt(st.pending));
+                });
+            };
+
+            const onUp = () => {
+                document.removeEventListener('mousemove', onDrag, true);
+                document.removeEventListener('mouseup', onUp, true);
+                if (!st.on || !st.band) return;
+                if (st.raf) { cancelAnimationFrame(st.raf); st.raf = 0; }
+                if (st.moved) {
+                    // 松手补全分辨率：拖动期间只走 1600px 低档，停在半截预览上不好看
+                    const band = st.band;
+                    setTimeout(() => { if (this.image) this.rebuildGrade('full'); }, 0);
+                    this.setStatus('「' + band.label + '」' + (METRIC_LABEL[st.metric] || '') +
+                        ' ' + fmt(st.pending));
+                } else {
+                    this.setStatus('已选中「' + st.band.label + '」' + Math.round(st.hue) +
+                        '° · 上下拖动即可单独调' + (METRIC_LABEL[st.metric] || ''));
+                }
+            };
+
+            // 悬停先给反馈：高亮即将命中的那条，用户还没按下就知道会点到哪
+            const onHover = (e) => {
+                if (!st.on || st.band) return;
+                const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+                if (now - lastHover < 40) return;   // 40ms 节流：采样+高亮不必每像素一次
+                lastHover = now;
+                const s = this._mixPickSample(e);
+                this._mixPickHot(s ? s.band : null, this._mixMetric || 'h');
+            };
+
+            btn.addEventListener('click', () => setOn(!st.on));
+            for (const el of [cv, ov]) {
+                if (!el) continue;
+                el.addEventListener('mousedown', onDown, true);
+                el.addEventListener('mousemove', onHover, true);
+            }
+            cv.addEventListener('mouseleave', () => {
+                if (st.on && !st.band) this._mixPickHot(null);
+            });
+            document.addEventListener('keydown', (e) => {
+                if (st.on && e.key === 'Escape') { setOn(false); this.setStatus('已退出吸管'); }
+            });
+        },
+
+        /* 屏幕坐标 → 照片像素 → 色相 → 命中的色带。
+           坐标口径：画布视觉矩形 = 整幅画布；_photoRect 与 _baseSize() 都是
+           「基准坐标」（与蒙版浮层同一套），不能拿 canvas.width 直接比。 */
+        _mixPickSample(e) {
+            const cv = this.dom && this.dom.canvas;
+            const im = this.image;
+            const st = this._mixPick;
+            if (!cv || !im || !im.el || !st || !st.ctx) return null;
+            const rect = cv.getBoundingClientRect();
+            if (!rect.width || !rect.height) return null;
+            const pr = this._photoRect;
+            if (!pr || !(pr.w > 0) || !(pr.h > 0)) return null;
+            const base = (typeof this._baseSize === 'function')
+                ? this._baseSize() : { w: cv.width, h: cv.height };
+            const bx = (e.clientX - rect.left) / rect.width * base.w;
+            const by = (e.clientY - rect.top) / rect.height * base.h;
+            const nx = (bx - pr.x) / pr.w, ny = (by - pr.y) / pr.h;
+            if (!(nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1)) return null;
+            // 采样源优先用烘焙后的降采样画布：拖过参数之后还能点中眼睛看到的颜色
+            const src = (im._grade && (im._grade.low || im._grade.canvas)) || im.el;
+            const W = src.width || src.naturalWidth || 0;
+            const H = src.height || src.naturalHeight || 0;
+            if (!W || !H) return null;
+            const sx = Math.max(0, Math.min(W - 1, Math.floor(nx * W)));
+            const sy = Math.max(0, Math.min(H - 1, Math.floor(ny * H)));
+            let px = null;
+            try {
+                st.ctx.clearRect(0, 0, 1, 1);
+                st.ctx.drawImage(src, sx, sy, 1, 1, 0, 0, 1, 1);
+                px = st.ctx.getImageData(0, 0, 1, 1).data;
+            } catch (_) { px = null; }
+            if (!px) return null;
+            const r = px[0] / 255, g = px[1] / 255, b = px[2] / 255;
+            const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+            const l = (mx + mn) * 0.5;
+            const den = 1 - Math.abs(2 * l - 1);
+            const sat = (d > 1e-6 && den > 1e-4) ? d / den : 0;
+            let hue = 0;
+            if (d > 1e-6) {
+                if (mx === r) hue = ((g - b) / d + 6) % 6;
+                else if (mx === g) hue = (b - r) / d + 2;
+                else hue = (r - g) / d + 4;
+                hue *= 60;
+            }
+            hue = ((hue % 360) + 360) % 360;
+            // 与着色器同一条判据：灰/近黑/近白本来就不参与混色器
+            const flat = sat <= 0.003 || l <= 0.01 || l >= 0.99;
+            return { hue, sat, light: l, flat, band: this._mixPickBand(hue) };
+        },
+
+        /* 与 GL 着色器完全相同的带权重：w = clamp(1 - d/hw, 0, 1)，再 smoothstep。
+           权重全为 0（落在带间空档）时退到角度最近的那条，保证点了总有反馈。 */
+        _mixPickBand(hue) {
+            const bands = this.MIX_BANDS || [];
+            let best = null, bestW = 0, near = null, nearD = 1e9;
+            for (const b of bands) {
+                let dd = Math.abs(hue - b.hue);
+                dd = Math.min(dd, 360 - dd);
+                if (dd < nearD) { nearD = dd; near = b; }
+                const w = Math.max(0, 1 - dd / b.hw);
+                const ww = w * w * (3 - 2 * w);
+                if (ww > bestW) { bestW = ww; best = b; }
+            }
+            return bestW > 1e-4 ? best : near;
+        },
+
+        _mixPickValue(k, metric) {
+            const g = this.gradeOf(this.image);
+            const v = g && g.mix && g.mix[k];
+            return v ? Math.round(Number(v[metric]) || 0) : 0;
+        },
+
+        /* 高亮命中的色带行：按 id 找行（slMix + 带 + 指标），不依赖 DOM 顺序 */
+        _mixPickHot(band, metric) {
+            const rows = document.querySelectorAll('#mixRows .mix-row');
+            for (const r of rows) r.classList.remove('mix-hot');
+            if (!band) return;
+            const id = 'slMix' + band.k.toUpperCase() + (metric || this._mixMetric || 'h').toUpperCase();
+            const inp = document.getElementById(id);
+            const row = (inp && inp.closest) ? inp.closest('.param-row') : null;
+            if (row) row.classList.add('mix-hot');
         },
 
         syncGradeExtraUI(p) {

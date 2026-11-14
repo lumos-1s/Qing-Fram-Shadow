@@ -1487,6 +1487,26 @@ input[type=color]::-webkit-color-swatch {
 /* WebGL 不可用：整组只留一句说明 */
 #grpMix.mix-na #mixRows, #grpMix.mix-na .curve-bar, #grpMix.mix-na .hint-box { display: none; }
 #grpMix.mix-na .mix-na-note { display: block; }
+
+/* 混色器吸管（对齐 LR 的 TAT）：激活后在画面上取色、上下拖动调这条色带。
+   按钮挤在「色相/饱和度/明亮度」左侧，用图标+两字，避免挤掉三个子页。 */
+.mix-pick {
+    flex: none; display: inline-flex; align-items: center; gap: 3px;
+    padding-left: calc(5px * var(--font-scale)); padding-right: calc(5px * var(--font-scale));
+    font-size: var(--fs-11); white-space: nowrap;
+}
+.mix-pick svg { flex: none; opacity: .8; }
+.mix-pick.active { border-color: var(--primary); color: var(--primary-text); background: var(--primary-soft); }
+.mix-pick.active svg { opacity: 1; }
+/* 命中的色带行：左缘一道强调条 + 浅底，用户在长列表里一眼看到锁的是哪条 */
+#grpMix .mix-row.mix-hot {
+    background: var(--primary-soft);
+    box-shadow: inset 2px 0 0 var(--primary);
+    border-radius: 6px;
+}
+/* 吸管激活时画布走十字光标；!important 是为了压掉 app.js 写到画布上的内联 cursor */
+#canvasPane.mix-picking #previewCanvas,
+#canvasPane.mix-picking #maskOverlay { cursor: crosshair !important; }
 .mix-na-note { display: none; font-size: var(--fs-11); color: var(--text-2); padding: calc(6px * var(--font-scale)) 0; }
 
 /* 曲线编辑器：通道切换 + 画布 */
