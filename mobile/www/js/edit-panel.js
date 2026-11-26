@@ -701,5 +701,13 @@
         });
     }
 
-    window.QF_EditPanel = { html, bind };
+    // 画布点选元素后，让编辑页的列表高亮到同一个对象
+    function selectElement(key) {
+        selectedEl = String(key || '');
+        if (!selectedEl) return;
+        const parts = selectedEl.split(':');
+        if (parts[0] === 'text') selectedText = Number(parts[1]) || 0;
+    }
+
+    window.QF_EditPanel = { html, bind, selectElement };
 })();

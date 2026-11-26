@@ -8,7 +8,7 @@
     const A = window.App;
     const state = {
         image: null, images: [], preset: null, template: window.qfsNative.defaultTemplate(),
-        tab: 'style', editSub: 'border', filter: '全部', activeSlot: 0, importing: false, exporting: false,
+        tab: 'style', editSub: 'border', selectedElement: '', filter: '全部', activeSlot: 0, importing: false, exporting: false,
         puzzle: { enabled: 1, layout: 'grid4', gap: 6, bgMode: 0, slots: {} },
         crop: { rows: 3, cols: 3, picked: new Set(), blocks: [], touched: false }
     };
@@ -123,10 +123,152 @@
             paintFallback();
         }
         updateEmpty();
+        // 导出帧（带 opts）不画选中框，避免把它烤进成品
+        if (!opts) drawSelection();
         if (!skipHistogram && state.tab === 'grade' && window.QfsHistogram && state.image) {
             try { window.QfsHistogram.refresh(state.image); } catch (_) { /* 直方图可选 */ }
         }
     }
+
+    // 画布上直接点选 / 拖动元素：坐标口径跟引擎一致
+    // Logo/贴纸的 x/y 是显示画布像素；自由文字的 x/y 是基准逻辑像素（引擎按 scl 放大）。
+    function elGeom(kind, o) {
+        const cw = canvas.width, ch = canvas.height;
+        const baseW = A._canvasBaseW || cw, baseH = A._canvasBaseH || ch;
+        const scl = cw / Math.max(1, baseW);
+        const n = (v, d) => { const x = Number(v); return isFinite(x) ? x : d; };
+        if (kind === 'text') {
+            const m = window.textLineMetrics && window.textLineMetrics(o, cw, ch, false, 0, 0, scl);
+            if (!m) return null;
+            return { x: m.x, y: m.y, w: m.w, h: m.h, cx: m.x + m.w / 2, cy: m.y + m.h / 2, scl };
+        }
+        if (kind === 'sticker') {
+            const img = window.getElementBitmap && window.getElementBitmap(o.src);
+            if (!img || !img.complete || !img.naturalWidth) return null;
+            const w = img.naturalWidth * (n(o.scale, 1)), h = img.naturalHeight * (n(o.scale, 1));
+            const cx = n(o.x, cw / 2), cy = n(o.y, ch / 2);
+            return { x: cx - w / 2, y: cy - h / 2, w, h, cx, cy, scl: 1 };
+        }
+        const img = window.getElementBitmap && window.getElementBitmap(o.dataUrl);
+        const ratio = (img && img.naturalWidth) ? img.naturalHeight / img.naturalWidth : (n(o.ratio, 1) || 1);
+        const size = Math.max(2, Math.min(n(o.size, 60), Math.min(cw, ch / Math.max(0.01, ratio))));
+        const w = size, h = size * ratio;
+        let cx, cy;
+        if (o.rel && typeof o.rx === 'number' && typeof o.ry === 'number') {
+            cx = o.rx * cw; cy = o.ry * ch;
+        } else if (typeof o.x === 'number' && typeof o.y === 'number') {
+            cx = o.x; cy = o.y;
+        } else {
+            cx = cw - 20 - w / 2; cy = ch - 20 - h / 2;
+        }
+        return { x: cx - w / 2, y: cy - h / 2, w, h, cx, cy, scl: 1 };
+    }
+
+    function elementAt(key) {
+        const t = state.template || {};
+        const parts = String(key || '').split(':');
+        const i = Number(parts[1]);
+        const decor = t.decorConfig || {};
+        const kind = parts[0];
+        const o = kind === 'logo' ? (t.logoElements || [])[i]
+            : kind === 'sticker' ? (decor.stickers || [])[i]
+                : (decor.textLines || [])[i];
+        return o ? { kind, obj: o, rect: elGeom(kind, o) } : null;
+    }
+
+    function hitElement(pt) {
+        const t = state.template || {};
+        const decor = t.decorConfig || {};
+        const hits = [];
+        (decor.stickers || []).forEach((o, i) => {
+            const g = elGeom('sticker', o);
+            if (g && pt.x >= g.x && pt.x <= g.x + g.w && pt.y >= g.y && pt.y <= g.y + g.h) {
+                hits.push({ key: 'sticker:' + i, obj: o, rect: g, z: (o.z || 0) + 5 });
+            }
+        });
+        (t.logoElements || []).forEach((o, i) => {
+            if (!o || !o.dataUrl) return;
+            const g = elGeom('logo', o);
+            if (g && pt.x >= g.x && pt.x <= g.x + g.w && pt.y >= g.y && pt.y <= g.y + g.h) {
+                hits.push({ key: 'logo:' + i, obj: o, rect: g, z: o.z || 0 });
+            }
+        });
+        (decor.textLines || []).forEach((o, i) => {
+            if (!o || o.align !== 'free' || !o.text) return;
+            const g = elGeom('text', o);
+            if (g && pt.x >= g.x && pt.x <= g.x + g.w && pt.y >= g.y && pt.y <= g.y + g.h) {
+                hits.push({ key: 'text:' + i, obj: o, rect: g, z: (o.z || 0) + 20 });
+            }
+        });
+        hits.sort((a, b) => b.z - a.z);
+        return hits[0] || null;
+    }
+
+    function drawSelection() {
+        if (!state.selectedElement || state.exporting || state.tab !== 'edit') return;
+        const hit = elementAt(state.selectedElement);
+        const g = hit && hit.rect;
+        if (!g || !g.w || !g.h) return;
+        const ctx2 = canvas.getContext('2d');
+        ctx2.save();
+        ctx2.setTransform(1, 0, 0, 1, 0, 0);
+        ctx2.strokeStyle = 'rgba(61,217,176,.95)';
+        ctx2.lineWidth = 2;
+        ctx2.setLineDash([6, 4]);
+        ctx2.strokeRect(g.x, g.y, g.w, g.h);
+        ctx2.setLineDash([]);
+        ctx2.restore();
+    }
+
+    let elDrag = null;
+    function pointerPos(e) {
+        const r = canvas.getBoundingClientRect();
+        return {
+            x: (r.width > 0 ? (e.clientX - r.left) / r.width : 0) * canvas.width,
+            y: (r.height > 0 ? (e.clientY - r.top) / r.height : 0) * canvas.height
+        };
+    }
+    canvas.addEventListener('pointerdown', (e) => {
+        if (state.exporting || !state.image) return;
+        const pt = pointerPos(e);
+        const hit = hitElement(pt);
+        if (!hit) {
+            state.selectedElement = '';
+            if (window.QF_EditPanel) window.QF_EditPanel.selectElement('');
+            if (state.tab === 'edit') render('edit');
+            return;
+        }
+        state.selectedElement = hit.key;
+        if (window.QF_EditPanel) window.QF_EditPanel.selectElement(hit.key);
+        state.tab = 'edit'; state.editSub = 'element';
+        render('edit');
+        elDrag = {
+            key: hit.key, obj: hit.obj, kind: hit.key.split(':')[0],
+            startX: pt.x, startY: pt.y, cx: hit.rect.cx, cy: hit.rect.cy
+        };
+        try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+        hint('已选中' + ({ logo: 'Logo', sticker: '贴纸', text: '文字' }[elDrag.kind] || '元素') + '，可拖动');
+    });
+    canvas.addEventListener('pointermove', (e) => {
+        if (!elDrag) return;
+        const pt = pointerPos(e);
+        const dx = pt.x - elDrag.startX, dy = pt.y - elDrag.startY;
+        const baseW = A._canvasBaseW || canvas.width;
+        const scl = canvas.width / Math.max(1, baseW);
+        let nx = elDrag.cx + dx, ny = elDrag.cy + dy;
+        if (elDrag.kind === 'text') {
+            elDrag.obj.x = Math.round(nx / scl);
+            elDrag.obj.y = Math.round(ny / scl);
+        } else {
+            if (elDrag.kind === 'logo') elDrag.obj.rel = 0;
+            elDrag.obj.x = Math.round(nx);
+            elDrag.obj.y = Math.round(ny);
+        }
+        renderPreviewSoon();
+    });
+    const endElDrag = () => { elDrag = null; };
+    canvas.addEventListener('pointerup', endElDrag);
+    canvas.addEventListener('pointercancel', endElDrag);
 
     function paintFallback() {
         const g = canvas.getContext('2d');

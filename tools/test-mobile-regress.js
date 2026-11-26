@@ -398,7 +398,43 @@ app.whenReady().then(async () => {
             await wait(200);
         } catch (e) { tplErr = String(e && e.message || e); }
 
-        // 16) RAW 全尺寸重解（本地有样本时）
+        // 16) 画布点选 / 拖动元素
+        let drag = {}, dragErr = '';
+        try {
+            document.querySelector('[data-tab="edit"]').click();
+            await wait(250);
+            document.querySelector('[data-edit-sub="element"]').click();
+            await wait(250);
+            const draft = document.querySelector('[data-draft-logo]');
+            draft.value = '拖动回归';
+            draft.dispatchEvent(new Event('input', { bubbles: true }));
+            document.getElementById('btnAddTextLogo').click();
+            await wait(250);
+            const logo = (window.App.template.logoElements || [])[0];
+            drag.before = { x: logo.x, y: logo.y };
+            document.querySelector('[data-tab="style"]').click();
+            await wait(300);
+            const cv = document.getElementById('previewCanvas');
+            const rect = cv.getBoundingClientRect();
+            const at = (cx, cy) => ({
+                clientX: rect.left + cx / cv.width * rect.width,
+                clientY: rect.top + cy / cv.height * rect.height,
+                pointerId: 1, bubbles: true
+            });
+            cv.dispatchEvent(new PointerEvent('pointerdown', at(logo.x, logo.y)));
+            await wait(200);
+            drag.tab = document.querySelector('#tabs .tab.active').dataset.tab;
+            drag.activeChip = (document.querySelector('[data-el-key].active') || {}).dataset
+                ? document.querySelector('[data-el-key].active').dataset.elKey : '';
+            cv.dispatchEvent(new PointerEvent('pointermove', at(logo.x + 80, logo.y + 50)));
+            await wait(300);
+            cv.dispatchEvent(new PointerEvent('pointerup', at(logo.x + 80, logo.y + 50)));
+            drag.after = { x: logo.x, y: logo.y };
+            document.querySelector('[data-tab="crop"]').click();
+            await wait(200);
+        } catch (e) { dragErr = String(e && e.message || e); }
+
+        // 17) RAW 全尺寸重解（本地有样本时）
         let rawFull = {}, rawFullErr = '';
         if (${JSON.stringify(fs.existsSync(rawSample))}) {
             try {
@@ -424,7 +460,7 @@ app.whenReady().then(async () => {
             rawBridge: typeof window.qfRawDecode === 'function',
             heic, heicErr, heicFull, heicFullErr, fullExport, fullExportErr,
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
-            edit, editErr, text, textErr, el, elErr, tpl, tplErr, rawFull, rawFullErr
+            edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, rawFull, rawFullErr
         };
     })()`);
 
@@ -481,6 +517,10 @@ app.whenReady().then(async () => {
     check(!r.tplErr && r.tpl.saved && r.tpl.savedChips >= 1 && r.tpl.kind === 'qfs-config'
         && r.tpl.importedName === '码导入' && r.tpl.importedMargin === 1.7 && r.tpl.loadedName === '回归模板',
         '编辑 › 样式能保存/导出/分享码导入/载入模板', JSON.stringify({ tpl: r.tpl, err: r.tplErr }));
+
+    check(!r.dragErr && r.drag.tab === 'edit' && r.drag.activeChip === 'logo:0'
+        && r.drag.after.x === r.drag.before.x + 80 && r.drag.after.y === r.drag.before.y + 50,
+        '画布点选 Logo 会切到编辑页并可拖动', JSON.stringify({ drag: r.drag, err: r.dragErr }));
 
     if (fs.existsSync(rawSample)) {
         check(!r.rawFullErr && r.rawFull.w >= 3000 && r.rawFull.h >= 2000 && r.rawFull.px.some((v) => v > 0),
