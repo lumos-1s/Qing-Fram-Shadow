@@ -48,14 +48,18 @@ body {
   color: var(--text-2); font-size: 20px; border-radius: 10px;
 }
 .icon-btn:active { background: var(--surface-alt); }
+.header-acts { display: flex; align-items: center; gap: 4px; }
 
 #mMain { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 
+/* 预览默认只占 38%，把空间还给参数面板；可一键收起只留状态条 */
 #stage {
-  position: relative; flex: 0 0 50%; min-height: 200px;
+  position: relative; flex: 0 0 38%; min-height: 150px;
   display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start;
   background: #101312; overflow: hidden; border-bottom: 1px solid var(--border);
 }
+#stage.collapsed { flex-basis: 52px; min-height: 52px; }
+#stage.collapsed #previewCanvas, #stage.collapsed .empty-hint { display: none; }
 /* 状态条改成独立一条深色栏：以前浮在照片上，浅色相框/白边把青色字全吃掉了 */
 #stageBar {
   position: relative; z-index: 2; order: -1; align-self: stretch; flex: 0 0 auto;
@@ -64,7 +68,19 @@ body {
   background: rgba(11, 14, 13, .96); border-bottom: 1px solid rgba(255,255,255,.06);
 }
 #stageBar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#stageBar #stageName { color: var(--primary); font-weight: 600; }
+#stageBar #stageName { color: var(--primary); font-weight: 600; flex: 1 1 auto; }
+.stage-toggle {
+  flex: 0 0 auto; min-width: 52px; min-height: 32px; padding: 0 8px;
+  border: 1px solid rgba(255,255,255,.16); border-radius: 6px;
+  background: transparent; color: var(--text-2); font-size: 11px;
+}
+/* 主操作浮在预览右下角：省掉整条底部操作栏的 62px */
+.stage-export {
+  position: absolute; right: 12px; bottom: 12px; z-index: 6;
+  min-width: 112px; min-height: 44px; padding: 0 14px; font-size: 13px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.4);
+}
+#stage.collapsed .stage-export { display: none; }
 /* 状态条独占一行后，画布吃掉剩下的空间；object-fit 保证缩放不变形 */
 #previewCanvas {
   flex: 1 1 auto; min-height: 0; width: 100%; height: 100%;
@@ -111,23 +127,20 @@ body {
   padding: 6px 0; margin: -6px 0 4px;
   background: var(--bg); border-bottom: 1px solid var(--border);
 }
-.style-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 4px; }
+/* 三列小卡：一屏能看到的风格从 2 行提到 3 行 */
+.style-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
 .style-card {
   border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
   color: var(--text-2); font-size: 12px; text-align: left; padding: 0; overflow: hidden;
 }
-.style-card img { display: block; width: 100%; aspect-ratio: 3/2; object-fit: cover; background: var(--surface-alt); }
-.style-card span { display: block; padding: 7px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.style-card img { display: block; width: 100%; aspect-ratio: 1/1; object-fit: cover; background: var(--surface-alt); }
+.style-card span { display: block; padding: 5px 6px; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .style-card:active, .style-card.active { border-color: var(--primary); }
 .style-card.active span { color: var(--primary); font-weight: 600; }
 .style-card.active img { outline: 2px solid var(--primary); outline-offset: -2px; }
 
-#actionBar {
-  flex: 0 0 auto; display: flex; gap: 10px; padding: 8px 12px;
-  background: var(--surface); border-top: 1px solid var(--border);
-}
 .act-btn {
-  flex: 1; min-height: 46px; min-width: 88px; border: 1px solid var(--border-strong, var(--border));
+  min-height: 44px; border: 1px solid var(--border-strong, var(--border));
   border-radius: 8px; background: var(--surface-alt); color: var(--text); font-size: 14px; font-weight: 600;
 }
 .act-btn.primary { background: var(--primary); border-color: var(--primary); color: #0c1914; }
@@ -151,7 +164,7 @@ body {
 .photo-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
 .photo-strip::-webkit-scrollbar { display: none; }
 .photo-thumb {
-  position: relative; flex: 0 0 64px; height: 64px; padding: 0; border: 1px solid var(--border);
+  position: relative; flex: 0 0 52px; height: 52px; padding: 0; border: 1px solid var(--border);
   border-radius: 8px; overflow: hidden; background: var(--surface-alt);
 }
 .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }

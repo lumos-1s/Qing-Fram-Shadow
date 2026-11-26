@@ -68,10 +68,10 @@
             { g: 'basic', label: '照片缩放', type: 'range', min: 50, max: 200, step: 5, unit: '%',
               value: Math.round((m.imgScale == null ? 1 : m.imgScale) * 100),
               set: set((v, o) => { (o.baseMargin || (o.baseMargin = {})).imgScale = v / 100; }) },
-            { g: 'basic', label: '照片位移 X', type: 'range', min: -200, max: 200, step: 5, unit: '',
+            { g: 'pos', label: '照片位移 X', type: 'range', min: -200, max: 200, step: 5, unit: '',
               value: Math.round(num(m.imgOffsetX, 0)),
               set: set((v, o) => { (o.baseMargin || (o.baseMargin = {})).imgOffsetX = v; }) },
-            { g: 'basic', label: '照片位移 Y', type: 'range', min: -200, max: 200, step: 5, unit: '',
+            { g: 'pos', label: '照片位移 Y', type: 'range', min: -200, max: 200, step: 5, unit: '',
               value: Math.round(num(m.imgOffsetY, 0)),
               set: set((v, o) => { (o.baseMargin || (o.baseMargin = {})).imgOffsetY = v; }) },
             { g: 'basic', label: '照片圆角', type: 'range', min: 0, max: 200, step: 2, unit: '',
@@ -149,6 +149,7 @@
 
     const GROUPS = [
         ['basic', '基础'],
+        ['pos', '位置微调'],
         ['fill', '填充'],
         ['stroke', '描边'],
         ['corner', '边框圆角'],
@@ -157,6 +158,7 @@
 
     const TEXT_GROUPS = [
         ['free', '自由文字'],
+        ['more', '文字位置与效果'],
         ['sign', '签名 / 头像'],
         ['exif', 'EXIF 参数'],
         ['param', '参数带']
@@ -196,13 +198,13 @@
             S('free', '字号', 'range', line.fontSize || 48, (v) => { line.fontSize = v; },
                 { min: 12, max: 240, step: 1, unit: '' });
             S('free', '颜色', 'color', color(line.colorHex, '#ffffff'), (v) => { line.colorHex = v; });
-            S('free', '位置 X', 'range', num(line.x, 0), (v) => { line.x = v; },
+            S('more', '位置 X', 'range', num(line.x, 0), (v) => { line.x = v; },
                 { min: 0, max: bw, step: 5, unit: '' });
-            S('free', '位置 Y', 'range', num(line.y, 0), (v) => { line.y = v; },
+            S('more', '位置 Y', 'range', num(line.y, 0), (v) => { line.y = v; },
                 { min: 0, max: bh, step: 5, unit: '' });
-            S('free', '旋转', 'range', num(line.rotation, 0), (v) => { line.rotation = v; },
+            S('more', '旋转', 'range', num(line.rotation, 0), (v) => { line.rotation = v; },
                 { min: -180, max: 180, step: 5, unit: '°' });
-            S('free', '透明度', 'range', num(line.opacity, 100), (v) => { line.opacity = v; },
+            S('more', '透明度', 'range', num(line.opacity, 100), (v) => { line.opacity = v; },
                 { min: 0, max: 100, step: 1, unit: '%' });
         }
         S('sign', '署名内容', 'text', t.userSignature || '', (v) => { t.userSignature = v; });

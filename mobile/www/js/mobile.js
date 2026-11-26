@@ -968,7 +968,11 @@
             });
         });
 
-        document.getElementById('btnPick').textContent = state.tab === 'puzzle' ? '＋ 加照片' : '＋ 导入';
+        const pick = document.getElementById('btnPick');
+        pick.textContent = '＋';
+        const pickLabel = state.tab === 'puzzle' ? '加照片' : '导入照片';
+        pick.setAttribute('aria-label', pickLabel);
+        pick.title = pickLabel;
         document.getElementById('btnExport').textContent = state.tab === 'crop' ? '导出选中块'
             : (state.tab === 'puzzle' ? '保存拼图' : '保存 / 分享');
         updateEmpty();
@@ -1010,6 +1014,13 @@
         const tab = e.target.closest('.tab');
         if (tab) render(tab.dataset.tab);
     });
+    const stageToggle = document.getElementById('btnStageToggle');
+    if (stageToggle) stageToggle.addEventListener('click', () => {
+        const collapsed = document.getElementById('stage').classList.toggle('collapsed');
+        stageToggle.textContent = collapsed ? '展开' : '收起';
+        hint(collapsed ? '预览已收起，点右上角「展开」恢复' : '预览已展开');
+    });
+
     document.getElementById('btnSettings').addEventListener('click', () => {
         panel.innerHTML = `<h2>设置</h2><p class="panel-note">运行平台：${window.qfsNative.platform()} · 内测版 · 无账号、无上传。</p>`;
     });

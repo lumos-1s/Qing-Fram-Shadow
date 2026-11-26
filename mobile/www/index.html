@@ -12,7 +12,10 @@
 <div id="app">
   <header id="mHeader">
     <div class="brand">清框影 <span class="tag">内测</span></div>
-    <button id="btnSettings" class="icon-btn" aria-label="设置">⚙</button>
+    <div class="header-acts">
+      <button id="btnPick" class="icon-btn" aria-label="导入照片" title="导入照片">＋</button>
+      <button id="btnSettings" class="icon-btn" aria-label="设置">⚙</button>
+    </div>
   </header>
 
   <main id="mMain">
@@ -22,7 +25,9 @@
       <div id="stageBar">
         <span id="stageName">未选择风格</span>
         <span id="stageMeta">—</span>
+        <button id="btnStageToggle" class="stage-toggle" type="button">收起</button>
       </div>
+      <button id="btnExport" class="act-btn primary stage-export" type="button">保存 / 分享</button>
       <div id="stageEmpty" class="empty-hint">
         <div class="empty-ico">▧</div>
         <b>先导入一张照片</b>
@@ -33,11 +38,6 @@
     <div id="toast" hidden role="status"></div>
 
     <section id="panel" aria-live="polite"></section>
-
-    <footer id="actionBar">
-      <button id="btnPick" class="act-btn">＋ 导入</button>
-      <button id="btnExport" class="act-btn primary">保存 / 分享</button>
-    </footer>
 
   </main>
 
