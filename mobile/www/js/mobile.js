@@ -10,8 +10,8 @@
         image: null, images: [], preset: null, template: window.qfsNative.defaultTemplate(),
         tab: 'style', editSub: 'border', selectedElement: '', editingText: null,
         filter: '全部', activeSlot: 0, importing: false, exporting: false,
-        puzzle: { enabled: 1, layout: 'grid4', gap: 6, bgMode: 0, slots: {} },
-        crop: { rows: 3, cols: 3, picked: new Set(), blocks: [], touched: false }
+        puzzle: { enabled: 1, layout: 'grid4', gap: 6, bgMode: 0, canvasRatio: 'auto', borderColor: 'ffffff', slots: {} },
+        crop: { rows: 3, cols: 3, pad: 0, offX: 0, offY: 0, picked: new Set(), blocks: [], touched: false }
     };
 
     const textEditor = document.getElementById('textEditor');
@@ -654,16 +654,30 @@
 
     // 从成品画布切一块（与 app-export.js 的 _sliceGrid 同口径：行优先、无留白）。
     // 逐块生成而不是一次切 9 块：6000px 画布上 9 块加起来又是一整张全尺寸图。
-    function sliceOne(src, rows, cols, index) {
+    function sliceOne(src, rows, cols, index, pad, offX, offY) {
         const rn = Math.max(1, Math.min(12, Math.round(rows) || 1));
         const cn = Math.max(1, Math.min(12, Math.round(cols) || 1));
+        const p = Math.max(0, pad || 0);
+        const ox = Math.max(-40, Math.min(40, Number(offX) || 0)) / 100;
+        const oy = Math.max(-40, Math.min(40, Number(offY) || 0)) / 100;
+        const sx = Math.round((ox > 0 ? ox : 0) * src.width);
+        const sy = Math.round((oy > 0 ? oy : 0) * src.height);
+        const sw = Math.max(1, src.width - Math.round(Math.abs(ox) * src.width));
+        const sh = Math.max(1, src.height - Math.round(Math.abs(oy) * src.height));
         const r = Math.floor(index / cn), c = index % cn;
-        const x = Math.round(c * src.width / cn), x2 = Math.round((c + 1) * src.width / cn);
-        const y = Math.round(r * src.height / rn), y2 = Math.round((r + 1) * src.height / rn);
+        const x = sx + Math.round(c * sw / cn), x2 = sx + Math.round((c + 1) * sw / cn);
+        const y = sy + Math.round(r * sh / rn), y2 = sy + Math.round((r + 1) * sh / rn);
         const w = Math.max(1, x2 - x), h = Math.max(1, y2 - y);
         const cv = document.createElement('canvas');
-        cv.width = w; cv.height = h;
-        cv.getContext('2d').drawImage(src, x, y, w, h, 0, 0, w, h);
+        const g = cv.getContext('2d');
+        if (p > 0) {
+            cv.width = w + p * 2; cv.height = h + p * 2;
+            g.fillStyle = '#ffffff'; g.fillRect(0, 0, cv.width, cv.height);
+            g.drawImage(src, x, y, w, h, p, p, w, h);
+        } else {
+            cv.width = w; cv.height = h;
+            g.drawImage(src, x, y, w, h, 0, 0, w, h);
+        }
         return cv;
     }
 
@@ -727,6 +741,15 @@
                 <button id="btnClearSlot">清空选中格</button>
                 <button id="btnFillAll">一键铺满</button>
             </div>
+            <details class="ctl-group"><summary>版式设置</summary>
+                <div class="ctl-row"><label>格子间距</label><input type="range" data-puzzle-opt="gap" min="0" max="30" step="1" value="${Number(state.puzzle.gap) || 0}"><output>${Number(state.puzzle.gap) || 0}</output></div>
+                <div class="ctl-row"><label>模糊底色</label><input type="checkbox" data-puzzle-opt="bgMode"${(state.puzzle.bgMode || 0) === 1 ? ' checked' : ''}></div>
+                <div class="ctl-row"><label>画布比例</label><select data-puzzle-opt="canvasRatio">
+                    ${[['auto', '跟随格子'], ['1:1', '1:1'], ['3:4', '3:4'], ['4:3', '4:3'], ['9:16', '9:16'], ['16:9', '16:9']]
+                        .map(([v, l]) => `<option value="${v}"${(state.puzzle.canvasRatio || 'auto') === v ? ' selected' : ''}>${l}</option>`).join('')}
+                </select></div>
+                <div class="ctl-row"><label>底色</label><input type="color" data-puzzle-opt="borderColor" value="#${String(state.puzzle.borderColor || 'ffffff').replace('#', '')}"></div>
+            </details>
             <h2 style="margin-top:14px">照片库</h2>
             <div class="photo-strip">${photos || '<p class="panel-note">先导入照片</p>'}</div>`;
     }
@@ -777,8 +800,10 @@
         }).join('');
         return `<h2>调色</h2>
             ${currentStrip()}
+            <div class="text-acts"><button id="btnGradeAuto" type="button">自动调色</button></div>
             <div class="histo-card"><canvas id="gradeHisto" width="600" height="180"></canvas></div>
             <div class="grade-sliders">${rows}</div>
+            ${(window.QF_EditPanel && window.QF_EditPanel.fxHtml(state.template)) || ''}
             <div class="puzzle-acts"><button id="btnGradeReset">重置调色</button></div>
             <p class="panel-note">滑块来自桌面调色引擎；直方图实时读取调色后像素</p>`;
     }
@@ -811,7 +836,7 @@
                 hint(`正在导出 ${n + 1}/${picks.length}…`, 12000);
                 let block = null;
                 try {
-                    block = sliceOne(canvas, rows, cols, i);
+                    block = sliceOne(canvas, rows, cols, i, state.crop.pad, state.crop.offX, state.crop.offY);
                     const data = block.toDataURL('image/jpeg', 0.92);
                     const r = await window.qfsNative.saveImage(data, `${base}_${tag}_${i + 1}.jpg`);
                     if (r && r.canceled) { canceled = true; break; }
@@ -840,7 +865,7 @@
         // 切的是当前成品画布（含风格/调色），不是未处理的原图。
         const src = (canvas && canvas.width) ? canvas : state.image.el;
         const blocks = (typeof A._sliceGrid === 'function' && src)
-            ? A._sliceGrid(src, rows, cols, 0, 0, 0) : [];
+            ? A._sliceGrid(src, rows, cols, state.crop.pad, state.crop.offX, state.crop.offY) : [];
         state.crop.blocks = blocks;
         if (!state.crop.touched) {
             state.crop.picked = new Set(blocks.map((_, i) => i));
@@ -849,6 +874,14 @@
         state.crop.picked = new Set(Array.from(state.crop.picked).filter((i) => valid.has(i)));
         const presets = [[3, 3], [2, 2], [4, 4], [3, 4]].map(([r, c]) =>
             `<button class="chip${rows === r && cols === c ? ' active' : ''}" data-grid="${r}x${c}">${r}×${c}</button>`).join('');
+        const opts = `<details class="ctl-group"><summary>切图设置</summary>
+            <div class="ctl-row"><label>行 / 列</label>
+                <input type="number" id="cropRows" min="1" max="12" value="${rows}">
+                <input type="number" id="cropCols" min="1" max="12" value="${cols}"></div>
+            <div class="ctl-row"><label>留白</label><input type="range" id="cropPad" min="0" max="40" step="1" value="${state.crop.pad}"><output>${state.crop.pad}px</output></div>
+            <div class="ctl-row"><label>左右偏移</label><input type="range" id="cropOffX" min="-40" max="40" step="1" value="${state.crop.offX}"><output>${state.crop.offX}%</output></div>
+            <div class="ctl-row"><label>上下偏移</label><input type="range" id="cropOffY" min="-40" max="40" step="1" value="${state.crop.offY}"><output>${state.crop.offY}%</output></div>
+        </details>`;
         const cells = blocks.map((cv, i) => {
             const t = document.createElement('canvas'); t.width = 96; t.height = 96;
             const g = t.getContext('2d');
@@ -861,6 +894,7 @@
         return `<h2>切图</h2>
             ${currentStrip()}
             <div class="chips">${presets}</div>
+            ${opts}
             <div class="crop-grid">${cells}</div>
             <p class="panel-note">已勾选 ${state.crop.picked.size}/${blocks.length} 块 · 点底部「导出选中块」逐块保存/分享</p>`;
     }
@@ -943,6 +977,20 @@
         });
         const fill = document.getElementById('btnFillAll');
         if (fill) fill.addEventListener('click', fillAll);
+        panel.querySelectorAll('[data-puzzle-opt]').forEach((el) => {
+            const ev = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+            el.addEventListener(ev, () => {
+                const k = el.dataset.puzzleOpt;
+                if (k === 'gap') {
+                    state.puzzle.gap = Number(el.value) || 0;
+                    const out = panel.querySelector('.ctl-row input[data-puzzle-opt="gap"] + output');
+                    if (out) out.textContent = String(state.puzzle.gap);
+                } else if (k === 'bgMode') state.puzzle.bgMode = el.checked ? 1 : 0;
+                else if (k === 'canvasRatio') state.puzzle.canvasRatio = el.value;
+                else if (k === 'borderColor') state.puzzle.borderColor = el.value.replace('#', '');
+                renderPreviewSoon();
+            });
+        });
 
         panel.querySelectorAll('[data-grade]').forEach((b) => {
             b.addEventListener('input', () => {
@@ -957,6 +1005,18 @@
                 renderPreviewSoon();
             });
         });
+        const gauto = document.getElementById('btnGradeAuto');
+        if (gauto) gauto.addEventListener('click', () => {
+            if (typeof A.autoGrade !== 'function') { hint('自动调色模块未就绪'); return; }
+            if (A.autoGrade() !== false) {
+                hint('已按直方图自动调色（可撤销）');
+                renderPreviewSoon();
+                render('grade');
+            }
+        });
+        if (state.tab === 'grade' && window.QF_EditPanel) {
+            window.QF_EditPanel.bindFx(panel, () => renderPreviewSoon(), () => render('grade'));
+        }
         const greset = document.getElementById('btnGradeReset');
         if (greset) greset.addEventListener('click', () => {
             if (typeof A.resetGrade === 'function') A.resetGrade();
@@ -977,6 +1037,21 @@
                 const ir = document.getElementById('inpGridRows');
                 if (ic) ic.value = String(c);
                 if (ir) ir.value = String(r);
+                render('crop');
+            });
+        });
+        ['cropRows', 'cropCols', 'cropPad', 'cropOffX', 'cropOffY'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('change', () => {
+                const key = id === 'cropRows' ? 'rows' : id === 'cropCols' ? 'cols'
+                    : id === 'cropPad' ? 'pad' : id === 'cropOffX' ? 'offX' : 'offY';
+                let v = Number(el.value) || 0;
+                if (key === 'rows' || key === 'cols') v = Math.max(1, Math.min(12, v));
+                if (key === 'offX' || key === 'offY') v = Math.max(-40, Math.min(40, v));
+                state.crop[key] = v;
+                state.crop.picked = new Set();
+                state.crop.touched = false;
                 render('crop');
             });
         });

@@ -649,7 +649,51 @@ app.whenReady().then(async () => {
             layout.cols = grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').length : 0;
         } catch (e) { layoutErr = String(e && e.message || e); }
 
-        // 24) RAW 全尺寸重解（本地有样本时）
+        // 24) 桌面功能同步第一批：自动调色 / 效果 / 拼图选项 / 切图自定义 / 背景模糊
+        let sync1 = {}, sync1Err = '';
+        try {
+            document.querySelector('[data-tab="grade"]').click();
+            await wait(300);
+            sync1.autoBtn = !!document.getElementById('btnGradeAuto');
+            sync1.fx = Array.from(document.querySelectorAll('.ctl-group > summary')).some((s) => s.textContent.trim() === '效果');
+            const before = JSON.stringify(window.App.image.grade || {});
+            if (sync1.autoBtn) document.getElementById('btnGradeAuto').click();
+            await wait(400);
+            sync1.gradeChanged = JSON.stringify(window.App.image.grade || {}) !== before;
+            const row = Array.from(document.querySelectorAll('.ctl-row')).find((x) => {
+                const l = x.querySelector('label'); return l && l.textContent === '暗角强度';
+            });
+            const vg = row && row.querySelector('[data-ctl]');
+            if (vg) { vg.value = '60'; vg.dispatchEvent(new Event('input', { bubbles: true })); }
+            await wait(200);
+            sync1.vignette = (window.App.template.lightEffect || {}).vignetteStrength;
+
+            document.querySelector('[data-tab="puzzle"]').click();
+            await wait(250);
+            const gap = document.querySelector('[data-puzzle-opt="gap"]');
+            if (gap) { gap.value = '18'; gap.dispatchEvent(new Event('input', { bubbles: true })); }
+            await wait(250);
+            sync1.gap = (window.App.template.puzzle || {}).gap;
+
+            document.querySelector('[data-tab="crop"]').click();
+            await wait(250);
+            const rows = document.getElementById('cropRows');
+            if (rows) { rows.value = '2'; rows.dispatchEvent(new Event('change', { bubbles: true })); }
+            await wait(300);
+            sync1.cropCells = document.querySelectorAll('[data-block]').length;
+
+            document.querySelector('[data-tab="style"]').click();
+            await wait(200);
+            const blurCard = document.querySelector('[data-preset="78"]');
+            if (blurCard) { blurCard.click(); await wait(300); }
+            document.querySelector('[data-tab="edit"]').click();
+            await wait(250);
+            document.querySelector('[data-edit-sub="border"]').click();
+            await wait(250);
+            sync1.blurGroup = Array.from(document.querySelectorAll('.ctl-group > summary')).some((s) => s.textContent.trim() === '背景模糊');
+        } catch (e) { sync1Err = String(e && e.message || e); }
+
+        // 25) RAW 全尺寸重解（本地有样本时）
         let rawFull = {}, rawFullErr = '';
         if (${JSON.stringify(fs.existsSync(rawSample))}) {
             try {
@@ -676,7 +720,8 @@ app.whenReady().then(async () => {
             heic, heicErr, heicFull, heicFullErr, fullExport, fullExportErr,
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
             edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, dbl, dblErr,
-            pinch, pinchErr, exif, exifErr, multi, multiErr, autofs, autofsErr, layout, layoutErr, rawFull, rawFullErr
+            pinch, pinchErr, exif, exifErr, multi, multiErr, autofs, autofsErr, layout, layoutErr,
+            sync1, sync1Err, rawFull, rawFullErr
         };
     })()`);
 
@@ -763,6 +808,11 @@ app.whenReady().then(async () => {
     check(!r.layoutErr && !r.layout.actionBar && r.layout.collapsed && r.layout.toggle === '展开'
         && r.layout.restored && r.layout.cols === 3,
         '新版布局：单底部栏、预览可收起、风格三列', JSON.stringify({ layout: r.layout, err: r.layoutErr }));
+
+    check(!r.sync1Err && r.sync1.autoBtn && r.sync1.fx && r.sync1.gradeChanged && r.sync1.vignette === 60,
+        '自动调色与效果滑块已同步到手机', JSON.stringify({ sync1: r.sync1, err: r.sync1Err }));
+    check(!r.sync1Err && r.sync1.gap === 18 && r.sync1.cropCells === 6 && r.sync1.blurGroup,
+        '拼图选项/切图自定义/背景模糊已同步到手机', JSON.stringify({ sync1: r.sync1, err: r.sync1Err }));
 
     if (fs.existsSync(rawSample)) {
         check(!r.rawFullErr && r.rawFull.w >= 3000 && r.rawFull.h >= 2000 && r.rawFull.px.some((v) => v > 0),

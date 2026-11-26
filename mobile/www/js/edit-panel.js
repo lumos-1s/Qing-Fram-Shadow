@@ -82,6 +82,21 @@
                   cc.cornerRadiusTL = cc.cornerRadiusTR = cc.cornerRadiusBL = cc.cornerRadiusBR = v;
               }) },
 
+            { g: 'blur', label: '开启背景模糊', type: 'check', value: (m.bgBlurEnable || 0) === 1,
+              set: set((v, o) => { (o.baseMargin || (o.baseMargin = {})).bgBlurEnable = v ? 1 : 0; }) },
+            { g: 'blur', label: '模糊程度', type: 'range', min: 0, max: 100, step: 1, unit: '%',
+              value: Math.round(num(t.blurIntensity, 50)),
+              set: set((v, o) => { o.blurIntensity = v; }) },
+            { g: 'blur', label: '背景明暗', type: 'range', min: 0, max: 80, step: 2, unit: '%',
+              value: t.blurBackdropDim == null ? 40 : Math.round(num(t.blurBackdropDim, 40)),
+              set: set((v, o) => { o.blurBackdropDim = v; }) },
+            { g: 'blur', label: '文字上下', type: 'range', min: -100, max: 100, step: 5, unit: '%',
+              value: Math.round(num(t.blurTextOffset, 0)),
+              set: set((v, o) => { o.blurTextOffset = v; }) },
+            { g: 'blur', label: '文字行距', type: 'range', min: 0, max: 300, step: 5, unit: '%',
+              value: t.blurTextGap == null ? 100 : Math.round(num(t.blurTextGap, 100)),
+              set: set((v, o) => { o.blurTextGap = v; }) },
+
             { g: 'fill', label: '填充方式', type: 'select',
               options: [['transparent', '透明'], ['solid', '纯色'], ['gradient', '渐变'], ['texture', '纹理']],
               value: f.fillType || 'transparent',
@@ -149,6 +164,7 @@
 
     const GROUPS = [
         ['basic', '基础'],
+        ['blur', '背景模糊'],
         ['pos', '位置微调'],
         ['fill', '填充'],
         ['stroke', '描边'],
@@ -478,6 +494,64 @@
             + `<div id="savedTemplates" class="chips"></div></details>`;
     }
 
+    let fxCtls = [];
+
+    // 调色页「效果」：暗角/漏光/颗粒，字段与桌面 app.js 的这组滑块完全一致
+    function fxHtml(t) {
+        const le = t.lightEffect || (t.lightEffect = {});
+        fxCtls = [];
+        const rows = [
+            { label: '暗角强度', type: 'range', min: -100, max: 100, step: 1, unit: '',
+              value: Math.round(num(le.vignetteStrength, 0)),
+              set: (v) => { le.vignetteStrength = v; le.vignetteEnable = Math.abs(v) > 0 ? 1 : 0; } },
+            { label: '暗角羽化', type: 'range', min: 0, max: 100, step: 1, unit: '%',
+              value: Math.round(num(le.vignetteFeather, 50)),
+              set: (v) => { le.vignetteFeather = v; } },
+            { label: '漏光透明度', type: 'range', min: 0, max: 100, step: 1, unit: '%',
+              value: Math.round(num(le.lightLeakOpacity, 0)),
+              set: (v) => { le.lightLeakOpacity = v; le.lightLeakEnable = v > 0 ? 1 : 0; } },
+            { label: '漏光类型', type: 'select', value: le.lightLeakType || 'warm',
+              options: [['warm', '暖色'], ['cool', '冷色'], ['green', '绿色']],
+              set: (v) => { le.lightLeakType = v; } },
+            { label: '漏光角度', type: 'range', min: 0, max: 360, step: 5, unit: '°',
+              value: Math.round(num(le.lightLeakAngle, 225)),
+              set: (v) => { le.lightLeakAngle = v; } },
+            { label: '颗粒强度', type: 'range', min: 0, max: 100, step: 1, unit: '',
+              value: Math.round(num(le.filmGrainIntensity, 0)),
+              set: (v) => { le.filmGrainIntensity = v; le.filmGrainEnable = v > 0 ? 1 : 0; } }
+        ];
+        const body = rows.map((c) => {
+            c.id = fxCtls.length;
+            fxCtls.push(c);
+            return rowHtml(c);
+        }).join('');
+        return `<details class="ctl-group" open><summary>效果</summary>${body}`
+            + `<div class="puzzle-acts"><button id="btnFxReset" type="button">重置效果</button></div></details>`;
+    }
+
+    function bindFx(panel, onChange, onRebuild) {
+        panel.querySelectorAll('[data-ctl]').forEach((el) => {
+            const c = fxCtls[Number(el.dataset.ctl)];
+            if (!c) return;
+            const ev = c.type === 'select' ? 'change' : 'input';
+            el.addEventListener(ev, () => {
+                const v = c.type === 'range' ? Number(el.value) : el.value;
+                c.set(v);
+                const out = panel.querySelector(`[data-out="${c.id}"]`);
+                if (out && c.type === 'range') out.textContent = v + (c.unit || '');
+                onChange();
+            });
+        });
+        const reset = panel.querySelector('#btnFxReset');
+        if (reset) reset.addEventListener('click', () => {
+            const le = tmpl.lightEffect || (tmpl.lightEffect = {});
+            le.vignetteStrength = 0; le.vignetteEnable = 0; le.vignetteFeather = 50;
+            le.lightLeakOpacity = 0; le.lightLeakEnable = 0;
+            le.filmGrainIntensity = 0; le.filmGrainEnable = 0;
+            onRebuild();
+        });
+    }
+
     function rowHtml(c) {
         const id = c.id;
         let input = '';
@@ -513,6 +587,10 @@
             ? window.StyleCaps.visibleRows(style) : {};
         let out = '';
         for (const [key, title] of GROUPS) {
+            if (key === 'blur') {
+                const caps = (window.StyleCaps && window.StyleCaps.caps) ? window.StyleCaps.caps(style) : {};
+                if (!caps.bi) continue; // 这个风格引擎根本不读模糊参数，不摆无效控件
+            }
             const list = defs(tmpl).filter((c) => c.g === key && (!c.only || vis[c.only] !== false));
             if (!list.length) continue;
             const body = list.map((c) => {
@@ -820,7 +898,7 @@
     }
 
     window.QF_EditPanel = {
-        html, bind, selectElement,
+        html, bind, fxHtml, bindFx, selectElement,
         isMulti: () => multiSelect,
         getSelectedKeys: () => Array.from(selectedKeys)
     };
