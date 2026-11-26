@@ -467,7 +467,53 @@ app.whenReady().then(async () => {
             await wait(200);
         } catch (e) { handleErr = String(e && e.message || e); }
 
-        // 18) RAW 全尺寸重解（本地有样本时）
+        // 18) 双击文字就地编辑
+        let dbl = {}, dblErr = '';
+        try {
+            document.querySelector('[data-tab="edit"]').click();
+            await wait(250);
+            document.querySelector('[data-edit-sub="text"]').click();
+            await wait(250);
+            document.getElementById('btnAddText').click();
+            await wait(250);
+            const lines = ((window.App.template.decorConfig || {}).textLines || []).filter((l) => l.align === 'free');
+            const line = lines[lines.length - 1];
+            line.text = '双击前'; line.fontSize = 80; line.x = 600; line.y = 800;
+            document.querySelector('[data-tab="style"]').click();
+            await wait(300);
+            const cv = document.getElementById('previewCanvas');
+            const baseW = window.App._canvasBaseW || cv.width;
+            const scl = cv.width / Math.max(1, baseW);
+            const m = window.textLineMetrics(line, cv.width, cv.height, false, 0, 0, scl);
+            const rect = cv.getBoundingClientRect();
+            const at = (x, y) => ({
+                clientX: rect.left + x / cv.width * rect.width,
+                clientY: rect.top + y / cv.height * rect.height,
+                pointerId: 1, bubbles: true
+            });
+            const cx = m.x + m.w / 2, cy = m.y + m.h / 2;
+            cv.dispatchEvent(new PointerEvent('pointerdown', at(cx, cy)));
+            cv.dispatchEvent(new PointerEvent('pointerup', at(cx, cy)));
+            await wait(120);
+            cv.dispatchEvent(new PointerEvent('pointerdown', at(cx, cy)));
+            cv.dispatchEvent(new PointerEvent('pointerup', at(cx, cy)));
+            await wait(200);
+            const ed = document.getElementById('textEditor');
+            dbl.opened = !ed.hidden;
+            dbl.value = ed.value;
+            ed.value = '双击后';
+            ed.dispatchEvent(new Event('input', { bubbles: true }));
+            await wait(150);
+            dbl.live = line.text;
+            ed.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await wait(200);
+            dbl.closed = ed.hidden;
+            dbl.after = line.text;
+            document.querySelector('[data-tab="crop"]').click();
+            await wait(200);
+        } catch (e) { dblErr = String(e && e.message || e); }
+
+        // 19) RAW 全尺寸重解（本地有样本时）
         let rawFull = {}, rawFullErr = '';
         if (${JSON.stringify(fs.existsSync(rawSample))}) {
             try {
@@ -493,7 +539,7 @@ app.whenReady().then(async () => {
             rawBridge: typeof window.qfRawDecode === 'function',
             heic, heicErr, heicFull, heicFullErr, fullExport, fullExportErr,
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
-            edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, rawFull, rawFullErr
+            edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, dbl, dblErr, rawFull, rawFullErr
         };
     })()`);
 
@@ -557,6 +603,10 @@ app.whenReady().then(async () => {
 
     check(!r.handleErr && r.handle.rotation === 90 && Math.abs(r.handle.size - r.handle.origSize * 1.5) <= 2,
         '画布手柄能旋转并放大 Logo', JSON.stringify({ handle: r.handle, err: r.handleErr }));
+
+    check(!r.dblErr && r.dbl.opened && r.dbl.value === '双击前' && r.dbl.live === '双击后'
+        && r.dbl.closed && r.dbl.after === '双击后',
+        '双击文字就地编辑并实时写回', JSON.stringify({ dbl: r.dbl, err: r.dblErr }));
 
     if (fs.existsSync(rawSample)) {
         check(!r.rawFullErr && r.rawFull.w >= 3000 && r.rawFull.h >= 2000 && r.rawFull.px.some((v) => v > 0),

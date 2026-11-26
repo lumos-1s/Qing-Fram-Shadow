@@ -197,6 +197,15 @@ body {
   color: var(--text); font: 11px/1.5 ui-monospace, Consolas, monospace; resize: vertical;
 }
 
+/* 画布上双击文字后的就地编辑框：字体/旋转跟引擎一致，输入时实时回写 */
+#textEditor {
+  position: absolute; z-index: 5; margin: 0; padding: 2px 4px;
+  border: 1px solid var(--primary); border-radius: 4px;
+  background: rgba(12, 25, 20, .92); color: #fff;
+  resize: none; overflow: hidden; outline: none; text-align: center;
+  box-shadow: 0 0 0 2px rgba(61, 217, 176, .2);
+}
+
 .crop-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .crop-cell { position: relative; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface-alt); }
 .crop-cell img { display: block; width: 100%; aspect-ratio: 1/1; object-fit: cover; }

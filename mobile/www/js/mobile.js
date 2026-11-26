@@ -8,11 +8,15 @@
     const A = window.App;
     const state = {
         image: null, images: [], preset: null, template: window.qfsNative.defaultTemplate(),
-        tab: 'style', editSub: 'border', selectedElement: '', filter: '全部', activeSlot: 0, importing: false, exporting: false,
+        tab: 'style', editSub: 'border', selectedElement: '', editingText: null,
+        filter: '全部', activeSlot: 0, importing: false, exporting: false,
         puzzle: { enabled: 1, layout: 'grid4', gap: 6, bgMode: 0, slots: {} },
         crop: { rows: 3, cols: 3, picked: new Set(), blocks: [], touched: false }
     };
 
+    const textEditor = document.getElementById('textEditor');
+    let textOrig = '';
+    let lastTap = { t: 0, key: '' };
     let toastTimer = 0;
     function hint(text, ms) {
         if (!text) return;
@@ -258,6 +262,56 @@
         ctx2.restore();
     }
 
+    // 双击文字就地编辑：引擎看到 App._textEditor 会跳过同一元素，避免画布字形和输入框重影
+    function openTextEditor(line) {
+        if (!textEditor || !line) return;
+        state.editingText = line;
+        textOrig = String(line.text || '');
+        A._textEditor = { el: line };
+        const g = elGeom('text', line);
+        const rect = canvas.getBoundingClientRect();
+        const stage = canvas.parentElement.getBoundingClientRect();
+        const sx = rect.width / Math.max(1, canvas.width);
+        const sy = rect.height / Math.max(1, canvas.height);
+        const baseW = A._canvasBaseW || canvas.width;
+        const scl = canvas.width / Math.max(1, baseW);
+        textEditor.value = textOrig;
+        textEditor.style.left = (rect.left - stage.left + g.x * sx) + 'px';
+        textEditor.style.top = (rect.top - stage.top + g.y * sy) + 'px';
+        textEditor.style.width = Math.max(60, g.w * sx + 12) + 'px';
+        textEditor.style.height = Math.max(28, g.h * sy + 8) + 'px';
+        textEditor.style.fontSize = Math.max(10, (line.fontSize || 48) * scl * sx) + 'px';
+        textEditor.style.fontFamily = line.fontFamily || 'Microsoft YaHei';
+        textEditor.style.fontWeight = String(line.fontWeight || 400);
+        textEditor.style.color = line.colorHex || '#ffffff';
+        textEditor.style.transform = `rotate(${numv(line.rotation, 0)}deg)`;
+        textEditor.hidden = false;
+        textEditor.focus();
+        textEditor.select();
+    }
+
+    function closeTextEditor(commit) {
+        if (!state.editingText) return;
+        if (!commit) state.editingText.text = textOrig;
+        state.editingText = null;
+        A._textEditor = null;
+        if (textEditor) { textEditor.hidden = true; textEditor.blur(); }
+        renderPreviewSoon();
+    }
+
+    if (textEditor) {
+        textEditor.addEventListener('input', () => {
+            if (!state.editingText) return;
+            state.editingText.text = textEditor.value;
+            renderPreviewSoon();
+        });
+        textEditor.addEventListener('blur', () => closeTextEditor(true));
+        textEditor.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); closeTextEditor(false); }
+            else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeTextEditor(true); }
+        });
+    }
+
     let elDrag = null;
     function pointerPos(e) {
         const r = canvas.getBoundingClientRect();
@@ -290,6 +344,15 @@
             if (state.tab === 'edit') render('edit');
             return;
         }
+        const now = Date.now();
+        const hitKind = hit.key.split(':')[0];
+        if (hitKind === 'text' && lastTap.key === hit.key && now - lastTap.t < 400) {
+            lastTap = { t: 0, key: '' };
+            elDrag = null;
+            openTextEditor(hit.obj);
+            return;
+        }
+        lastTap = { t: now, key: hit.key };
         state.selectedElement = hit.key;
         if (window.QF_EditPanel) window.QF_EditPanel.selectElement(hit.key);
         state.tab = 'edit'; state.editSub = 'element';
@@ -337,6 +400,10 @@
     const endElDrag = () => { elDrag = null; };
     canvas.addEventListener('pointerup', endElDrag);
     canvas.addEventListener('pointercancel', endElDrag);
+    canvas.addEventListener('dblclick', (e) => {
+        const hit = hitElement(pointerPos(e));
+        if (hit && hit.key.split(':')[0] === 'text') openTextEditor(hit.obj);
+    });
 
     function paintFallback() {
         const g = canvas.getContext('2d');
@@ -462,6 +529,7 @@
 
     async function exportCurrent() {
         if (state.exporting) return;
+        if (state.editingText) closeTextEditor(true);
         const isPuzzle = state.tab === 'puzzle';
         if (isPuzzle) {
             if (!state.images.length) { hint('先导入照片'); return; }
@@ -743,6 +811,7 @@
     };
 
     function render(name) {
+        if (state.editingText) closeTextEditor(true);
         state.tab = name || state.tab;
         if (state.tab === 'puzzle') clampActiveSlot();
         // 切页签先把画布画回当前照片，否则从拼图切回风格/调色时会继续显示拼图，
