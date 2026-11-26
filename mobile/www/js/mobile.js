@@ -534,9 +534,9 @@
         const h = Number(im.srcH) || Number(el.naturalHeight) || Number(im.h) || 0;
         const edge = Math.min(w, h) || TEXT_REF_EDGE;
         const k = Math.max(0.5, Math.min(2.5, edge / TEXT_REF_EDGE));
-        // 33/35 都是桌面默认字号，转成引擎的「自动」档（0），引擎按照片短边算
-        const pf = Number(tpl.paramFontSize);
-        if (!isFinite(pf) || pf === 33 || pf === 35) tpl.paramFontSize = 0;
+        // 相框风格里的品牌水印走 autoExifSize(paramFs, 图宽) 做「按图宽自适应」。
+        // 这里若把默认 33 改成引擎的 0 档，会再叠加一次 autoPf，宽图上品牌字会大出一倍。
+        // 所以预设的 paramFontSize 保持原样，自适应交给引擎已有的那一次换算。
         const lines = (tpl.decorConfig && tpl.decorConfig.textLines) || [];
         lines.forEach((line) => {
             if (!line || line.align === 'exif') return; // exif 行引擎自己有 2000px 基准缩放

@@ -802,8 +802,8 @@ app.whenReady().then(async () => {
         && r.multi.aligned && r.multi.zAfter === r.multi.zBefore + 1 && r.multi.afterDelete === 0,
         '元素多选、对齐、层级与批量删除', JSON.stringify({ multi: r.multi, err: r.multiErr }));
 
-    check(!r.autofsErr && r.autofs.large.fs > r.autofs.small.fs && r.autofs.small.pf === 0,
-        '预设文字字号按照片短边自动缩放', JSON.stringify({ autofs: r.autofs, err: r.autofsErr }));
+    check(!r.autofsErr && r.autofs.large.fs > r.autofs.small.fs && r.autofs.small.pf !== 0,
+        '预设文字字号按照片短边缩放，相框品牌字号不被重复放大', JSON.stringify({ autofs: r.autofs, err: r.autofsErr }));
 
     check(!r.layoutErr && !r.layout.actionBar && r.layout.collapsed && r.layout.toggle === '展开'
         && r.layout.restored && r.layout.cols === 3,
