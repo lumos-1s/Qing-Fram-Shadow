@@ -123,7 +123,11 @@
     // opts 可临时覆盖 displayMax/exportScale 等渲染档位（导出原尺寸时用），
     // 不传则回到 1600px 预览档，并清掉上一次导出残留的 exportScale。
     function renderPreview(skipHistogram, opts) {
-        Object.assign(A, { dom: { canvas }, image: state.image, images: state.images, template: state.template }, renderStubs, opts || {});
+        // 预览用代理图渲染：把模板里「原图口径」的绝对像素（边距/描边/齿孔/圆角/阴影）
+        // 折成代理尺度；导出时 el 就是原图，比例回到 1，拿到的是未改动的模板。
+        // 只浅拷贝要缩的那几层，文字/贴纸/Logo 仍引用原对象 —— 拖动与就地编辑靠对象身份跳过重绘。
+        const tpl = state.tab === 'puzzle' ? state.template : renderTemplate(state.template, state.image);
+        Object.assign(A, { dom: { canvas }, image: state.image, images: state.images, template: tpl }, renderStubs, opts || {});
         if (!opts || !('exportScale' in opts)) delete A.exportScale;
         if (state.tab === 'puzzle') {
             if (!state.images.length) { updateEmpty(); return; }
@@ -141,6 +145,9 @@
         } catch (e) {
             console.warn('[mobile] render failed', e);
             paintFallback();
+        } finally {
+            // 缩放副本只在这一次同步渲染里用；面板/测试/后续操作读到的仍是可编辑的原模板
+            A.template = state.template;
         }
         updateEmpty();
         // 导出帧（带 opts）不画选中框，避免把它烤进成品
@@ -541,6 +548,71 @@
     }
     // 面板「文字跟随图片」也要用同一个比例，否则点一次就把预览字号改成成片口径。
     window.qfProxyRatio = proxyRatio;
+
+    // ── 模板绝对像素 → 预览代理尺度 ───────────────────────────────────────
+    // 模板里的边距 / 描边 / 齿孔 / 圆角 / 阴影都是按原图像素写的。预览拿 1600 代理当画布，
+    // 不折的话 NOMO 这类预设的胶片边会比成片厚 2~3 倍（同一个模板，两种观感）。
+    // 导出时 el 即原图，proxyRatio()=1，直接返回原模板，成片一个像素都不动。
+    function scaleTplPx(obj, keys, k, min) {
+        if (!obj) return;
+        for (const key of keys) {
+            if (typeof obj[key] !== 'number' || !isFinite(obj[key])) continue;
+            const v = Math.round(obj[key] * k);
+            obj[key] = min == null ? v : Math.max(min, v);
+        }
+    }
+    function renderTemplate(tpl, im) {
+        if (!tpl) return tpl;
+        const k = proxyRatio(im);
+        if (!(k > 0) || k >= 0.999) return tpl;
+        const out = Object.assign({}, tpl);
+        if (tpl.baseMargin) {
+            out.baseMargin = Object.assign({}, tpl.baseMargin);
+            scaleTplPx(out.baseMargin, ['marginTop', 'marginBottom', 'marginLeft', 'marginRight',
+                'refTop', 'refBottom', 'refLeft', 'refRight', 'imgOffsetX', 'imgOffsetY'], k);
+        }
+        if (tpl.cornerConfig) {
+            out.cornerConfig = Object.assign({}, tpl.cornerConfig);
+            scaleTplPx(out.cornerConfig, ['cornerRadiusAll', 'cornerRadiusTL', 'cornerRadiusTR',
+                'cornerRadiusBL', 'cornerRadiusBR'], k, 0);
+        }
+        if (tpl.filmTearConfig) {
+            out.filmTearConfig = Object.assign({}, tpl.filmTearConfig);
+            scaleTplPx(out.filmTearConfig, ['filmPerforationSize', 'filmPerforationSpacing'], k, 1);
+        }
+        if (Array.isArray(tpl.layerList)) {
+            out.layerList = tpl.layerList.map((l) => {
+                if (!l) return l;
+                const nl = Object.assign({}, l);
+                scaleTplPx(nl, ['marginTop', 'marginBottom', 'marginLeft', 'marginRight'], k);
+                if (l.strokeConfig) {
+                    nl.strokeConfig = Object.assign({}, l.strokeConfig);
+                    if (typeof nl.strokeConfig.strokeWidth === 'number') {
+                        nl.strokeConfig.strokeWidth = Math.max(0, Math.round(nl.strokeConfig.strokeWidth * k * 100) / 100);
+                    }
+                    if (Array.isArray(nl.strokeConfig.strokeDashArray)) {
+                        nl.strokeConfig.strokeDashArray = nl.strokeConfig.strokeDashArray
+                            .map((v) => (typeof v === 'number' ? Math.round(v * k * 100) / 100 : v));
+                    }
+                }
+                if (l.shadowGlowConfig) {
+                    nl.shadowGlowConfig = Object.assign({}, l.shadowGlowConfig);
+                    scaleTplPx(nl.shadowGlowConfig, ['shadowBlur', 'shadowOffsetX', 'shadowOffsetY', 'glowBlur'], k);
+                }
+                if (l.cornerConfig) {
+                    nl.cornerConfig = Object.assign({}, l.cornerConfig);
+                    scaleTplPx(nl.cornerConfig, ['cornerRadiusAll', 'cornerRadiusTL', 'cornerRadiusTR',
+                        'cornerRadiusBL', 'cornerRadiusBR'], k, 0);
+                }
+                return nl;
+            });
+        }
+        // decorConfig（文字/贴纸）与 logoElements 是「显示画布口径」的元素，不跟着缩：
+        // 字号由 scalePresetFonts 单独换算，坐标是拖动/命中检测用的显示像素。
+        return out;
+    }
+    // 留给回归测试直接验「代理尺度模板」，不用去偷看渲染中途的临时副本
+    window.qfScaledTemplate = renderTemplate;
     function scalePresetFonts(tpl, im) {
         if (!tpl || !im) return;
         const el = im.el || {};

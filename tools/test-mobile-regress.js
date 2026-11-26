@@ -631,6 +631,32 @@ app.whenReady().then(async () => {
             // 手机真实链路：原图 4000、预览代理 1600。字号必须按 1600/4000 缩回，
             // 否则预览里的字比成片大 2.5 倍（用户看到的「预览字巨大、导出变小」）。
             autofs.proxy = await importSize(4000, 1600);
+
+            // 布局同一条链路：NOMO 的胶片边是绝对像素（baseMargin.marginTop=64），
+            // 预览代理渲染时必须折成 64×0.4；导出（el=原图）保持 64。
+            const importNamed = async (name, size, proxy) => {
+                const elSize = proxy || size;
+                const c = document.createElement('canvas');
+                c.width = elSize; c.height = elSize;
+                c.naturalWidth = elSize; c.naturalHeight = elSize; c.complete = true;
+                window.qfsNative.pickImages = async () => [{
+                    el: c, name: 'lay' + size + '.jpg', w: elSize, h: elSize,
+                    srcW: size, srcH: size, grade: null, file: null
+                }];
+                document.getElementById('btnPick').click();
+                await wait(350);
+                const idx = (window.QF_PRESETS || []).findIndex(p => (p.templateName || p._fileName) === name);
+                const card = idx >= 0 ? document.querySelector('[data-preset="' + idx + '"]') : null;
+                if (card) card.click();
+                await wait(350);
+                // 渲染用的「代理尺度模板」是临时副本，从公开入口取，别读被还原过的 App.template
+                const t = (typeof window.qfScaledTemplate === 'function')
+                    ? window.qfScaledTemplate(window.App.template, window.App.image)
+                    : window.App.template;
+                return { marginTop: t.baseMargin && t.baseMargin.marginTop, baseW: window.App._canvasBaseW, k: window.qfProxyRatio(window.App.image) };
+            };
+            autofs.layoutFull = await importNamed('NOMO复古相机', 4000);
+            autofs.layoutProxy = await importNamed('NOMO复古相机', 4000, 1600);
             document.querySelector('[data-tab="crop"]').click();
             await wait(150);
         } catch (e) { autofsErr = String(e && e.message || e); }
@@ -815,6 +841,14 @@ app.whenReady().then(async () => {
     check(!r.autofsErr && proxyFs > 0 && Math.abs(proxyFs - expectProxy) <= 1,
         '预览代理字号按代理/原图比例缩回（预览与导出同比例）',
         JSON.stringify({ proxy: proxyFs, expect: expectProxy, autofs: r.autofs, err: r.autofsErr }));
+
+    // 模板类预设的绝对边距也要按同一比例折：预览的胶片边厚度必须和成片一致
+    const mFull = r.autofs && r.autofs.layoutFull && r.autofs.layoutFull.marginTop;
+    const mProxy = r.autofs && r.autofs.layoutProxy && r.autofs.layoutProxy.marginTop;
+    const mExpect = (typeof mFull === 'number') ? Math.round(mFull * 1600 / 4000) : NaN;
+    check(!r.autofsErr && mFull > 0 && Math.abs(mProxy - mExpect) <= 1,
+        '模板绝对边距按代理/原图比例折回（预览边框与成片同厚）',
+        JSON.stringify({ full: mFull, proxy: mProxy, expect: mExpect, autofs: r.autofs, err: r.autofsErr }));
 
     check(!r.layoutErr && !r.layout.actionBar && r.layout.collapsed && r.layout.toggle === '展开'
         && r.layout.restored && r.layout.cols === 3,
