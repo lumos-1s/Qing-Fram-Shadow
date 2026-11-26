@@ -88,9 +88,18 @@
     function presetLabel() {
         return (state.preset && (state.preset.templateName || state.preset._fileName)) || '已套用风格';
     }
+    // 顶栏就是新的「状态条」：风格名 + 尺寸/张数，导出固定在右侧。
+    // 保留 stageBar(name, meta) 这个老接口，各页签的调用一行都不用改。
     function stageBar(name, meta) {
-        document.getElementById('stageName').textContent = name || '未选择风格';
-        document.getElementById('stageMeta').textContent = meta || '—';
+        const n = document.getElementById('hdrName');
+        const m = document.getElementById('hdrMeta');
+        if (n) n.textContent = name || '未选择风格';
+        if (m) m.textContent = meta || '—';
+        const th = document.getElementById('hdrThumb');
+        if (th) {
+            const src = state.image ? thumbOf(state.image, 0.5) : '';
+            if (src) th.src = src; else th.removeAttribute('src');
+        }
     }
     function updateEmpty() {
         const has = !!state.image;
@@ -99,7 +108,7 @@
             const b = stageEmpty.querySelector('b');
             const s = stageEmpty.querySelector('span');
             if (b) b.textContent = '先导入一张照片';
-            if (s) s.textContent = '点下面的「风格」页选图';
+            if (s) s.textContent = '点右上角的 ＋ 选图';
         }
     }
 
@@ -133,7 +142,10 @@
             if (!state.images.length) { updateEmpty(); return; }
             state.template.puzzle = state.puzzle;
             A.template = state.template;
-            try { window.__renderPuzzle(A, false, true); }
+            // 画布上直接点格子：让引擎把选中格描出来（与面板网格同一个 activeSlot）
+            A._activePuzzleSlot = state.activeSlot;
+            // 预览画选中框（点哪格选哪格），导出帧（带 opts）不画，免得蓝边被烤进成品
+            try { window.__renderPuzzle(A, false, !!opts); }
             catch (e) { console.warn('[mobile] puzzle render failed', e); paintFallback(); }
             updateEmpty();
             return;
@@ -359,6 +371,45 @@
         }
         if (activePointers.size > 2) return;
         const pt = pointerPos(e);
+        // 拼图 / 切图：画布本身就是操作区，点哪格选哪格，不用再低头找面板里的同名网格
+        if (state.tab === 'puzzle' && state.images.length) {
+            const nx = pt.x / Math.max(1, canvas.width), ny = pt.y / Math.max(1, canvas.height);
+            const rects = (typeof window.__buildPuzzleSlots === 'function')
+                ? window.__buildPuzzleSlots(state.puzzle.layout, state.puzzle.axisVals || {}) : [];
+            let idx = -1;
+            rects.forEach((r, i) => {
+                if (nx >= r[0] && nx <= r[0] + r[2] && ny >= r[1] && ny <= r[1] + r[3]) idx = i;
+            });
+            if (idx >= 0) {
+                state.activeSlot = idx;
+                // 只更选中态 + 重画画布，别整页重建（2×2/3×3 网格重建会闪一下）
+                panel.querySelectorAll('[data-slot]').forEach((b) => {
+                    b.classList.toggle('active', Number(b.dataset.slot) === idx);
+                });
+                renderPreview();
+                hint(`已选第 ${idx + 1} 格`);
+            }
+            return;
+        }
+        if (state.tab === 'crop') {
+            const nx = pt.x / Math.max(1, canvas.width), ny = pt.y / Math.max(1, canvas.height);
+            const { rows, cols } = state.crop;
+            const c = Math.max(0, Math.min(cols - 1, Math.floor(nx * cols)));
+            const r = Math.max(0, Math.min(rows - 1, Math.floor(ny * rows)));
+            const i = r * cols + c;
+            state.crop.touched = true;
+            if (state.crop.picked.has(i)) state.crop.picked.delete(i); else state.crop.picked.add(i);
+            const box = panel.querySelector('[data-block="' + i + '"]');
+            if (box) box.checked = state.crop.picked.has(i);
+            const note = panel.querySelector('.panel-note');
+            if (note && state.crop.blocks.length) {
+                note.textContent = `已勾选 ${state.crop.picked.size}/${state.crop.blocks.length} 块 · 点右上角「导出块」逐块保存/分享`;
+            }
+            stageBar(`切图 · ${state.crop.rows}×${state.crop.cols}`,
+                `${state.crop.picked.size}/${state.crop.blocks.length} 块`);
+            hint(`第 ${i + 1} 块${state.crop.picked.has(i) ? '已勾选' : '已取消'}`);
+            return;
+        }
         const hh = handleHit(pt);
         if (hh) {
             const o = hh.hit.obj;
@@ -780,19 +831,19 @@
         const all = presets.map((p, i) => ({ p, i, wall: byName.get(p.templateName || p._fileName) }));
         const shown = state.filter === '全部' ? all : all.filter((x) => x.wall && x.wall.tag === state.filter);
         const chips = tags.map((t) => `<button class="chip${state.filter === t ? ' active' : ''}" data-tag="${esc(t)}">${esc(t)}</button>`).join('');
+        // 横向大卡：封面就是风格效果，点一下立刻套到画布上（实时预览）
         const cards = shown.map(({ p, i, wall }) => {
             const name = p.templateName || p._fileName || ('风格 ' + (i + 1));
             const active = state.preset && state.preset._fileName === p._fileName;
             const cover = wall && wall.cover ? wall.cover : '';
-            return `<button class="style-card${active ? ' active' : ''}" data-preset="${i}">`
+            return `<button class="style-big${active ? ' active' : ''}" data-preset="${i}" aria-label="${esc(name)}">`
                 + `${cover ? `<img src="${esc(cover)}" loading="lazy" alt="">` : ''}<span>${esc(name)}</span></button>`;
         }).join('');
         return `
-            <h2>选一个风格</h2>
+            <div class="style-head"><h2>选一个风格</h2><span class="style-count">${shown.length} / ${presets.length} 款</span></div>
             ${currentStrip()}
             <div class="chips">${chips}</div>
-            <div class="style-grid">${cards || '<div class="style-card">这个分类下暂无风格</div>'}</div>
-            <p class="panel-note">共 ${presets.length} 款内置风格 · 预览 1600px · 导出按原图（最长 6000px）· 照片全程本地处理</p>`;
+            <div class="style-rail">${cards || '<p class="panel-note">这个分类下暂无风格</p>'}</div>`;
     }
 
     const PUZZLE_N = { single: 1, h2: 2, v2: 2, as2: 2, h3: 3, v3: 3, grid4: 4, as4: 4, h4: 4, v4: 4, grid6: 6, grid9: 9 };
@@ -824,7 +875,6 @@
             return `<button class="photo-thumb" data-photo="${i}"><img src="${thumbOf(im, 0.5)}" alt=""><small>${i + 1}</small></button>`;
         }).join('');
         return `
-            <h2>拼图</h2>
             <div class="chips">${chips}</div>
             <div class="puzzle-grid">${cells}</div>
             <div class="puzzle-acts">
@@ -881,7 +931,7 @@
     ];
 
     function gradePage() {
-        if (!state.image) return `<h2>调色</h2><p class="panel-note">请先导入照片</p>`;
+        if (!state.image) return `<p class="panel-note">请先导入照片</p>`;
         const g = state.image.grade || {};
         const rows = GRADE_UI.map(([k, label, min, max, step]) => {
             const v = Number(g[k]) || 0;
@@ -889,8 +939,7 @@
                 + `<input type="range" data-grade="${k}" min="${min}" max="${max}" step="${step}" value="${v}">`
                 + `<output data-out="${k}">${v}</output></div>`;
         }).join('');
-        return `<h2>调色</h2>
-            ${currentStrip()}
+        return `${currentStrip()}
             <div class="text-acts"><button id="btnGradeAuto" type="button">自动调色</button></div>
             <div class="histo-card"><canvas id="gradeHisto" width="600" height="180"></canvas></div>
             <div class="grade-sliders">${rows}</div>
@@ -950,7 +999,7 @@
     function cropPage() {
         if (!state.image) {
             state.crop.blocks = [];
-            return `<h2>切图</h2><p class="panel-note">请先导入照片</p>`;
+            return `<p class="panel-note">请先导入照片</p>`;
         }
         const { rows, cols } = state.crop;
         // 切的是当前成品画布（含风格/调色），不是未处理的原图。
@@ -982,12 +1031,11 @@
             return `<label class="crop-cell"><input type="checkbox" data-block="${i}"${checked}>`
                 + `<img src="${t.toDataURL('image/jpeg', 0.5)}" alt=""><small>${i + 1}</small></label>`;
         }).join('');
-        return `<h2>切图</h2>
-            ${currentStrip()}
+        return `${currentStrip()}
             <div class="chips">${presets}</div>
             ${opts}
             <div class="crop-grid">${cells}</div>
-            <p class="panel-note">已勾选 ${state.crop.picked.size}/${blocks.length} 块 · 点底部「导出选中块」逐块保存/分享</p>`;
+            <p class="panel-note">已勾选 ${state.crop.picked.size}/${blocks.length} 块 · 点右上角「导出块」逐块保存/分享</p>`;
     }
 
     const EDIT_SUBS = [['border', '边框'], ['text', '文字'], ['element', '元素'], ['style', '样式']];
@@ -995,10 +1043,9 @@
         const chips = EDIT_SUBS.map(([k, label]) =>
             `<button class="chip${state.editSub === k ? ' active' : ''}" data-edit-sub="${k}">${label}</button>`).join('');
         if (!state.image) {
-            return `<h2>编辑</h2><div class="chips edit-subs">${chips}</div><p class="panel-note">先导入一张照片，再选一个风格</p>`;
+            return `<div class="chips edit-subs">${chips}</div><p class="panel-note">先导入一张照片，再选一个风格</p>`;
         }
-        return `<h2>编辑</h2>
-            ${currentStrip()}
+        return `${currentStrip()}
             <div class="chips edit-subs">${chips}</div>
             ${(window.QF_EditPanel && window.QF_EditPanel.html(state.editSub, state.template, state.template.photoFrameStyle, {
                 baseW: A._canvasBaseW || (state.image && state.image.el && state.image.el.naturalWidth) || 1000,
@@ -1152,7 +1199,7 @@
                 state.crop.touched = true;
                 if (b.checked) state.crop.picked.add(i); else state.crop.picked.delete(i);
                 const note = panel.querySelector('.panel-note');
-                if (note) note.textContent = `已勾选 ${state.crop.picked.size}/${state.crop.blocks.length} 块 · 点底部「导出选中块」逐块保存/分享`;
+                if (note) note.textContent = `已勾选 ${state.crop.picked.size}/${state.crop.blocks.length} 块 · 点右上角「导出块」逐块保存/分享`;
                 stageBar(`切图 · ${state.crop.rows}×${state.crop.cols}`,
                     `${state.crop.picked.size}/${state.crop.blocks.length} 块`);
             });
@@ -1163,8 +1210,11 @@
         const pickLabel = state.tab === 'puzzle' ? '加照片' : '导入照片';
         pick.setAttribute('aria-label', pickLabel);
         pick.title = pickLabel;
-        document.getElementById('btnExport').textContent = state.tab === 'crop' ? '导出选中块'
-            : (state.tab === 'puzzle' ? '保存拼图' : '保存 / 分享');
+        const ex = document.getElementById('btnExport');
+        ex.textContent = state.tab === 'crop' ? '导出块'
+            : (state.tab === 'puzzle' ? '存拼图' : '导出');
+        ex.setAttribute('aria-label', state.tab === 'crop' ? '导出选中块'
+            : (state.tab === 'puzzle' ? '保存拼图' : '保存或分享'));
         updateEmpty();
         if (state.tab === 'puzzle') {
             stageBar('拼图 · ' + puzzleLabel(state.puzzle.layout),
@@ -1175,19 +1225,18 @@
                 state.image ? `${state.crop.picked.size}/${state.crop.blocks.length} 块` : '未导入照片');
         } else if (state.tab === 'edit') {
             const sub = (EDIT_SUBS.find(([k]) => k === state.editSub) || EDIT_SUBS[0])[1];
-            stageBar(`编辑 · ${sub}`,
-                state.image ? (state.preset ? presetLabel() : dimsOf(state.image)) : '未导入照片');
+            stageBar(state.image ? (state.preset ? presetLabel() : state.image.name) : '编辑',
+                state.image ? `编辑 · ${sub} · ${dimsOf(state.image)}` : '未导入照片');
         } else if (state.tab === 'grade') {
             stageBar(state.image ? (state.preset ? presetLabel() : state.image.name) : '调色',
                 state.image ? dimsOf(state.image) : '未导入照片');
         } else {
-            stageBar(state.image ? (state.preset ? presetLabel() : state.image.name)
-                : (state.preset ? presetLabel() : '未选择风格'),
-            state.image ? dimsOf(state.image) : '未导入照片');
+            stageBar(state.preset ? presetLabel() : '选一个风格',
+                state.image ? `${dimsOf(state.image)} · ${state.images.length} 张` : '未导入照片');
         }
     }
 
-    // 底部操作条常驻，不随面板滚动
+    // 顶栏导出常驻：切页签只换面板，不换导出按钮的位置
     document.getElementById('btnPick').addEventListener('click', () => {
         if (state.exporting) return;
         importPhotos();
@@ -1202,17 +1251,89 @@
         // 导出/切图途中切页签会把画布重画回预览，正在编码的那一帧就废了
         if (state.exporting) return;
         const tab = e.target.closest('.tab');
-        if (tab) render(tab.dataset.tab);
+        if (!tab) return;
+        if (typeof window.qfOpenSheet === 'function') window.qfOpenSheet('half');
+        render(tab.dataset.tab);
     });
-    const stageToggle = document.getElementById('btnStageToggle');
-    if (stageToggle) stageToggle.addEventListener('click', () => {
-        const collapsed = document.getElementById('stage').classList.toggle('collapsed');
-        stageToggle.textContent = collapsed ? '展开' : '收起';
-        hint(collapsed ? '预览已收起，点右上角「展开」恢复' : '预览已展开');
-    });
+    // ── 抽屉：露头 / 半屏 / 全屏三档 ─────────────────────────────────────
+    // 画布优先：默认半屏；看照片时把抽屉压到露头，只留五个页签 + 顶栏导出。
+    const sheet = document.getElementById('sheet');
+    const sheetHandle = document.getElementById('sheetHandle');
+    const SHEET_STATES = ['peek', 'half', 'full'];
+    function sheetState() {
+        return SHEET_STATES.find((s) => sheet.classList.contains(s)) || 'half';
+    }
+    function safeBottom() {
+        const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom'));
+        return isFinite(v) ? v : 0;
+    }
+    function sheetTargets() {
+        const h = document.documentElement.clientHeight || window.innerHeight || 800;
+        return { peek: Math.round(66 + safeBottom()), half: Math.round(h * 0.46), full: Math.round(h * 0.78) };
+    }
+    function setSheet(next) {
+        if (SHEET_STATES.indexOf(next) < 0) next = 'half';
+        sheet.style.height = '';
+        sheet.classList.remove('dragging');
+        SHEET_STATES.forEach((s) => sheet.classList.toggle(s, s === next));
+    }
+    function cycleSheet() {
+        const cur = sheetState();
+        setSheet(cur === 'peek' ? 'half' : cur === 'half' ? 'full' : 'peek');
+    }
+    let sheetDrag = null;
+    if (sheetHandle) {
+        sheetHandle.addEventListener('pointerdown', (e) => {
+            if (e.button != null && e.button !== 0) return;
+            sheetDrag = {
+                id: e.pointerId, y0: e.clientY, h0: sheet.getBoundingClientRect().height,
+                moved: false
+            };
+            try { sheetHandle.setPointerCapture(e.pointerId); } catch (_) {}
+        });
+        sheetHandle.addEventListener('pointermove', (e) => {
+            if (!sheetDrag || e.pointerId !== sheetDrag.id) return;
+            const dy = sheetDrag.y0 - e.clientY;
+            if (!sheetDrag.moved && Math.abs(dy) > 4) {
+                sheetDrag.moved = true;
+                sheet.classList.add('dragging');
+            }
+            if (!sheetDrag.moved) return;
+            const t = sheetTargets();
+            const h = Math.max(t.peek, Math.min(t.full, sheetDrag.h0 + dy));
+            sheet.style.height = h + 'px';
+        });
+        const endDrag = (e) => {
+            if (!sheetDrag || (e && e.pointerId != null && e.pointerId !== sheetDrag.id)) return;
+            const moved = sheetDrag.moved;
+            sheetDrag = null;
+            if (!moved) { cycleSheet(); return; }
+            const t = sheetTargets();
+            const h = sheet.getBoundingClientRect().height;
+            const best = ['peek', 'half', 'full']
+                .map((k) => [k, Math.abs(h - t[k])])
+                .sort((a, b) => a[1] - b[1])[0][0];
+            setSheet(best);
+        };
+        sheetHandle.addEventListener('pointerup', endDrag);
+        sheetHandle.addEventListener('pointercancel', endDrag);
+        sheetHandle.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cycleSheet(); }
+        });
+    }
+    // 抽屉收起时点页签，自动展开到半屏（否则点了没反应）
+    window.qfOpenSheet = function (next) {
+        if (sheetState() === 'peek') setSheet(next || 'half');
+    };
 
     document.getElementById('btnSettings').addEventListener('click', () => {
+        window.qfOpenSheet('half');
         panel.innerHTML = `<h2>设置</h2><p class="panel-note">运行平台：${window.qfsNative.platform()} · 内测版 · 无账号、无上传。</p>`;
+    });
+    const thumbBtn = document.getElementById('btnThumb');
+    if (thumbBtn) thumbBtn.addEventListener('click', () => {
+        if (state.tab !== 'style') render('style');
+        setSheet(sheetState() === 'peek' ? 'half' : sheetState());
     });
 
     // 有引擎时先用它，否则降级自绘

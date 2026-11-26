@@ -12,7 +12,8 @@
   --border: #2C312E;
   --danger: #E27891;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --tab-h: calc(62px + var(--safe-bottom));
+  /* 抽屉露头高度：把手 18 + 页签 48，抽屉收起时也留得住五个页签 */
+  --peek-h: calc(66px + var(--safe-bottom));
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 /* 键盘/读屏用户的焦点环不能被重置掉 */
@@ -22,7 +23,7 @@
 /* 组件自己的 display（.empty-hint 是 flex）会盖掉浏览器默认的 [hidden]{display:none}，
    结果「先导入一张照片」的空态一直压在画布上。所有 hidden 一律强制隐藏。 */
 [hidden] { display: none !important; }
-html, body { height: 100%; }
+html, body { height: 100%; overflow: hidden; }
 body {
   background: var(--bg); color: var(--text);
   font: 14px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
@@ -32,59 +33,53 @@ body {
 }
 #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 
+/* ── 顶栏：缩略图 + 当前风格 + 导出。导出固定在顶栏，永不遮挡画面 ── */
 #mHeader {
-  flex: 0 0 auto; height: calc(52px + env(safe-area-inset-top, 0px));
-  padding: env(safe-area-inset-top, 0px) 14px 0;
-  display: flex; align-items: center; justify-content: space-between;
+  flex: 0 0 auto; min-height: calc(48px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 10px 0;
+  display: flex; align-items: center; gap: 9px;
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
-.brand { font-weight: 700; font-size: 16px; letter-spacing: .3px; }
-.brand .tag {
-  margin-left: 6px; padding: 2px 7px; border-radius: 9px;
-  background: var(--primary-soft); color: var(--primary); font-size: 10px; font-weight: 600;
+.hdr-thumb {
+  flex: 0 0 auto; width: 30px; height: 30px; padding: 0; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface-alt);
 }
+.hdr-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hdr-thumb img:not([src]) { visibility: hidden; }
+.hdr-title { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.hdr-title b {
+  font-size: 14px; font-weight: 600; letter-spacing: .2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hdr-title small {
+  font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.header-acts { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
 .icon-btn {
-  width: 44px; height: 44px; border: none; background: transparent;
-  color: var(--text-2); font-size: 20px; border-radius: 10px;
+  width: 34px; height: 34px; border: none; background: transparent;
+  color: var(--text-2); font-size: 18px; border-radius: 9px;
 }
 .icon-btn:active { background: var(--surface-alt); }
-.header-acts { display: flex; align-items: center; gap: 4px; }
+.export-btn {
+  min-height: 34px; padding: 0 14px; margin-left: 2px;
+  border: none; border-radius: 17px; background: var(--primary); color: #08241d;
+  font-size: 13px; font-weight: 600;
+}
+.export-btn:active { background: var(--primary-strong); }
 
 #mMain { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 
-/* 预览默认只占 38%，把空间还给参数面板；可一键收起只留状态条 */
+/* ── 画布：吃掉抽屉之外的全部高度，照片按比例居中，不再被按钮/状态条压住 ── */
 #stage {
-  position: relative; flex: 0 0 38%; min-height: 150px;
-  display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start;
-  background: #101312; overflow: hidden; border-bottom: 1px solid var(--border);
+  position: relative; flex: 1 1 auto; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 8px; background: #0b0e0d; overflow: hidden;
 }
-#stage.collapsed { flex-basis: 52px; min-height: 52px; }
-#stage.collapsed #previewCanvas, #stage.collapsed .empty-hint { display: none; }
-/* 状态条改成独立一条深色栏：以前浮在照片上，浅色相框/白边把青色字全吃掉了 */
-#stageBar {
-  position: relative; z-index: 2; order: -1; align-self: stretch; flex: 0 0 auto;
-  display: flex; justify-content: space-between; gap: 10px;
-  padding: 7px 12px; font-size: 12px; line-height: 18px; color: var(--text-2);
-  background: rgba(11, 14, 13, .96); border-bottom: 1px solid rgba(255,255,255,.06);
-}
-#stageBar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#stageBar #stageName { color: var(--primary); font-weight: 600; flex: 1 1 auto; }
-.stage-toggle {
-  flex: 0 0 auto; min-width: 52px; min-height: 32px; padding: 0 8px;
-  border: 1px solid rgba(255,255,255,.16); border-radius: 6px;
-  background: transparent; color: var(--text-2); font-size: 11px;
-}
-/* 主操作浮在预览右下角：省掉整条底部操作栏的 62px */
-.stage-export {
-  position: absolute; right: 12px; bottom: 12px; z-index: 6;
-  min-width: 112px; min-height: 44px; padding: 0 14px; font-size: 13px;
-  box-shadow: 0 6px 18px rgba(0,0,0,.4);
-}
-#stage.collapsed .stage-export { display: none; }
-/* 状态条独占一行后，画布吃掉剩下的空间；object-fit 保证缩放不变形 */
+/* width/height:auto + max 约束：画布盒子 = 照片实际显示框，指针换算不再被 letterbox 偏移 */
 #previewCanvas {
-  flex: 1 1 auto; min-height: 0; width: 100%; height: 100%;
-  object-fit: contain; display: block; touch-action: none;
+  max-width: 100%; max-height: 100%; width: auto; height: auto;
+  display: block; touch-action: none;
 }
 .empty-hint {
   position: absolute; inset: 0; display: flex; flex-direction: column;
@@ -95,24 +90,57 @@ body {
 .empty-hint span { font-size: 12px; }
 .empty-ico { font-size: 40px; color: var(--text-3); line-height: 1; opacity: .6; }
 
-/* 放在头部下方、预览区上方：以前停在底部操作条上面，正好盖住风格卡/调色滑块第一排 */
+/* 提示条停在画布顶部，不再压住画面中心 */
 #toast {
-  position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 86px);
-  transform: translateX(-50%);
-  z-index: 30; max-width: min(86vw, 420px); padding: 9px 16px; border-radius: 10px;
-  background: rgba(12, 25, 20, .96); border: 1px solid var(--primary-soft);
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
+  z-index: 30; max-width: min(86vw, 420px); padding: 8px 14px; border-radius: 10px;
+  background: rgba(12, 25, 20, .94); border: 1px solid var(--primary-soft);
   color: var(--text); font-size: 12px; line-height: 1.5; text-align: center;
-  box-shadow: 0 6px 20px rgba(0,0,0,.45); pointer-events: none;
+  pointer-events: none;
 }
 
+/* ── 抽屉：露头 / 半屏 / 全屏三档；页签长在抽屉顶部 ── */
+#sheet {
+  position: relative; flex: 0 0 auto; display: flex; flex-direction: column;
+  /* 关键：flex item 默认 min-height:auto 会被面板内容顶住，peek 档就压不下去 */
+  min-height: 0;
+  height: 46vh; height: 46dvh; background: var(--surface);
+  border-top: 1px solid var(--border); border-radius: 16px 16px 0 0;
+  transition: height .22s cubic-bezier(.2,.7,.2,1);
+  padding-bottom: var(--safe-bottom);
+}
+#sheet.peek { height: var(--peek-h); }
+#sheet.half { height: 46vh; height: 46dvh; }
+#sheet.full { height: 74vh; height: 74dvh; }
+#sheet.dragging { transition: none; }
+#sheetHandle {
+  flex: 0 0 auto; height: 18px; display: flex; align-items: center; justify-content: center;
+  touch-action: none; cursor: grab;
+}
+#sheetHandle span { width: 36px; height: 4px; border-radius: 2px; background: #3a423f; }
+#sheet.peek #panel { overflow: hidden; }
+
+#tabs {
+  flex: 0 0 auto; height: 48px; display: flex; background: transparent;
+}
+#tabs .tab {
+  flex: 1; border: none; background: transparent; color: var(--text-3);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; font-size: 10px; min-height: 44px;
+}
+#tabs .tab .ico { font-size: 16px; line-height: 1; }
+#tabs .tab.active { color: var(--primary); font-weight: 600; }
+
 #panel {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 14px 18px;
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 2px 14px 16px;
   scrollbar-width: thin; scrollbar-color: #39423D transparent;
+  overscroll-behavior: contain;
 }
 #panel::-webkit-scrollbar { width: 4px; }
 #panel::-webkit-scrollbar-track { background: transparent; }
 #panel::-webkit-scrollbar-thumb { background: #39423D; border-radius: 4px; }
 #panel h2 { font-size: 15px; margin-bottom: 8px; font-weight: 600; }
+.panel-note { font-size: 11px; line-height: 1.6; color: var(--text-3); padding: 2px 1px 0; }
 .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
 /* 触控目标 ≥44×44（UI UX Pro Max priority 2） */
@@ -123,21 +151,46 @@ body {
 .chip.active { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); font-weight: 600; }
 /* 编辑页子页签吸顶：长列表滚到底也能切回别的子页 */
 .edit-subs {
-  position: sticky; top: -12px; z-index: 4;
-  padding: 6px 0; margin: -6px 0 4px;
-  background: var(--bg); border-bottom: 1px solid var(--border);
+  position: sticky; top: -2px; z-index: 4;
+  padding: 6px 0; margin: -4px 0 4px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
 }
-/* 三列小卡：一屏能看到的风格从 2 行提到 3 行 */
-.style-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
-.style-card {
-  border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
-  color: var(--text-2); font-size: 12px; text-align: left; padding: 0; overflow: hidden;
+/* 风格长廊：横向大卡，点一下立刻套用；分类在上方一行 */
+.style-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.style-count { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.style-rail {
+  display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 6px;
+  scroll-snap-type: x proximity; scrollbar-width: none;
 }
-.style-card img { display: block; width: 100%; aspect-ratio: 1/1; object-fit: cover; background: var(--surface-alt); }
-.style-card span { display: block; padding: 5px 6px; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.style-card:active, .style-card.active { border-color: var(--primary); }
-.style-card.active span { color: var(--primary); font-weight: 600; }
-.style-card.active img { outline: 2px solid var(--primary); outline-offset: -2px; }
+.style-rail::-webkit-scrollbar { display: none; }
+.style-big {
+  flex: 0 0 120px; scroll-snap-align: start; padding: 0; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface-alt);
+  text-align: left; color: var(--text-2);
+}
+.style-big img {
+  display: block; width: 100%; height: 148px; object-fit: cover; background: #202624;
+}
+.style-big span {
+  display: block; padding: 7px 8px 8px; font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.style-big:active { border-color: var(--primary); }
+.style-big.active { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.style-big.active span { color: var(--primary); font-weight: 600; }
+/* 抽屉拉到全屏时，长廊自动铺成三列墙，找风格不用一直横滑 */
+#sheet.full .style-rail {
+  flex-wrap: wrap; align-content: flex-start; overflow-y: auto;
+  scroll-snap-type: none;
+}
+#sheet.full .style-big { flex: 0 0 calc((100% - 20px) / 3); }
+#sheet.full .style-big img { height: 112px; }
+/* 小屏（SE / 老安卓）把卡压矮一档，半屏也能露出完整一张卡 + 名字 */
+@media (max-height: 700px) {
+  .style-big { flex-basis: 108px; }
+  .style-big img { height: 118px; }
+  .style-big span { padding: 5px 6px 6px; font-size: 11px; }
+}
 
 .act-btn {
   min-height: 44px; border: 1px solid var(--border-strong, var(--border));
@@ -236,15 +289,3 @@ body {
 .crop-cell img { display: block; width: 100%; aspect-ratio: 1/1; object-fit: cover; }
 .crop-cell input { position: absolute; left: 6px; top: 6px; width: 20px; height: 20px; accent-color: var(--primary); z-index: 2; }
 .crop-cell small { position: absolute; right: 4px; bottom: 4px; background: rgba(0,0,0,.65); color: #fff; font-size: 10px; padding: 1px 5px; border-radius: 4px; }
-
-#tabs {
-  flex: 0 0 auto; height: var(--tab-h); padding-bottom: var(--safe-bottom);
-  display: flex; background: var(--surface); border-top: 1px solid var(--border);
-}
-#tabs .tab {
-  flex: 1; border: none; background: transparent; color: var(--text-3);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 2px; font-size: 11px; min-height: 44px;
-}
-#tabs .tab .ico { font-size: 18px; line-height: 1; }
-#tabs .tab.active { color: var(--primary); font-weight: 600; }

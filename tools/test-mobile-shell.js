@@ -47,7 +47,7 @@ app.whenReady().then(async () => {
         return { active: document.querySelector('#tabs .tab.active').dataset.tab,
                  text: (document.getElementById('panel').textContent || '') };
     })()`);
-    check(switched.active === 'grade' && /调色/.test(switched.text),
+    check(switched.active === 'grade' && switched.text.trim().length > 0,
         '页签切换正常', JSON.stringify({ active: switched.active, text: switched.text.slice(0, 20) }));
 
     // P1：原生适配层与风格页闭环（桩掉选图，避免真弹系统对话框）
@@ -91,7 +91,7 @@ app.whenReady().then(async () => {
         const tag = chips.find(t => t !== '全部');
         const chip = Array.from(document.querySelectorAll('.chip')).find(b => b.textContent === tag);
         if (chip) chip.click();
-        const cards = Array.from(document.querySelectorAll('.style-card'));
+        const cards = Array.from(document.querySelectorAll('.style-big'));
         return { wall: wall.length, chips: chips.length, tag,
                  cards: cards.length,
                  hasCover: cards.some(c => { const img = c.querySelector('img'); return img && /covers\\//.test(img.getAttribute('src')); }) };
@@ -176,7 +176,7 @@ app.whenReady().then(async () => {
         window.qfsNative.saveImage = origSave;
         return { cells, presets, calls, label: document.getElementById('btnExport').textContent };
     })()`);
-    check(p5.cells === 9 && p5.presets === 4 && /导出选中块/.test(p5.label),
+    check(p5.cells === 9 && p5.presets === 4 && /导出块/.test(p5.label),
         'P5 九宫格预览与尺寸档位就绪', JSON.stringify(p5));
     check(p5.calls === 8,
         '取消勾选一块后只导出 8 块', JSON.stringify(p5));

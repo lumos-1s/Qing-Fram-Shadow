@@ -247,7 +247,8 @@ app.whenReady().then(async () => {
                 tabs: document.querySelectorAll('#tabs .tab').length,
                 subs: document.querySelectorAll('[data-edit-sub]').length,
                 ctls: document.querySelectorAll('[data-ctl]').length,
-                stageName: document.getElementById('stageName').textContent
+                stageName: document.getElementById('hdrName').textContent,
+                stageMeta: document.getElementById('hdrMeta').textContent
             };
             const setByLabel = (label, value) => {
                 const row = Array.from(document.querySelectorAll('.ctl-row')).find((x) => {
@@ -661,22 +662,29 @@ app.whenReady().then(async () => {
             await wait(150);
         } catch (e) { autofsErr = String(e && e.message || e); }
 
-        // 23) 新版布局：操作条合并、预览可收起、风格三列
+        // 23) 新版布局：画布优先、顶栏导出、抽屉三档、风格横滑长廊
         let layout = {}, layoutErr = '';
         try {
             document.querySelector('[data-tab="style"]').click();
             await wait(200);
-            layout.actionBar = !!document.getElementById('actionBar');
-            const st = document.getElementById('stage');
-            document.getElementById('btnStageToggle').click();
-            await wait(120);
-            layout.collapsed = st.classList.contains('collapsed');
-            layout.toggle = document.getElementById('btnStageToggle').textContent;
-            document.getElementById('btnStageToggle').click();
-            await wait(120);
-            layout.restored = !st.classList.contains('collapsed');
-            const grid = document.querySelector('.style-grid');
-            layout.cols = grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').length : 0;
+            const sheet = document.getElementById('sheet');
+            const handle = document.getElementById('sheetHandle');
+            layout.sheet = !!sheet;
+            layout.headerExport = !!document.querySelector('#mHeader #btnExport');
+            layout.half0 = sheet.classList.contains('half');
+            const tapHandle = async () => {
+                handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 7, button: 0, clientY: 500 }));
+                handle.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 7, clientY: 500 }));
+                await wait(260);
+            };
+            await tapHandle();
+            layout.afterTap1 = sheet.classList.contains('full');
+            await tapHandle();
+            layout.afterTap2 = sheet.classList.contains('peek');
+            const rail = document.querySelector('.style-rail');
+            layout.rail = !!rail;
+            layout.railScroll = rail ? getComputedStyle(rail).overflowX : '';
+            layout.cards = document.querySelectorAll('.style-big').length;
         } catch (e) { layoutErr = String(e && e.message || e); }
 
         // 24) 桌面功能同步第一批：自动调色 / 效果 / 拼图选项 / 切图自定义 / 背景模糊
@@ -791,7 +799,7 @@ app.whenReady().then(async () => {
         '切图从全尺寸成品上切出 9 块', JSON.stringify({ crop: r.cropFull, err: r.cropFullErr }));
 
     check(!r.editErr && r.edit.tabs === 5 && r.edit.subs === 4 && r.edit.ctls > 10
-        && r.edit.textCtls > 10 && r.edit.stageName === '编辑 · 边框',
+        && r.edit.textCtls > 10 && /编辑 · 边框/.test(r.edit.stageMeta),
         '编辑页五个页签、四个子页与边框/文字控件都在', JSON.stringify({ edit: r.edit, err: r.editErr }));
     check(!r.editErr && r.edit.changedStroke && r.edit.changedFill && r.edit.stroke === 40 && r.edit.fill === '00ff00',
         '边框控件写入 template.layerList（描边宽度/填充颜色）', JSON.stringify({ edit: r.edit, err: r.editErr }));
@@ -850,9 +858,10 @@ app.whenReady().then(async () => {
         '模板绝对边距按代理/原图比例折回（预览边框与成片同厚）',
         JSON.stringify({ full: mFull, proxy: mProxy, expect: mExpect, autofs: r.autofs, err: r.autofsErr }));
 
-    check(!r.layoutErr && !r.layout.actionBar && r.layout.collapsed && r.layout.toggle === '展开'
-        && r.layout.restored && r.layout.cols === 3,
-        '新版布局：单底部栏、预览可收起、风格三列', JSON.stringify({ layout: r.layout, err: r.layoutErr }));
+    check(!r.layoutErr && r.layout.sheet && r.layout.headerExport && r.layout.half0
+        && r.layout.afterTap1 && r.layout.afterTap2
+        && r.layout.rail && r.layout.railScroll === 'auto' && r.layout.cards > 0,
+        '新版布局：画布优先、顶栏导出、抽屉三档、风格横滑长廊', JSON.stringify({ layout: r.layout, err: r.layoutErr }));
 
     check(!r.sync1Err && r.sync1.autoBtn && r.sync1.fx && r.sync1.gradeChanged && r.sync1.vignette === 60,
         '自动调色与效果滑块已同步到手机', JSON.stringify({ sync1: r.sync1, err: r.sync1Err }));
