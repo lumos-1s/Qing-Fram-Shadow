@@ -30,6 +30,7 @@
     window.qfHint = hint;
 
     function clone(v) { return JSON.parse(JSON.stringify(v)); }
+    function numv(v, d) { const n = Number(v); return isFinite(n) ? n : d; }
     function esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
             '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -173,7 +174,7 @@
         const o = kind === 'logo' ? (t.logoElements || [])[i]
             : kind === 'sticker' ? (decor.stickers || [])[i]
                 : (decor.textLines || [])[i];
-        return o ? { kind, obj: o, rect: elGeom(kind, o) } : null;
+        return o ? { kind, key, obj: o, rect: elGeom(kind, o) } : null;
     }
 
     function hitElement(pt) {
@@ -204,11 +205,36 @@
         return hits[0] || null;
     }
 
+    function handlePos(g) {
+        const r = Math.max(12, canvas.width * 0.018);
+        return {
+            r,
+            rotate: { x: g.cx, y: g.y - 28 },
+            resize: { x: g.x + g.w, y: g.y + g.h }
+        };
+    }
+
+    function handleHit(pt) {
+        if (state.tab !== 'edit' || !state.selectedElement) return null;
+        const hit = elementAt(state.selectedElement);
+        const g = hit && hit.rect;
+        if (!g || !g.w || !g.h) return null;
+        const hp = handlePos(g);
+        if (Math.abs(pt.x - hp.rotate.x) <= hp.r && Math.abs(pt.y - hp.rotate.y) <= hp.r) {
+            return { mode: 'rotate', hit };
+        }
+        if (Math.abs(pt.x - hp.resize.x) <= hp.r && Math.abs(pt.y - hp.resize.y) <= hp.r) {
+            return { mode: 'resize', hit };
+        }
+        return null;
+    }
+
     function drawSelection() {
         if (!state.selectedElement || state.exporting || state.tab !== 'edit') return;
         const hit = elementAt(state.selectedElement);
         const g = hit && hit.rect;
         if (!g || !g.w || !g.h) return;
+        const hp = handlePos(g);
         const ctx2 = canvas.getContext('2d');
         ctx2.save();
         ctx2.setTransform(1, 0, 0, 1, 0, 0);
@@ -216,7 +242,19 @@
         ctx2.lineWidth = 2;
         ctx2.setLineDash([6, 4]);
         ctx2.strokeRect(g.x, g.y, g.w, g.h);
+        // 旋转手柄：框上方圆点 + 连线；缩放手柄：右下角方块
+        ctx2.beginPath();
+        ctx2.moveTo(hp.rotate.x, hp.rotate.y);
+        ctx2.lineTo(g.cx, g.y);
+        ctx2.stroke();
         ctx2.setLineDash([]);
+        ctx2.beginPath();
+        ctx2.arc(hp.rotate.x, hp.rotate.y, hp.r * 0.7, 0, Math.PI * 2);
+        ctx2.fillStyle = '#3DD9B0'; ctx2.fill();
+        ctx2.strokeStyle = 'rgba(12,25,20,.9)'; ctx2.lineWidth = 1.5; ctx2.stroke();
+        ctx2.fillStyle = '#3DD9B0';
+        ctx2.fillRect(hp.resize.x - hp.r * 0.6, hp.resize.y - hp.r * 0.6, hp.r * 1.2, hp.r * 1.2);
+        ctx2.strokeRect(hp.resize.x - hp.r * 0.6, hp.resize.y - hp.r * 0.6, hp.r * 1.2, hp.r * 1.2);
         ctx2.restore();
     }
 
@@ -231,6 +269,20 @@
     canvas.addEventListener('pointerdown', (e) => {
         if (state.exporting || !state.image) return;
         const pt = pointerPos(e);
+        const hh = handleHit(pt);
+        if (hh) {
+            const o = hh.hit.obj;
+            elDrag = {
+                mode: hh.mode, obj: o, kind: hh.hit.key.split(':')[0],
+                cx: hh.hit.rect.cx, cy: hh.hit.rect.cy,
+                startDist: Math.hypot(pt.x - hh.hit.rect.cx, pt.y - hh.hit.rect.cy) || 1,
+                origRotation: numv(o.rotation, 0),
+                origSize: numv(o.size, 60), origScale: numv(o.scale, 1), origFs: numv(o.fontSize, 48)
+            };
+            try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+            hint(hh.mode === 'rotate' ? '旋转元素' : '缩放元素');
+            return;
+        }
         const hit = hitElement(pt);
         if (!hit) {
             state.selectedElement = '';
@@ -243,7 +295,7 @@
         state.tab = 'edit'; state.editSub = 'element';
         render('edit');
         elDrag = {
-            key: hit.key, obj: hit.obj, kind: hit.key.split(':')[0],
+            mode: 'move', key: hit.key, obj: hit.obj, kind: hit.key.split(':')[0],
             startX: pt.x, startY: pt.y, cx: hit.rect.cx, cy: hit.rect.cy
         };
         try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
@@ -252,17 +304,33 @@
     canvas.addEventListener('pointermove', (e) => {
         if (!elDrag) return;
         const pt = pointerPos(e);
+        const o = elDrag.obj;
+        if (elDrag.mode === 'rotate') {
+            const a = Math.atan2(pt.y - elDrag.cy, pt.x - elDrag.cx) * 180 / Math.PI;
+            o.rotation = Math.round(a + 90);
+            renderPreviewSoon();
+            return;
+        }
+        if (elDrag.mode === 'resize') {
+            const d = Math.hypot(pt.x - elDrag.cx, pt.y - elDrag.cy);
+            const f = Math.min(4, Math.max(0.15, d / elDrag.startDist));
+            if (elDrag.kind === 'logo') o.size = Math.max(10, Math.round(elDrag.origSize * f));
+            else if (elDrag.kind === 'sticker') o.scale = Math.max(0.1, Math.min(4, elDrag.origScale * f));
+            else o.fontSize = Math.max(12, Math.min(240, Math.round(elDrag.origFs * f)));
+            renderPreviewSoon();
+            return;
+        }
         const dx = pt.x - elDrag.startX, dy = pt.y - elDrag.startY;
         const baseW = A._canvasBaseW || canvas.width;
         const scl = canvas.width / Math.max(1, baseW);
         let nx = elDrag.cx + dx, ny = elDrag.cy + dy;
         if (elDrag.kind === 'text') {
-            elDrag.obj.x = Math.round(nx / scl);
-            elDrag.obj.y = Math.round(ny / scl);
+            o.x = Math.round(nx / scl);
+            o.y = Math.round(ny / scl);
         } else {
-            if (elDrag.kind === 'logo') elDrag.obj.rel = 0;
-            elDrag.obj.x = Math.round(nx);
-            elDrag.obj.y = Math.round(ny);
+            if (elDrag.kind === 'logo') o.rel = 0;
+            o.x = Math.round(nx);
+            o.y = Math.round(ny);
         }
         renderPreviewSoon();
     });

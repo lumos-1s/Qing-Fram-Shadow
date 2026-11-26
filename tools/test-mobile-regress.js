@@ -434,7 +434,40 @@ app.whenReady().then(async () => {
             await wait(200);
         } catch (e) { dragErr = String(e && e.message || e); }
 
-        // 17) RAW 全尺寸重解（本地有样本时）
+        // 17) 画布旋转 / 缩放手柄
+        let handle = {}, handleErr = '';
+        try {
+            const logo = (window.App.template.logoElements || [])[0];
+            document.querySelector('[data-tab="style"]').click();
+            await wait(300);
+            const cv = document.getElementById('previewCanvas');
+            const rect = cv.getBoundingClientRect();
+            const at = (x, y) => ({
+                clientX: rect.left + x / cv.width * rect.width,
+                clientY: rect.top + y / cv.height * rect.height,
+                pointerId: 1, bubbles: true
+            });
+            cv.dispatchEvent(new PointerEvent('pointerdown', at(logo.x, logo.y)));
+            cv.dispatchEvent(new PointerEvent('pointerup', at(logo.x, logo.y)));
+            await wait(200);
+            const size = logo.size, h = size * 0.3, cx = logo.x, cy = logo.y;
+            cv.dispatchEvent(new PointerEvent('pointerdown', at(cx, cy - h / 2 - 28)));
+            cv.dispatchEvent(new PointerEvent('pointermove', at(cx + 100, cy)));
+            cv.dispatchEvent(new PointerEvent('pointerup', at(cx + 100, cy)));
+            await wait(200);
+            handle.rotation = logo.rotation;
+            const cornerX = cx + size / 2, cornerY = cy + h / 2;
+            cv.dispatchEvent(new PointerEvent('pointerdown', at(cornerX, cornerY)));
+            cv.dispatchEvent(new PointerEvent('pointermove', at(cx + (cornerX - cx) * 1.5, cy + (cornerY - cy) * 1.5)));
+            cv.dispatchEvent(new PointerEvent('pointerup', at(cx + (cornerX - cx) * 1.5, cy + (cornerY - cy) * 1.5)));
+            await wait(200);
+            handle.size = logo.size;
+            handle.origSize = size;
+            document.querySelector('[data-tab="crop"]').click();
+            await wait(200);
+        } catch (e) { handleErr = String(e && e.message || e); }
+
+        // 18) RAW 全尺寸重解（本地有样本时）
         let rawFull = {}, rawFullErr = '';
         if (${JSON.stringify(fs.existsSync(rawSample))}) {
             try {
@@ -460,7 +493,7 @@ app.whenReady().then(async () => {
             rawBridge: typeof window.qfRawDecode === 'function',
             heic, heicErr, heicFull, heicFullErr, fullExport, fullExportErr,
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
-            edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, rawFull, rawFullErr
+            edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, rawFull, rawFullErr
         };
     })()`);
 
@@ -521,6 +554,9 @@ app.whenReady().then(async () => {
     check(!r.dragErr && r.drag.tab === 'edit' && r.drag.activeChip === 'logo:0'
         && r.drag.after.x === r.drag.before.x + 80 && r.drag.after.y === r.drag.before.y + 50,
         '画布点选 Logo 会切到编辑页并可拖动', JSON.stringify({ drag: r.drag, err: r.dragErr }));
+
+    check(!r.handleErr && r.handle.rotation === 90 && Math.abs(r.handle.size - r.handle.origSize * 1.5) <= 2,
+        '画布手柄能旋转并放大 Logo', JSON.stringify({ handle: r.handle, err: r.handleErr }));
 
     if (fs.existsSync(rawSample)) {
         check(!r.rawFullErr && r.rawFull.w >= 3000 && r.rawFull.h >= 2000 && r.rawFull.px.some((v) => v > 0),
