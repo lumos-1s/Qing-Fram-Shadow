@@ -3849,7 +3849,7 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
         const ml = Math.round(leftW * 0.25) + 40;
         const brand = brandHidden(S) ? '' : prettyBrand((S.cam && S.cam.brand) ? S.cam.brand : 'SONY');
         // 默认自适应:按照片宽度比例算,用户调参数字号时按比例缩放
-        const pfScale = (S.paramFs != null && S.paramFs > 0) ? S.paramFs / 33 : 1;
+        const pfScale = (S.paramFsAuto || !(S.paramFs > 0)) ? 1 : S.paramFs / 33;
         const fBrand = Math.max(22, Math.round(leftW * 0.14 * pfScale * (S.brandScale || 1)));
         g.fillStyle = brandInk(brand, true);
         g.font = brandFont(fBrand, 700);
@@ -4669,7 +4669,7 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
     function styleOverlayParams(img, size, g, iw, ih, S, pos, cwO, chO) {
         // LEFT(pos=0): 白底+照片在右+左侧品牌名和参数
         if (pos === 0) {
-            const pfScale = (S.paramFs != null && S.paramFs > 0) ? S.paramFs / 33 : 1;
+            const pfScale = (S.paramFsAuto || !(S.paramFs > 0)) ? 1 : S.paramFs / 33;
             // 完全对齐印象毛玻璃布局,白底黑字(尺寸公式与 styleDims 一致,无 gm)
             const leftW = Math.max(180, Math.round(iw * 0.35));
             const topBotPad = Math.max(50, Math.round(size * 1.2));
@@ -4766,7 +4766,7 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
         // BOTTOM(pos=2): 白底+照片在上+底部品牌名和参数
         if (pos === 2) {
             const gm = Math.min(1.1, S.globalMargin || 1);
-            const pfScale = (S.paramFs != null && S.paramFs > 0) ? S.paramFs / 33 : 1;
+            const pfScale = (S.paramFsAuto || !(S.paramFs > 0)) ? 1 : S.paramFs / 33;
             const bottomH = Math.max(120, Math.round(ih * 0.25 * gm));
             const sidePad = Math.max(30, Math.round(size * 0.8 * gm));
             const natW = iw + sidePad * 2, natH = ih + bottomH + sidePad;
@@ -4815,7 +4815,11 @@ const w = natW;
                 g.textAlign = 'left';
             }
             if (S.useExif && S.cam) {
-                const boxW = Math.round(Math.max(280, Math.min(w * 0.35, 440)) * pfScale * (S.paramScale || 1));
+                // 参数框宽度按画布宽度走。旧版钉死 max(280, min(w*0.35, 440))：440 是绝对像素，
+                // 手机预览（画布 ~1700）三个框加起来比画布还宽，左右两组直接被裁掉；4000px 成片上
+                // 又缩成一小撮 —— 用户看到的就是「参数字号不跟图片大小走」。
+                // 0.089 ≈ 440 / 4960，4000px 成片的现有观感不变，其它尺寸按同比例缩放。
+                const boxW = Math.round(w * 0.089 * pfScale * (S.paramScale || 1));
                 const boxH = Math.round(boxW * 0.55);
                 const fBox = Math.max(11, Math.round(boxH * 0.45));
                 const fVal = Math.max(14, Math.round(boxH * 0.6));
@@ -4854,7 +4858,7 @@ const w = natW;
         }
         // RIGHT(pos=1): 白底+照片在左+右侧品牌名和参数(印象右留白)
         if (pos === 1) {
-            const pfScale = (S.paramFs != null && S.paramFs > 0) ? S.paramFs / 33 : 1;
+            const pfScale = (S.paramFsAuto || !(S.paramFs > 0)) ? 1 : S.paramFs / 33;
             // 完全对齐印象毛玻璃镜像版,白底黑字(尺寸公式与 styleDims 一致,无 gm)
             const rightW = Math.max(180, Math.round(iw * 0.35));
             const leftPad = Math.round(rightW / 2);
@@ -5611,6 +5615,9 @@ const w = natW;
             brandLogoImg,
             brandLogoData,
             paramFs: rawPf > 0 ? clampP(rawPf, 2, 160) : autoPf,
+            // 0 档(自动)：这些版式的几何本身已经按图宽成比例，字号再乘 autoPf 会变成
+            // 「图越大字相对越大」。自动档直接取版式自己的相对尺寸(等价 33 档)。
+            paramFsAuto: !(rawPf > 0),
             // 绝对像素口径的字号(给不走 autoExifSize 的老样式用)：手机预览拿的是 1600px 代理，
             // 直接写 paramFs 会让预览里的字比成品大好几倍。proxyK = 代理长边/原图长边，
             // 预览时把字号按同一比例缩回，导出(proxyK=1)与桌面端逐像素不变。
@@ -8287,7 +8294,7 @@ const w = natW;
         drawPhoto(Math.round((iw - pw) / 2), Math.round((ih - ph) / 2), pw, ph);
         const maxW = iw - Math.round(iw * 0.08);
         // 参数字号滑块对无模糊版式也生效;默认 33 时保持原来的固定字号不变。
-        const pfScale = (S.paramFs != null && S.paramFs > 0) ? S.paramFs / 33 : 1;
+        const pfScale = (S.paramFsAuto || !(S.paramFs > 0)) ? 1 : S.paramFs / 33;
         const fs1 = Math.max(14, Math.round(iw * 0.026 * pfScale));
         const fs2 = Math.max(11, Math.round(fs1 * 0.75));
         const ay2 = ih - Math.round(iw * 0.05);
