@@ -13,6 +13,21 @@ function photoSrc(im) {
     return im.el || null;
 }
 
+// 逻辑尺寸：模板里的边距/字号/描边/阴影都是「原图口径」的绝对像素，排版必须按原图算。
+// 手机端为了省内存把预览底图压到 1600px（image.srcW/srcH 仍记原图），若直接拿代理的
+// naturalWidth 当画布基尺寸，同一套参数在预览里字大一圈、导出又变小 —— 预览和成品对不上。
+// 有 srcW/srcH 就按原图尺寸出图（代理只负责提供像素，drawImage 会把它拉伸到逻辑矩形）。
+function logicalSizeOf(image, img) {
+    const lw = Number(image && (image.srcW || image.logicalW)) || 0;
+    const lh = Number(image && (image.srcH || image.logicalH)) || 0;
+    const bw = (img && (img.naturalWidth || img.width)) || 0;
+    const bh = (img && (img.naturalHeight || img.height)) || 0;
+    return { w: lw > 0 ? lw : bw, h: lh > 0 ? lh : bh, bw, bh,
+        // 位图比逻辑尺寸小 = 这是一张代理图，画布后备像素仍要按 displayMax 封顶
+        proxy: bw > 0 && lw > bw };
+}
+if (typeof window !== 'undefined') window.qfLogicalSize = logicalSizeOf;
+
 // AI 自由图层模板：新格式存 aiLayers，旧文档/面板读回用 layers；两者都认。
 function aiLayersOf(template) {
     if (!template) return null;
@@ -165,7 +180,7 @@ function _renderToCanvasInner(app, compare) {
         canvas._logH = Math.max(1, Math.round(ch0 * uiBase));
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, cw0, ch0);
-        ctx.drawImage(img, 0, 0, cw0, ch0);
+        ctx.drawImage(img, 0, 0);
         // 这里**绝不能**调 fitZoom：它会按「原图尺寸」重算 zoom 并写进 this.zoom，
         // 松手回到边框态后，画布按这个 zoom 显示小得多的逻辑宽度（1800×0.13≈240px），
         // 用户看到的就是「对比一下，加过边框的图变小了」。只重新套用当前 zoom 即可。

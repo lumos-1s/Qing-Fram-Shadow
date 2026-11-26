@@ -527,6 +527,20 @@
     // 预设里的文字字号是按参考短边写死的；换到不同尺寸的照片要跟着缩放，
     // 否则同一款预设在小图上字巨大、在 24MP 原片上字小得看不见。
     const TEXT_REF_EDGE = 2000;
+    // 手机预览常驻一张 1600px 代理（im.el 是代理，im.srcW/H 才是原图）。
+    // 字号必须按「代理 / 原图」再缩一次，否则预览里的字比最终成片大好几倍；
+    // 导出时 withFullImage 把 el 换成全尺寸，下面的 proxy 比例自动回到 1，成片口径不变。
+    function proxyRatio(im) {
+        const el = (im && im.el) || {};
+        const ew = Number(el.naturalWidth) || Number(el.width) || 0;
+        const eh = Number(el.naturalHeight) || Number(el.height) || 0;
+        const sw = Number(im && im.srcW) || ew;
+        const sh = Number(im && im.srcH) || eh;
+        if (!ew || !eh || !sw || !sh) return 1;
+        return Math.max(0.05, Math.min(1, Math.min(ew, eh) / Math.min(sw, sh)));
+    }
+    // 面板「文字跟随图片」也要用同一个比例，否则点一次就把预览字号改成成片口径。
+    window.qfProxyRatio = proxyRatio;
     function scalePresetFonts(tpl, im) {
         if (!tpl || !im) return;
         const el = im.el || {};
@@ -534,6 +548,7 @@
         const h = Number(im.srcH) || Number(el.naturalHeight) || Number(im.h) || 0;
         const edge = Math.min(w, h) || TEXT_REF_EDGE;
         const k = Math.max(0.5, Math.min(2.5, edge / TEXT_REF_EDGE));
+        const pk = proxyRatio(im);
         // 相框风格里的品牌水印走 autoExifSize(paramFs, 图宽) 做「按图宽自适应」。
         // 这里若把默认 33 改成引擎的 0 档，会再叠加一次 autoPf，宽图上品牌字会大出一倍。
         // 所以预设的 paramFontSize 保持原样，自适应交给引擎已有的那一次换算。
@@ -541,7 +556,7 @@
         lines.forEach((line) => {
             if (!line || line.align === 'exif') return; // exif 行引擎自己有 2000px 基准缩放
             if (line._qfAutoFs == null) line._qfAutoFs = Number(line.fontSize) || 12;
-            line.fontSize = Math.max(6, Math.round(line._qfAutoFs * k));
+            line.fontSize = Math.max(6, Math.round(line._qfAutoFs * k * pk));
         });
     }
 
@@ -592,6 +607,9 @@
                 im.el = full.canvas;
                 im.w = full.canvas.naturalWidth || full.canvas.width;
                 im.h = full.canvas.naturalHeight || full.canvas.height;
+                // 字体是按代理比例缩过的，换回全尺寸后必须按成片口径重算，
+                // 否则导出的字会沿用预览那份缩小后的字号（成片上字变小一半）。
+                scalePresetFonts(state.template, im);
                 if (typeof A.invalidateGrade === 'function') A.invalidateGrade(im);
                 if (typeof window.ensureFullGrade === 'function') window.ensureFullGrade(im);
             }
@@ -600,6 +618,7 @@
         } finally {
             if (prevEl) {
                 im.el = prevEl; im.w = prevW; im.h = prevH;
+                scalePresetFonts(state.template, im);
                 if (typeof A.invalidateGrade === 'function') A.invalidateGrade(im);
             }
             if (full && full.release) full.release();

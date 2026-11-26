@@ -25,9 +25,12 @@
     }
 
     // 原版 apply(): scaled = max(5, size*2.0); ref=min(w,h); scaled = max(5, scaled*ref/1000)
-    function scaledSize(img, size) {
+    // iw/ih 是「排版口径」的逻辑尺寸(手机代理图要传原图尺寸,不能传位图尺寸),缺省退回位图。
+    function scaledSize(iw, ih, size) {
         let scaled = Math.max(5, Math.floor(size * 2.0));
-        const ref = Math.min(img.naturalWidth, img.naturalHeight);
+        const ref = Math.min(
+            Number(iw) > 0 ? Number(iw) : 1,
+            Number(ih) > 0 ? Number(ih) : 1);
         scaled = Math.max(5, Math.floor(scaled * ref / 1000.0));
         return scaled;
     }
@@ -3078,10 +3081,15 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
         while (fs > 9) { if (textMetrics(g, text, fs, mono, bold, track).w <= maxWidth) break; fs--; }
         return fs;
     }
-    function roundedPhoto(img, arc) {
-        const c = newCanvas(img.naturalWidth, img.naturalHeight);
+    // iw/ih: 逻辑排版尺寸(手机代理图这里会是原图尺寸)。临时画布仍按**位图**大小开,
+    // 避免预览时为了一张 6000px 的圆角照片再分配一块上百 MB 的画布;贴回主画布时按逻辑尺寸拉伸。
+    function roundedPhoto(img, arc, iw, ih) {
+        const bw = img.naturalWidth || img.width || 1;
+        const bh = img.naturalHeight || img.height || 1;
+        const c = newCanvas(bw, bh);
         const g = c.getContext('2d');
-        roundRectPath(g, 0, 0, c.width, c.height, Math.max(1, arc));
+        const r = Math.max(1, arc * Math.min(bw / Math.max(1, iw || bw), bh / Math.max(1, ih || bh)));
+        roundRectPath(g, 0, 0, c.width, c.height, r);
         g.clip();
         g.drawImage(img, 0, 0);
         return c;
@@ -3179,8 +3187,10 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
         const blockH = (S.paramType === 0 ? (exifSz + scaledPx(4)) + scaledPx(6) + exifSz : exifSz);
         return Math.max(side, Math.round(blockH + scaledPx(24)));
     }
-    function drawMainPhoto(g, img, cx, cy, arc, scale, offX, offY, shadowK) {
-        const iw = img.naturalWidth, ih = img.naturalHeight;
+    function drawMainPhoto(g, img, cx, cy, arc, scale, offX, offY, shadowK, iw, ih) {
+        // iw/ih 是逻辑排版尺寸;手机代理图位图更小,不能拿 naturalWidth 当排版尺寸
+        if (!(iw > 0)) iw = img.naturalWidth;
+        if (!(ih > 0)) ih = img.naturalHeight;
         const sc = scale || 1;
         const dw = iw * sc, dh = ih * sc;
         const dx = cx + (iw - dw) / 2 + (offX || 0);
@@ -3345,7 +3355,7 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
         const photoCr = Math.min(S.cornerAll, Math.min(iw, ih) / 2);
         const cx = blurMargin + exPadX, cy = blurMargin + exPadY;
         const shadowK = S.blurSubjectShadow != null ? S.blurSubjectShadow / 100 : 1;
-        drawMainPhoto(g, img, cx, cy, photoCr, (S.imgScale || 1) * 0.94, S.imgOffsetX, S.imgOffsetY, shadowK);
+        drawMainPhoto(g, img, cx, cy, photoCr, (S.imgScale || 1) * 0.94, S.imgOffsetX, S.imgOffsetY, shadowK, iw, ih);
 
         if (!S.useExif) return;
         // 字号: 先按用户基准(paramFs + 参数缩放滑块)计算, 再根据照片底边与画布底边之间的
@@ -4467,11 +4477,11 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
             // 清晰圆角照片带悬浮阴影
             g.save();
             g.shadowColor = 'rgba(0,0,0,0.5)'; g.shadowBlur = 20; g.shadowOffsetY = 8;
-            g.drawImage(roundedPhoto(img, arc), pad, pad);
+            g.drawImage(roundedPhoto(img, arc, iw, ih), pad, pad, iw, ih);
             g.restore();
         } else {
             drawCardSoftShadow(g, w, h, pad, pad, iw, ih, arc);
-            g.drawImage(roundedPhoto(img, arc), pad, pad);
+            g.drawImage(roundedPhoto(img, arc, iw, ih), pad, pad, iw, ih);
         }
         const textColor = S.signBgBlur ? '#ffffff' : 'rgb(25,25,25)';
         const brandColor = brandInk(brand, !!S.signBgBlur);
@@ -4526,7 +4536,7 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
         const w = iw + pad * 2, h = ih + pad + extra;
         g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
         drawCardSoftShadow(g, w, h, pad, pad, iw, ih, arc);
-        g.drawImage(roundedPhoto(img, arc), pad, pad);
+        g.drawImage(roundedPhoto(img, arc, iw, ih), pad, pad, iw, ih);
         const baseY = ih + pad + Math.floor((extra - wm.height) / 2) + wm.ascent;
         const lw = brandMarkW(S, wf);
         const onlyLogo = (S.brandLogo === 2 && lw > 0);
@@ -4600,7 +4610,7 @@ AV_OVERLAY_BC2:67, GALLERY_MAT:68, BOARDING_PASS:69, FILM_TEAR:70, PARAM_STRIP:7
         const bandH = fm.height * 2 + Math.max(10, Math.floor(pad / 2));
         const w = iw + pad * 2, h = ih + pad + bandH;
         g.fillStyle = 'rgb(17,17,17)'; g.fillRect(0, 0, w, h);
-        g.drawImage(roundedPhoto(img, arc), pad, pad);
+        g.drawImage(roundedPhoto(img, arc, iw, ih), pad, pad, iw, ih);
         const baseY = ih + pad + Math.floor((bandH + fm.ascent - fm.maxDescent) / 2);
         const lw = brandMarkW(S, f);
         const onlyLogo = (S.brandLogo === 2 && lw > 0);
@@ -4947,7 +4957,7 @@ const w = natW;
         const along = vertical ? ih : iw;
         const f = fitFont(g, line, true, false, Math.max(12, Math.min(autoExifSize(S.paramFs, iw), Math.floor(along / 10))), Math.max(60, along - inset * 2), 0);
         const fm = textMetrics(g, line, f, true, false, 0);
-        g.drawImage(img, 0, 0);
+        g.drawImage(img, 0, 0, iw, ih);
         paintScrim(g, iw, ih, pos, fm.height * 2 + inset);
         const textC = 'rgba(255,255,255,0.922)';
         if (vertical) {
@@ -4977,7 +4987,7 @@ const w = natW;
         track = Math.max(1, Math.round(fs * 0.45));
         const wm = { w: brandTextWidth(g, brand, fs, track), height: fs, ascent: Math.round(fs * 0.78), maxDescent: Math.round(fs * 0.22) };
         tw = wm.w;
-        g.drawImage(img, 0, 0);
+        g.drawImage(img, 0, 0, iw, ih);
         paintScrim(g, iw, ih, 2, wm.height * 3 + inset);
         const baseY = ih - inset - wm.maxDescent;
         const lw = brandMarkW(S, fs);
@@ -5521,7 +5531,7 @@ const w = natW;
         return 'black';
     }
 
-    function buildState(app, styleName, iw, ih, size) {
+    function buildState(app, styleName, iw, ih, size, proxyK) {
         const t = app.template;
         const cc = t.cornerConfig || {};
         const clampP = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v == null ? 0 : v)));
@@ -5601,6 +5611,13 @@ const w = natW;
             brandLogoImg,
             brandLogoData,
             paramFs: rawPf > 0 ? clampP(rawPf, 2, 160) : autoPf,
+            // 绝对像素口径的字号(给不走 autoExifSize 的老样式用)：手机预览拿的是 1600px 代理，
+            // 直接写 paramFs 会让预览里的字比成品大好几倍。proxyK = 代理长边/原图长边，
+            // 预览时把字号按同一比例缩回，导出(proxyK=1)与桌面端逐像素不变。
+            // 0 档(自适应)自己已经按短边算过，不能再乘一次。
+            paramFsAbs: rawPf > 0
+                ? clampP(rawPf, 2, 160) * (Number(proxyK) > 0 && Number(proxyK) < 1 ? Number(proxyK) : 1)
+                : autoPf,
             blurIntensity: clampP(t.blurIntensity != null ? t.blurIntensity : 50, 0, 100),
             // 背景模糊(经典/日期)的专属自由度。null = 用户没动过 → 引擎走缺省路径。
             // 视觉三项默认与旧版一致；文字三项的缺省值就是「空白均分三份 + 品牌间距 0.28 字号」。
@@ -6305,9 +6322,11 @@ const w = natW;
         // 这里曾经直取 app.image.el,结果套了相框样式(带 photoFrameStyle 的预设)后
         // 调色滑块完全不起作用 —— 用户看到的就是"加框后调色没变化"。
         const img = (typeof window.photoSrc === 'function' ? window.photoSrc(app.image) : null) || app.image.el;
+        // 这里必须用**位图**尺寸：相框管线会在离屏画布上按 iw/ih 开一张整图大小的画布，
+        // 手机预览的代理图若按原图尺寸开会直接吃掉上百 MB。代理只在文字字号上补偿（见 proxyK）。
         const iw = img.naturalWidth, ih = img.naturalHeight;
         const displayMax = app.displayMax || DISPLAY_MAX;
-        const size = scaledSize(img, Math.max(5, t.photoFrameBorderSize || 5));
+        const size = scaledSize(iw, ih, Math.max(5, t.photoFrameBorderSize || 5));
         const canvas = app.dom.canvas;
 
         if (styleName === 'NONE') {
@@ -6323,7 +6342,7 @@ const w = natW;
             g.clearRect(0, 0, canvas.width, canvas.height);
             g.save();
             g.scale(scale, scale);
-            g.drawImage(img, 0, 0);
+            g.drawImage(img, 0, 0, iw, ih);
             g.restore();
             drawUserElements(g, t, canvas.width, canvas.height);
             // 这张管线是把照片按 scale 铺满画布：照片矩形就是整块基准画布
@@ -6356,7 +6375,8 @@ const w = natW;
         g.drawImage(img, dx, dy, dw, dh);
         g.restore();
         // 文字大小(从面板参数):参数字号 × 参数缩放;品牌字再乘 品牌大小(近印象系列映射)
-        const fParam = Math.max(12, Math.round((S.paramFs || iw * 0.035) * (S.paramScale || 1)));
+        // 用 paramFsAbs 而不是 paramFs:后者是原图口径的绝对像素,手机预览的代理图会把它放大好几倍。
+        const fParam = Math.max(12, Math.round((S.paramFsAbs || iw * 0.035) * (S.paramScale || 1)));
         const fBrand = Math.max(16, Math.round(fParam * 1.3 * (S.brandScale || 1)));
         g.textAlign = 'center';
         g.textBaseline = 'alphabetic';
@@ -8665,7 +8685,12 @@ const w = natW;
             // 后面所有风格的基线整体平移,26MB 的 baseline.json 产生几十万行伪 diff。
             CAMERA_PLATE: styleCameraPlate,
         }[styleName];
-        const S = buildState(app, styleName, iw, ih, size);
+        // 代理图(手机预览)与逻辑原图的长边比：只用来把「绝对像素字号」缩回预览口径。
+        const logi0 = (typeof window.qfLogicalSize === 'function') ? window.qfLogicalSize(app.image, img) : null;
+        const proxyK = (logi0 && logi0.proxy)
+            ? Math.max(1, Math.min(logi0.bw, logi0.bh)) / Math.max(1, Math.min(logi0.w, logi0.h))
+            : 1;
+        const S = buildState(app, styleName, iw, ih, size, proxyK);
 
         try {
             let out;
@@ -8919,7 +8944,7 @@ const w = natW;
             g.clearRect(0, 0, canvas.width, canvas.height);
             g.save();
             g.scale(scale, scale);
-            g.drawImage(img, 0, 0);
+            g.drawImage(img, 0, 0, iw, ih);
             g.restore();
             // 回退图同样按「铺满画布」处理，保证蒙版对照的仍是这张照片
             app._canvasBaseW = iw;

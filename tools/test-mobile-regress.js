@@ -608,12 +608,13 @@ app.whenReady().then(async () => {
         // 22) 预设文字字号跟随照片大小
         let autofs = {}, autofsErr = '';
         try {
-            const importSize = async (size) => {
+            const importSize = async (size, proxy) => {
+                const elSize = proxy || size;
                 const c = document.createElement('canvas');
-                c.width = size; c.height = size;
-                c.naturalWidth = size; c.naturalHeight = size; c.complete = true;
+                c.width = elSize; c.height = elSize;
+                c.naturalWidth = elSize; c.naturalHeight = elSize; c.complete = true;
                 window.qfsNative.pickImages = async () => [{
-                    el: c, name: 'auto' + size + '.jpg', w: size, h: size,
+                    el: c, name: 'auto' + size + '.jpg', w: elSize, h: elSize,
                     srcW: size, srcH: size, grade: null, file: null
                 }];
                 document.getElementById('btnPick').click();
@@ -627,6 +628,9 @@ app.whenReady().then(async () => {
             };
             autofs.small = await importSize(1000);
             autofs.large = await importSize(4000);
+            // 手机真实链路：原图 4000、预览代理 1600。字号必须按 1600/4000 缩回，
+            // 否则预览里的字比成片大 2.5 倍（用户看到的「预览字巨大、导出变小」）。
+            autofs.proxy = await importSize(4000, 1600);
             document.querySelector('[data-tab="crop"]').click();
             await wait(150);
         } catch (e) { autofsErr = String(e && e.message || e); }
@@ -804,6 +808,13 @@ app.whenReady().then(async () => {
 
     check(!r.autofsErr && r.autofs.large.fs > r.autofs.small.fs && r.autofs.small.pf !== 0,
         '预设文字字号按照片短边缩放，相框品牌字号不被重复放大', JSON.stringify({ autofs: r.autofs, err: r.autofsErr }));
+
+    // 预览代理的字号必须按 1600/4000 缩回，否则预览与成品比例对不上（用户报的「字忽大忽小」）
+    const proxyFs = r.autofs && r.autofs.proxy && r.autofs.proxy.fs;
+    const expectProxy = r.autofs && r.autofs.large && r.autofs.large.fs * 1600 / 4000;
+    check(!r.autofsErr && proxyFs > 0 && Math.abs(proxyFs - expectProxy) <= 1,
+        '预览代理字号按代理/原图比例缩回（预览与导出同比例）',
+        JSON.stringify({ proxy: proxyFs, expect: expectProxy, autofs: r.autofs, err: r.autofsErr }));
 
     check(!r.layoutErr && !r.layout.actionBar && r.layout.collapsed && r.layout.toggle === '展开'
         && r.layout.restored && r.layout.cols === 3,

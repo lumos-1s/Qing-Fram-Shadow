@@ -719,7 +719,10 @@
             const edge = Math.min(Number(im && im.srcW) || Number(el.naturalWidth) || 2000,
                 Number(im && im.srcH) || Number(el.naturalHeight) || 2000) || 2000;
             const k = Math.max(0.5, Math.min(2.5, edge / 2000));
-            line.fontSize = Math.max(6, Math.round(line._qfAutoFs * k));
+            // 与导入时同一口径：再乘「预览代理 / 原图」，否则预览里的字会比成片大一截。
+            const pk = (typeof window.qfProxyRatio === 'function' && im)
+                ? window.qfProxyRatio(im) : 1;
+            line.fontSize = Math.max(6, Math.round(line._qfAutoFs * k * pk));
             onChange(); onRebuild();
             hint('已恢复跟随图片大小');
         });
