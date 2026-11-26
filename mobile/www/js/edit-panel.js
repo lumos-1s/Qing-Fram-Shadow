@@ -195,8 +195,10 @@
 
         if (line) {
             S('free', '内容', 'text', line.text || '', (v) => { line.text = v; });
-            S('free', '字号', 'range', line.fontSize || 48, (v) => { line.fontSize = v; },
-                { min: 12, max: 240, step: 1, unit: '' });
+            S('free', '字号', 'range', line.fontSize || 48, (v) => {
+                line.fontSize = v;
+                delete line._qfAutoFs; // 用户手动调过就不再跟随图片大小
+            }, { min: 12, max: 240, step: 1, unit: '' });
             S('free', '颜色', 'color', color(line.colorHex, '#ffffff'), (v) => { line.colorHex = v; });
             S('more', '位置 X', 'range', num(line.x, 0), (v) => { line.x = v; },
                 { min: 0, max: bw, step: 5, unit: '' });
@@ -223,8 +225,9 @@
             S('exif', label, 'text', man[k] || '', (v) => { man[k] = v; });
         });
 
-        S('param', '参数字号', 'range', num(t.paramFontSize, 33), (v) => { t.paramFontSize = v; },
-            { min: 12, max: 160, step: 1, unit: '' });
+        S('param', '参数字号', 'range', t.paramFontSize == null ? 33 : t.paramFontSize,
+            (v) => { t.paramFontSize = v; },
+            { min: 0, max: 160, step: 1, unit: '', hint: '0 = 跟随照片短边自动缩放' });
         S('param', '参数位置', 'select', t.paramPosition || 'CENTER', (v) => { t.paramPosition = v; },
             { options: [['CENTER', '居中'], ['LEFT', '左'], ['RIGHT', '右'], ['TOP', '上']] });
         return out;
@@ -237,7 +240,9 @@
         let out = `<div class="text-acts">`
             + `<button id="btnAddText" type="button">＋ 添加文字</button>`
             + (lines.length ? `<button id="btnDeleteText" type="button">删除选中</button>` : '')
-            + `</div>`;
+            + `</div><div class="text-acts">`
+            + `<button id="btnTextAutoFont" type="button">文字跟随图片</button>`
+            + `<button id="btnParamFsAuto" type="button">参数字号自动</button></div>`;
         if (lines.length) {
             out += `<div class="chips">` + lines.map((l, i) =>
                 `<button class="chip${i === selectedText ? ' active' : ''}" data-text-index="${i}">${esc((l.text || '文字').slice(0, 8))}</button>`
@@ -477,8 +482,9 @@
         const id = c.id;
         let input = '';
         if (c.type === 'range') {
+            const shown = (c.label === '参数字号' && Number(c.value) === 0) ? '自动' : c.value + (c.unit || '');
             input = `<input type="range" data-ctl="${id}" min="${c.min}" max="${c.max}" step="${c.step}" value="${c.value}">`
-                + `<output data-out="${id}">${c.value}${c.unit || ''}</output>`;
+                + `<output data-out="${id}">${shown}</output>`;
         } else if (c.type === 'select') {
             input = `<select data-ctl="${id}">` + c.options.map(([v, label]) =>
                 `<option value="${v}"${v === c.value ? ' selected' : ''}>${label}</option>`).join('') + `</select>`;
@@ -555,7 +561,9 @@
                     : (c.type === 'check' ? el.checked : el.value);
                 c.set(v);
                 const out = panel.querySelector(`[data-out="${c.id}"]`);
-                if (out && c.type === 'range') out.textContent = v + (c.unit || '');
+                if (out && c.type === 'range') {
+                    out.textContent = (c.label === '参数字号' && Number(v) === 0) ? '自动' : v + (c.unit || '');
+                }
                 onChange();
             });
         });
@@ -623,6 +631,27 @@
             }
             onRebuild();
         });
+        const autoFont = panel.querySelector('#btnTextAutoFont');
+        if (autoFont) autoFont.addEventListener('click', () => {
+            const cur = findEl(elemsOf(tmpl), selectedEl);
+            const line = cur && cur.kind === 'text' ? cur.obj : null;
+            if (!line || line._qfAutoFs == null) { hint('这是手动添加的文字，没有预设基准字号'); return; }
+            const im = window.App && window.App.image;
+            const el = (im && im.el) || {};
+            const edge = Math.min(Number(im && im.srcW) || Number(el.naturalWidth) || 2000,
+                Number(im && im.srcH) || Number(el.naturalHeight) || 2000) || 2000;
+            const k = Math.max(0.5, Math.min(2.5, edge / 2000));
+            line.fontSize = Math.max(6, Math.round(line._qfAutoFs * k));
+            onChange(); onRebuild();
+            hint('已恢复跟随图片大小');
+        });
+        const paramAuto = panel.querySelector('#btnParamFsAuto');
+        if (paramAuto) paramAuto.addEventListener('click', () => {
+            tmpl.paramFontSize = 0;
+            onChange(); onRebuild();
+            hint('参数字号已设为自动');
+        });
+
         const delEl = panel.querySelector('#btnDeleteEl');
         if (delEl) delEl.addEventListener('click', () => {
             const picked = targets().map((e) => ({ kind: e.kind, i: Number(e.key.split(':')[1]) }))

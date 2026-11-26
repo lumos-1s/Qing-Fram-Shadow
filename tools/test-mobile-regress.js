@@ -605,7 +605,33 @@ app.whenReady().then(async () => {
             await wait(200);
         } catch (e) { multiErr = String(e && e.message || e); }
 
-        // 22) 新版布局：操作条合并、预览可收起、风格三列
+        // 22) 预设文字字号跟随照片大小
+        let autofs = {}, autofsErr = '';
+        try {
+            const importSize = async (size) => {
+                const c = document.createElement('canvas');
+                c.width = size; c.height = size;
+                c.naturalWidth = size; c.naturalHeight = size; c.complete = true;
+                window.qfsNative.pickImages = async () => [{
+                    el: c, name: 'auto' + size + '.jpg', w: size, h: size,
+                    srcW: size, srcH: size, grade: null, file: null
+                }];
+                document.getElementById('btnPick').click();
+                await wait(350);
+                const card = document.querySelector('[data-preset="1"]');
+                if (card) card.click();
+                await wait(350);
+                const t = window.App.template;
+                const line = (t.decorConfig.textLines || [])[0];
+                return { fs: line && line.fontSize, pf: t.paramFontSize };
+            };
+            autofs.small = await importSize(1000);
+            autofs.large = await importSize(4000);
+            document.querySelector('[data-tab="crop"]').click();
+            await wait(150);
+        } catch (e) { autofsErr = String(e && e.message || e); }
+
+        // 23) 新版布局：操作条合并、预览可收起、风格三列
         let layout = {}, layoutErr = '';
         try {
             document.querySelector('[data-tab="style"]').click();
@@ -623,7 +649,7 @@ app.whenReady().then(async () => {
             layout.cols = grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').length : 0;
         } catch (e) { layoutErr = String(e && e.message || e); }
 
-        // 23) RAW 全尺寸重解（本地有样本时）
+        // 24) RAW 全尺寸重解（本地有样本时）
         let rawFull = {}, rawFullErr = '';
         if (${JSON.stringify(fs.existsSync(rawSample))}) {
             try {
@@ -650,7 +676,7 @@ app.whenReady().then(async () => {
             heic, heicErr, heicFull, heicFullErr, fullExport, fullExportErr,
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
             edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, dbl, dblErr,
-            pinch, pinchErr, exif, exifErr, multi, multiErr, layout, layoutErr, rawFull, rawFullErr
+            pinch, pinchErr, exif, exifErr, multi, multiErr, autofs, autofsErr, layout, layoutErr, rawFull, rawFullErr
         };
     })()`);
 
@@ -730,6 +756,9 @@ app.whenReady().then(async () => {
     check(!r.multiErr && r.multi.count === 2 && r.multi.selected === 2 && r.multi.hasAlign
         && r.multi.aligned && r.multi.zAfter === r.multi.zBefore + 1 && r.multi.afterDelete === 0,
         '元素多选、对齐、层级与批量删除', JSON.stringify({ multi: r.multi, err: r.multiErr }));
+
+    check(!r.autofsErr && r.autofs.large.fs > r.autofs.small.fs && r.autofs.small.pf === 0,
+        '预设文字字号按照片短边自动缩放', JSON.stringify({ autofs: r.autofs, err: r.autofsErr }));
 
     check(!r.layoutErr && !r.layout.actionBar && r.layout.collapsed && r.layout.toggle === '展开'
         && r.layout.restored && r.layout.cols === 3,

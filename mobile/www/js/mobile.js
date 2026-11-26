@@ -498,6 +498,7 @@
             state.crop.blocks = [];
             state.crop.touched = false;
             Object.assign(A, { image: state.image, images: state.images, template: state.template });
+            scalePresetFonts(state.template, state.image);
             // 换照片后把双指缩放状态清掉，免得新图一上来就是放大的
             viewZoom = 1; viewPan = { x: 0, y: 0 }; applyView();
             const b = stageEmpty.querySelector('b');
@@ -519,7 +520,29 @@
         state.crop.blocks = [];
         state.crop.touched = false;
         Object.assign(A, { image: im, images: state.images, template: state.template });
+        scalePresetFonts(state.template, im);
         render(state.tab);
+    }
+
+    // 预设里的文字字号是按参考短边写死的；换到不同尺寸的照片要跟着缩放，
+    // 否则同一款预设在小图上字巨大、在 24MP 原片上字小得看不见。
+    const TEXT_REF_EDGE = 2000;
+    function scalePresetFonts(tpl, im) {
+        if (!tpl || !im) return;
+        const el = im.el || {};
+        const w = Number(im.srcW) || Number(el.naturalWidth) || Number(im.w) || 0;
+        const h = Number(im.srcH) || Number(el.naturalHeight) || Number(im.h) || 0;
+        const edge = Math.min(w, h) || TEXT_REF_EDGE;
+        const k = Math.max(0.5, Math.min(2.5, edge / TEXT_REF_EDGE));
+        // 33/35 都是桌面默认字号，转成引擎的「自动」档（0），引擎按照片短边算
+        const pf = Number(tpl.paramFontSize);
+        if (!isFinite(pf) || pf === 33 || pf === 35) tpl.paramFontSize = 0;
+        const lines = (tpl.decorConfig && tpl.decorConfig.textLines) || [];
+        lines.forEach((line) => {
+            if (!line || line.align === 'exif') return; // exif 行引擎自己有 2000px 基准缩放
+            if (line._qfAutoFs == null) line._qfAutoFs = Number(line.fontSize) || 12;
+            line.fontSize = Math.max(6, Math.round(line._qfAutoFs * k));
+        });
     }
 
     function applyPreset(p) {
@@ -530,6 +553,7 @@
         // 不要给没有 photoFrameStyle 的预设补一个风格名：引擎会把未知名字当成
         // 相框风格去查表，结果 23 个「默认图层」预设全变成灰色占位图。
         A.template = state.template;
+        scalePresetFonts(state.template, state.image);
         const name = p.templateName || p._fileName || '已套用风格';
         if (state.image) {
             const b = stageEmpty.querySelector('b');
