@@ -846,11 +846,11 @@
         const chips = EDIT_SUBS.map(([k, label]) =>
             `<button class="chip${state.editSub === k ? ' active' : ''}" data-edit-sub="${k}">${label}</button>`).join('');
         if (!state.image) {
-            return `<h2>编辑</h2><div class="chips">${chips}</div><p class="panel-note">先导入一张照片，再选一个风格</p>`;
+            return `<h2>编辑</h2><div class="chips edit-subs">${chips}</div><p class="panel-note">先导入一张照片，再选一个风格</p>`;
         }
         return `<h2>编辑</h2>
             ${currentStrip()}
-            <div class="chips">${chips}</div>
+            <div class="chips edit-subs">${chips}</div>
             ${(window.QF_EditPanel && window.QF_EditPanel.html(state.editSub, state.template, state.template.photoFrameStyle, {
                 baseW: A._canvasBaseW || (state.image && state.image.el && state.image.el.naturalWidth) || 1000,
                 baseH: A._canvasBaseH || (state.image && state.image.el && state.image.el.naturalHeight) || 1000
