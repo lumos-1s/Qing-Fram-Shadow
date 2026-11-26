@@ -17,6 +17,25 @@ function downsample(cv, max) {
     return out;
 }
 
+// libraw 的 metadata 字段和引擎读的 image.exif 不是同一套命名，映射过去，
+// 参数条（decorConfig.exifAutoText）才能自动显示相机/型号/光圈/快门/ISO/焦距。
+function exifFromMeta(meta) {
+    if (!meta) return {};
+    const out = {};
+    if (meta.camera_make) out.make = String(meta.camera_make).trim();
+    const model = meta.normalized_model || meta.camera_model;
+    if (model) out.model = String(model).trim();
+    if (Number(meta.iso_speed) > 0) out.iso = 'ISO' + Math.round(meta.iso_speed);
+    const sh = Number(meta.shutter) || 0;
+    if (sh > 0) out.shutter = sh >= 1 ? `${sh}s` : `1/${Math.round(1 / sh)}s`;
+    if (Number(meta.aperture) > 0) {
+        out.aperture = 'f/' + Number(meta.aperture).toFixed(1).replace(/\.0$/, '');
+    }
+    if (Number(meta.focal_len) > 0) out.focal = Math.round(meta.focal_len) + 'mm';
+    if (meta.flip != null) out.orientation = meta.flip;
+    return out;
+}
+
 // libraw-wasm 的 imageData() 可能返回：
 //   · 8 位 3 通道（Uint8Array，length = w*h*3）
 //   · 8 位 4 通道（Uint8Array，length = w*h*4）
@@ -95,7 +114,7 @@ window.qfRawDecode = async (file) => {
         const srcH = Number(meta.iheight) || h * 2;
         const out = {
             el, full, file, name: file.name, w: el.width, h: el.height,
-            srcW, srcH, grade: null, isRaw: true, rawMeta: meta
+            srcW, srcH, exif: exifFromMeta(meta), grade: null, isRaw: true, rawMeta: meta
         };
         full.__qfOwner = out;
         return out;

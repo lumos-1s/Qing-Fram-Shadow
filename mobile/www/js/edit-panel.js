@@ -8,6 +8,8 @@
     let ctls = [];
     let selectedText = 0;
     let selectedEl = '';
+    let multiSelect = false;
+    let selectedKeys = new Set();
     let draftLogoText = '';
     let info = {};
 
@@ -269,10 +271,24 @@
                 label: String(o.text || '文字').slice(0, 8) });
         });
         if (!out.some((e) => e.key === selectedEl)) selectedEl = out.length ? out[0].key : '';
+        selectedKeys = new Set(Array.from(selectedKeys).filter((k) => out.some((e) => e.key === k)));
         return out;
     }
 
     function findEl(list, key) { return list.find((e) => e.key === key) || null; }
+
+    function setElPos(e, x, y) {
+        const o = e.obj;
+        if (e.kind === 'logo') { o.rel = 0; o.x = Math.round(x); o.y = Math.round(y); }
+        else { o.x = Math.round(x); o.y = Math.round(y); }
+    }
+
+    function targets() {
+        const all = elemsOf(tmpl);
+        if (multiSelect && selectedKeys.size) return all.filter((e) => selectedKeys.has(e.key));
+        const cur = findEl(all, selectedEl);
+        return cur ? [cur] : [];
+    }
 
     function elPos(e) {
         const o = e.obj;
@@ -371,12 +387,23 @@
         if (!list.length) {
             return out + '<p class="panel-note">还没有 Logo / 贴纸 / 自由文字。添加一个，或去「文字」页加自由文字。</p>';
         }
+        const activeCls = (k) => ((multiSelect ? selectedKeys.has(k) : k === selectedEl) ? ' active' : '');
         out += `<div class="chips">` + list.map((e) =>
-            `<button class="chip${e.key === selectedEl ? ' active' : ''}" data-el-key="${esc(e.key)}">${esc(e.label)}</button>`
+            `<button class="chip${activeCls(e.key)}" data-el-key="${esc(e.key)}">${esc(e.label)}</button>`
         ).join('') + `</div><div class="text-acts">`
+            + `<button id="btnMultiEl" type="button">${multiSelect ? '退出多选' : '多选'}</button>`
             + `<button id="btnCopyEl" type="button">复制</button>`
             + `<button id="btnDeleteEl" type="button">删除</button>`
-            + `<button id="btnClearEls" type="button">清空</button></div>`;
+            + `<button id="btnClearEls" type="button">清空</button></div>`
+            + `<div class="text-acts"><button id="btnZUp" type="button">上移一层</button>`
+            + `<button id="btnZDown" type="button">下移一层</button></div>`;
+        if (multiSelect && selectedKeys.size > 1) {
+            out += `<p class="ctl-sub">对齐选中元素</p><div class="text-acts">`
+                + [['left', '左对齐'], ['hcenter', '水平居中'], ['right', '右对齐'],
+                    ['top', '顶端对齐'], ['vcenter', '垂直居中'], ['bottom', '底端对齐']]
+                    .map(([k, label]) => `<button data-align="${k}" type="button">${label}</button>`).join('')
+                + `</div>`;
+        }
         if (cur) {
             const rows = elDefs(t, cur).map((c) => {
                 c.id = ctls.length;
@@ -561,7 +588,17 @@
             b.addEventListener('click', () => { addBadge(tmpl, '', b.dataset.symbol); onRebuild(); });
         });
         panel.querySelectorAll('[data-el-key]').forEach((b) => {
-            b.addEventListener('click', () => { selectedEl = b.dataset.elKey; onRebuild(); });
+            b.addEventListener('click', () => {
+                selectElement(b.dataset.elKey, multiSelect);
+                onRebuild();
+            });
+        });
+        const multiBtn = panel.querySelector('#btnMultiEl');
+        if (multiBtn) multiBtn.addEventListener('click', () => {
+            multiSelect = !multiSelect;
+            selectedKeys = new Set();
+            if (selectedEl) selectedKeys.add(selectedEl);
+            onRebuild();
         });
 
         const listFor = (kind) => {
@@ -586,10 +623,43 @@
         });
         const delEl = panel.querySelector('#btnDeleteEl');
         if (delEl) delEl.addEventListener('click', () => {
-            const cur = findEl(elemsOf(tmpl), selectedEl);
-            if (cur) listFor(cur.kind).splice(Number(selectedEl.split(':')[1]), 1);
-            selectedEl = '';
+            const picked = targets().map((e) => ({ kind: e.kind, i: Number(e.key.split(':')[1]) }))
+                .sort((a, b) => b.i - a.i);
+            picked.forEach((p) => listFor(p.kind).splice(p.i, 1));
+            selectedEl = ''; selectedKeys = new Set();
             onRebuild();
+        });
+        const zUp = panel.querySelector('#btnZUp');
+        const zDown = panel.querySelector('#btnZDown');
+        const shiftZ = (d) => {
+            targets().forEach((e) => { e.obj.z = num(e.obj.z, 0) + d; });
+            onChange(); onRebuild();
+        };
+        if (zUp) zUp.addEventListener('click', () => shiftZ(1));
+        if (zDown) zDown.addEventListener('click', () => shiftZ(-1));
+        panel.querySelectorAll('[data-align]').forEach((b) => {
+            b.addEventListener('click', () => {
+                const list = targets();
+                if (list.length < 2) return;
+                const pts = list.map((e) => elPos(e));
+                const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+                const minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+                const minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+                list.forEach((e) => {
+                    const p = elPos(e);
+                    let x = p.x, y = p.y;
+                    switch (b.dataset.align) {
+                        case 'left': x = minX; break;
+                        case 'hcenter': x = (minX + maxX) / 2; break;
+                        case 'right': x = maxX; break;
+                        case 'top': y = minY; break;
+                        case 'vcenter': y = (minY + maxY) / 2; break;
+                        case 'bottom': y = maxY; break;
+                    }
+                    setElPos(e, x, y);
+                });
+                onChange(); onRebuild();
+            });
         });
         const clearEls = panel.querySelector('#btnClearEls');
         if (clearEls) clearEls.addEventListener('click', () => {
@@ -702,12 +772,25 @@
     }
 
     // 画布点选元素后，让编辑页的列表高亮到同一个对象
-    function selectElement(key) {
-        selectedEl = String(key || '');
-        if (!selectedEl) return;
-        const parts = selectedEl.split(':');
-        if (parts[0] === 'text') selectedText = Number(parts[1]) || 0;
+    function selectElement(key, additive) {
+        if (additive) {
+            const k = String(key || '');
+            if (!k) return;
+            if (selectedKeys.has(k)) selectedKeys.delete(k); else selectedKeys.add(k);
+            selectedEl = Array.from(selectedKeys).pop() || '';
+        } else {
+            selectedKeys = new Set();
+            selectedEl = String(key || '');
+            if (selectedEl) selectedKeys.add(selectedEl);
+        }
+        if (selectedEl && selectedEl.split(':')[0] === 'text') {
+            selectedText = Number(selectedEl.split(':')[1]) || 0;
+        }
     }
 
-    window.QF_EditPanel = { html, bind, selectElement };
+    window.QF_EditPanel = {
+        html, bind, selectElement,
+        isMulti: () => multiSelect,
+        getSelectedKeys: () => Array.from(selectedKeys)
+    };
 })();

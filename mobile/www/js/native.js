@@ -59,6 +59,16 @@
         });
     }
 
+    // JPEG 的 EXIF 用渲染端已有的 exif.js（纯 DataView，不依赖 Node）解析，
+    // 形状与桌面 engine 读的 image.exif 一致，参数条才能自动识别品牌/型号/光圈/快门/ISO/焦距。
+    async function readExif(file) {
+        if (typeof window.__parseExif !== 'function' || typeof window.__exifSummary !== 'function') return {};
+        try {
+            const raw = window.__parseExif(await file.arrayBuffer());
+            return window.__exifSummary(raw) || {};
+        } catch (_) { return {}; }
+    }
+
     // 先让系统/WebView 解；HEIC 在 Android WebView 上经常直接失败，
     // 这时再懒加载 libheif(WASM) 兜底。解码结果统一缩到 1600px 预览。
     async function decodeStill(file) {
@@ -69,6 +79,7 @@
                 el: drawDown(img, 1600),
                 srcW: img.naturalWidth || img.width,
                 srcH: img.naturalHeight || img.height,
+                exif: await readExif(file),
                 heic: false
             };
         } catch (e) {
@@ -79,7 +90,7 @@
             const srcH = full.naturalHeight || full.height;
             const el = drawDown(full, 1600);
             try { full.width = 0; full.height = 0; } catch (_) {}
-            return { el, srcW, srcH, heic: true };
+            return { el, srcW, srcH, exif: {}, heic: true };
         }
     }
 
@@ -133,7 +144,7 @@
                         out.push({
                             el: dec.el, name: f.name, w: dec.el.width, h: dec.el.height,
                             srcW: dec.srcW, srcH: dec.srcH, heic: dec.heic,
-                            grade: null, file: f
+                            exif: dec.exif || {}, grade: null, file: f
                         });
                     } catch (e) {
                         // 单张失败不影响其他照片，但要留下可展示的原因
@@ -281,6 +292,7 @@
         isMac: () => platform === 'ios',
         pickImages,
         pickJson,
+        decodeStill,
         getPickErrors,
         saveImage,
         saveText,

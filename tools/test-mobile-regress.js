@@ -547,7 +547,65 @@ app.whenReady().then(async () => {
             pinch.reset = cv.style.transform;
         } catch (e) { pinchErr = String(e && e.message || e); }
 
-        // 20) RAW 全尺寸重解（本地有样本时）
+        // 20) EXIF 自动识别：JPEG 的拍摄参数写进 image.exif
+        const parse0 = window.__parseExif;
+        let exif = {}, exifErr = '';
+        try {
+            window.__parseExif = () => ({
+                0x010F: 'SONY', 0x0110: 'ILCE-6000', 0x0112: 1,
+                0x829A: { num: 1, den: 125 }, 0x829D: { num: 56, den: 10 },
+                0x8827: 100, 0x920A: { num: 35, den: 1 }, 0xA405: 52
+            });
+            const cc = document.createElement('canvas');
+            cc.width = 16; cc.height = 16;
+            const blob = await new Promise((res) => cc.toBlob(res, 'image/jpeg', 0.8));
+            const dec = await window.qfsNative.decodeStill(new File([blob], 'exif.jpg', { type: 'image/jpeg' }));
+            exif = dec.exif || {};
+        } catch (e) { exifErr = String(e && e.message || e); }
+        finally { window.__parseExif = parse0; }
+
+        // 21) 元素多选 / 对齐 / 层级
+        let multi = {}, multiErr = '';
+        try {
+            document.querySelector('[data-tab="edit"]').click();
+            await wait(250);
+            document.querySelector('[data-edit-sub="element"]').click();
+            await wait(250);
+            document.getElementById('btnClearEls').click();
+            await wait(200);
+            const draft = document.querySelector('[data-draft-logo]');
+            for (const txt of ['A', 'B']) {
+                draft.value = txt;
+                draft.dispatchEvent(new Event('input', { bubbles: true }));
+                document.getElementById('btnAddTextLogo').click();
+                await wait(200);
+            }
+            const logos = window.App.template.logoElements || [];
+            multi.count = logos.length;
+            document.querySelector('[data-el-key="logo:0"]').click();
+            await wait(200);
+            document.getElementById('btnMultiEl').click();
+            await wait(200);
+            document.querySelector('[data-el-key="logo:1"]').click();
+            await wait(200);
+            multi.selected = window.QF_EditPanel.getSelectedKeys().length;
+            multi.hasAlign = !!document.querySelector('[data-align="left"]');
+            const z0 = Number(logos[0].z || 0);
+            document.querySelector('[data-align="left"]').click();
+            await wait(250);
+            multi.aligned = Math.abs((logos[0].x || 0) - (logos[1].x || 0)) <= 2;
+            document.getElementById('btnZUp').click();
+            await wait(250);
+            multi.zAfter = logos[0].z;
+            multi.zBefore = z0;
+            document.getElementById('btnDeleteEl').click();
+            await wait(250);
+            multi.afterDelete = (window.App.template.logoElements || []).length;
+            document.querySelector('[data-tab="crop"]').click();
+            await wait(200);
+        } catch (e) { multiErr = String(e && e.message || e); }
+
+        // 22) RAW 全尺寸重解（本地有样本时）
         let rawFull = {}, rawFullErr = '';
         if (${JSON.stringify(fs.existsSync(rawSample))}) {
             try {
@@ -574,7 +632,7 @@ app.whenReady().then(async () => {
             heic, heicErr, heicFull, heicFullErr, fullExport, fullExportErr,
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
             edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, dbl, dblErr,
-            pinch, pinchErr, rawFull, rawFullErr
+            pinch, pinchErr, exif, exifErr, multi, multiErr, rawFull, rawFullErr
         };
     })()`);
 
@@ -645,6 +703,15 @@ app.whenReady().then(async () => {
 
     check(!r.pinchErr && r.pinch.zoom > 1.5 && r.pinch.zoom < 2.2 && r.pinch.reset.indexOf('scale(1)') >= 0,
         '双指缩放预览、双击空白复位', JSON.stringify({ pinch: r.pinch, err: r.pinchErr }));
+
+    check(!r.exifErr && r.exif.make === 'SONY' && r.exif.model === 'ILCE-6000'
+        && r.exif.shutter === '1/125s' && r.exif.aperture === 'f/5.6' && r.exif.iso === 'ISO100'
+        && r.exif.focal === '35mm' && r.exif.focal35 === 52,
+        '导入照片自动识别 EXIF 拍摄参数', JSON.stringify({ exif: r.exif, err: r.exifErr }));
+
+    check(!r.multiErr && r.multi.count === 2 && r.multi.selected === 2 && r.multi.hasAlign
+        && r.multi.aligned && r.multi.zAfter === r.multi.zBefore + 1 && r.multi.afterDelete === 0,
+        '元素多选、对齐、层级与批量删除', JSON.stringify({ multi: r.multi, err: r.multiErr }));
 
     if (fs.existsSync(rawSample)) {
         check(!r.rawFullErr && r.rawFull.w >= 3000 && r.rawFull.h >= 2000 && r.rawFull.px.some((v) => v > 0),
