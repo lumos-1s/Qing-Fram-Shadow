@@ -63,7 +63,7 @@ body {
 /* 状态条独占一行后，画布吃掉剩下的空间；object-fit 保证缩放不变形 */
 #previewCanvas {
   flex: 1 1 auto; min-height: 0; width: 100%; height: 100%;
-  object-fit: contain; display: block;
+  object-fit: contain; display: block; touch-action: none;
 }
 .empty-hint {
   position: absolute; inset: 0; display: flex; flex-direction: column;

@@ -17,6 +17,21 @@
     const textEditor = document.getElementById('textEditor');
     let textOrig = '';
     let lastTap = { t: 0, key: '' };
+    let lastEmptyTap = 0;
+    // 双指缩放/平移预览（只改 CSS transform，不碰导出画布）
+    let viewZoom = 1;
+    let viewPan = { x: 0, y: 0 };
+    let pinch = null;
+    const activePointers = new Map();
+    function applyView() {
+        canvas.style.transformOrigin = 'center center';
+        canvas.style.transform = `translate(${viewPan.x}px, ${viewPan.y}px) scale(${viewZoom})`;
+    }
+    function resetView() {
+        viewZoom = 1; viewPan = { x: 0, y: 0 };
+        applyView();
+        hint('预览已复位');
+    }
     let toastTimer = 0;
     function hint(text, ms) {
         if (!text) return;
@@ -322,6 +337,20 @@
     }
     canvas.addEventListener('pointerdown', (e) => {
         if (state.exporting || !state.image) return;
+        activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+        if (activePointers.size === 2) {
+            elDrag = null;
+            const [p1, p2] = Array.from(activePointers.values());
+            pinch = {
+                dist: Math.hypot(p1.x - p2.x, p1.y - p2.y) || 1,
+                mid: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 },
+                zoom: viewZoom, pan: { x: viewPan.x, y: viewPan.y }
+            };
+            hint('缩放预览中');
+            return;
+        }
+        if (activePointers.size > 2) return;
         const pt = pointerPos(e);
         const hh = handleHit(pt);
         if (hh) {
@@ -339,6 +368,13 @@
         }
         const hit = hitElement(pt);
         if (!hit) {
+            const nowEmpty = Date.now();
+            if (nowEmpty - lastEmptyTap < 400 && (viewZoom !== 1 || viewPan.x || viewPan.y)) {
+                lastEmptyTap = 0;
+                resetView();
+                return;
+            }
+            lastEmptyTap = nowEmpty;
             state.selectedElement = '';
             if (window.QF_EditPanel) window.QF_EditPanel.selectElement('');
             if (state.tab === 'edit') render('edit');
@@ -365,6 +401,19 @@
         hint('已选中' + ({ logo: 'Logo', sticker: '贴纸', text: '文字' }[elDrag.kind] || '元素') + '，可拖动');
     });
     canvas.addEventListener('pointermove', (e) => {
+        if (activePointers.has(e.pointerId)) {
+            activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        }
+        if (pinch && activePointers.size >= 2) {
+            const [p1, p2] = Array.from(activePointers.values()).slice(0, 2);
+            const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+            viewZoom = Math.min(5, Math.max(1, pinch.zoom * d / pinch.dist));
+            const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+            viewPan.x = pinch.pan.x + (mid.x - pinch.mid.x);
+            viewPan.y = pinch.pan.y + (mid.y - pinch.mid.y);
+            applyView();
+            return;
+        }
         if (!elDrag) return;
         const pt = pointerPos(e);
         const o = elDrag.obj;
@@ -397,7 +446,11 @@
         }
         renderPreviewSoon();
     });
-    const endElDrag = () => { elDrag = null; };
+    const endElDrag = (e) => {
+        if (e && e.pointerId != null) activePointers.delete(e.pointerId);
+        if (activePointers.size < 2) pinch = null;
+        elDrag = null;
+    };
     canvas.addEventListener('pointerup', endElDrag);
     canvas.addEventListener('pointercancel', endElDrag);
     canvas.addEventListener('dblclick', (e) => {
@@ -445,6 +498,8 @@
             state.crop.blocks = [];
             state.crop.touched = false;
             Object.assign(A, { image: state.image, images: state.images, template: state.template });
+            // 换照片后把双指缩放状态清掉，免得新图一上来就是放大的
+            viewZoom = 1; viewPan = { x: 0, y: 0 }; applyView();
             const b = stageEmpty.querySelector('b');
             if (b) b.textContent = state.image.name;
             if (errs.length) hint(`已导入 ${list.length} 张，${errs.length} 张失败：${errs[0].name}`, 4800);

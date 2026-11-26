@@ -513,7 +513,41 @@ app.whenReady().then(async () => {
             await wait(200);
         } catch (e) { dblErr = String(e && e.message || e); }
 
-        // 19) RAW 全尺寸重解（本地有样本时）
+        // 19) 双指缩放预览 + 双击空白复位
+        let pinch = {}, pinchErr = '';
+        try {
+            document.querySelector('[data-tab="style"]').click();
+            await wait(300);
+            const cv = document.getElementById('previewCanvas');
+            const rect = cv.getBoundingClientRect();
+            const at = (x, y, id) => ({
+                clientX: rect.left + x, clientY: rect.top + y,
+                pointerId: id, bubbles: true
+            });
+            cv.dispatchEvent(new PointerEvent('pointerdown', at(20, 20, 1)));
+            cv.dispatchEvent(new PointerEvent('pointerdown', at(80, 20, 2)));
+            await wait(80);
+            cv.dispatchEvent(new PointerEvent('pointermove', at(0, 20, 1)));
+            cv.dispatchEvent(new PointerEvent('pointermove', at(100, 20, 2)));
+            await wait(180);
+            pinch.during = cv.style.transform;
+            const s = cv.style.transform;
+            const i = s.indexOf('scale(');
+            pinch.zoom = i >= 0 ? parseFloat(s.slice(i + 6)) : 0;
+            cv.dispatchEvent(new PointerEvent('pointerup', at(0, 20, 1)));
+            cv.dispatchEvent(new PointerEvent('pointerup', at(100, 20, 2)));
+            await wait(120);
+            const empty = at(8, 8, 3);
+            cv.dispatchEvent(new PointerEvent('pointerdown', empty));
+            cv.dispatchEvent(new PointerEvent('pointerup', empty));
+            await wait(80);
+            cv.dispatchEvent(new PointerEvent('pointerdown', empty));
+            cv.dispatchEvent(new PointerEvent('pointerup', empty));
+            await wait(180);
+            pinch.reset = cv.style.transform;
+        } catch (e) { pinchErr = String(e && e.message || e); }
+
+        // 20) RAW 全尺寸重解（本地有样本时）
         let rawFull = {}, rawFullErr = '';
         if (${JSON.stringify(fs.existsSync(rawSample))}) {
             try {
@@ -539,7 +573,8 @@ app.whenReady().then(async () => {
             rawBridge: typeof window.qfRawDecode === 'function',
             heic, heicErr, heicFull, heicFullErr, fullExport, fullExportErr,
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
-            edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, dbl, dblErr, rawFull, rawFullErr
+            edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, dbl, dblErr,
+            pinch, pinchErr, rawFull, rawFullErr
         };
     })()`);
 
@@ -607,6 +642,9 @@ app.whenReady().then(async () => {
     check(!r.dblErr && r.dbl.opened && r.dbl.value === '双击前' && r.dbl.live === '双击后'
         && r.dbl.closed && r.dbl.after === '双击后',
         '双击文字就地编辑并实时写回', JSON.stringify({ dbl: r.dbl, err: r.dblErr }));
+
+    check(!r.pinchErr && r.pinch.zoom > 1.5 && r.pinch.zoom < 2.2 && r.pinch.reset.indexOf('scale(1)') >= 0,
+        '双指缩放预览、双击空白复位', JSON.stringify({ pinch: r.pinch, err: r.pinchErr }));
 
     if (fs.existsSync(rawSample)) {
         check(!r.rawFullErr && r.rawFull.w >= 3000 && r.rawFull.h >= 2000 && r.rawFull.px.some((v) => v > 0),
