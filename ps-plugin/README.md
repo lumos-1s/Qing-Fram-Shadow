@@ -15,6 +15,7 @@ ps-plugin/
 ├─ index.html                面板 UI
 ├─ css/panel.css
 ├─ js/main.js                面板侧：导出图层 → 渲染 → 写回
+├─ js/border-params.js       边框参数面板：边距/缩放/圆角/填充/描边/阴影/样式参数
 ├─ jsx/host.jsx              ExtendScript：Photoshop 侧读写图层
 ├─ js/                       从 mobile/www/js 复制的引擎与预设（同源）
 ├─ lib/CSInterface.js        Adobe CEP 12 官方库
@@ -56,7 +57,7 @@ npm run ps:poc:install -- --ps "D:\PS2026\Adobe Photoshop 2026"
 `Required\CEP\extensions\com.qingframe.ps.bridge.poc\`，并写入
 `HKCU\Software\Adobe\CSXS.12\PlayerDebugMode=1`。写 Program Files 可能需要管理员权限；
 装完**重启 Photoshop**，菜单 `窗口 → 扩展功能 → 清框影桥接`。
-选中一个图层 → 选风格 → 点「套用边框 → 新图层」。
+选风格 → 在参数面板调边距/缩放/圆角/填充/描边/阴影 → 点「套用边框 → 新图层」。
 
 如果脚本找不到 PS 或权限不足，手动做同样两件事即可：
 1. 把整个 `ps-plugin` 目录拷到 `<PS 安装目录>\Required\CEP\extensions\com.qingframe.ps.bridge.poc\`

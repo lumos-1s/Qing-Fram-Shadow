@@ -58,6 +58,12 @@ app.whenReady().then(async () => {
         const presets = window.QF_PRESETS || [];
         const sel = document.getElementById('preset');
         if (sel) sel.value = '0';
+        const bpCount = document.querySelectorAll('[data-bp]').length;
+        const swInput = document.querySelector('[data-bp="stroke-宽度"]');
+        if (swInput) { swInput.value = '40'; swInput.dispatchEvent(new Event('input', { bubbles: true })); }
+        const tpl0 = window.QF_BorderParams.current() || {};
+        const strokeWidth = ((tpl0.layerList || [])[0] || {}).strokeConfig
+            ? tpl0.layerList[0].strokeConfig.strokeWidth : null;
         document.getElementById('btnBorder').click();
         await wait(1200);
         const logText = document.getElementById('log').textContent;
@@ -65,6 +71,7 @@ app.whenReady().then(async () => {
         return {
             presets: presets.length,
             hasRender: typeof window.__render === 'function',
+            bpCount, strokeWidth,
             hasEmbedApi: typeof window.QF_IccEmbed === 'object' && typeof window.QF_IccEmbed.embed === 'function',
             iccLen: (window.QF_ICC_ADOBERGB || '').length,
             logText, placed: window.qfMockPlaced,
@@ -88,6 +95,7 @@ app.whenReady().then(async () => {
 
     console.log(JSON.stringify(r, null, 2));
     check(r.presets === 91 && r.hasRender, '引擎与预设已加载', JSON.stringify({ presets: r.presets, hasRender: r.hasRender }));
+    check(r.bpCount >= 15 && r.strokeWidth === 40, '边框参数面板可改模板', JSON.stringify({ bpCount: r.bpCount, strokeWidth: r.strokeWidth }));
     check(/放回文档：OK/.test(r.logText), '边框渲染并写回图层', r.logText.split('\n').slice(-2).join(' / '));
     check(r.placed.length === 1 && r.placed[0].name === '清框影边框',
         '只写回一层边框', JSON.stringify(r.placed.map((p) => p.name)));

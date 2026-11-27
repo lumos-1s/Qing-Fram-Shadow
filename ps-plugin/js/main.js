@@ -121,6 +121,7 @@
             const image = await loadLayer(src);
             log('图层尺寸：' + image.w + '×' + image.h);
             const template = presetAt();
+            if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(template);
             // 让引擎按文档比例出图；否则模板自己的画布比例会让成品和文档对不上
             if (docW && docH) template.canvasRatio = docW + ':' + docH;
             log('套用风格：' + (template.templateName || '默认'));
@@ -171,6 +172,10 @@
             ).join('');
         }
         if (btnBorder) btnBorder.addEventListener('click', () => apply());
+        if (presetSel) presetSel.addEventListener('change', () => {
+            if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(presetAt());
+        });
+        if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(presetAt());
         log('就绪；共 ' + list.length + ' 款预设。' + (cs ? '已连接 Photoshop。' : '本机测试模式。'));
     }
 

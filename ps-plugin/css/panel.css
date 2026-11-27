@@ -11,5 +11,18 @@ select { width:100%; min-height:30px; padding:0 6px; background:var(--panel); co
 button { flex:1; min-height:34px; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:5px; }
 button.primary { background:var(--primary); border-color:var(--primary); color:#102018; font-weight:600; }
 button:disabled { opacity:.5; }
-pre { margin:0; min-height:120px; max-height:260px; overflow:auto; white-space:pre-wrap; word-break:break-all;
+.params { max-height:230px; overflow-y:auto; border:1px solid var(--line); border-radius:4px; padding:2px 6px; }
+.params details { border-bottom:1px solid var(--line); }
+.params details:last-child { border-bottom:none; }
+.params summary { cursor:pointer; padding:5px 0; color:var(--primary); font-weight:600; }
+.params .ctl-row { display:flex; align-items:center; gap:6px; min-height:30px; }
+.params .ctl-row label { flex:0 0 64px; color:var(--muted); font-size:11px; }
+.params .ctl-row input[type=range] { flex:1; min-width:0; height:22px; }
+.params .ctl-row output { flex:0 0 40px; text-align:right; color:var(--primary); font-size:11px; }
+.params .ctl-row select, .params .ctl-row input[type=color] {
+  flex:1; min-width:0; min-height:24px; background:var(--panel); color:var(--text);
+  border:1px solid var(--line); border-radius:3px;
+}
+.params .ctl-row input[type=color] { flex:0 0 34px; }
+pre { margin:0; min-height:90px; max-height:180px; overflow:auto; white-space:pre-wrap; word-break:break-all;
       background:#151515; border:1px solid var(--line); border-radius:4px; padding:8px; color:#9fd; font:11px/1.5 Consolas, monospace; }
