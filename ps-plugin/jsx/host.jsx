@@ -48,13 +48,14 @@ function qfGetDocPath() {
     }
 }
 
-function qfPlacePng(path, name) {
+function qfPlacePng(path, name, hideSrc) {
     var oldDialogs = app.displayDialogs;
     // JPEG 是 sRGB，目标文档可能是 Adobe RGB；不关对话框会弹「配置文件不匹配」把自动化卡住
     app.displayDialogs = DialogModes.NO;
     try {
         var doc = app.activeDocument;
         if (!doc) return 'ERR:没有打开的文档';
+        var srcLayer = doc.activeLayer;
         var png = new File(path);
         if (!png.exists) return 'ERR:渲染结果不存在';
         var tmp = app.open(png);
@@ -80,6 +81,10 @@ function qfPlacePng(path, name) {
         if (Math.abs(s - 1) > 0.001) {
             layer.resize(Math.max(1, Math.round(lw * s)), Math.max(1, Math.round(lh * s)),
                 AnchorPosition.MIDDLECENTER);
+        }
+        // 默认隐藏原图层，避免下面还堆着一层原始照片；保留在文档里方便恢复
+        if (String(hideSrc) === 'true' && srcLayer && srcLayer !== layer) {
+            srcLayer.visible = false;
         }
         doc.activeLayer = layer;
         b = layer.bounds;

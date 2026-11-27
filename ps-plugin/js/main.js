@@ -318,8 +318,10 @@
             const ok = wr === true;
             log('写出结果：' + (ok ? out : ('失败：' + (wr && wr.error || '未知错误'))));
             if (!ok) return;
+            const hideSrc = document.getElementById('chkHideSrc');
+            const hide = hideSrc && hideSrc.checked ? 'true' : 'false';
             const placed = await evalScript('qfPlacePng(' + JSON.stringify(out) + ','
-                + JSON.stringify('清框影边框') + ')');
+                + JSON.stringify('清框影边框') + ',' + JSON.stringify(hide) + ')');
             log('放回文档：' + placed);
             removeTemp(out); // 结果已经贴进文档，临时 JPEG 不再需要
         } catch (e) {

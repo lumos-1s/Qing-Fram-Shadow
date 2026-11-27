@@ -42,8 +42,8 @@ app.whenReady().then(async () => {
             eval: (src, cb) => {
                 const m = /qfGetLayerPng\\("([^"]+)"\\)/.exec(src);
                 if (m) { cb('OK:800x1000'); return; }
-                const p = /qfPlacePng\\("([^"]+)","([^"]+)"\\)/.exec(src);
-                if (p) { window.qfMockPlaced.push({ path: p[1], name: p[2] }); cb('OK:' + p[2]); return; }
+                const p = /qfPlacePng\\("([^"]+)","([^"]+)","([^"]+)"\\)/.exec(src);
+                if (p) { window.qfMockPlaced.push({ path: p[1], name: p[2], hide: p[3] }); cb('OK:' + p[2]); return; }
                 if (/qfGetDocPath/.test(src)) { cb('OK:' + prefix + 'exif-source.jpg'); return; }
                 cb('ERR:unknown script');
             }
@@ -143,6 +143,7 @@ app.whenReady().then(async () => {
     check(r.placed.length >= 1 && r.placed[0].name === '清框影边框',
         '写回边框图层', JSON.stringify(r.placed.map((p) => p.name)));
     check(/缓存/.test(r.cachedLog), '重复套用命中源图缓存', r.cachedLog.split('\n')[0]);
+    check(r.placed.every((p) => p.hide === 'true'), '隐藏原图层参数已传给 PS', JSON.stringify(r.placed.map((p) => p.hide)));
     check(r.outputs.every((f) => f.len > 10000 && f.jpeg && f.hasIcc), '写回的是带 Adobe RGB ICC 的 JPEG', JSON.stringify(r.outputs));
     check(errors.length === 0, '无控制台错误', errors.slice(0, 3).join(' / '));
 
