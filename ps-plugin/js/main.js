@@ -22,10 +22,14 @@
         });
     }
     function readBase64(path) {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             if (window.qfMockHost) return window.qfMockHost.read(path, resolve);
-            if (cepFs) cepFs.readFile(path, cep.encoding.Base64, (err, data) => resolve(err ? null : data));
-            resolve(null);
+            if (!cepFs) return reject(new Error('cep.fs 不可用：检查 manifest 的 --enable-nodejs'));
+            cepFs.readFile(path, cep.encoding.Base64, (err, data) => {
+                if (err) return reject(new Error('读取失败：' + (err.message || err)));
+                if (!data) return reject(new Error('文件内容为空：' + path));
+                resolve(data);
+            });
         });
     }
     function writeBase64(path, b64) {
