@@ -154,8 +154,14 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
   background: var(--primary); color: var(--on-primary);
   font-size: 13px; font-weight: 500;
 }
-.home-hero.is-empty { justify-content: center; }
-.home-hero.is-empty::after { background: linear-gradient(135deg, rgba(233,168,87,.12), rgba(10,11,10,.5)); }
+.home-hero.is-empty {
+  min-height: 84px; flex-direction: row; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 14px 16px;
+}
+.home-hero.is-empty::after { background: linear-gradient(135deg, rgba(233,168,87,.12), rgba(10,11,10,.55)); }
+.home-hero.is-empty .hero-btn { margin-top: 0; flex: 0 0 auto; }
+.home-hero.is-empty h2 { font-size: 17px; }
+.home-hero.is-empty p { margin-top: 2px; }
 
 .home-search { margin-bottom: 12px; }
 .home-search input {
@@ -226,6 +232,20 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 .empty-hint b { color: var(--text-2); font-size: 15px; font-weight: 500; }
 .empty-hint span { font-size: 12px; }
 .empty-ico { font-size: 40px; color: var(--text-4); line-height: 1; }
+/* 撤销/重做：贴在画布左下角，离操作对象更近，顶栏也能腾出位置给标题 */
+#historyDock {
+  /* 放左上：左下角通常是 EXIF / 参数水印的位置，压上去会挡住成片信息 */
+  position: absolute; left: 10px; top: 10px; z-index: 7;
+  display: flex; gap: 2px; padding: 3px;
+  border: 1px solid var(--border); border-radius: var(--r-pill);
+  background: rgba(19,21,19,.9);
+}
+#historyDock button {
+  width: 36px; height: 32px; border: none; border-radius: var(--r-pill);
+  background: transparent; color: var(--text-2); font-size: 17px;
+}
+#historyDock button:disabled { opacity: .25; }
+#stage.cropping #historyDock { display: none; }
 
 /* ── 编辑：照片条 ─────────────────────────────────────────────── */
 .filmstrip {
@@ -234,6 +254,11 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
   border-top: 1px solid var(--border); background: var(--bg);
 }
 .filmstrip::-webkit-scrollbar { display: none; }
+.film-add {
+  flex: 0 0 auto; width: 40px; height: 40px; padding: 0;
+  border: 1px dashed var(--border-strong); border-radius: var(--r-sm);
+  background: transparent; color: var(--text-3); font-size: 18px; line-height: 1;
+}
 .photo-thumb {
   position: relative; flex: 0 0 auto; width: 40px; height: 40px; padding: 0;
   overflow: hidden; border: 1px solid var(--border); border-radius: var(--r-sm);
@@ -277,6 +302,20 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
   content: ''; position: absolute; left: 50%; bottom: 2px; width: 16px; height: 2px;
   margin-left: -8px; border-radius: 1px; background: var(--primary);
 }
+
+/* 面板把手：点一下在「半屏 / 大屏」之间切换，逛风格时能多看一排 */
+#panelGrip {
+  flex: 0 0 auto; height: 20px; margin-top: -4px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: var(--bg);
+}
+#panelGrip span { width: 38px; height: 4px; border-radius: 2px; background: var(--border-strong); }
+#pageEdit.expanded #panelGrip span { background: var(--primary); }
+#pageEdit.expanded #panel { height: 52dvh; }
+/* 展开时把横滑长廊铺成三列墙：空间用来「逛」，而不是留白 */
+#pageEdit.expanded .style-rail { flex-wrap: wrap; overflow: visible; }
+#pageEdit.expanded .style-cell { flex: 0 0 calc((100% - 20px) / 3); }
+#pageEdit.expanded .style-big img { height: 94px; }
 
 /* ── 编辑：面板 ───────────────────────────────────────────────── */
 #panel {
@@ -534,6 +573,14 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 #tabbar .nav-ico { font-size: 17px; line-height: 1; }
 #tabbar .nav-item.active { color: var(--on-primary); background: var(--primary); }
 #tabbar .nav-item.active .nav-ico { color: var(--on-primary); }
+/* 底部整条渐隐（含导航下方的安全区）：卡片滚到这儿是淡出，不是被切一刀 */
+#app[data-page="home"]::after,
+#app[data-page="mine"]::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0;
+  height: calc(var(--nav-h) + 40px + var(--safe-bottom));
+  background: linear-gradient(to top, var(--bg) 52%, rgba(10,11,10,.9) 76%, transparent);
+  z-index: 25; pointer-events: none;
+}
 
 /* ── 我的 ─────────────────────────────────────────────────────── */
 .mine-scroll {
@@ -587,6 +634,10 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
   .home-card { flex-basis: 132px; }
   .home-card img { height: 96px; }
   .home-hero { min-height: 118px; }
+  .home-hero.is-empty { min-height: 76px; }
+  /* 640 高的机器上没有「展开」的余量：展开只会把画布压成一条缝，直接不提供 */
+  #panelGrip { display: none; }
+  #pageEdit.expanded #panel { height: 44dvh; }
   #toast { font-size: 11px; padding: 7px 12px; }
 }
 @media (max-width: 380px) {

@@ -21,8 +21,6 @@
       <small id="hdrMeta">为摄影爱好者提供最好的边框</small>
     </div>
     <div class="header-acts">
-      <button id="btnUndo" class="icon-btn" aria-label="撤销" title="撤销" disabled>↶</button>
-      <button id="btnRedo" class="icon-btn" aria-label="重做" title="重做" disabled>↷</button>
       <button id="btnPick" class="icon-btn" aria-label="导入照片" title="导入照片">＋</button>
       <button id="btnSettings" class="icon-btn" aria-label="我的" title="我的">◍</button>
       <button id="btnExport" class="export-btn" type="button">导出</button>
@@ -32,10 +30,10 @@
   <!-- ── 首页：发现风格 ─────────────────────────────────────────── -->
   <main id="pageHome" class="page home-page">
     <div class="home-scroll" id="homeScroll">
-      <div id="homeHero" class="home-hero"></div>
       <div class="home-search">
         <input id="homeQuery" type="search" enterkeyhint="search" placeholder="搜风格或分类，如 拍立得 / 胶片">
       </div>
+      <div id="homeHero" class="home-hero"></div>
       <div id="homeSections"></div>
       <p class="home-foot">照片全程本地处理 · 不上传、不需要账号</p>
     </div>
@@ -50,6 +48,11 @@
         <div class="empty-ico">▧</div>
         <b>先导入一张照片</b>
         <span>点右上角的 ＋ 选图</span>
+      </div>
+      <!-- 撤销/重做贴着画布：顶栏让位给标题和导出，历史操作也离画面更近 -->
+      <div id="historyDock" hidden>
+        <button id="btnUndo" type="button" aria-label="撤销" title="撤销" disabled>↶</button>
+        <button id="btnRedo" type="button" aria-label="重做" title="重做" disabled>↷</button>
       </div>
       <!-- 自由裁剪：框只覆盖照片本身（进裁剪时画布切成「只画照片」），
            所以这里的百分比就是照片的百分比，导出时按同一组比例重放 -->
@@ -85,6 +88,7 @@
       <button class="tab" data-tab="crop"><span class="ico">⌗</span>切图</button>
     </nav>
 
+    <button id="panelGrip" type="button" aria-label="展开或收起面板"><span></span></button>
     <section id="panel" aria-live="polite"></section>
   </main>
 

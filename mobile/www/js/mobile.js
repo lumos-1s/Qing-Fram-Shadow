@@ -426,6 +426,9 @@
         const r = document.getElementById('btnRedo');
         if (u) u.disabled = undoStack.length === 0;
         if (r) r.disabled = redoStack.length === 0;
+        // 没有任何历史时整颗胶囊都不出现，画布上不多一块东西
+        const dock = document.getElementById('historyDock');
+        if (dock) dock.hidden = undoStack.length === 0 && redoStack.length === 0;
     }
     function pushUndo() {
         const s = snapNow();
@@ -570,7 +573,7 @@
             const active = im === state.image ? ' active' : '';
             return `<button class="photo-thumb${active}" data-current="${i}" title="${esc(im.name)}">`
                 + `<img src="${thumbOf(im, 0.5)}" alt=""><small>${i + 1}</small></button>`;
-        }).join('');
+        }).join('') + '<button class="film-add" data-film-add="1" type="button" aria-label="添加照片">＋</button>';
         return '';
     }
     function presetLabel() {
@@ -2827,9 +2830,11 @@
             } else {
                 hero.className = 'home-hero is-empty';
                 hero.style.backgroundImage = '';
-                hero.innerHTML = `<div class="hero-kicker">开始</div>
-                    <h2>给照片一个边框</h2>
-                    <p>91 款内置风格 · 相机参数水印 · 全程本地处理</p>
+                // 空态只留一条引导：首屏优先给风格，别让一张 136px 的卡把列表压到第二屏
+                hero.innerHTML = `<div class="hero-txt">
+                        <h2>给照片一个边框</h2>
+                        <p>91 款风格 · 相机参数水印 · 本地处理</p>
+                    </div>
                     <button class="hero-btn" type="button" data-pick>导入照片</button>`;
             }
         }
@@ -2888,10 +2893,16 @@
         showPage(state.page === 'mine' ? (homePrevPage || 'home') : 'home');
     });
     document.getElementById('btnSettings').addEventListener('click', () => showPage('mine'));
+    document.getElementById('panelGrip').addEventListener('click', () => {
+        const page = document.getElementById('pageEdit');
+        const on = page.classList.toggle('expanded');
+        hint(on ? '面板已展开' : '面板已收起');
+    });
     document.getElementById('hdrThumb').addEventListener('click', () => showPage('edit'));
     const filmstripEl = document.getElementById('filmstrip');
     if (filmstripEl) {
         filmstripEl.addEventListener('click', (e) => {
+            if (e.target.closest('[data-film-add]')) { importPhotos(); return; }
             const b = e.target.closest('[data-current]');
             if (b) selectCurrent(Number(b.dataset.current));
         });
