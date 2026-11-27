@@ -1270,6 +1270,13 @@
         });
     }
 
+    // 票券/电影票这类风格在预设里显式写空签名，表示「本预设默认不带署名/头像行」，
+    // 不能用用户签名把它带出来。名单与桌面同源（StyleCaps）。
+    function sigRowOffOf(t) {
+        return !!(t && window.StyleCaps && window.StyleCaps.sigRowDefaultOff
+            && window.StyleCaps.sigRowDefaultOff(t.photoFrameStyle));
+    }
+
     function applyPreset(p) {
         if (!p) return;
         pushUndo();
@@ -1287,6 +1294,19 @@
                 state.template[k] = prevT[k];
             }
         });
+        // 与桌面 mergePreset 同口径：预设里显式写的空签名不能一律当作「不带署名」。
+        // 票券/电影票类的空签名是设计的一部分，保持空白；其余风格只是「预设没自带签名」，
+        // 用户在「我的 → 昵称与签名」里填的署名要带过去。
+        // 署名单独存一份本机偏好：从票券类（空签名）切回签名类时，上一份模板里已经没有
+        // 可继承的签名了，只有这份偏好能把用户署名找回来。
+        if (!sigRowOffOf(state.template)) {
+            const mine = getUserSignature();
+            if (mine) state.template.userSignature = mine;
+            else if (!state.template.userSignature && prevT && prevT.userSignature) {
+                state.template.userSignature = prevT.userSignature;
+            }
+            if (!state.template.userSignature) state.template.userSignature = '清框影';
+        }
         // 不要给没有 photoFrameStyle 的预设补一个风格名：引擎会把未知名字当成
         // 相框风格去查表，结果 23 个「默认图层」预设全变成灰色占位图。
         A.template = state.template;
@@ -2486,7 +2506,7 @@
             b.addEventListener('click', () => { state.editSub = b.dataset.editSub; render('edit'); });
         });
         if (state.tab === 'edit' && window.QF_EditPanel) {
-            window.QF_EditPanel.bind(panel, () => renderPreviewSoon(),
+            window.QF_EditPanel.bind(panel, () => { syncSignaturePref(); renderPreviewSoon(); },
                 () => { render('edit'); renderPreviewSoon(); },
                 () => { state.preset = null; A.template = state.template; });
         }
@@ -2928,15 +2948,32 @@
 
     /* ── 用户资料：昵称/署名只存本机，头像沿用 QF_Avatar ─────────── */
     const USER_NAME_KEY = 'qfm_user_name';
+    const USER_SIGN_KEY = 'qfm_user_signature';
     function getUserName() {
         try { return localStorage.getItem(USER_NAME_KEY) || ''; } catch (_) { return ''; }
     }
     function setUserName(v) {
         try { localStorage.setItem(USER_NAME_KEY, v); } catch (_) {}
     }
+    function getUserSignature() {
+        try { return localStorage.getItem(USER_SIGN_KEY) || ''; } catch (_) { return ''; }
+    }
+    function setUserSignature(v) {
+        try {
+            if (v) localStorage.setItem(USER_SIGN_KEY, v);
+            else localStorage.removeItem(USER_SIGN_KEY);
+        } catch (_) {}
+    }
+    // 编辑页「署名内容」也能改署名，改完同步回偏好，切预设时才不会退回旧值。
+    // 票券类的空签名是设计的一部分，不参与同步。
+    function syncSignaturePref() {
+        const t = state.template;
+        if (!t || sigRowOffOf(t)) return;
+        setUserSignature(String(t.userSignature || ''));
+    }
     function openProfileModal() {
         const name = getUserName();
-        const sig = (state.template && state.template.userSignature) || '';
+        const sig = getUserSignature() || (state.template && state.template.userSignature) || '';
         const el = openStyleModal({
             title: '昵称与签名',
             body: `<input id="profileName" class="modal-input name-input" value="${esc(name)}" maxlength="18" placeholder="昵称（只存在本机）">`
@@ -2957,6 +2994,7 @@
     }
     function saveProfile(name, signature) {
         setUserName(name);
+        setUserSignature(signature);
         if (state.template) {
             // 署名优先；没填署名时用昵称；两者都清空则回到默认「清框影」。
             // 用户手动清空输入框就是明确要清掉旧署名，不该悄悄留着上一版。

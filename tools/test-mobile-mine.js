@@ -106,6 +106,53 @@ app.whenReady().then(async () => {
             await wait(140);
             out.clearedName = localStorage.getItem('qfm_user_name');
             out.clearedSign = window.App.template.userSignature;
+
+            // 7) 切换预设：签名/头像类沿用用户署名，票券类保持空白
+            document.getElementById('mineProfileRow').click();
+            await wait(80);
+            document.getElementById('profileName').value = '阿影';
+            document.getElementById('profileSign').value = '© 2026 阿影';
+            document.querySelector('#styleModal .act-btn.primary').click();
+            await wait(120);
+            document.querySelector('#tabbar [data-page="edit"]').click();
+            await wait(150);
+            const tabStyle = document.querySelector('[data-tab="style"]');
+            if (tabStyle) tabStyle.click();
+            await wait(150);
+            const ps = window.QF_PRESETS || [];
+            const applyPresetByName = (name) => {
+                const i = ps.findIndex(p => p.templateName === name);
+                const card = document.querySelector('[data-preset="' + i + '"]');
+                if (card) card.click();
+                return i >= 0;
+            };
+            out.hasSignPreset = applyPresetByName('签名+参数');
+            await wait(220);
+            out.afterSignPreset = window.App.template.userSignature;
+            out.hasTicketPreset = applyPresetByName('演唱会票根');
+            await wait(220);
+            out.afterTicketPreset = window.App.template.userSignature;
+            out.hasAvatarPreset = applyPresetByName('头像纪念');
+            await wait(220);
+            out.afterAvatarPreset = window.App.template.userSignature;
+
+            // 8) 编辑页直接改「署名内容」也要同步回偏好，切预设时才不会退回旧签名
+            const editTab = document.querySelector('[data-tab="edit"]');
+            if (editTab) editTab.click();
+            await wait(160);
+            const textTab = document.querySelector('[data-edit-sub="text"]');
+            if (textTab) textTab.click();
+            await wait(180);
+            const signRow = Array.from(document.querySelectorAll('.ctl-row')).find(r =>
+                r.querySelector('label') && r.querySelector('label').textContent.trim() === '署名内容');
+            const signInput = signRow && signRow.querySelector('input[data-ctl]');
+            out.foundSignInput = !!signInput;
+            if (signInput) {
+                signInput.value = '© 编辑页改的';
+                signInput.dispatchEvent(new Event('input', { bubbles: true }));
+                await wait(160);
+            }
+            out.prefAfterEdit = localStorage.getItem('qfm_user_signature');
         } catch (e) { out.err = String(e && e.stack || e); }
         return out;
     })()`);
@@ -132,6 +179,15 @@ app.whenReady().then(async () => {
         && !r.clearedName && r.clearedSign === '清框影',
         '昵称与签名：再次打开可回填，清空后不破坏默认署名',
         JSON.stringify({ refill: r.refillName, sign: r.refillSign, cleared: r.clearedSign, err: r.err }));
+    check(!r.err && r.hasSignPreset && r.hasTicketPreset && r.hasAvatarPreset
+        && r.afterSignPreset === '© 2026 阿影' && r.afterTicketPreset === ''
+        && r.afterAvatarPreset === '© 2026 阿影',
+        '切换预设：签名风格沿用用户署名，票券类保持空白',
+        JSON.stringify({ sign: r.afterSignPreset, ticket: r.afterTicketPreset,
+            back: r.afterAvatarPreset, err: r.err }));
+    check(!r.err && r.foundSignInput && r.prefAfterEdit === '© 编辑页改的',
+        '编辑页改署名：同步回本机偏好',
+        JSON.stringify({ found: r.foundSignInput, pref: r.prefAfterEdit, err: r.err }));
     check(errors.length === 0, '我的页流程无脚本异常', errors.slice(0, 3).join(' / '));
 
     console.log(fails.length ? `\n${fails.length} FAILURE(S)` : '\nALL PASS');
