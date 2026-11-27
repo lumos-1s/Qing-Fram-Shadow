@@ -22,7 +22,9 @@ app.whenReady().then(async () => {
         webPreferences: { contextIsolation: false, nodeIntegration: false } });
     const errors = [];
     win.webContents.on('console-message', (_e, level, message) => {
-        if (level >= 2 && !/Electron Security Warning|Content Security Policy/.test(message)) errors.push(message);
+        if (level >= 2 && !/Electron Security Warning|Content Security Policy|willReadFrequently/.test(message)) {
+            errors.push(message);
+        }
     });
     await win.loadURL(PAGE);
     await new Promise((r) => setTimeout(r, 500));
