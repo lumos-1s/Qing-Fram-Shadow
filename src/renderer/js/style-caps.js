@@ -54,6 +54,21 @@
     const IMPRESSION_STYLES = ['IMP_FROSTED', 'OVERLAY_PARAM_LEFT', 'OVERLAY_PARAM_RIGHT', 'OVERLAY_PARAM_BOTTOM', 'CARD_LOGO_PARAM'];
     const WM_BRAND_STYLES = ['FUJI_WM_BRAND', 'DARK_BRAND_ONLY'];
     const BOTTOM_BAR_STYLES = ['SIGNATURE', 'SIGN_PARAM', 'AVATAR_MEMO'];
+    // 「照片位移 X/Y」不是所有相框函数都读：多数版式按固定几何绘制，拖位移不会改任何像素。
+    // 名单由 engine-styles.js 静态扫描 + 调用链核对得出（styleBlurCommon / styleImpFrosted /
+    // styleOverlayParams / styleFujifilm / styleTicket / styleStamp / styleMovieTicket /
+    // styleBoardingPass / styleGalleryMat / styleParamStrip 读取 imgOffsetX/Y）。
+    // 图层 / 卡片路径（engine.js）仍一律支持，不走这份名单。
+    const OFFSET_STYLES = [
+        'IMP_FROSTED', 'OVERLAY_PARAM_LEFT', 'OVERLAY_PARAM_RIGHT', 'OVERLAY_PARAM_BOTTOM',
+        'FUJI_WM', 'FUJI_WM_BRAND', 'DARK_BRAND_ONLY',
+        'MOVIE_TICKET', 'BOARDING_PASS', 'TICKET_VINTAGE', 'TICKET_CONCERT', 'TICKET_SCRAP',
+        'TICKET_STAMP', 'STAMP_KRAFT', 'STAMP_BLUEPRINT', 'STAMP_REDSEAL', 'STAMP_GOLD',
+        'BLUR_CLASSIC', 'BLUR_DATE', 'GALLERY_MAT', 'PARAM_STRIP'
+    ];
+    function supportsOffset(style) {
+        return OFFSET_STYLES.indexOf(String(style || '').toUpperCase()) >= 0;
+    }
     const BRAND_LOGO_STYLES = [
         'WM_CLASSIC', 'WM_BRAND_LOGO', 'IMP_FROSTED', 'IMP_CLASSIC',
         'OVERLAY_PARAM_LEFT', 'OVERLAY_PARAM_RIGHT', 'OVERLAY_PARAM_BOTTOM',
@@ -300,5 +315,5 @@
         return SIG_ROW_DEFAULT_OFF.indexOf(s) >= 0;
     }
 
-    return { DIMS, MEASURED, PATH_FALLBACK, PERSONAL_STYLES, SIG_ROW_DEFAULT_OFF, OVERLAY_STYLES, BLUR_STYLES, BRAND_LOGO_STYLES, caseSuffix, dimCaseId, has, caps, visibleRows, sigRowDefaultOff };
+    return { DIMS, MEASURED, PATH_FALLBACK, PERSONAL_STYLES, SIG_ROW_DEFAULT_OFF, OVERLAY_STYLES, BLUR_STYLES, OFFSET_STYLES, BRAND_LOGO_STYLES, caseSuffix, dimCaseId, has, caps, supportsOffset, visibleRows, sigRowDefaultOff };
 });

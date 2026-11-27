@@ -298,6 +298,7 @@ app.whenReady().then(async () => {
             const size = byLabel('字号');
             if (size) { size.value = '80'; size.dispatchEvent(new Event('input', { bubbles: true })); }
             const sig = byLabel('署名内容');
+            text.hasSigRow = !!sig;
             if (sig) { sig.value = '回归署名'; sig.dispatchEvent(new Event('input', { bubbles: true })); }
             const exif = byLabel('EXIF 参数条');
             if (exif) { exif.checked = true; exif.dispatchEvent(new Event('change', { bubbles: true })); }
@@ -1379,8 +1380,10 @@ app.whenReady().then(async () => {
 
     check(!r.textErr && r.text.lines === r.text.baseline + 1 && r.text.text === '回归文字' && r.text.fontSize === 80,
         '编辑 › 文字能添加并修改自由文字', JSON.stringify({ text: r.text, err: r.textErr }));
-    check(!r.textErr && r.text.signature === '回归署名' && r.text.exifAutoText === 1 && r.text.afterDelete === r.text.baseline,
-        '署名/EXIF 写回模板且删除文字生效', JSON.stringify({ text: r.text, err: r.textErr }));
+    check(!r.textErr && r.text.hasSigRow === false && r.text.exifAutoText === 1
+        && r.text.afterDelete === r.text.baseline,
+        '图层模板隐藏无效署名行；EXIF 写回且删除文字生效',
+        JSON.stringify({ text: r.text, err: r.textErr }));
 
     check(!r.elErr && r.el.logos === r.el.baseline + 1 && /回归LOGO/.test(String(r.el.name))
         && r.el.size === 300 && r.el.opacity === 60 && r.el.stickers >= 1 && r.el.afterClear === 0,

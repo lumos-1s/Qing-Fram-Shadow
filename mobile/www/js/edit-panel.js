@@ -63,9 +63,11 @@
         const set = (fn) => (v) => fn(v, t);
         return [
             { g: 'basic', label: '边距大小', type: 'range', min: 20, max: 200, step: 5, unit: '%',
+              only: 'rowGlobalMargin',
               value: Math.round((m.globalMargin == null ? 1 : m.globalMargin) * 100),
               set: set((v, o) => applyGlobalMargin(o, v / 100)) },
             { g: 'basic', label: '照片缩放', type: 'range', min: 50, max: 200, step: 5, unit: '%',
+              only: 'rowImgScale',
               value: Math.round((m.imgScale == null ? 1 : m.imgScale) * 100),
               set: set((v, o) => { (o.baseMargin || (o.baseMargin = {})).imgScale = v / 100; }) },
             { g: 'pos', label: '照片位移 X', type: 'range', min: -200, max: 200, step: 5, unit: '',
@@ -82,18 +84,23 @@
                   cc.cornerRadiusTL = cc.cornerRadiusTR = cc.cornerRadiusBL = cc.cornerRadiusBR = v;
               }) },
 
-            { g: 'blur', label: '开启背景模糊', type: 'check', value: (m.bgBlurEnable || 0) === 1,
+            { g: 'blur', label: '开启背景模糊', type: 'check', only: 'rowBgBlur',
+              value: (m.bgBlurEnable || 0) === 1,
               set: set((v, o) => { (o.baseMargin || (o.baseMargin = {})).bgBlurEnable = v ? 1 : 0; }) },
             { g: 'blur', label: '模糊程度', type: 'range', min: 0, max: 100, step: 1, unit: '%',
+              only: 'rowBgBlurInt',
               value: Math.round(num(t.blurIntensity, 50)),
               set: set((v, o) => { o.blurIntensity = v; }) },
             { g: 'blur', label: '背景明暗', type: 'range', min: 0, max: 80, step: 2, unit: '%',
+              only: 'rowBlurBackdropDim',
               value: t.blurBackdropDim == null ? 40 : Math.round(num(t.blurBackdropDim, 40)),
               set: set((v, o) => { o.blurBackdropDim = v; }) },
             { g: 'blur', label: '文字上下', type: 'range', min: -100, max: 100, step: 5, unit: '%',
+              only: 'rowBlurTextOffset',
               value: Math.round(num(t.blurTextOffset, 0)),
               set: set((v, o) => { o.blurTextOffset = v; }) },
             { g: 'blur', label: '文字行距', type: 'range', min: 0, max: 300, step: 5, unit: '%',
+              only: 'rowBlurTextGap',
               value: t.blurTextGap == null ? 100 : Math.round(num(t.blurTextGap, 100)),
               set: set((v, o) => { o.blurTextGap = v; }) },
 
@@ -225,19 +232,24 @@
             S('more', '透明度', 'range', num(line.opacity, 100), (v) => { line.opacity = v; },
                 { min: 0, max: 100, step: 1, unit: '%' });
         }
-        S('sign', '署名内容', 'text', t.userSignature || '', (v) => { t.userSignature = v; });
+        S('sign', '署名内容', 'text', t.userSignature || '', (v) => { t.userSignature = v; },
+            { only: 'rowSignText' });
         S('sign', '署名字体', 'select', t.signFont || 'Courier New', (v) => { t.signFont = v; },
-            { options: [['Courier New', 'Courier New'], ['Microsoft YaHei', '微软雅黑'], ['SimSun', '宋体'], ['Trebuchet MS', 'Trebuchet']] });
-        S('sign', '署名颜色', 'color', color(t.signColor, '#555555'), (v) => { t.signColor = v; });
+            { options: [['Courier New', 'Courier New'], ['Microsoft YaHei', '微软雅黑'], ['SimSun', '宋体'], ['Trebuchet MS', 'Trebuchet']],
+              only: 'rowSignFont' });
+        S('sign', '署名颜色', 'color', color(t.signColor, '#555555'), (v) => { t.signColor = v; },
+            { only: 'rowSignColor' });
         S('sign', '署名大小', 'range', Math.round((t.signSize == null ? 1 : t.signSize) * 100),
-            (v) => { t.signSize = v / 100; }, { min: 50, max: 200, step: 5, unit: '%' });
-        S('sign', '显示头像', 'check', t.avatarShow !== 0, (v) => { t.avatarShow = v ? 1 : 0; });
+            (v) => { t.signSize = v / 100; }, { min: 50, max: 200, step: 5, unit: '%', only: 'rowSignSize' });
+        S('sign', '显示头像', 'check', t.avatarShow !== 0, (v) => { t.avatarShow = v ? 1 : 0; },
+            { only: 'rowAvatarShow' });
         S('sign', '头像大小', 'range', Math.round((t.avatarScale == null ? 0.85 : t.avatarScale) * 100),
-            (v) => { t.avatarScale = v / 100; }, { min: 50, max: 160, step: 5, unit: '%' });
+            (v) => { t.avatarScale = v / 100; }, { min: 50, max: 160, step: 5, unit: '%', only: 'rowAvatarScale' });
 
         S('exif', 'EXIF 参数条', 'check', (decor.exifAutoText || 0) === 1,
-            (v) => { decor.exifAutoText = v ? 1 : 0; });
-        S('exif', '等效焦距', 'check', (t.focalEq || 0) === 1, (v) => { t.focalEq = v ? 1 : 0; });
+            (v) => { decor.exifAutoText = v ? 1 : 0; }, { only: 'rowExifText' });
+        S('exif', '等效焦距', 'check', (t.focalEq || 0) === 1, (v) => { t.focalEq = v ? 1 : 0; },
+            { only: 'rowFocalEq' });
         [['brand', '品牌'], ['model', '型号'], ['focal', '焦距'], ['aperture', '光圈'],
             ['iso', 'ISO'], ['shutter', '快门']].forEach(([k, label]) => {
             S('exif', label, 'text', man[k] || '', (v) => { man[k] = v; });
@@ -245,9 +257,10 @@
 
         S('param', '参数字号', 'range', t.paramFontSize == null ? 33 : t.paramFontSize,
             (v) => { t.paramFontSize = v; },
-            { min: 0, max: 160, step: 1, unit: '', hint: '0 = 跟随照片短边自动缩放' });
+            { min: 0, max: 160, step: 1, unit: '', only: 'rowParamFontSize',
+              hint: '0 = 跟随照片短边自动缩放' });
         S('param', '参数位置', 'select', t.paramPosition || 'CENTER', (v) => { t.paramPosition = v; },
-            { options: [['CENTER', '居中'], ['LEFT', '左'], ['RIGHT', '右'], ['TOP', '上']] });
+            { options: [['CENTER', '居中'], ['LEFT', '左'], ['RIGHT', '右'], ['TOP', '上']], only: 'rowParamPos' });
         return out;
     }
 
@@ -266,7 +279,17 @@
                 `<button class="chip${i === selectedText ? ' active' : ''}" data-text-index="${i}">${esc((l.text || '文字').slice(0, 8))}</button>`
             ).join('') + `</div>`;
         }
-        const list = textDefs(t);
+        // 与边框页同一张能力表：当前风格不画的署名/头像/参数行不再摆出来
+        const vis = (window.StyleCaps && window.StyleCaps.visibleRows)
+            ? Object.assign({}, window.StyleCaps.visibleRows(style)) : {};
+        const pfName = String(t.photoFrameStyle || '').toUpperCase();
+        const frame = !!(pfName && pfName !== 'NONE');
+        // 图层 / 卡片路径（engine.js）不读参数字号、参数位置与 35mm 换算；
+        // 相框路径（engine-styles）才读。与上面的 EXIF 参数条正好相反。
+        if (!frame) { vis.rowParamFontSize = false; vis.rowParamPos = false; }
+        vis.rowFocalEq = frame;
+        vis.rowExifText = !frame;
+        const list = textDefs(t).filter((c) => !(c.only && vis[c.only] === false));
         for (const [key, title] of TEXT_GROUPS) {
             const rows = list.filter((c) => c.g === key);
             if (!rows.length) continue;
@@ -591,13 +614,35 @@
         if (sub !== 'border') return '<p class="panel-note">未知编辑子页</p>';
         const rows = window.StyleParams || {};
         const vis = (window.StyleCaps && window.StyleCaps.visibleRows)
-            ? window.StyleCaps.visibleRows(style) : {};
+            ? Object.assign({}, window.StyleCaps.visibleRows(style)) : {};
+        const caps = (window.StyleCaps && window.StyleCaps.caps)
+            ? window.StyleCaps.caps(style) : {};
+        const pfName = String(tmpl.photoFrameStyle || '').toUpperCase();
+        const frame = !!(pfName && pfName !== 'NONE');
+        const card = !frame && (Number((tmpl.baseMargin || {}).bgBlurEnable) || 0) === 1;
+        // 图层组只服务「默认模板」：相框/卡片管线不画 layerList，这四组拖了也不会变
+        const showLayers = !frame && !card;
+        // 卡片与图层模板都读背景模糊；相框风格按能力表决定
+        if (!frame) { vis.rowBgBlur = true; vis.rowBgBlurInt = true; }
+        else if (!vis.rowBgBlurInt) {
+            // 与桌面同口径：支持「开/关模糊」的风格，打开后才出现程度滑块
+            vis.rowBgBlurInt = !!caps.bi || (vis.rowBgBlur === true
+                && (Number((tmpl.baseMargin || {}).bgBlurEnable) || 0) === 1);
+        }
+        // 背景明暗 / 底部文字排版只服务「背景模糊·经典 / 日期」
+        const blurAdv = (window.StyleCaps && window.StyleCaps.BLUR_STYLES || []).indexOf(pfName) >= 0;
+        vis.rowBlurBackdropDim = blurAdv;
+        vis.rowBlurTextOffset = blurAdv;
+        vis.rowBlurTextGap = blurAdv;
+        // EXIF 参数条只对图层/卡片有效；相框风格自己画参数，勾了也不会变
+        vis.rowExifText = !frame;
+        const posOK = !frame || ((window.StyleCaps && window.StyleCaps.supportsOffset)
+            ? window.StyleCaps.supportsOffset(pfName) : true);
         let out = '';
         for (const [key, title] of GROUPS) {
-            if (key === 'blur') {
-                const caps = (window.StyleCaps && window.StyleCaps.caps) ? window.StyleCaps.caps(style) : {};
-                if (!caps.bi) continue; // 这个风格引擎根本不读模糊参数，不摆无效控件
-            }
+            if (!showLayers && (key === 'fill' || key === 'stroke' || key === 'corner' || key === 'shadow')) continue;
+            if (key === 'pos' && !posOK) continue;
+            if (key === 'blur' && !vis.rowBgBlur && !vis.rowBgBlurInt) continue;
             const list = defs(tmpl).filter((c) => c.g === key && (!c.only || vis[c.only] !== false));
             if (!list.length) continue;
             const body = list.map((c) => {
@@ -606,6 +651,17 @@
                 return rowHtml(c);
             }).join('');
             out += `<details class="ctl-group"${key === 'basic' ? ' open' : ''}><summary>${title}</summary>${body}</details>`;
+        }
+        if (!showLayers) {
+            // 组直接消失会让人以为面板坏了：像桌面一样说明「谁在画边框、下一步去哪」。
+            // 被能力表收起的留白/缩放/位移也一并交代，避免用户以为漏做了控件。
+            const fixed = [];
+            if (vis.rowGlobalMargin === false) fixed.push('留白');
+            if (vis.rowImgScale === false) fixed.push('照片缩放');
+            if (!posOK) fixed.push('照片位移');
+            out += `<p class="panel-note">「${esc(tmpl.templateName || '当前预设')}」的边框由预设自己绘制`
+                + (fixed.length ? `；${fixed.join('、')}也由预设固定` : '')
+                + `；填充 / 描边 / 边框圆角 / 阴影不可用。换成图层模板预设后可逐项编辑。</p>`;
         }
         // 样式私有参数：缺省不写字段，拖过才写进 t.styleParams[STYLE]
         const params = rows.forStyle ? rows.forStyle(style) : [];
@@ -650,6 +706,8 @@
                     out.textContent = (c.label === '参数字号' && Number(v) === 0) ? '自动' : v + (c.unit || '');
                 }
                 onChange();
+                // 开关背景模糊会切换渲染管线（图层 → 卡片），图层组是否可见要跟着重排
+                if (c.label === '开启背景模糊') onRebuild();
             });
         });
         const reset = panel.querySelector('#btnBorderParamReset');
