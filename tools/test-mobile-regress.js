@@ -1155,6 +1155,68 @@ app.whenReady().then(async () => {
             rot.resetOps = (window.App.image.ops || []).length;
         } catch (e) { rotErr = String(e && e.message || e); }
 
+        // 24.97) 居中等比裁剪：预览/导出/撤销/恢复
+        let cp = {}, cpErr = '';
+        try {
+            const cvEl = document.getElementById('previewCanvas');
+            const size = () => ({ w: cvEl.width, h: cvEl.height });
+            document.querySelector('[data-tab="edit"]').click();
+            await wait(320);
+            document.querySelector('[data-edit-sub="photo"]').click();
+            await wait(260);
+            cp.chips = document.querySelectorAll('[data-crop-ratio]').length;
+            cp.before = size();
+            document.querySelector('[data-crop-ratio="1:1"]').click();
+            await wait(600);
+            cp.square = size();
+            cp.src = [window.App.image.srcW, window.App.image.srcH];
+
+            // 导出：1600×1200 的「原图」按 0.75 的裁剪比例应出 1200×1200
+            const full = document.createElement('canvas');
+            full.width = 1600; full.height = 1200;
+            full.getContext('2d').fillRect(0, 0, 1600, 1200);
+            const origFull = window.qfFullSource;
+            const origSave = window.qfsNative.saveImage;
+            window.qfFullSource = async () => ({ canvas: full, changed: true, capped: false, fallback: false, release() {} });
+            let saved = null;
+            window.qfsNative.saveImage = async (d, n) => { saved = { d, n }; return { ok: true, mode: 'download' }; };
+            const ex = document.getElementById('btnExport');
+            ex.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 95, button: 0 }));
+            await wait(620);
+            document.querySelector('#optFormat [data-format="png"]').click();
+            document.getElementById('btnExportGo').click();
+            for (let i = 0; i < 160 && !saved; i++) await wait(150);
+            const b64 = ((saved && saved.d) || '').split(',')[1] || '';
+            const bin = atob(b64.slice(0, 48));
+            cp.expW = ((bin.charCodeAt(16) << 24) | (bin.charCodeAt(17) << 16)
+                | (bin.charCodeAt(18) << 8) | bin.charCodeAt(19)) >>> 0;
+            cp.expH = ((bin.charCodeAt(20) << 24) | (bin.charCodeAt(21) << 16)
+                | (bin.charCodeAt(22) << 8) | bin.charCodeAt(23)) >>> 0;
+            window.qfFullSource = origFull;
+            window.qfsNative.saveImage = origSave;
+            ex.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 96, button: 0 }));
+            await wait(620);
+            document.querySelector('#optFormat [data-format="jpeg"]').click();
+            document.getElementById('btnExportCancel').click();
+            await wait(300);
+
+            document.querySelector('[data-tab="edit"]').click();
+            await wait(300);
+            document.querySelector('[data-edit-sub="photo"]').click();
+            await wait(240);
+            document.querySelector('[data-crop-ratio="4:5"]').click();
+            await wait(600);
+            cp.r45 = size();
+            document.getElementById('btnUndo').click();
+            await wait(600);
+            cp.undone = size();
+            document.querySelector('[data-edit-sub="photo"]').click();
+            await wait(220);
+            document.querySelector('[data-crop-ratio="orig"]').click();
+            await wait(600);
+            cp.restored = size();
+        } catch (e) { cpErr = String(e && e.message || e); }
+
         // 25) RAW 全尺寸重解（本地有样本时）
         let rawFull = {}, rawFullErr = '';
         if (${JSON.stringify(fs.existsSync(rawSample))}) {
@@ -1183,7 +1245,7 @@ app.whenReady().then(async () => {
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
             edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, dbl, dblErr,
             pinch, pinchErr, exif, exifErr, multi, multiErr, autofs, autofsErr, layout, layoutErr,
-            extras, extrasErr, exportOpt, exportOptErr, bt, btErr, gp, gpErr, lib, libErr, ms, msErr, uz, uzErr, rot, rotErr, sync1, sync1Err, rawFull, rawFullErr
+            extras, extrasErr, exportOpt, exportOptErr, bt, btErr, gp, gpErr, lib, libErr, ms, msErr, uz, uzErr, rot, rotErr, cp, cpErr, sync1, sync1Err, rawFull, rawFullErr
         };
     })()`);
 
@@ -1301,6 +1363,16 @@ app.whenReady().then(async () => {
 
     check(!r.extrasErr && r.extras.compareOn && r.extras.compareOff,
         '长按画布看原图、松手恢复', JSON.stringify({ extras: r.extras, err: r.extrasErr }));
+
+    check(!r.cpErr && r.cp.chips === 5 && r.cp.square.w === r.cp.square.h
+        && r.cp.src[0] === r.cp.src[1] && r.cp.expW === 1200 && r.cp.expH === 1200,
+        '居中等比裁剪：1:1 出方图，导出按同一裁剪比例重放',
+        JSON.stringify({ cp: r.cp, err: r.cpErr }));
+
+    check(!r.cpErr && r.cp.r45.w < r.cp.r45.h && r.cp.undone.w === r.cp.square.w
+        && r.cp.restored.w === r.cp.before.w && r.cp.restored.h === r.cp.before.h,
+        '居中等比裁剪：4:5 收窄、撤销回上一步、原图恢复完整画面',
+        JSON.stringify({ cp: r.cp, err: r.cpErr }));
 
     check(!r.btErr && r.bt.scopeShown && /全部 \d+ 张/.test(r.bt.allLabel)
         && r.bt.count === r.bt.expect && r.bt.allFramed && r.bt.allNonEmpty

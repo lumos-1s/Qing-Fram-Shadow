@@ -405,3 +405,6 @@ body {
   background: var(--surface-alt); color: var(--text); font-size: 13px;
 }
 .orient-grid button:active { border-color: var(--primary); color: var(--primary); }
+/* 比例行：5 个短标签要在一行里放得下，别让「16:9」藏在横向滚动后面 */
+.crop-ratios { flex-wrap: wrap; overflow: visible; gap: 6px; padding-bottom: 0; }
+.crop-ratios .chip { min-height: 36px; padding: 0 12px; font-size: 12px; border-radius: 10px; }

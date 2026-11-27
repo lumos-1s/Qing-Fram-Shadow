@@ -34,6 +34,17 @@
             const op = ops[i];
             const w = cur.width, h = cur.height;
             const out = document.createElement('canvas');
+            // 裁剪：{ t:'crop', x,y,w,h } 全是相对当前画面的 0~1，
+            // 预览和全尺寸重放用同一组比例，不会因为尺寸不同裁歪
+            if (op && op.t === 'crop') {
+                const sx = Math.round(w * op.x), sy = Math.round(h * op.y);
+                const sw = Math.max(1, Math.round(w * op.w)), sh = Math.max(1, Math.round(h * op.h));
+                out.width = sw; out.height = sh;
+                out.getContext('2d').drawImage(cur, sx, sy, sw, sh, 0, 0, sw, sh);
+                out.naturalWidth = sw; out.naturalHeight = sh; out.complete = true;
+                cur = out;
+                continue;
+            }
             if (op === 'r' || op === 'l') { out.width = h; out.height = w; }
             else { out.width = w; out.height = h; }
             const g = out.getContext('2d');
@@ -67,8 +78,14 @@
         im.w = im.el.naturalWidth || im.el.width;
         im.h = im.el.naturalHeight || im.el.height;
         const quarter = ops.filter((o) => o === 'r' || o === 'l').length % 2 === 1;
-        im.srcW = quarter ? im.baseSrcH : im.baseSrcW;
-        im.srcH = quarter ? im.baseSrcW : im.baseSrcH;
+        let sw = quarter ? im.baseSrcH : im.baseSrcW;
+        let sh = quarter ? im.baseSrcW : im.baseSrcH;
+        // 裁掉一半不能还按原图长边算字号/相框边距
+        ops.forEach((o) => {
+            if (o && o.t === 'crop') { sw *= o.w; sh *= o.h; }
+        });
+        im.srcW = sw;
+        im.srcH = sh;
         delete im._gradeCache;
         // 缩略图是按 el 画的，转过之后缓存就过期了（照片条/拼图格会显示旧方向）
         delete im._thumb;
@@ -80,6 +97,8 @@
         pushUndo();
         ensureImgBase(im);
         im.ops = (im.ops || []).concat(op);
+        // 先裁后转，宽高比会变成倒数；标签继续亮着会误导
+        im.cropRatio = '';
         rebuildImageCanvas(im);
         scalePresetFonts(state.template, im);
         if (state.tab !== 'edit') state.tab = 'edit';
@@ -88,20 +107,68 @@
         const label = { r: '右转 90°', l: '左转 90°', f: '水平翻转', v: '垂直翻转' }[op];
         hint(`已${label}`);
     }
+    // 居中按比例裁剪：不追求自由裁剪，先把「发社交用的方图 / 4:5」这类高频需求解决，
+    // 仍然是操作序列里的一步，撤销和导出都和旋转同一套逻辑。
+    function setCropRatio(ratio) {
+        const im = state.image;
+        if (!im || !im.el) { hint('先导入照片'); return; }
+        pushUndo();
+        ensureImgBase(im);
+        // 保留旋转/翻转，替换掉旧的裁剪
+        const baseOps = (im.ops || []).filter((o) => typeof o === 'string');
+        if (!ratio || ratio === 'orig') {
+            im.ops = baseOps;
+            im.cropRatio = '';
+            rebuildImageCanvas(im);
+            scalePresetFonts(state.template, im);
+            render(state.tab);
+            hint('已恢复完整画面');
+            return;
+        }
+        const wh = String(ratio).split(':').map(Number);
+        if (!(wh[0] > 0 && wh[1] > 0)) return;
+        const target = wh[0] / wh[1];
+        // 用旋转/翻转后的画面算裁剪框，否则先转再裁会裁错方向
+        const turned = bakeOps(im.base, baseOps);
+        const w = turned.width, h = turned.height;
+        let cw = w, ch = Math.round(w / target);
+        if (ch > h) { ch = h; cw = Math.round(h * target); }
+        cw = Math.max(1, Math.min(w, cw));
+        ch = Math.max(1, Math.min(h, ch));
+        im.ops = baseOps.concat({
+            t: 'crop',
+            x: (w - cw) / 2 / w,
+            y: (h - ch) / 2 / h,
+            w: cw / w,
+            h: ch / h
+        });
+        im.cropRatio = ratio;
+        rebuildImageCanvas(im);
+        scalePresetFonts(state.template, im);
+        render(state.tab);
+        hint(`已居中裁成 ${ratio}`);
+    }
     function resetImageOps() {
         const im = state.image;
         if (!im || !(im.ops || []).length) { hint('方向没有改过'); return; }
         pushUndo();
         im.ops = [];
+        im.cropRatio = '';
         rebuildImageCanvas(im);
         scalePresetFonts(state.template, im);
         render(state.tab);
         hint('已恢复照片原始方向');
     }
+    const CROP_RATIOS = [['orig', '原图'], ['1:1', '1:1'], ['4:5', '4:5'], ['3:2', '3:2'], ['16:9', '16:9']];
     function photoOrientHtml() {
         const im = state.image;
         const ops = (im && im.ops) || [];
-        return `<div class="orient-grid">
+        const cur = (im && im.cropRatio) || 'orig';
+        const ratioChips = CROP_RATIOS.map(([v, l]) =>
+            `<button class="chip${cur === v ? ' active' : ''}" data-crop-ratio="${v}" type="button">${l}</button>`).join('');
+        return `<div class="ctl-row"><label>比例</label><div class="chips crop-ratios">${ratioChips}</div></div>
+            <p class="panel-note" style="margin-top:2px">按比例居中裁切，不移动取景框；选「原图」恢复完整画面。</p>
+            <div class="orient-grid">
                 <button type="button" data-img-op="l">↺ 左转 90°</button>
                 <button type="button" data-img-op="r">↻ 右转 90°</button>
                 <button type="button" data-img-op="f">⇆ 水平翻转</button>
@@ -119,8 +186,9 @@
             // 拼图的版式/槽位也是「用户刚做的改动」，不进快照的话点撤销会去撤销更早的
             // 模板改动，看起来像「撤销没反应 / 撤错了」
             z: state.puzzle ? { layout: state.puzzle.layout, slots: state.puzzle.slots } : null,
-            // 方向同理：照片像素被转过了，撤销必须能把画布转回去
-            r: state.image ? (state.image.ops || []) : null
+            // 方向/裁剪同理：照片像素被处理过了，撤销必须能把画布还原
+            r: state.image ? (state.image.ops || []) : null,
+            c: state.image ? (state.image.cropRatio || '') : ''
         });
     }
     function updateUndoUI() {
@@ -150,6 +218,7 @@
                 rebuildImageCanvas(state.image);
                 scalePresetFonts(state.template, state.image);
             }
+            state.image.cropRatio = o.c || '';
         }
         if (o.z && state.puzzle) {
             state.puzzle.layout = o.z.layout || state.puzzle.layout;
@@ -2037,6 +2106,9 @@
         });
         const imgReset = document.getElementById('btnImgReset');
         if (imgReset) imgReset.addEventListener('click', resetImageOps);
+        panel.querySelectorAll('[data-crop-ratio]').forEach((b) => {
+            b.addEventListener('click', () => setCropRatio(b.dataset.cropRatio));
+        });
         const saveStyleBtn = document.getElementById('btnSaveStyle');
         if (saveStyleBtn) saveStyleBtn.addEventListener('click', openSaveStyleModal);
         // 我的风格：轻点套用，长按 650ms 问一句再删（删样式比删调色贵，给一次确认）
