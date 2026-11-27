@@ -13,7 +13,13 @@ button.primary { background:var(--primary); border-color:var(--primary); color:#
 button:disabled { opacity:.5; }
 #exifPanel { border:1px solid var(--line); border-radius:4px; padding:4px 8px; }
 #exifPanel summary { cursor:pointer; color:var(--primary); }
-.exif-text { color:var(--muted); font-size:11px; padding:4px 0; min-height:16px; }
+.exif-fields { padding:4px 0; }
+.exif-row { display:flex; align-items:center; gap:6px; min-height:26px; }
+.exif-row label { flex:0 0 34px; color:var(--muted); font-size:11px; }
+.exif-row input {
+  flex:1; min-width:0; min-height:24px; padding:0 6px; background:var(--panel);
+  color:var(--text); border:1px solid var(--line); border-radius:3px; font-size:11px;
+}
 .exif-auto { color:var(--muted); font-size:11px; }
 .preview {
   width:100%; max-height:170px; display:block; object-fit:contain;

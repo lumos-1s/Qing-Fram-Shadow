@@ -17,9 +17,10 @@
       <option value="srgb">sRGB</option>
     </select>
     <details id="exifPanel">
-      <summary>相机参数（自动识别）</summary>
-      <div id="exifText" class="exif-text">未识别</div>
+      <summary>相机参数（自动识别，可修改）</summary>
+      <div id="exifFields" class="exif-fields"></div>
       <label class="exif-auto"><input id="chkExifAuto" type="checkbox" checked> 写入参数条</label>
+      <div class="text-acts"><button id="btnExifDetect" type="button">重新识别</button></div>
     </details>
     <canvas id="previewCanvas" class="preview"></canvas>
     <div id="borderParams" class="params"></div>

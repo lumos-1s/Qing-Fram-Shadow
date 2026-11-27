@@ -57,6 +57,7 @@
     let exifInfo = null;
     let previewSource = null;
     let liveTemplate = null;
+    let lastTemplate = null;
     let previewTimer = 0;
 
     function renderPreviewLive() {
@@ -98,26 +99,42 @@
         return new Uint8Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
     }
 
+    const EXIF_FIELDS = [
+        ['make', '品牌'], ['model', '型号'], ['focal', '焦距'],
+        ['aperture', '光圈'], ['iso', 'ISO'], ['shutter', '快门']
+    ];
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+    function renderExifFields(msg) {
+        const host = document.getElementById('exifFields');
+        if (!host) return;
+        host.innerHTML = EXIF_FIELDS.map(([k, l]) =>
+            `<div class="exif-row"><label>${l}</label>`
+            + `<input data-exif="${k}" value="${esc(exifInfo && exifInfo[k] || '')}"></div>`
+        ).join('') + (msg ? `<div class="exif-text">${esc(msg)}</div>` : '');
+        host.querySelectorAll('[data-exif]').forEach((el) => {
+            el.addEventListener('input', () => {
+                if (!exifInfo) exifInfo = {};
+                exifInfo[el.dataset.exif] = el.value;
+                if (liveTemplate) { applyExif(liveTemplate); renderPreviewLive(); }
+            });
+        });
+    }
+
     async function detectExif() {
-        const el = document.getElementById('exifText');
-        if (!el) return;
         try {
             const r = await evalScript('qfGetDocPath()');
-            if (String(r).indexOf('ERR') === 0) { el.textContent = r; return; }
+            if (String(r).indexOf('ERR') === 0) { renderExifFields(r); return; }
             const bytes = await readBytes(String(r).slice(3));
             const raw = window.__parseExif(bytes.buffer);
             const info = window.__exifSummary(raw) || {};
             exifInfo = info;
-            const parts = [];
-            if (info.make) parts.push(info.make);
-            if (info.model) parts.push(info.model);
-            if (info.focal) parts.push(info.focal + (info.focal35 ? `（等效 ${info.focal35}mm）` : ''));
-            if (info.aperture) parts.push(info.aperture);
-            if (info.shutter) parts.push(info.shutter);
-            if (info.iso) parts.push(info.iso);
-            el.textContent = parts.length ? parts.join(' · ') : '未识别到 EXIF 参数';
+            renderExifFields(info.focal35 ? `等效 ${info.focal35}mm · 可手动修改` : '可手动修改');
         } catch (e) {
-            el.textContent = '识别失败：' + ((e && e.message) || e);
+            renderExifFields('识别失败：' + ((e && e.message) || e));
         }
     }
 
@@ -218,6 +235,7 @@
             const template = presetAt();
             applyExif(template);
             liveTemplate = template;
+            lastTemplate = template;
             if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(template);
             // 让引擎按文档比例出图；否则模板自己的画布比例会让成品和文档对不上
             if (docW && docH) template.canvasRatio = docW + ':' + docH;
@@ -281,6 +299,8 @@
             ).join('');
         }
         if (btnBorder) btnBorder.addEventListener('click', () => apply());
+        const exifBtn = document.getElementById('btnExifDetect');
+        if (exifBtn) exifBtn.addEventListener('click', () => detectExif().catch(() => {}));
         if (presetSel) presetSel.addEventListener('change', () => {
             if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(presetAt());
             liveTemplate = window.QF_BorderParams ? window.QF_BorderParams.current() : presetAt();
@@ -301,5 +321,8 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
     else init();
 
-    window.QF_PS_POC = { apply, detectExif, renderPreviewLive, evalScript, readBase64, writeBase64, tempPath, loadLayer };
+    window.QF_PS_POC = {
+        apply, detectExif, renderPreviewLive, evalScript, readBase64, writeBase64, tempPath, loadLayer,
+        lastTemplate: () => lastTemplate
+    };
 })();

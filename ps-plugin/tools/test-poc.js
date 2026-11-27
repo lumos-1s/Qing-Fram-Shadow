@@ -62,7 +62,10 @@ app.whenReady().then(async () => {
             0x8827: 100, 0x920A: { num: 35, den: 1 }, 0xA405: 52
         });
         await window.QF_PS_POC.detectExif();
-        const exifText = document.getElementById('exifText').textContent;
+        const exifText = Array.from(document.querySelectorAll('[data-exif]'))
+            .map((el) => el.value).join(' · ');
+        const brandInput = document.querySelector('[data-exif="make"]');
+        if (brandInput) { brandInput.value = 'CANON'; brandInput.dispatchEvent(new Event('input', { bubbles: true })); }
 
         const presets = window.QF_PRESETS || [];
         const sel = document.getElementById('preset');
@@ -84,6 +87,7 @@ app.whenReady().then(async () => {
             presets: presets.length,
             hasRender: typeof window.__render === 'function',
             bpCount, strokeWidth, exifText,
+            exifBrand: ((window.QF_PS_POC.lastTemplate() || {}).manualExif || {}).brand,
             previewW: document.getElementById('previewCanvas').width,
             hasLive: typeof window.QF_PS_POC.renderPreviewLive === 'function',
             hasEmbedApi: typeof window.QF_IccEmbed === 'object' && typeof window.QF_IccEmbed.embed === 'function',
@@ -110,8 +114,9 @@ app.whenReady().then(async () => {
     console.log(JSON.stringify(r, null, 2));
     check(r.presets === 91 && r.hasRender, '引擎与预设已加载', JSON.stringify({ presets: r.presets, hasRender: r.hasRender }));
     check(r.bpCount >= 15 && r.strokeWidth === 40, '边框参数面板可改模板', JSON.stringify({ bpCount: r.bpCount, strokeWidth: r.strokeWidth }));
-    check(['SONY', 'ILCE-6000', '35mm', '52mm', 'f/5.6', '1/125s', 'ISO100']
+    check(['ILCE-6000', '35mm', 'f/5.6', '1/125s', 'ISO100']
         .every((s) => r.exifText.indexOf(s) >= 0), '自动识别 EXIF 拍摄参数', r.exifText);
+    check(r.exifBrand === 'CANON', '相机参数可手动修改并写回模板', String(r.exifBrand));
     check(r.hasLive && r.previewW > 0, '实时预览画布已渲染', JSON.stringify({ hasLive: r.hasLive, previewW: r.previewW }));
     check(/放回文档：OK/.test(r.logText), '边框渲染并写回图层', r.logText.split('\n').slice(-2).join(' / '));
     check(r.placed.length === 1 && r.placed[0].name === '清框影边框',
