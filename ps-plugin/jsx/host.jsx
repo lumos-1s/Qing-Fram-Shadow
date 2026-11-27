@@ -41,6 +41,9 @@ function qfGetLayerPng(path) {
 }
 
 function qfPlacePng(path, name) {
+    var oldDialogs = app.displayDialogs;
+    // JPEG 是 sRGB，目标文档可能是 Adobe RGB；不关对话框会弹「配置文件不匹配」把自动化卡住
+    app.displayDialogs = DialogModes.NO;
     try {
         var doc = app.activeDocument;
         if (!doc) return 'ERR:没有打开的文档';
@@ -63,5 +66,7 @@ function qfPlacePng(path, name) {
             + 'x' + Math.round(b[3].as('px') - b[1].as('px'));
     } catch (e) {
         return 'ERR:' + (e.message || e);
+    } finally {
+        app.displayDialogs = oldDialogs;
     }
 }
