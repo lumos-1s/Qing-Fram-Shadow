@@ -1409,31 +1409,89 @@
     // ── 导出选项：长边 / 格式 / 画质，记住上次选择 ───────────────────────
     const EXPORT_PREF_KEY = 'qfm_export';
     // scope: current = 当前照片，all = 照片库里每一张都按现在的风格导一遍
-    const exportOpts = { maxEdge: 0, format: 'jpeg', quality: 0.92, scope: 'current' };
+    const exportOpts = { maxEdge: 0, format: 'jpeg', quality: 0.92, scope: 'current', colorSpace: 'srgb' };
     // 只用于提示文案，不进偏好（免得 localStorage 里多一个会过期的张数）
     let exportAllCount = 0;
     try {
         const saved = JSON.parse(localStorage.getItem(EXPORT_PREF_KEY) || '{}');
         if (saved && typeof saved === 'object') Object.assign(exportOpts, saved);
     } catch (_) { /* 坏数据就用默认 */ }
-    if (['jpeg', 'png'].indexOf(exportOpts.format) < 0) exportOpts.format = 'jpeg';
+    if (['jpeg', 'png', 'webp'].indexOf(exportOpts.format) < 0) exportOpts.format = 'jpeg';
+    if (['srgb', 'p3', 'adobergb'].indexOf(exportOpts.colorSpace) < 0) exportOpts.colorSpace = 'srgb';
     if (['current', 'all'].indexOf(exportOpts.scope) < 0) exportOpts.scope = 'current';
     if (!(Number(exportOpts.quality) > 0 && Number(exportOpts.quality) <= 1)) exportOpts.quality = 0.92;
     exportOpts.maxEdge = Math.max(0, Number(exportOpts.maxEdge) || 0);
     function saveExportOpts() {
         try { localStorage.setItem(EXPORT_PREF_KEY, JSON.stringify(exportOpts)); } catch (_) {}
     }
-    function exportMime() { return exportOpts.format === 'png' ? 'image/png' : 'image/jpeg'; }
-    function exportExt() { return exportOpts.format === 'png' ? 'png' : 'jpg'; }
+    function exportMime() {
+        return exportOpts.format === 'png' ? 'image/png'
+            : exportOpts.format === 'webp' ? 'image/webp' : 'image/jpeg';
+    }
+    function exportExt() {
+        return exportOpts.format === 'png' ? 'png'
+            : exportOpts.format === 'webp' ? 'webp' : 'jpg';
+    }
+    // WebP 编码器不写 ICC，硬转像素只会得到没有配置的错色文件；与桌面同口径。
+    function effectiveColorSpace() {
+        return exportOpts.format === 'webp' ? 'srgb' : exportOpts.colorSpace;
+    }
+    function canvasForExport(cv) {
+        const cs = effectiveColorSpace();
+        if (!cv || cs === 'srgb') return cv;
+        const out = document.createElement('canvas');
+        out.width = cv.width; out.height = cv.height;
+        const ctx = out.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(cv, 0, 0);
+        try {
+            const img = ctx.getImageData(0, 0, out.width, out.height);
+            if (window.QfsColorSpace && window.QfsColorSpace.convertRgbaInPlace(img.data, cs)) {
+                ctx.putImageData(img, 0, 0);
+                return out;
+            }
+        } catch (_) { /* 取不到像素就退回 sRGB，不输出错色文件 */ }
+        return cv;
+    }
+    function dataUrlBytes(dataUrl) {
+        const bin = atob(String(dataUrl).split(',')[1] || '');
+        const out = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        return out;
+    }
+    function bytesDataUrl(bytes, mime) {
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+            bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        }
+        return `data:${mime};base64,${btoa(bin)}`;
+    }
     function exportTarget(srcLong) {
         const cap = Number(exportOpts.maxEdge) || 0;
         return cap > 0 ? Math.min(srcLong || cap, cap) : (srcLong || 0);
     }
-    function encodeCanvas() {
-        return exportOpts.format === 'png'
-            ? canvas.toDataURL('image/png')
-            : canvas.toDataURL('image/jpeg', exportOpts.quality);
+    function encodeImageCanvas(src) {
+        const cv = canvasForExport(src);
+        let data;
+        if (exportOpts.format === 'png') {
+            data = cv.toDataURL('image/png');
+        } else if (exportOpts.format === 'webp') {
+            data = cv.toDataURL('image/webp', exportOpts.quality);
+            // 老 WebView 不认 webp 时会悄悄返回 PNG；回退 JPEG，保证后缀与内容一致
+            if (!data.startsWith('data:image/webp')) {
+                data = cv.toDataURL('image/jpeg', exportOpts.quality);
+            }
+        } else {
+            data = cv.toDataURL('image/jpeg', exportOpts.quality);
+            const cs = effectiveColorSpace();
+            if (cs !== 'srgb' && window.QfsIcc) {
+                try {
+                    data = bytesDataUrl(window.QfsIcc.applyIccToJpeg(dataUrlBytes(data), cs), 'image/jpeg');
+                } catch (_) { /* 嵌入失败就按原 JPEG 出，不让导出整体失败 */ }
+            }
+        }
+        return data;
     }
+    function encodeCanvas() { return encodeImageCanvas(canvas); }
     const exportSheetEl = document.getElementById('exportSheet');
     function srcLongEdge() {
         const im = state.image;
@@ -1461,11 +1519,16 @@
         document.querySelectorAll('#optFormat .chip').forEach((b) => {
             b.classList.toggle('active', b.dataset.format === exportOpts.format);
         });
+        document.querySelectorAll('#optColorSpace .chip').forEach((b) => {
+            b.classList.toggle('active', b.dataset.colorspace === exportOpts.colorSpace);
+        });
         document.querySelectorAll('#optQuality .chip').forEach((b) => {
             b.classList.toggle('active', Math.abs(Number(b.dataset.quality) - exportOpts.quality) < 0.001);
         });
         const rowQ = document.getElementById('rowQuality');
         if (rowQ) rowQ.hidden = exportOpts.format === 'png';
+        const rowCs = document.getElementById('rowColorSpace');
+        if (rowCs) rowCs.hidden = exportOpts.format !== 'jpeg';
         // 主按钮跟着范围走：选「全部」时写清楚要出几张，避免点下去才发现是一整批
         const go = document.getElementById('btnExportGo');
         if (go) {
@@ -1484,6 +1547,8 @@
             hintEl.textContent = src
                 ? `${allNote}${subject}长边 ${out}px · ${exportOpts.format.toUpperCase()}`
                     + (exportOpts.format === 'png' ? ' · 无损' : ` · 画质 ${Math.round(exportOpts.quality * 100)}%`)
+                    + (effectiveColorSpace() === 'srgb' ? ''
+                        : effectiveColorSpace() === 'p3' ? ' · Display P3' : ' · Adobe RGB')
                 : '先导入一张照片';
         }
     }
@@ -1502,6 +1567,8 @@
             if (sizeBtn) { exportOpts.maxEdge = Number(sizeBtn.dataset.size) || 0; saveExportOpts(); paintExportOpts(); return; }
             const fmtBtn = t.closest('[data-format]');
             if (fmtBtn) { exportOpts.format = fmtBtn.dataset.format; saveExportOpts(); paintExportOpts(); return; }
+            const csBtn = t.closest('[data-colorspace]');
+            if (csBtn) { exportOpts.colorSpace = csBtn.dataset.colorspace; saveExportOpts(); paintExportOpts(); return; }
             const qBtn = t.closest('[data-quality]');
             if (qBtn) { exportOpts.quality = Number(qBtn.dataset.quality) || 0.92; saveExportOpts(); paintExportOpts(); return; }
             const scBtn = t.closest('[data-scope]');
@@ -1592,7 +1659,7 @@
         state.batchCancel = false;
         const uris = [];
         let ok = 0, fail = 0;
-        const suffix = exportOpts.format === 'png' ? 'png' : 'jpg';
+        const suffix = exportExt();
         // 只有原生端能「先攒文件、最后分享一次」；浏览器里 writeCacheFile 返回空，
         // 退回逐张下载（本地调试用）
         const collect = typeof window.qfsNative.writeCacheFile === 'function'
@@ -2202,6 +2269,22 @@
         ['tint', '色调', -100, 100, 1], ['vib', '自然饱和度', -100, 100, 1], ['sat', '饱和度', -100, 100, 1]
     ];
 
+    // 细节/锐化：桌面「调色 → 效果 + 锐化」那两组，字段与 app-grade.js 的
+    // defaultDet() 完全一致。半径/细节/蒙版是锐化的配套参数，单独拉没有意义，
+    // 所以和锐化量放在同一个分组里，重置也一起回到 LR 默认。
+    const DETAIL_UI = [
+        ['tex', '纹理', -100, 100, 1, 0],
+        ['clar', '清晰度', -100, 100, 1, 0],
+        ['dhz', '去除薄雾', -100, 100, 1, 0],
+        ['shp', '锐化', 0, 150, 1, 0],
+        ['shr', '锐化半径', 0.3, 3, 0.1, 1],
+        ['shd', '锐化细节', 0, 100, 1, 25],
+        ['shm', '锐化蒙版', 0, 100, 1, 0]
+    ];
+    function defaultDet() {
+        return { clar: 0, tex: 0, dhz: 0, shp: 0, shr: 1, shd: 25, shm: 0 };
+    }
+
     // ── 我的调色：把当前照片的全局调色存成预设，跨照片复用 ────────────────
     const GRADE_STORE = 'qfm_grades';
     let gradePresets = [];
@@ -2282,11 +2365,23 @@
                 + `<input type="range" data-grade="${k}" min="${min}" max="${max}" step="${step}" value="${v}">`
                 + `<output data-out="${k}">${v}</output></div>`;
         }).join('');
+        const d = g.det || {};
+        const detRows = DETAIL_UI.map(([k, label, min, max, step, def]) => {
+            const v = Number(d[k] === undefined ? def : d[k]);
+            return `<div class="grade-row"><label>${label}</label>`
+                + `<input type="range" data-det="${k}" min="${min}" max="${max}" step="${step}" value="${v}">`
+                + `<output data-out="det-${k}">${v}</output></div>`;
+        }).join('');
         return `${currentStrip()}
             ${gradePresetsHtml()}
             <div class="text-acts"><button id="btnGradeAuto" type="button">自动调色</button></div>
             <div class="histo-card"><canvas id="gradeHisto" width="600" height="180"></canvas></div>
             <div class="grade-sliders">${rows}</div>
+            <details class="ctl-group" open><summary>细节与锐化</summary>
+                <div class="grade-sliders">${detRows}</div>
+                <div class="puzzle-acts"><button id="btnDetReset" type="button">重置细节</button></div>
+            </details>
+            ${(window.QF_GradeExtra && window.QF_GradeExtra.html(g)) || ''}
             ${(window.QF_EditPanel && window.QF_EditPanel.fxHtml(state.template)) || ''}
             <div class="puzzle-acts"><button id="btnGradeReset">重置调色</button></div>
             <p class="panel-note">滑块来自桌面调色引擎；直方图实时读取调色后像素。点预调套用，长按删除。</p>`;
@@ -2325,9 +2420,7 @@
                 let block = null;
                 try {
                     block = sliceOne(canvas, rows, cols, i, state.crop.pad, state.crop.offX, state.crop.offY);
-                    const data = exportOpts.format === 'png'
-                        ? block.toDataURL('image/png')
-                        : block.toDataURL('image/jpeg', exportOpts.quality);
+                    const data = encodeImageCanvas(block);
                     const r = await window.qfsNative.saveImage(data, `${base}_${tag}_${i + 1}.${exportExt()}`);
                     if (r && r.canceled) { canceled = true; break; }
                     if (r && r.ok) ok++; else fail++;
@@ -2570,6 +2663,31 @@
                 renderPreviewSoon();
             });
         });
+        // 细节/锐化：normalizeGrade 会把全 0 的 det 收成 null，所以每次都从
+        // 当前 grade 复制一份完整字段再写回，避免半径/细节掉回默认值。
+        panel.querySelectorAll('[data-det]').forEach((b) => {
+            b.addEventListener('input', () => {
+                const k = b.dataset.det, v = Number(b.value);
+                const det = Object.assign(defaultDet(),
+                    (state.image && state.image.grade && state.image.grade.det) || {});
+                det[k] = v;
+                if (typeof A.setGrade === 'function') A.setGrade({ det });
+                else if (state.image) {
+                    state.image.grade = state.image.grade || {};
+                    state.image.grade.det = det;
+                }
+                const out = panel.querySelector(`[data-out="det-${k}"]`);
+                if (out) out.textContent = b.value;
+                renderPreviewSoon();
+            });
+        });
+        const dreset = document.getElementById('btnDetReset');
+        if (dreset) dreset.addEventListener('click', () => {
+            if (typeof A.setGrade !== 'function') { hint('调色模块未就绪'); return; }
+            A.setGrade({ det: defaultDet() });
+            hint('已重置细节与锐化');
+            render('grade');
+        });
         const saveG = document.getElementById('btnSaveGrade');
         if (saveG) saveG.addEventListener('click', saveGradePreset);
         // 预调：轻点套用，长按 650ms 删除（删除前不弹窗，靠 toast 告知）
@@ -2598,6 +2716,15 @@
                 render('grade');
             }
         });
+        if (state.tab === 'grade' && window.QF_GradeExtra) {
+            window.QF_GradeExtra.bind(panel, (patch) => {
+                if (typeof A.setGrade === 'function') A.setGrade(patch);
+                else if (state.image) {
+                    state.image.grade = Object.assign({}, state.image.grade, patch);
+                }
+                renderPreviewSoon();
+            }, () => (state.image && state.image.grade) || {});
+        }
         if (state.tab === 'grade' && window.QF_EditPanel) {
             window.QF_EditPanel.bindFx(panel, () => renderPreviewSoon(), () => render('grade'), state.template);
         }
@@ -3168,6 +3295,20 @@
         '<b>清框影</b>为摄影爱好者提供最好的边框。照片全程本地处理，不上传、不需要账号。'
         + '<b>版本</b>0.1 · 内测版。'
         + '<b>能力</b>风格墙、调色、拼图与切图、自定义署名与头像、分享码互通。'));
+    document.getElementById('btnChangelog').addEventListener('click', () => {
+        const list = Array.isArray(window.QF_CHANGELOG) ? window.QF_CHANGELOG : [];
+        if (!list.length) { hint('暂无更新说明'); return; }
+        const body = list.map((entry, i) => `<section class="cl-entry${i === 0 ? ' current' : ''}">`
+            + `<div class="cl-head"><b>${esc(entry.version || '')}</b><span>${esc(entry.date || '')}</span></div>`
+            + (entry.groups || []).map((g) => `<div class="cl-group"><h4>${esc(g.title || '')}</h4>`
+                + `<ul>${(g.items || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')
+            + '</section>').join('');
+        openStyleModal({
+            title: '更新内容',
+            body: `<div class="cl-list">${body}</div><p class="ctl-sub">离线内置，不联网。更多历史版本见项目主页 Releases。</p>`,
+            actions: [{ label: '知道了', primary: true, onClick: () => closeStyleModal() }]
+        });
+    });
 
     // 用户头像：加载本机头像，换头像后重绘预览（引擎读 window.__qfsAvatarImg）
     if (window.QF_Avatar) window.QF_Avatar.bind({ onChange: () => renderPreview(true), hint });

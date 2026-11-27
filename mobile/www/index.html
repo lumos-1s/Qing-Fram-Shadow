@@ -158,6 +158,9 @@
         <button class="mine-row" id="btnAbout" type="button">
           <span class="mine-ico">◎</span><span class="mine-label">关于我们</span><span class="mine-arrow">›</span>
         </button>
+        <button class="mine-row" id="btnChangelog" type="button">
+          <span class="mine-ico">≡</span><span class="mine-label">更新内容</span><span class="mine-arrow">›</span>
+        </button>
         <div class="mine-row mine-row-static"><span class="mine-ico">⌁</span><span class="mine-label">运行平台</span><em id="minePlatform">web</em></div>
         <div class="mine-row mine-row-static"><span class="mine-ico">◇</span><span class="mine-label">版本</span><em>0.1 · 内测版</em></div>
       </section>
@@ -188,6 +191,8 @@
     <div class="opt-row"><label>长边</label>
       <div class="chips" id="optSize">
         <button class="chip" data-size="0">原图</button>
+        <button class="chip" data-size="8192">8192</button>
+        <button class="chip" data-size="4096">4096</button>
         <button class="chip" data-size="4000">4000</button>
         <button class="chip" data-size="2000">2000</button>
         <button class="chip" data-size="1080">1080</button>
@@ -197,6 +202,14 @@
       <div class="chips" id="optFormat">
         <button class="chip" data-format="jpeg">JPEG</button>
         <button class="chip" data-format="png">PNG</button>
+        <button class="chip" data-format="webp">WebP</button>
+      </div>
+    </div>
+    <div class="opt-row" id="rowColorSpace"><label>色域</label>
+      <div class="chips" id="optColorSpace">
+        <button class="chip" data-colorspace="srgb">sRGB</button>
+        <button class="chip" data-colorspace="p3">Display P3</button>
+        <button class="chip" data-colorspace="adobergb">Adobe RGB</button>
       </div>
     </div>
     <div class="opt-row" id="rowQuality"><label>画质</label>
@@ -252,10 +265,13 @@
 <script src="js/native.js"></script>
 <script src="js/app-stub.js"></script>
 <script src="js/app-auto-grade.js"></script>
+<script src="js/app-sharpen.js"></script>
+<script src="js/app-curve.js"></script>
 <script src="js/app-grade.js"></script>
 <script src="js/app-histogram.js"></script>
 <script src="js/app-export.js"></script>
 <script src="js/color-space.js"></script>
+<script src="js/icc-embed.js"></script>
 <script src="js/qfs-img.js"></script>
 <script src="js/exif.js"></script>
 <script src="js/focal-eq.js"></script>
@@ -267,7 +283,9 @@
 <script type="module" src="js/raw-bridge.js"></script>
 <script src="js/fullres.js"></script>
 <script src="js/edit-panel.js"></script>
+<script src="js/grade-extra.js"></script>
 <script src="js/avatar.js"></script>
+<script src="js/changelog.js"></script>
 <script src="js/mobile.js"></script>
 </body>
 </html>
