@@ -48,11 +48,19 @@ function qfPlacePng(path, name) {
         if (!png.exists) return 'ERR:渲染结果不存在';
         var tmp = app.open(png);
         tmp.activeLayer.copy();
-        app.activeDocument = doc;
-        var layer = doc.paste();
-        layer.name = name || '清框影';
+        // 先关掉 PNG 文档，确保原文档重新成为最前面文档，再粘贴
         tmp.close(SaveOptions.DONOTSAVECHANGES);
-        return 'OK:' + layer.name;
+        app.activeDocument = doc;
+        doc.activate();
+        var layer = doc.paste();
+        if (!layer) return 'ERR:粘贴失败，没有生成新图层';
+        layer.name = name || '清框影';
+        layer.visible = true;
+        layer.opacity = 100;
+        doc.activeLayer = layer;
+        var b = layer.bounds;
+        return 'OK:' + layer.name + ' ' + Math.round(b[2].as('px') - b[0].as('px'))
+            + 'x' + Math.round(b[3].as('px') - b[1].as('px'));
     } catch (e) {
         return 'ERR:' + (e.message || e);
     }
