@@ -21,9 +21,13 @@ function qfGetLayerPng(path) {
         var h = Math.max(1, Math.round(y1 - y0));
         var res = doc.resolution;
 
+        // 必须先激活原文档并复制图层，再新建临时文档；
+        // 否则新建的临时文档变成最前面，layer.copy() 会报「目标文档必须是最前面的文档」。
+        app.activeDocument = doc;
+        layer.copy();
+
         var tmp = app.documents.add(w, h, res, 'qingframe_export_tmp',
             NewDocumentMode.RGB, DocumentFill.TRANSPARENT);
-        layer.copy();
         tmp.paste();
 
         var file = new File(path);
