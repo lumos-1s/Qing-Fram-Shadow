@@ -13,8 +13,20 @@ const EXT_ID = 'com.qingframe.ps.bridge.poc';
 const REG_KEY = 'HKCU\\Software\\Adobe\\CSXS.12';
 
 function photoshopDirs() {
-    const roots = ['C:\\Program Files\\Adobe', 'C:\\Program Files (x86)\\Adobe'];
     const out = [];
+    // 支持：npm run ps:poc:install -- --ps "D:\PS2026\Adobe Photoshop 2026"
+    // 或环境变量 QF_PS_DIR
+    const argIdx = process.argv.indexOf('--ps');
+    const custom = (argIdx >= 0 && process.argv[argIdx + 1]) || process.env.QF_PS_DIR || '';
+    if (custom) {
+        if (!fs.existsSync(custom)) {
+            console.error('指定的 Photoshop 目录不存在：' + custom);
+            process.exit(1);
+        }
+        out.push(path.join(custom, 'Required', 'CEP', 'extensions'));
+        return out;
+    }
+    const roots = ['C:\\Program Files\\Adobe', 'C:\\Program Files (x86)\\Adobe'];
     for (const root of roots) {
         if (!fs.existsSync(root)) continue;
         fs.readdirSync(root).forEach((name) => {

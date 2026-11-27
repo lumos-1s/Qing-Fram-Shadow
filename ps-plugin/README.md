@@ -45,7 +45,11 @@ npm run test:ps:poc
 一条命令自动安装（复制扩展 + 打开未签名调试模式）：
 
 ```bash
+# 在项目根目录执行（不是 ps-plugin 目录）
 npm run ps:poc:install
+
+# Photoshop 不在 C 盘默认位置时，指定安装目录：
+npm run ps:poc:install -- --ps "D:\PS2026\Adobe Photoshop 2026"
 ```
 
 脚本会找 `C:\Program Files\Adobe\Adobe Photoshop *`，把扩展拷到它的
