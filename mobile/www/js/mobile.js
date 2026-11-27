@@ -1113,6 +1113,292 @@
     function saveFavs() {
         try { localStorage.setItem(FAV_KEY, JSON.stringify(Array.from(favSet))); } catch (_) {}
     }
+
+    // ── 我的风格：把调好的模板存下来，换照片直接复用，也能用分享码发给别人 ────
+    // 存的是「当前模板去掉拼图槽位」：槽位存的是照片索引，换一批照片就会指错人。
+    const MY_STYLE_KEY = 'qfm_styles';
+    const MY_STYLE_MAX = 12;
+    const MY_STYLE_BYTES = 512 * 1024;
+    let myStyles = [];
+    try {
+        const raw = JSON.parse(localStorage.getItem(MY_STYLE_KEY) || '[]');
+        if (Array.isArray(raw)) {
+            myStyles = raw.filter((x) => x && x.name && x.tpl && typeof x.tpl === 'object').slice(0, MY_STYLE_MAX);
+        }
+    } catch (_) { myStyles = []; }
+    function saveMyStyles() {
+        try { localStorage.setItem(MY_STYLE_KEY, JSON.stringify(myStyles)); return true; }
+        catch (_) { return false; }
+    }
+    function myStyleNameSet() { return new Set(myStyles.map((x) => x.name)); }
+    function nextStyleName() {
+        const used = myStyleNameSet();
+        let n = 1;
+        while (used.has(`我的风格 ${n}`)) n += 1;
+        return `我的风格 ${n}`;
+    }
+    // 同名时补「2」「3」，导入别人的风格不会把本地的顶掉
+    function uniqueStyleName(name) {
+        const base = String(name || '导入的风格').trim().slice(0, 18) || '导入的风格';
+        const used = myStyleNameSet();
+        if (!used.has(base)) return base;
+        let n = 2;
+        while (used.has(`${base} ${n}`)) n += 1;
+        return `${base} ${n}`;
+    }
+    function styleForSave(name) {
+        const t = JSON.parse(JSON.stringify(state.template || {}));
+        delete t.puzzle;
+        t.templateName = name;
+        return t;
+    }
+    // 封面用离屏画布渲一张小图：存的时候渲一次，之后长廊里不用为了缩略图反复重绘
+    function renderStyleCover(tpl) {
+        if (!state.image || typeof window.__render !== 'function') return '';
+        try {
+            const tmp = document.createElement('canvas');
+            // 引擎会调 applyZoomStyle/fitZoom，离屏渲染也得带上这组桩，否则相框管线直接抛
+            window.__render(Object.assign({
+                dom: { canvas: tmp }, image: state.image, images: state.images,
+                template: renderTemplate(tpl, state.image)
+            }, renderStubs, { displayMax: 260, uiDprOverride: 1 }), false);
+            if (!tmp.width || !tmp.height) return '';
+            return tmp.toDataURL('image/jpeg', 0.7);
+        } catch (e) {
+            console.warn('[mobile] cover render failed', e);
+            return '';
+        }
+    }
+    function saveMyStyle(name) {
+        if (!state.template) { hint('先套一个风格再存'); return; }
+        const finalName = String(name || '').trim().slice(0, 18) || nextStyleName();
+        const tpl = styleForSave(finalName);
+        let size = 0;
+        try { size = JSON.stringify(tpl).length; } catch (_) { size = 0; }
+        if (size > MY_STYLE_BYTES) {
+            hint('这个样式带较大的自定义 Logo（超过 512KB），暂不能存到本机', 4200);
+            return;
+        }
+        const entry = { name: finalName, tpl, cover: renderStyleCover(tpl), at: Date.now() };
+        const dup = myStyles.findIndex((x) => x.name === finalName);
+        if (dup >= 0) myStyles[dup] = entry;
+        else myStyles.unshift(entry);
+        if (myStyles.length > MY_STYLE_MAX) myStyles.length = MY_STYLE_MAX;
+        if (!saveMyStyles()) { hint('本机存储已满，删掉几个旧风格再试', 4200); return; }
+        render('style');
+        hint(`已存为「${finalName}」，换照片也能直接套`);
+    }
+    function applyMyStyle(i) {
+        const s = myStyles[i];
+        if (!s) return;
+        pushUndo();
+        const t = JSON.parse(JSON.stringify(s.tpl));
+        t.templateName = s.name;
+        // 拼图槽位属于「这一批照片」，套样式时保留当前配置
+        if (state.template && state.template.puzzle) t.puzzle = state.template.puzzle;
+        state.preset = null;
+        state.template = t;
+        A.template = t;
+        scalePresetFonts(t, state.image);
+        if (state.image) {
+            renderPreview(true);
+            stageBar(s.name, dimsOf(state.image));
+        } else {
+            stageBar(s.name, '未导入照片');
+        }
+        updateEmpty();
+        document.querySelectorAll('[data-preset]').forEach((b) => b.classList.remove('active'));
+        const plain = document.getElementById('btnPlainStyle');
+        if (plain) plain.classList.remove('active');
+        panel.querySelectorAll('[data-my-style]').forEach((b) => {
+            b.classList.toggle('active', Number(b.dataset.myStyle) === i);
+        });
+        hint(`已套用「${s.name}」`);
+    }
+    function removeMyStyle(i) {
+        const s = myStyles[i];
+        if (!s) return;
+        myStyles.splice(i, 1);
+        saveMyStyles();
+        render('style');
+        hint(`已删除「${s.name}」`);
+    }
+
+    /* ── 分享码：与桌面端同一套 QFSCFG1:<base64> 格式，互导互通 ── */
+    function styleShareCode(name) {
+        const bundle = {
+            v: 1, kind: 'qfs-config', app: 'qingframe-web', name,
+            exportedAt: new Date().toISOString(), template: styleForSave(name)
+        };
+        const bytes = new TextEncoder().encode(JSON.stringify(bundle));
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+            bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        }
+        return 'QFSCFG1:' + btoa(bin);
+    }
+    function decodeShareCode(text) {
+        const raw = String(text || '').replace(/\s+/g, '');
+        if (!raw) throw new Error('分享码为空');
+        if (raw.indexOf('QFSCFG1:') !== 0) throw new Error('不是有效的分享码（应以 QFSCFG1: 开头）');
+        let data;
+        try {
+            const bin = atob(raw.slice(8));
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            data = JSON.parse(new TextDecoder().decode(bytes));
+        } catch (_) { throw new Error('分享码内容无法识别，可能没复制完整'); }
+        let tpl = data, name = '';
+        if (data && data.kind === 'qfs-config' && data.template && typeof data.template === 'object') {
+            tpl = data.template; name = String(data.name || '');
+        }
+        // 模板有三种形态：相框风格(photoFrameStyle)、图层预设(layerList)、
+        // 以及贴纸/文字型(layers/aiLayers)。只认前两种会把「极简细线」这类
+        // 图层预设误判成坏码，导入静默失败。
+        const usable = tpl && typeof tpl === 'object' && (
+            typeof tpl.photoFrameStyle === 'string'
+            || (Array.isArray(tpl.layerList) && tpl.layerList.length)
+            || (Array.isArray(tpl.layers) && tpl.layers.length)
+            || (Array.isArray(tpl.aiLayers) && tpl.aiLayers.length)
+            || !!tpl.baseMargin || !!tpl.decorConfig || !!tpl.cornerConfig);
+        if (!usable) throw new Error('分享码里没有可用的样式');
+        return { tpl, name: name || String(tpl.templateName || '导入的风格') };
+    }
+    function importStyleCode(text) {
+        const { tpl, name } = decodeStyleCodeSafe(text);
+        if (!tpl) return false;
+        tpl.puzzle && delete tpl.puzzle;
+        const finalName = uniqueStyleName(name);
+        myStyles.unshift({ name: finalName, tpl, cover: renderStyleCover(tpl), at: Date.now() });
+        if (myStyles.length > MY_STYLE_MAX) myStyles.length = MY_STYLE_MAX;
+        if (!saveMyStyles()) { hint('本机存储已满，删掉几个旧风格再试', 4200); return false; }
+        render('style');
+        hint(`已导入「${finalName}」`);
+        return true;
+    }
+    function decodeStyleCodeSafe(text) {
+        try { return decodeShareCode(text); }
+        catch (e) { hint((e && e.message) || '分享码无法识别', 4200); return { tpl: null, name: '' }; }
+    }
+
+    /* ── 小弹层：命名 / 分享码 / 删除确认都走这一个，样式复用导出面板那套 ── */
+    let styleModalEl = null;
+    function closeStyleModal() {
+        if (styleModalEl) styleModalEl.remove();
+        styleModalEl = null;
+    }
+    function openStyleModal(spec) {
+        closeStyleModal();
+        const el = document.createElement('div');
+        el.className = 'modal';
+        el.id = 'styleModal';
+        el.innerHTML = `<div class="modal-mask" data-modal-close></div>
+            <div class="modal-card" role="dialog" aria-modal="true" aria-label="${esc(spec.title)}">
+                <h2>${esc(spec.title)}</h2>${spec.body || ''}
+                <div class="modal-acts">${(spec.actions || []).map((a, i) =>
+                    `<button type="button" class="act-btn${a.primary ? ' primary' : ''}" data-modal-act="${i}">${esc(a.label)}</button>`).join('')}</div>
+            </div>`;
+        document.body.appendChild(el);
+        styleModalEl = el;
+        el.addEventListener('click', (e) => {
+            if (e.target.closest('[data-modal-close]')) { closeStyleModal(); return; }
+            const b = e.target.closest('[data-modal-act]');
+            if (!b) return;
+            const act = (spec.actions || [])[Number(b.dataset.modalAct)];
+            if (act && typeof act.onClick === 'function') act.onClick(el);
+        });
+        return el;
+    }
+    function openSaveStyleModal() {
+        const def = nextStyleName();
+        const el = openStyleModal({
+            title: '存为我的风格',
+            body: `<input id="styleNameInput" class="modal-input name-input" value="${esc(def)}" maxlength="18" enterkeyhint="done">`
+                + `<p class="modal-note">只存边框 / 文字 / 参数，不含照片和拼图槽位；套到别的照片上会按新照片尺寸重算字号。</p>`,
+            actions: [
+                { label: '取消' },
+                { label: '保存', primary: true, onClick: (root) => {
+                    const v = (root.querySelector('#styleNameInput').value || '').trim() || def;
+                    closeStyleModal();
+                    saveMyStyle(v);
+                } }
+            ]
+        });
+        const inp = el.querySelector('#styleNameInput');
+        if (inp) {
+            inp.focus(); inp.select();
+            inp.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                const v = (inp.value || '').trim() || def;
+                closeStyleModal();
+                saveMyStyle(v);
+            });
+        }
+    }
+    async function openShareCodeModal() {
+        if (!state.template) { hint('先套一个风格'); return; }
+        const name = (state.template.templateName || '我的风格').trim() || '我的风格';
+        let code = '';
+        try { code = styleShareCode(name); }
+        catch (e) { hint('生成分享码失败：' + ((e && e.message) || e), 4200); return; }
+        const el = openStyleModal({
+            title: '样式分享码',
+            body: `<textarea id="styleCodeBox" class="modal-input code-box" readonly>${esc(code)}</textarea>`
+                + `<p class="modal-note" id="styleCodeNote">约 ${Math.round(code.length / 1024)} KB。复制发给朋友，对方在「设置 → 从分享码导入」里粘贴即可。</p>`,
+            actions: [
+                { label: '关闭' },
+                { label: '复制', primary: true, onClick: async () => {
+                    try {
+                        await navigator.clipboard.writeText(code);
+                        hint('分享码已复制');
+                        closeStyleModal();
+                    } catch (_) {
+                        const box = document.getElementById('styleCodeBox');
+                        if (box) { box.select(); box.setSelectionRange(0, code.length); }
+                        const note = document.getElementById('styleCodeNote');
+                        if (note) note.textContent = '自动复制被系统拦下了，已全选，长按「拷贝」即可。';
+                    }
+                } }
+            ]
+        });
+        try {
+            await navigator.clipboard.writeText(code);
+            const note = el.querySelector('#styleCodeNote');
+            if (note) note.textContent = `约 ${Math.round(code.length / 1024)} KB，已复制到剪贴板。`;
+        } catch (_) { /* 拿不到剪贴板就让用户手动复制，不算失败 */ }
+    }
+    function openImportCodeModal() {
+        openStyleModal({
+            title: '从分享码导入',
+            body: `<textarea id="styleImportBox" class="modal-input code-box" placeholder="粘贴 QFSCFG1: 开头的分享码"></textarea>`
+                + `<p class="modal-note">导入后出现在「我的风格」，不会动当前照片。</p>`,
+            actions: [
+                { label: '取消' },
+                { label: '导入', primary: true, onClick: async (root) => {
+                    const box = root.querySelector('#styleImportBox');
+                    let text = (box && box.value) || '';
+                    if (!text.trim()) {
+                        try { text = await navigator.clipboard.readText(); } catch (_) { text = ''; }
+                    }
+                    if (!text.trim()) { hint('先粘贴分享码'); return; }
+                    if (importStyleCode(text)) closeStyleModal();
+                } }
+            ]
+        });
+    }
+    function openDeleteStyleModal(i) {
+        const s = myStyles[i];
+        if (!s) return;
+        openStyleModal({
+            title: '删除这个风格？',
+            body: `<p class="modal-note">「${esc(s.name)}」会从本机删除，之后只能靠分享码找回。</p>`,
+            actions: [
+                { label: '取消' },
+                { label: '删除', primary: true, onClick: () => { closeStyleModal(); removeMyStyle(i); } }
+            ]
+        });
+    }
     // 搜索只隐藏卡片、不重建整面墙，输入焦点和滚动位置都不会跳
     function applyStyleQuery() {
         const q = state.query.trim().toLowerCase();
@@ -1166,15 +1452,30 @@
                 + `<button class="fav-btn${on ? ' on' : ''}" data-fav="${esc(key)}" aria-label="${on ? '取消收藏' : '收藏'} ${esc(name)}" title="收藏">★</button>`
                 + `</div>`;
         }).join('');
+        // 我存下来的风格排在内置风格前面（同一根长廊，不额外占一段高度）：
+        // 只有「浏览全部」时露出，搜索/收藏/分类筛选时不掺进来。
+        const showMine = myStyles.length && !q && !state.favOnly && state.filter === '全部';
+        const mineCards = showMine ? myStyles.map((s2, i) =>
+            `<div class="style-cell">
+                <button class="style-big" data-my-style="${i}" aria-label="我的风格 ${esc(s2.name)}">
+                    ${s2.cover ? `<img src="${esc(s2.cover)}" alt="">` : ''}<span>${esc(s2.name)}</span>
+                    <small class="own-badge">我的</small>
+                </button>
+            </div>`).join('') : '';
         return `
-            <div class="style-head"><h2>选一个风格</h2><span class="style-count" id="styleCount">${shown.length} / ${presets.length} 款</span></div>
+            <div class="style-head"><h2>选一个风格</h2>
+                <div class="head-acts">
+                    <span class="style-count" id="styleCount">${shown.length} / ${presets.length} 款</span>
+                    <button class="mini-act" id="btnSaveStyle" type="button" aria-label="把当前样式存为我的风格">＋ 存当前</button>
+                </div>
+            </div>
             ${currentStrip()}
             <div class="style-search">
                 <input id="styleQuery" type="search" enterkeyhint="search" placeholder="搜风格或分类，如 拍立得 / 胶片" value="${esc(state.query)}">
                 ${favChip}
             </div>
             <div class="chips">${chips}</div>
-            <div class="style-rail">${plainCard}${cards}</div>
+            <div class="style-rail">${plainCard}${mineCards}${cards}</div>
             <p class="panel-note" id="styleEmpty"${shown.length ? ' hidden' : ''}>没有匹配的风格，换个关键词，或点「★ 收藏」看已收藏的风格。</p>`;
     }
 
@@ -1488,6 +1789,25 @@
         });
         const plainBtn = document.getElementById('btnPlainStyle');
         if (plainBtn) plainBtn.addEventListener('click', applyPlainStyle);
+        const saveStyleBtn = document.getElementById('btnSaveStyle');
+        if (saveStyleBtn) saveStyleBtn.addEventListener('click', openSaveStyleModal);
+        // 我的风格：轻点套用，长按 650ms 问一句再删（删样式比删调色贵，给一次确认）
+        panel.querySelectorAll('[data-my-style]').forEach((b) => {
+            const idx = Number(b.dataset.myStyle);
+            let hold = 0, fired = false;
+            b.addEventListener('pointerdown', () => {
+                fired = false;
+                clearTimeout(hold);
+                hold = setTimeout(() => { fired = true; hold = 0; openDeleteStyleModal(idx); }, 650);
+            });
+            ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) =>
+                b.addEventListener(ev, () => clearTimeout(hold)));
+            b.addEventListener('click', () => {
+                clearTimeout(hold);
+                if (fired) { fired = false; return; }
+                applyMyStyle(idx);
+            });
+        });
         panel.querySelectorAll('[data-tag]').forEach((b) => {
             b.addEventListener('click', () => { state.filter = b.dataset.tag; render('style'); });
         });
@@ -1817,10 +2137,21 @@
             <div class="ctl-row"><label>导出设置</label>
                 <button id="btnOpenExport" type="button" class="act-btn" style="flex:1">长边 ${exportOpts.maxEdge || '原图'} · ${exportOpts.format.toUpperCase()}</button>
             </div>
+            <div class="ctl-row"><label>我的风格</label>
+                <button id="btnShareStyle" type="button" class="act-btn" style="flex:1">复制当前样式分享码</button>
+            </div>
+            <div class="ctl-row"><label></label>
+                <button id="btnImportStyle" type="button" class="act-btn" style="flex:1">从分享码导入</button>
+            </div>
+            <p class="panel-note">已存 ${myStyles.length} 个风格（上限 ${MY_STYLE_MAX}）· 分享码以 QFSCFG1: 开头，与桌面端互通。</p>
             <p class="panel-note">运行平台：${window.qfsNative.platform()} · 内测版 · 无账号、无上传。</p>
             <p class="panel-note">轻点顶栏「导出」按这里的设置直接保存；长按「导出」随时改。</p>`;
         const oe = document.getElementById('btnOpenExport');
         if (oe) oe.addEventListener('click', openExportSheet);
+        const sh = document.getElementById('btnShareStyle');
+        if (sh) sh.addEventListener('click', openShareCodeModal);
+        const im = document.getElementById('btnImportStyle');
+        if (im) im.addEventListener('click', openImportCodeModal);
     });
     const thumbBtn = document.getElementById('btnThumb');
     if (thumbBtn) thumbBtn.addEventListener('click', () => {

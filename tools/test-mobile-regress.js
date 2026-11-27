@@ -18,6 +18,8 @@ const rawTestFile = path.join(ROOT, 'mobile', 'www', rawTestName);
 if (fs.existsSync(rawSample)) fs.copyFileSync(rawSample, rawTestFile);
 
 const fails = [];
+// 控制台报错收集器：注入脚本抛错时，catch 里要能把真实原因打出来
+const errors = [];
 const check = (ok, label, extra) => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${extra ? ' | ' + extra : ''}`);
     if (!ok) fails.push(label);
@@ -28,7 +30,6 @@ app.whenReady().then(async () => {
         width: 420, height: 860, show: false,
         webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
     });
-    const errors = [];
     win.webContents.on('console-message', (_e, level, message) => {
         if (level >= 2 || /未注册的相框风格|render failed|Uncaught/.test(message)) errors.push(message);
     });
@@ -914,6 +915,95 @@ app.whenReady().then(async () => {
             };
         } catch (e) { libErr = String(e && e.message || e); }
 
+        // 24.8) 我的风格：存当前 → 长廊出现 → 套回 → 分享码 → 导入 → 长按删除
+        let ms = {}, msErr = '';
+        try {
+            const readStore = () => {
+                try { return JSON.parse(localStorage.getItem('qfm_styles') || '[]'); } catch (_) { return []; }
+            };
+            ms.before = readStore().length;
+            const uniq = '回归风格' + (Date.now() % 10000);
+            document.querySelector('[data-tab="style"]').click();
+            await wait(320);
+            const pIdx = (window.QF_PRESETS || []).findIndex((p) => p.templateName === '极简细线');
+            document.querySelector('[data-preset="' + pIdx + '"]').click();
+            await wait(420);
+            const tplNow = window.App.template || {};
+            ms.sig = {
+                style: String(tplNow.photoFrameStyle || ''),
+                margin: Number(tplNow.baseMargin && tplNow.baseMargin.marginTop) || 0,
+                lines: ((tplNow.decorConfig && tplNow.decorConfig.textLines) || []).length
+            };
+            document.getElementById('btnSaveStyle').click();
+            await wait(320);
+            ms.modalOpen = !!document.getElementById('styleModal');
+            document.getElementById('styleNameInput').value = uniq;
+            document.querySelector('#styleModal [data-modal-act="1"]').click();
+            await wait(620);
+            const store1 = readStore();
+            ms.saved = store1.length - ms.before;
+            ms.storedName = store1[0] && store1[0].name;
+            // 注意：这段脚本是嵌在模板字符串里下发的，正则里的 \/ 会被模板字符串吃掉，
+            // 退化成 /^data:image/ + jpeg/ 直接语法错误 —— 用 startsWith 更稳
+            ms.hasCover = String((store1[0] && store1[0].cover) || '').startsWith('data:image/jpeg');
+            ms.coverData = (store1[0] && store1[0].cover || '').slice(0, 22);
+            ms.badge = !!document.querySelector('.own-badge');
+            ms.cards = document.querySelectorAll('[data-my-style]').length;
+
+            // 换个风格再把我的风格套回来：边框要回到存的时候那套
+            const nIdx = (window.QF_PRESETS || []).findIndex((p) => p.templateName === 'NOMO复古相机');
+            document.querySelector('[data-preset="' + nIdx + '"]').click();
+            await wait(420);
+            const afterOther = window.App.template.templateName;
+            document.querySelector('[data-my-style="0"]').click();
+            await wait(520);
+            const tplBack = window.App.template || {};
+            ms.apply = {
+                from: afterOther,
+                name: tplBack.templateName,
+                style: String(tplBack.photoFrameStyle || ''),
+                margin: Number(tplBack.baseMargin && tplBack.baseMargin.marginTop) || 0,
+                lines: ((tplBack.decorConfig && tplBack.decorConfig.textLines) || []).length,
+                active: document.querySelector('[data-my-style="0"]').classList.contains('active')
+            };
+
+            // 分享码：设置页入口 → 文本域里应是 QFSCFG1: 开头
+            document.getElementById('btnSettings').click();
+            await wait(320);
+            document.getElementById('btnShareStyle').click();
+            await wait(420);
+            const codeBox = document.getElementById('styleCodeBox');
+            ms.codeHead = codeBox ? codeBox.value.slice(0, 8) : '';
+            ms.codeLen = codeBox ? codeBox.value.length : 0;
+            const code = codeBox ? codeBox.value : '';
+            document.querySelector('#styleModal [data-modal-act="0"]').click();
+            await wait(220);
+
+            // 导入同一段码：名字自动去重，条数 +1
+            document.getElementById('btnImportStyle').click();
+            await wait(320);
+            document.getElementById('styleImportBox').value = code;
+            document.querySelector('#styleModal [data-modal-act="1"]').click();
+            await wait(720);
+            const store2 = readStore();
+            ms.imported = store2.length - store1.length;
+            ms.importedName = store2[0] && store2[0].name;
+
+            // 长按删除两条，恢复原状
+            document.querySelector('[data-tab="style"]').click();
+            await wait(420);
+            for (let k = 0; k < 2; k++) {
+                const cardEl = document.querySelector('[data-my-style="0"]');
+                if (!cardEl) break;
+                cardEl.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 71 + k, button: 0 }));
+                await wait(780);
+                const m = document.getElementById('styleModal');
+                if (m) document.querySelector('#styleModal [data-modal-act="1"]').click();
+                await wait(520);
+            }
+            ms.afterDelete = readStore().length;
+        } catch (e) { msErr = String(e && e.message || e); }
+
         // 25) RAW 全尺寸重解（本地有样本时）
         let rawFull = {}, rawFullErr = '';
         if (${JSON.stringify(fs.existsSync(rawSample))}) {
@@ -942,7 +1032,7 @@ app.whenReady().then(async () => {
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
             edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, dbl, dblErr,
             pinch, pinchErr, exif, exifErr, multi, multiErr, autofs, autofsErr, layout, layoutErr,
-            extras, extrasErr, exportOpt, exportOptErr, gp, gpErr, lib, libErr, sync1, sync1Err, rawFull, rawFullErr
+            extras, extrasErr, exportOpt, exportOptErr, gp, gpErr, lib, libErr, ms, msErr, sync1, sync1Err, rawFull, rawFullErr
         };
     })()`);
 
@@ -1061,6 +1151,22 @@ app.whenReady().then(async () => {
     check(!r.extrasErr && r.extras.compareOn && r.extras.compareOff,
         '长按画布看原图、松手恢复', JSON.stringify({ extras: r.extras, err: r.extrasErr }));
 
+    check(!r.msErr && r.ms.modalOpen && r.ms.saved === 1 && /^回归风格/.test(r.ms.storedName || '')
+        && r.ms.hasCover && r.ms.badge && r.ms.cards >= 1,
+        '我的风格：命名保存、封面离屏渲染、长廊出现「我的」角标',
+        JSON.stringify({ ms: r.ms, err: r.msErr }));
+
+    check(!r.msErr && r.ms.apply.name === r.ms.storedName
+        && r.ms.apply.style === r.ms.sig.style && r.ms.apply.margin === r.ms.sig.margin
+        && r.ms.apply.lines === r.ms.sig.lines && r.ms.apply.active,
+        '我的风格：换风格后能套回，边框与高亮都跟着回来',
+        JSON.stringify({ apply: r.ms && r.ms.apply, err: r.msErr }));
+
+    check(!r.msErr && r.ms.codeHead === 'QFSCFG1:' && r.ms.codeLen > 200
+        && r.ms.imported === 1 && / 2$/.test(r.ms.importedName || '') && r.ms.afterDelete === r.ms.before,
+        '我的风格：分享码可生成、可导入（同名自动加序号），长按可删',
+        JSON.stringify({ ms: r.ms, err: r.msErr }));
+
     check(!r.gpErr && r.gp.saved === 1 && r.gp.chips === 1 && Math.abs(r.gp.resetExp) < 1e-6
         && Math.abs(r.gp.appliedExp - 1.1) < 0.02 && Math.abs(r.gp.appliedSat - 33) < 0.5
         && r.gp.afterDel === 0,
@@ -1112,6 +1218,10 @@ app.whenReady().then(async () => {
     app.exit(fails.length ? 1 : 0);
 }).catch((e) => {
     console.error(e && e.stack || e);
-    if (fs.existsSync(rawTestFile)) fs.unlinkSync(rawTestFile);
+    // 注入脚本抛错时，真正的原因在渲染器控制台里，不打出来只能看到
+    // 一句「Script failed to execute」
+    if (errors.length) console.error('渲染器报错:\n' + errors.slice(-6).join('\n'));
+    // 清理失败不能盖住原始错误（沙箱里的 safe-delete 有时会 EPERM）
+    try { if (fs.existsSync(rawTestFile)) fs.unlinkSync(rawTestFile); } catch (_) {}
     app.exit(1);
 });
