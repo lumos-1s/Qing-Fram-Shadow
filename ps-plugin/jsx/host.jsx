@@ -50,8 +50,8 @@ function qfPlacePng(path, name) {
         tmp.activeLayer.copy();
         // 先关掉 PNG 文档，确保原文档重新成为最前面文档，再粘贴
         tmp.close(SaveOptions.DONOTSAVECHANGES);
+        // ExtendScript 里没有 doc.activate()，赋值 app.activeDocument 即可把文档切到最前
         app.activeDocument = doc;
-        doc.activate();
         var layer = doc.paste();
         if (!layer) return 'ERR:粘贴失败，没有生成新图层';
         layer.name = name || '清框影';
