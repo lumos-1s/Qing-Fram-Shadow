@@ -480,6 +480,21 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
   border-radius: var(--r-sm); background: var(--surface-alt); overflow: hidden;
 }
 .crop-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* 原生白方块在暗房里太扎眼：换成半透明底 + 琥珀勾选 */
+.crop-cell input[type="checkbox"] {
+  position: absolute; left: 6px; top: 6px; z-index: 2;
+  -webkit-appearance: none; appearance: none;
+  width: 20px; height: 20px; margin: 0; padding: 0;
+  display: grid; place-items: center;
+  border: 1px solid rgba(255,255,255,.55); border-radius: 6px;
+  background: rgba(0,0,0,.45);
+}
+.crop-cell input[type="checkbox"]:checked {
+  background: var(--primary); border-color: var(--primary);
+}
+.crop-cell input[type="checkbox"]:checked::after {
+  content: '✓'; color: var(--on-primary); font-size: 13px; line-height: 1; font-weight: 700;
+}
 .crop-cell small {
   position: absolute; right: 4px; bottom: 4px; background: rgba(0,0,0,.65); color: #fff;
   font-size: 10px; padding: 1px 5px; border-radius: 4px;
