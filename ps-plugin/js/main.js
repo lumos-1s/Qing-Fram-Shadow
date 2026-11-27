@@ -16,8 +16,12 @@
 
     function evalScript(src) {
         return new Promise((resolve) => {
-            if (window.qfMockHost) return window.qfMockHost.eval(src, resolve);
-            if (cs && typeof cs.evalScript === 'function') return cs.evalScript(src, resolve);
+            try {
+                if (window.qfMockHost) return window.qfMockHost.eval(src, resolve);
+                if (cs && typeof cs.evalScript === 'function') return cs.evalScript(src, resolve);
+            } catch (e) {
+                return resolve('ERR:' + ((e && e.message) || e));
+            }
             resolve('ERR:没有 Photoshop 宿主');
         });
     }
@@ -290,8 +294,8 @@
             window.QF_BorderParams.setTemplate(presetAt());
         }
         log('就绪；共 ' + list.length + ' 款预设。' + (cs ? '已连接 Photoshop。' : '本机测试模式。'));
-        detectExif();
-        prepareSource();
+        detectExif().catch(() => {});
+        prepareSource().catch(() => {});
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
