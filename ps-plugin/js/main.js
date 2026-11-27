@@ -35,8 +35,19 @@
     function writeBase64(path, b64) {
         return new Promise((resolve) => {
             if (window.qfMockHost) return window.qfMockHost.write(path, b64, resolve);
-            if (cepFs) cepFs.writeFile(path, b64, cep.encoding.Base64, (err) => resolve(!err));
-            resolve(false);
+            // CEP 开了 --enable-nodejs/--mixed-context，优先用 Node fs 直接写二进制，
+            // 比 cep.fs.writeFile(base64) 稳定；失败再退回 cep.fs。
+            try {
+                const nodeFs = require('fs');
+                nodeFs.writeFile(path, Buffer.from(b64, 'base64'), (err) => {
+                    resolve(err ? { error: err.message || String(err) } : true);
+                });
+                return;
+            } catch (e) { /* 没有 require 时走 cep.fs */ }
+            if (cepFs) cepFs.writeFile(path, b64, cep.encoding.Base64, (err) => {
+                resolve(err ? { error: String(err && err.message || err) } : true);
+            });
+            else resolve({ error: 'cep.fs 不可用' });
         });
     }
     function tempPath(name) {
@@ -116,8 +127,9 @@
             const data = canvas.toDataURL('image/jpeg', 0.95).split(',')[1] || '';
             if (!data || data.length < 128) throw new Error('渲染结果为空');
             const out = tempPath('qingframe-border.jpg');
-            const ok = await writeBase64(out, data);
-            log('写出结果：' + (ok ? out : '失败'));
+            const wr = await writeBase64(out, data);
+            const ok = wr === true;
+            log('写出结果：' + (ok ? out : ('失败：' + (wr && wr.error || '未知错误'))));
             if (!ok) return;
             const placed = await evalScript('qfPlacePng(' + JSON.stringify(out) + ','
                 + JSON.stringify('清框影边框') + ')');
