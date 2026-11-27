@@ -13,6 +13,8 @@ button.primary { background:var(--primary); border-color:var(--primary); color:#
 button:disabled { opacity:.5; }
 #exifPanel { border:1px solid var(--line); border-radius:4px; padding:4px 8px; }
 #exifPanel summary { cursor:pointer; color:var(--primary); }
+.line-head { display:flex; justify-content:space-between; align-items:center; color:var(--text); font-size:11px; padding:6px 0 2px; border-top:1px solid var(--line); }
+.line-del { background:transparent; border:none; color:var(--danger,#e27891); cursor:pointer; font-size:11px; }
 .exif-fields { padding:4px 0; }
 .exif-row { display:flex; align-items:center; gap:6px; min-height:26px; }
 .exif-row label { flex:0 0 34px; color:var(--muted); font-size:11px; }

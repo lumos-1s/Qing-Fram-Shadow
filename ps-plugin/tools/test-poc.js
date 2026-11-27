@@ -74,6 +74,11 @@ app.whenReady().then(async () => {
             sel.dispatchEvent(new Event('change', { bubbles: true }));
         }
         const bpCount = document.querySelectorAll('[data-bp]').length;
+        const tpCount = document.querySelectorAll('#textParams [data-tp]').length;
+        const textInput = document.querySelector('#textParams [data-tp="0"]');
+        if (textInput) { textInput.value = '编辑后的文字'; textInput.dispatchEvent(new Event('input', { bubbles: true })); }
+        const editedLine = ((window.QF_TextParams.current() || {}).decorConfig || {}).textLines || [];
+        const lineText = editedLine.length ? editedLine[0].text : '';
         const swInput = document.querySelector('[data-bp="stroke-宽度"]');
         if (swInput) { swInput.value = '40'; swInput.dispatchEvent(new Event('input', { bubbles: true })); }
         const tpl0 = window.QF_BorderParams.current() || {};
@@ -86,7 +91,7 @@ app.whenReady().then(async () => {
         return {
             presets: presets.length,
             hasRender: typeof window.__render === 'function',
-            bpCount, strokeWidth, exifText,
+            bpCount, strokeWidth, tpCount, lineText, exifText,
             exifBrand: ((window.QF_PS_POC.lastTemplate() || {}).manualExif || {}).brand,
             previewW: document.getElementById('previewCanvas').width,
             hasLive: typeof window.QF_PS_POC.renderPreviewLive === 'function',
@@ -114,6 +119,7 @@ app.whenReady().then(async () => {
     console.log(JSON.stringify(r, null, 2));
     check(r.presets === 91 && r.hasRender, '引擎与预设已加载', JSON.stringify({ presets: r.presets, hasRender: r.hasRender }));
     check(r.bpCount >= 15 && r.strokeWidth === 40, '边框参数面板可改模板', JSON.stringify({ bpCount: r.bpCount, strokeWidth: r.strokeWidth }));
+    check(r.tpCount > 0 && r.lineText === '编辑后的文字', '预设文字可编辑', JSON.stringify({ tpCount: r.tpCount, lineText: r.lineText }));
     check(['ILCE-6000', '35mm', 'f/5.6', '1/125s', 'ISO100']
         .every((s) => r.exifText.indexOf(s) >= 0), '自动识别 EXIF 拍摄参数', r.exifText);
     check(r.exifBrand === 'CANON', '相机参数可手动修改并写回模板', String(r.exifBrand));

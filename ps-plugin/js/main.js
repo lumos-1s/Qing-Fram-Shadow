@@ -237,8 +237,12 @@
             liveTemplate = template;
             lastTemplate = template;
             if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(template);
+            if (window.QF_TextParams) window.QF_TextParams.setTemplate(template);
             // 让引擎按文档比例出图；否则模板自己的画布比例会让成品和文档对不上
-            if (docW && docH) template.canvasRatio = docW + ':' + docH;
+            if (docW && docH) {
+                template.canvasRatio = docW + ':' + docH;
+                template.__qfDocW = docW; template.__qfDocH = docH;
+            }
             log('套用风格：' + (template.templateName || '默认'));
 
             renderPreviewLive();
@@ -288,6 +292,11 @@
         const loaded = await loadLayer(src);
         previewSource = loaded.preview;
         liveTemplate = window.QF_BorderParams ? window.QF_BorderParams.current() : presetAt();
+        const dm = /OK:(\d+)x(\d+)/.exec(String(got));
+        if (dm && liveTemplate) {
+            liveTemplate.__qfDocW = Number(dm[1]);
+            liveTemplate.__qfDocH = Number(dm[2]);
+        }
         renderPreviewLive();
     }
 
@@ -302,16 +311,24 @@
         const exifBtn = document.getElementById('btnExifDetect');
         if (exifBtn) exifBtn.addEventListener('click', () => detectExif().catch(() => {}));
         if (presetSel) presetSel.addEventListener('change', () => {
-            if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(presetAt());
-            liveTemplate = window.QF_BorderParams ? window.QF_BorderParams.current() : presetAt();
+            const tpl = presetAt();
+            if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(tpl);
+            if (window.QF_TextParams) window.QF_TextParams.setTemplate(tpl);
+            liveTemplate = tpl;
             renderPreviewLive();
         });
+        const changed = () => {
+            liveTemplate = window.QF_BorderParams ? window.QF_BorderParams.current()
+                : (window.QF_TextParams ? window.QF_TextParams.current() : presetAt());
+            renderPreviewLive();
+        };
         if (window.QF_BorderParams) {
-            window.QF_BorderParams.onChange(() => {
-                liveTemplate = window.QF_BorderParams.current();
-                renderPreviewLive();
-            });
+            window.QF_BorderParams.onChange(changed);
             window.QF_BorderParams.setTemplate(presetAt());
+        }
+        if (window.QF_TextParams) {
+            window.QF_TextParams.onChange(changed);
+            window.QF_TextParams.setTemplate(window.QF_BorderParams ? window.QF_BorderParams.current() : presetAt());
         }
         log('就绪；共 ' + list.length + ' 款预设。' + (cs ? '已连接 Photoshop。' : '本机测试模式。'));
         detectExif().catch(() => {});
