@@ -48,3 +48,9 @@ nwu2027/
 mobile/www/.tmp-raw-full.ARW
 # AI 边框工作流：预览图是产物，SKILL.md / frame.json 是作品（入库）
 frames/*.png
+
+# PS 插件打包产物与 Adobe 签名工具（后者由 npm run ps:poc:fetch-signer 下载）
+build/zxp-stage/
+build/qingframe-ps-poc.zxp
+build/qf-dev-selfsigned.p12
+ps-plugin/tools/ZXPSignCmd.exe

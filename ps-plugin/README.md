@@ -65,7 +65,22 @@ npm run ps:poc:install -- --ps "D:\PS2026\Adobe Photoshop 2026"
 1. 把整个 `ps-plugin` 目录拷到 `<PS 安装目录>\Required\CEP\extensions\com.qingframe.ps.bridge.poc\`
 2. 注册表 `HKEY_CURRENT_USER\Software\Adobe\CSXS.12` → `PlayerDebugMode` = `1`（字符串）
 
-正式分发需要 ZXP 打包 + 签名（Adobe 的 ZXPSignCMD），且 CEP 属于遗留平台；长期方案应评估 UXP 原生图层重写。
+## 打包 ZXP
+
+```bash
+npm run ps:poc:fetch-signer   # 首次：下载 Adobe ZXPSignCmd（不入库）
+npm run ps:poc:package        # 生成 build/qingframe-ps-poc.zxp 并验证签名
+```
+
+默认用自签名证书（仅开发测试，不能上架）。正式分发时提供：
+
+```bash
+$env:QF_ZXP_CERT='C:\path\to\cert.p12'
+$env:QF_ZXP_PASS='证书密码'
+npm run ps:poc:package
+```
+
+安装 ZXP 用 Adobe 的 `ExManCmd.exe /install <zxp>`。CEP 属于遗留平台；长期方案应评估 UXP 原生图层重写。
 
 ## 已知限制
 
