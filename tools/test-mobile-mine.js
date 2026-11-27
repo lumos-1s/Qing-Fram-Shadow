@@ -162,7 +162,7 @@ app.whenReady().then(async () => {
         '我的页：补齐用户资料 / 应用设置 / 系统设置分组',
         JSON.stringify({ rows: r.rows, groups: r.groups, err: r.err }));
     check(!r.err && r.modalOpen && r.modalClosed && r.storedName === '阿影'
-        && r.signature === '© 2026 阿影' && r.profileSum === '阿影' && r.avatarName === '阿影',
+        && r.signature === '© 2026 阿影' && r.profileSum === '阿影 · © 2026 阿影' && r.avatarName === '阿影',
         '昵称与签名：本机保存、写进署名、头像行显示昵称',
         JSON.stringify({ name: r.storedName, sig: r.signature, sum: r.profileSum, avatar: r.avatarName, err: r.err }));
     check(!r.err && r.focal[0] === 0 && r.focal[1] === 1 && r.focal[2] === '等效焦距' && r.focalBack === 0,

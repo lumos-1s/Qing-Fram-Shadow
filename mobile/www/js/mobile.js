@@ -835,7 +835,8 @@
         });
         textEditor.addEventListener('blur', () => closeTextEditor(true));
         textEditor.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') { e.preventDefault(); closeTextEditor(false); }
+            // 停掉冒泡：全局返回键还要处理弹层/页返回，Esc 关文字框只算这一层
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeTextEditor(false); }
             else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeTextEditor(true); }
         });
     }
@@ -1420,7 +1421,13 @@
     if (['srgb', 'p3', 'adobergb'].indexOf(exportOpts.colorSpace) < 0) exportOpts.colorSpace = 'srgb';
     if (['current', 'all'].indexOf(exportOpts.scope) < 0) exportOpts.scope = 'current';
     if (!(Number(exportOpts.quality) > 0 && Number(exportOpts.quality) <= 1)) exportOpts.quality = 0.92;
+    // 只认弹层里真实存在的档位；旧版本/手改 localStorage 的 1234 会让整排 chip 都没有选中态
+    const EXPORT_SIZES = [0, 8192, 4096, 4000, 2000, 1080];
     exportOpts.maxEdge = Math.max(0, Number(exportOpts.maxEdge) || 0);
+    if (EXPORT_SIZES.indexOf(exportOpts.maxEdge) < 0) {
+        exportOpts.maxEdge = EXPORT_SIZES.reduce((a, b) =>
+            Math.abs(b - exportOpts.maxEdge) < Math.abs(a - exportOpts.maxEdge) ? b : a, 0);
+    }
     function saveExportOpts() {
         try { localStorage.setItem(EXPORT_PREF_KEY, JSON.stringify(exportOpts)); } catch (_) {}
     }
@@ -1535,26 +1542,45 @@
             const many = exportOpts.scope === 'all' && state.images.length > 1
                 && state.tab !== 'puzzle' && state.tab !== 'crop';
             go.textContent = many ? `导出全部 ${state.images.length} 张` : '保存 / 分享';
+            // 没有照片也能进来改导出设置，只是不能真的导出
+            go.disabled = !state.image && !state.images.length;
         }
         const src = srcLongEdge();
         const out = exportTarget(src) || 0;
         const hintEl = document.getElementById('exportHint');
         if (hintEl) {
             const tab = state.tab;
-            const subject = tab === 'puzzle' ? '拼图' : tab === 'crop' ? '切图（每块）' : '成品';
-            const allNote = (exportOpts.scope === 'all' && exportAllCount > 1)
-                ? `全部 ${exportAllCount} 张 · 每张` : '';
-            hintEl.textContent = src
-                ? `${allNote}${subject}长边 ${out}px · ${exportOpts.format.toUpperCase()}`
-                    + (exportOpts.format === 'png' ? ' · 无损' : ` · 画质 ${Math.round(exportOpts.quality * 100)}%`)
-                    + (effectiveColorSpace() === 'srgb' ? ''
-                        : effectiveColorSpace() === 'p3' ? ' · Display P3' : ' · Adobe RGB')
-                : '先导入一张照片';
+            const fmt = exportOpts.format.toUpperCase();
+            const quality = exportOpts.format === 'png' ? ' · 无损'
+                : ` · 画质 ${Math.round(exportOpts.quality * 100)}%`;
+            const cs = effectiveColorSpace() === 'srgb' ? ''
+                : effectiveColorSpace() === 'p3' ? ' · Display P3' : ' · Adobe RGB';
+            let text = '先导入一张照片';
+            if (src) {
+                if (tab === 'crop') {
+                    // 切图是整张成品按行列切，单块长边约为成片长边的 1/max(rows, cols)
+                    const rows = Math.max(1, state.crop.rows), cols = Math.max(1, state.crop.cols);
+                    const each = Math.max(1, Math.round(out / Math.max(rows, cols)));
+                    text = `切图 ${rows}×${cols} · 原图长边 ${out}px · 每块约 ${each}px · ${fmt}${quality}${cs}`;
+                } else if (exportOpts.scope === 'all' && exportAllCount > 1 && tab !== 'puzzle') {
+                    // 批量导出每张按自己的尺寸来，不能拿当前照片的长边冒充「每张」
+                    text = exportOpts.maxEdge
+                        ? `全部 ${exportAllCount} 张 · 每张长边不超过 ${exportOpts.maxEdge}px · ${fmt}${quality}${cs}`
+                        : `全部 ${exportAllCount} 张 · 每张按原尺寸 · ${fmt}${quality}${cs}`;
+                } else {
+                    const subject = tab === 'puzzle' ? '拼图' : '成品';
+                    text = `${subject}长边 ${out}px · ${fmt}${quality}${cs}`;
+                }
+            }
+            hintEl.textContent = text;
         }
+        // 「我的 → 导出画质」的摘要要跟着改，不能等下次进页面才刷新
+        refreshMine();
     }
     function openExportSheet() {
-        if (!state.image && !state.images.length) { hint('先导入照片'); return; }
+        // 设置项必须随时可改：0 张照片时也打开，只把主按钮置灰
         if (cropEdit) closeCropEdit(true);
+        if (!state.image && !state.images.length) hint('先导入照片，再回来导出');
         paintExportOpts();
         exportSheetEl.hidden = false;
     }
@@ -2325,7 +2351,8 @@
     }
     function applyGradePreset(i) {
         const p = gradePresets[i];
-        if (!p || !state.image) return;
+        if (!p) return;
+        if (!state.image) { hint('先导入一张照片，再套用调色'); return; }
         pushUndo();
         // 整套替换（不是合并）：避免上一张照片残留的曲线/混色器混进新预调；
         // 旧数据里的蒙版也一并丢掉，防止贴到尺寸不同的照片上。
@@ -2357,7 +2384,11 @@
     }
 
     function gradePage() {
-        if (!state.image) return `<p class="panel-note">请先导入照片</p>`;
+        // 没有照片也要能看到/管理已存预调；调色滑块本身要有图才有意义
+        if (!state.image) {
+            return `${gradePresetsHtml()}
+                <p class="panel-note">先导入一张照片，才能调整调色；已存的预调可以先长按删除。</p>`;
+        }
         const g = state.image.grade || {};
         const rows = GRADE_UI.map(([k, label, min, max, step]) => {
             const v = Number(g[k]) || 0;
@@ -2411,7 +2442,10 @@
             await withFullImage(state.image, async (targetPx, fallback, capped) => {
                 if (fallback) note = ' · 全尺寸解码失败，已用预览尺寸';
                 else if (capped) note = ' · 已按 6000px 上限导出';
-                renderPreview(true, { displayMax: targetPx, uiDprOverride: 1 });
+                // 长边档位同样要生效：先从成片切块，再按 maxEdge 缩放整张成片
+                const out = Math.max(1, exportTarget(targetPx) || targetPx);
+                if (out !== targetPx) note += ` · 长边 ${out}px`;
+                renderPreview(true, { displayMax: out, uiDprOverride: 1, exportScale: out });
             });
             for (let n = 0; n < picks.length; n++) {
                 if (state.batchCancel) { canceled = true; break; }
@@ -2479,7 +2513,7 @@
         return `${currentStrip()}
             <div class="chips">${presets}</div>
             ${opts}
-            <div class="crop-grid">${cells}</div>
+            <div class="crop-blocks">${cells}</div>
             <p class="panel-note">已勾选 ${state.crop.picked.size}/${blocks.length} 块 · 点右上角「导出块」逐块保存/分享</p>`;
     }
 
@@ -2873,7 +2907,8 @@
     function showPage(page) {
         if (['home', 'edit', 'mine'].indexOf(page) < 0) page = 'home';
         if (page !== 'home' && state.page !== page) homePrevPage = state.page || 'home';
-        if (page !== 'edit' && cropEdit) closeCropEdit(false);
+        // 离开编辑页要把画布从「只画照片」的取景态还原，否则首页封面会抓到无边框原图
+        if (page !== 'edit' && cropEdit) closeCropEdit(true);
         state.page = page;
         appEl.dataset.page = page;
         pageHome.hidden = page !== 'home';
@@ -3068,9 +3103,14 @@
         set('mineStylesCount', String(myStyles.length));
         set('mineGradesCount', String(gradePresets.length));
         set('minePhotosCount', String(state.images.length));
-        set('mineExportSum', `${exportOpts.maxEdge ? exportOpts.maxEdge + 'px' : '原图'} · ${exportOpts.format.toUpperCase()}`);
-        set('mineProfileSum', getUserName() || '未设置');
+        const cs = effectiveColorSpace();
+        set('mineExportSum', `${exportOpts.maxEdge ? exportOpts.maxEdge + 'px' : '原图'} · ${exportOpts.format.toUpperCase()}`
+            + (cs === 'p3' ? ' · P3' : cs === 'adobergb' ? ' · AdobeRGB' : ''));
+        const nick = getUserName(), sig = getUserSignature();
+        set('mineProfileSum', [nick, sig && sig !== nick ? sig : ''].filter(Boolean).join(' · ') || '未设置');
         set('mineFocalSum', (state.template && state.template.focalEq === 1) ? '等效焦距' : '原始焦距');
+        const logos = (state.template && state.template.logoElements) || [];
+        set('mineLogoSum', logos.length ? `${logos.length} 个 · 可管理` : '到元素页添加');
         set('minePlatform', window.qfsNative.platform());
     }
 
@@ -3137,6 +3177,7 @@
 
     function toggleFocalType() {
         if (!state.template) { hint('先套一个风格'); return; }
+        pushUndo();
         state.template.focalEq = state.template.focalEq === 1 ? 0 : 1;
         A.template = state.template;
         renderPreview(true);
@@ -3193,6 +3234,7 @@
         state.editSub = 'element';
         render('edit');
         renderPreview(true);
+        refreshMine();
         hint(`已导入 Logo「${name}」· 画布上可拖动缩放`);
     }
 
@@ -3248,12 +3290,35 @@
         showPage(state.page === 'mine' ? (homePrevPage || 'home') : 'home');
     });
     document.getElementById('btnSettings').addEventListener('click', () => showPage('mine'));
+    // 返回键只做「关一层」：弹层 → 裁剪 → 退回上一页；首页返回 false 交给系统退出。
+    // 暴露给原生/测试挂钩调用，避免在 WebView 里再塞一条 history 记录。
+    function handleBack() {
+        if (state.editingText || (textEditor && !textEditor.hidden)) { closeTextEditor(true); return true; }
+        if (styleModalEl) { closeStyleModal(); return true; }
+        if (exportSheetEl && !exportSheetEl.hidden) { closeExportSheet(); return true; }
+        const av = document.getElementById('avatarSheet');
+        if (av && !av.hidden) { av.hidden = true; return true; }
+        if (cropEdit) { closeCropEdit(true); return true; }
+        if (state.page !== 'home') {
+            showPage(state.page === 'mine' ? (homePrevPage || 'home') : 'home');
+            return true;
+        }
+        return false;
+    }
+    window.QF_MOBILE_BACK = handleBack;
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && handleBack()) e.preventDefault();
+    });
     document.getElementById('panelGrip').addEventListener('click', () => {
         const page = document.getElementById('pageEdit');
         const on = page.classList.toggle('expanded');
         hint(on ? '面板已展开' : '面板已收起');
     });
-    document.getElementById('hdrThumb').addEventListener('click', () => showPage('edit'));
+    // 缩略图只在编辑页露出；此时点它复位缩放/平移，而不是「跳到已经在的页面」
+    document.getElementById('hdrThumb').addEventListener('click', () => {
+        if (state.page === 'edit') resetView();
+        else showPage('edit');
+    });
     const filmstripEl = document.getElementById('filmstrip');
     if (filmstripEl) {
         filmstripEl.addEventListener('click', (e) => {
@@ -3267,7 +3332,11 @@
     document.getElementById('btnOpenExport').addEventListener('click', openExportSheet);
     document.getElementById('btnShareStyle').addEventListener('click', openShareCodeModal);
     document.getElementById('btnImportStyle').addEventListener('click', openImportCodeModal);
-    document.getElementById('mineStylesRow').addEventListener('click', () => { showPage('edit'); render('style'); });
+    document.getElementById('mineStylesRow').addEventListener('click', () => {
+        // 上次在风格墙留的搜索/分类/收藏筛选会把手建风格藏起来，这里清掉再落地
+        state.filter = '全部'; state.favOnly = false; state.query = '';
+        showPage('edit'); render('style');
+    });
     document.getElementById('mineGradesRow').addEventListener('click', () => { showPage('edit'); render('grade'); });
     document.getElementById('minePhotosRow').addEventListener('click', () => { showPage('edit'); render('puzzle'); });
     document.getElementById('mineProfileRow').addEventListener('click', openProfileModal);
@@ -3293,13 +3362,15 @@
         + '<b>联系</b>隐私问题可通过项目 Issues 提出。'));
     document.getElementById('btnAbout').addEventListener('click', () => openLegalModal('关于我们',
         '<b>清框影</b>为摄影爱好者提供最好的边框。照片全程本地处理，不上传、不需要账号。'
-        + '<b>版本</b>0.1 · 内测版。'
+        + '<b>版本</b>0.1.0 · 手机版内测。'
         + '<b>能力</b>风格墙、调色、拼图与切图、自定义署名与头像、分享码互通。'));
     document.getElementById('btnChangelog').addEventListener('click', () => {
         const list = Array.isArray(window.QF_CHANGELOG) ? window.QF_CHANGELOG : [];
         if (!list.length) { hint('暂无更新说明'); return; }
+        // 数据里存 package.json 同款版本（0.1.0-mobile），展示时再收成用户看得懂的名字
+        const verLabel = (v) => String(v || '').replace(/-mobile$/, ' · 手机版');
         const body = list.map((entry, i) => `<section class="cl-entry${i === 0 ? ' current' : ''}">`
-            + `<div class="cl-head"><b>${esc(entry.version || '')}</b><span>${esc(entry.date || '')}</span></div>`
+            + `<div class="cl-head"><b>${esc(verLabel(entry.version))}</b><span>${esc(entry.date || '')}</span></div>`
             + (entry.groups || []).map((g) => `<div class="cl-group"><h4>${esc(g.title || '')}</h4>`
                 + `<ul>${(g.items || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')
             + '</section>').join('');

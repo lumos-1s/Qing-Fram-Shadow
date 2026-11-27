@@ -170,7 +170,7 @@ app.whenReady().then(async () => {
     check(/^data:image\/jpeg/.test(r.jpeg || '') && r.hasIcc === true && /\.jpg$/.test(r.p3Name || ''),
         'P3 导出为 JPEG 且嵌入 ICC_PROFILE',
         JSON.stringify({ data: r.jpeg, icc: r.hasIcc, name: r.p3Name }));
-    check(r.changelogBtn && /0\.1 · 手机版/.test(r.changelogText || ''),
+    check(r.changelogBtn && /0\.1\.0 · 手机版/.test(r.changelogText || ''),
         '我的页更新日志入口显示手机版条目', (r.changelogText || '').slice(0, 80));
     check(errors.length === 0, '桌面对齐流程无脚本异常', errors.slice(0, 3).join(' / '));
 

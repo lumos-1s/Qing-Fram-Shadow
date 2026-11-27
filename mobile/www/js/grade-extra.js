@@ -71,6 +71,14 @@
         return Object.assign(defaultCg(), clone(getGrade() && getGrade().cg) || {});
     }
 
+    function setZone(k) {
+        zone = k;
+        if (!panelRef) return;
+        panelRef.querySelectorAll('[data-cg-zone]').forEach((x) =>
+            x.classList.toggle('active', x.dataset.cgZone === zone));
+        syncCg();
+    }
+
     function syncCg() {
         if (!panelRef) return;
         const cg = currentCg();
@@ -165,18 +173,14 @@
 
     function bind(panel, fn, getter) {
         panelRef = panel;
+        drag = -1;
         onGrade = typeof fn === 'function' ? fn : (() => {});
         getGrade = typeof getter === 'function' ? getter : (() => ({}));
         const g = getGrade();
         cv = Object.assign(defaultCurve(), clone(g && g.curve) || {});
 
         panel.querySelectorAll('[data-cg-zone]').forEach((b) => {
-            b.addEventListener('click', () => {
-                zone = b.dataset.cgZone;
-                panel.querySelectorAll('[data-cg-zone]').forEach((x) =>
-                    x.classList.toggle('active', x === b));
-                syncCg();
-            });
+            b.addEventListener('click', () => setZone(b.dataset.cgZone));
         });
         panel.querySelectorAll('[data-cg]').forEach((el) => {
             el.addEventListener('input', () => {
@@ -200,8 +204,9 @@
         });
         const cgr = panel.querySelector('#btnCgReset');
         if (cgr) cgr.addEventListener('click', () => {
-            zone = 'shadow';
             onGrade({ cg: defaultCg() });
+            // 这里不走整页 render：滑块/分区 chip 在本模块内同步，避免曲线上的点被重置
+            setZone('shadow');
         });
 
         panel.querySelectorAll('[data-curve-chan]').forEach((b) => {

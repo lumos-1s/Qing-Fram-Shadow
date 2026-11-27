@@ -444,15 +444,19 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 .histo-card { border: 1px solid var(--border); border-radius: var(--r-md); background: #0D0F0D; padding: 6px; margin: 8px 0; }
 .histo-card canvas { display: block; width: 100%; height: 82px; }
 .curve-canvas-m { display: block; width: 100%; height: 160px; margin: 8px 0 2px; touch-action: none; border-radius: var(--r-sm); }
-.cl-list { max-height: 58dvh; overflow-y: auto; margin: -4px 0 8px; scrollbar-width: thin; }
-.cl-list::-webkit-scrollbar { width: 3px; }
-.cl-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.cl-list {
+  flex: 1 1 auto; min-height: 0; max-height: 58dvh; overflow-y: auto;
+  margin: -4px 0 8px; padding-right: 6px;
+  scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent;
+}
+.cl-list::-webkit-scrollbar { width: 4px; }
+.cl-list::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
 .cl-entry { padding: 10px 0; border-bottom: 1px solid var(--border); }
 .cl-entry:last-child { border-bottom: 0; }
 .cl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .cl-head b { color: var(--primary); font-size: 14px; }
 .cl-entry:not(.current) .cl-head b { color: var(--text-2); }
-.cl-head span { color: var(--text-3); font-size: 11px; }
+.cl-head span { flex: 0 0 auto; color: var(--text-3); font-size: 11px; white-space: nowrap; }
 .cl-group h4 { margin: 10px 0 4px; font-size: 12px; color: var(--text-2); font-weight: 600; }
 .cl-group ul { margin: 0; padding-left: 18px; }
 .cl-group li { font-size: 12px; line-height: 1.65; color: var(--text-2); }
@@ -468,6 +472,9 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 }
 
 /* ── 切图 / 照片方向 ──────────────────────────────────────────── */
+/* 注意：面板里的勾选块不能复用 .crop-grid，那个类名是自由裁剪的
+   三分线覆盖层（absolute + pointer-events:none），会把勾选框全废掉。 */
+.crop-blocks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 2px 0 8px; }
 .crop-cell {
   position: relative; aspect-ratio: 1/1; border: 1px solid var(--border);
   border-radius: var(--r-sm); background: var(--surface-alt); overflow: hidden;
@@ -491,21 +498,25 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 .modal-mask { position: absolute; inset: 0; background: rgba(0,0,0,.62); }
 .modal-card {
   position: relative; width: 100%; max-width: 560px;
+  /* 长文案（更新日志/协议）在小屏上不能把底部按钮顶出屏幕 */
+  max-height: calc(100dvh - var(--safe-top) - 24px);
+  display: flex; flex-direction: column; min-height: 0;
   padding: 18px 16px calc(16px + var(--safe-bottom));
   background: var(--surface); border-top: 1px solid var(--border);
   border-radius: var(--r-lg) var(--r-lg) 0 0;
 }
-.modal-card h2 { font-size: 16px; font-weight: 500; margin-bottom: 12px; letter-spacing: -0.2px; }
+.modal-card h2 { flex: 0 0 auto; font-size: 16px; font-weight: 500; margin-bottom: 12px; letter-spacing: -0.2px; }
 .opt-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .opt-row > label { flex: 0 0 42px; font-size: 12px; color: var(--text-3); }
 .opt-row .chips { flex: 1; min-width: 0; padding-bottom: 0; gap: 6px; }
 .opt-row .chip { min-height: 38px; padding: 0 12px; font-size: 12px; }
-.modal-acts { display: flex; gap: 10px; margin-top: 14px; }
+.modal-acts { flex: 0 0 auto; display: flex; gap: 10px; margin-top: 14px; }
 .modal-acts button {
   flex: 1; min-height: 46px; border: 1px solid var(--border); border-radius: var(--r-md);
   background: var(--surface-alt); color: var(--text); font-size: 14px;
 }
 .modal-acts .act-btn.primary { flex: 2; border: none; }
+.modal-acts button:disabled { opacity: .38; }
 .modal-input {
   width: 100%; min-height: 96px; padding: 10px 12px; resize: none;
   border: 1px solid var(--border); border-radius: var(--r-md);
@@ -517,9 +528,13 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 .modal-input.code-box { font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
 .modal-note { font-size: 11px; line-height: 1.6; color: var(--text-3); margin-top: 8px; }
 .legal-text {
-  max-height: 46dvh; overflow-y: auto; padding-right: 4px;
+  flex: 1 1 auto; min-height: 0; max-height: 46dvh; overflow-y: auto; padding-right: 6px;
   font-size: 12px; line-height: 1.75; color: var(--text-2);
+  scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent;
+  /* Chromium 121+ 起 scrollbar-color 优先于 ::-webkit-scrollbar，两边都要给颜色 */
 }
+.legal-text::-webkit-scrollbar { width: 4px; }
+.legal-text::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
 .legal-text b { display: block; margin-top: 12px; color: var(--text); font-weight: 500; }
 
 /* ── 用户头像裁剪 ──────────────────────────────────────────────── */
@@ -558,7 +573,10 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
   position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px;
   border-radius: 50%; background: rgba(255,255,255,.94);
   border: 1px solid rgba(0,0,0,.4); box-shadow: 0 2px 6px rgba(0,0,0,.45);
+  touch-action: none;
 }
+/* 视觉仍是 30px，命中区补到 44px，拇指按角点不容易脱手 */
+.crop-h::after { content: ''; position: absolute; inset: -7px; border-radius: 50%; }
 .crop-h[data-ch="nw"] { left: 0; top: 0; }
 .crop-h[data-ch="ne"] { left: 100%; top: 0; }
 .crop-h[data-ch="sw"] { left: 0; top: 100%; }
@@ -661,7 +679,11 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
   display: inline-flex; align-items: center; justify-content: center; font-size: 14px;
 }
 .mine-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mine-row em { font-style: normal; font-size: 12px; color: var(--text-3); }
+.mine-row em {
+  flex: 0 1 auto; min-width: 0; max-width: 48%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-style: normal; font-size: 12px; color: var(--text-3);
+}
 .mine-arrow { color: var(--text-4); font-size: 18px; line-height: 1; }
 
 /* ── 小屏（SE / 老安卓）：优先保证画布与首屏信息量 ─────────────── */

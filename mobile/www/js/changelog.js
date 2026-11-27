@@ -6,7 +6,7 @@
    - 历史版本不必全留：更老的说明在 GitHub Releases(项目主页 → Releases) 上。 */
 window.QF_CHANGELOG = [
     {
-        version: '0.1 · 手机版',
+        version: '0.1.0-mobile',
         date: '2026-11-27',
         groups: [
             { title: '新增', items: [
