@@ -42,12 +42,21 @@ npm run test:ps:poc
 
 ## 在 Photoshop 里试用（开发模式）
 
-1. 把整个 `ps-plugin` 目录拷到 Photoshop 的 CEP 扩展目录，例如
-   `C:\Program Files\Adobe\Adobe Photoshop 2025\Required\CEP\extensions\com.qingframe.ps.bridge.poc\`
-2. 打开注册表 developer mode（未签名扩展必须）：
-   `HKEY_CURRENT_USER\Software\Adobe\CSXS.12` → `PlayerDebugMode` = `1`（字符串）
-3. 重启 Photoshop，菜单 `窗口 → 扩展功能 → 清框影 PS 桥接 PoC`。
-4. 选中一个图层 → 选风格 → 点「边框 → 新图层」或「四宫格 → 新图层」。
+一条命令自动安装（复制扩展 + 打开未签名调试模式）：
+
+```bash
+npm run ps:poc:install
+```
+
+脚本会找 `C:\Program Files\Adobe\Adobe Photoshop *`，把扩展拷到它的
+`Required\CEP\extensions\com.qingframe.ps.bridge.poc\`，并写入
+`HKCU\Software\Adobe\CSXS.12\PlayerDebugMode=1`。写 Program Files 可能需要管理员权限；
+装完**重启 Photoshop**，菜单 `窗口 → 扩展功能 → 清框影 PS 桥接 PoC`。
+选中一个图层 → 选风格 → 点「边框 → 新图层」或「四宫格 → 新图层」。
+
+如果脚本找不到 PS 或权限不足，手动做同样两件事即可：
+1. 把整个 `ps-plugin` 目录拷到 `<PS 安装目录>\Required\CEP\extensions\com.qingframe.ps.bridge.poc\`
+2. 注册表 `HKEY_CURRENT_USER\Software\Adobe\CSXS.12` → `PlayerDebugMode` = `1`（字符串）
 
 正式分发需要 ZXP 打包 + 签名（Adobe 的 ZXPSignCMD），且 CEP 属于遗留平台；长期方案应评估 UXP 原生图层重写。
 
