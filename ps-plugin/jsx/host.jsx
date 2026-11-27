@@ -42,7 +42,9 @@ function qfGetDocPath() {
         var doc = app.activeDocument;
         if (!doc) return 'ERR:没有打开的文档';
         if (!doc.fullName) return 'ERR:文档尚未保存，没有源文件可读取 EXIF';
-        return 'OK:' + doc.fullName.fsName;
+        var profile = '';
+        try { profile = String(doc.colorProfileName || ''); } catch (e) { profile = ''; }
+        return 'OK:' + doc.fullName.fsName + '|' + profile;
     } catch (e) {
         return 'ERR:' + (e.message || e);
     }

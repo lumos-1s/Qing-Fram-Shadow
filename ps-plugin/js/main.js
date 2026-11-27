@@ -126,11 +126,25 @@
         });
     }
 
+    function applyDocProfile(profile) {
+        const sel = document.getElementById('selColorSpace');
+        if (!sel || !profile) return;
+        const lower = String(profile).toLowerCase();
+        let cs = 'srgb';
+        if (/adobe/.test(lower) && /rgb/.test(lower)) cs = 'adobergb';
+        else if (/p3/.test(lower)) cs = 'p3';
+        sel.value = cs;
+        const opt = sel.options[sel.selectedIndex];
+        log('文档色彩配置：' + profile + ' → 输出 ' + (opt ? opt.text : cs));
+    }
+
     async function detectExif() {
         try {
             const r = await evalScript('qfGetDocPath()');
             if (String(r).indexOf('ERR') === 0) { renderExifFields(r); return; }
-            const bytes = await readBytes(String(r).slice(3));
+            const parts = String(r).split('|');
+            applyDocProfile(parts[1] || '');
+            const bytes = await readBytes(parts[0].slice(3));
             const raw = window.__parseExif(bytes.buffer);
             const info = window.__exifSummary(raw) || {};
             exifInfo = info;
@@ -297,22 +311,25 @@
             const csSel = document.getElementById('selColorSpace');
             const cs = (csSel && csSel.value) || 'adobergb';
             let outCanvas = canvas;
-            if (cs === 'adobergb' && window.QfsColorSpace) {
+            if ((cs === 'adobergb' || cs === 'p3') && window.QfsColorSpace) {
                 const tmp = document.createElement('canvas');
                 tmp.width = canvas.width; tmp.height = canvas.height;
                 const g = tmp.getContext('2d', { willReadFrequently: true });
                 g.drawImage(canvas, 0, 0);
                 const img = g.getImageData(0, 0, tmp.width, tmp.height);
-                window.QfsColorSpace.convertRgbaInPlace(img.data, 'adobergb');
+                window.QfsColorSpace.convertRgbaInPlace(img.data, cs);
                 g.putImageData(img, 0, 0);
                 outCanvas = tmp;
             }
             let data = outCanvas.toDataURL('image/jpeg', 0.95).split(',')[1] || '';
-            if (cs === 'adobergb' && window.QF_IccEmbed && window.QF_ICC_ADOBERGB) {
-                data = window.QF_IccEmbed.embed(data, window.QF_ICC_ADOBERGB);
+            const profileB64 = cs === 'adobergb' ? window.QF_ICC_ADOBERGB
+                : (cs === 'p3' ? window.QF_ICC_P3 : null);
+            if (profileB64 && window.QF_IccEmbed) {
+                data = window.QF_IccEmbed.embed(data, profileB64);
             }
             if (!data || data.length < 128) throw new Error('渲染结果为空');
-            log('输出色域：' + (cs === 'adobergb' ? 'Adobe RGB (1998)' : 'sRGB'));
+            const csOpt = csSel && csSel.options[csSel.selectedIndex];
+            log('输出色域：' + (csOpt ? csOpt.text : cs));
             const out = tempPath('qingframe-border.jpg');
             const wr = await writeBase64(out, data);
             const ok = wr === true;
@@ -459,7 +476,7 @@
     window.QF_PS_POC = {
         apply, detectExif, renderPreviewLive, evalScript, readBase64, writeBase64, tempPath, loadLayer,
         lastTemplate: () => lastTemplate,
-        buildPresetWall, paintWall, thumbErrors,
+        buildPresetWall, paintWall, applyDocProfile, thumbErrors,
         invalidateSource: () => { sourceCache = { key: '', loaded: null }; removeTemp(tempPath('qingframe-source.jpg')); }
     };
 })();

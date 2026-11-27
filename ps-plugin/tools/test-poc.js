@@ -44,7 +44,7 @@ app.whenReady().then(async () => {
                 if (m) { cb('OK:800x1000'); return; }
                 const p = /qfPlacePng\\("([^"]+)","([^"]+)","([^"]+)","([^"]+)"\\)/.exec(src);
                 if (p) { window.qfMockPlaced.push({ path: p[1], name: p[2], hide: p[3], smart: p[4] }); cb('OK:' + p[2]); return; }
-                if (/qfGetDocPath/.test(src)) { cb('OK:' + prefix + 'exif-source.jpg'); return; }
+                if (/qfGetDocPath/.test(src)) { cb('OK:' + prefix + 'exif-source.jpg|Adobe RGB (1998)'); return; }
                 cb('ERR:unknown script');
             }
         };
@@ -62,6 +62,10 @@ app.whenReady().then(async () => {
             0x8827: 100, 0x920A: { num: 35, den: 1 }, 0xA405: 52
         });
         await window.QF_PS_POC.detectExif();
+        const profileAuto = document.getElementById('selColorSpace').value;
+        window.QF_PS_POC.applyDocProfile('sRGB IEC61966-2.1');
+        const srgbAuto = document.getElementById('selColorSpace').value;
+        window.QF_PS_POC.applyDocProfile('Adobe RGB (1998)');
         const exifText = Array.from(document.querySelectorAll('[data-exif]'))
             .map((el) => el.value).join(' · ');
         const brandInput = document.querySelector('[data-exif="make"]');
@@ -109,7 +113,7 @@ app.whenReady().then(async () => {
             cachedLog,
             presets: presets.length, wallCount, thumbImgs, thumbErr,
             hasRender: typeof window.__render === 'function',
-            bpCount, strokeWidth, tpCount, lineText, paramFontSize, paramModel, exifText,
+            bpCount, strokeWidth, tpCount, lineText, paramFontSize, paramModel, exifText, profileAuto, srgbAuto,
             exifBrand: ((window.QF_PS_POC.lastTemplate() || {}).manualExif || {}).brand,
             previewW: document.getElementById('previewCanvas').width,
             hasLive: typeof window.QF_PS_POC.renderPreviewLive === 'function',
@@ -142,6 +146,8 @@ app.whenReady().then(async () => {
     check(r.paramFontSize === 88 && r.paramModel === 'CUSTOMMODEL', '参数字号与相机型号可调', JSON.stringify({ paramFontSize: r.paramFontSize, paramModel: r.paramModel }));
     check(['ILCE-6000', '35mm', 'f/5.6', '1/125s', 'ISO100']
         .every((s) => r.exifText.indexOf(s) >= 0), '自动识别 EXIF 拍摄参数', r.exifText);
+    check(r.profileAuto === 'adobergb' && r.srgbAuto === 'srgb', '按文档色彩配置自动选输出色域',
+        JSON.stringify({ profileAuto: r.profileAuto, srgbAuto: r.srgbAuto }));
     check(r.exifBrand === 'CANON', '相机参数可手动修改并写回模板', String(r.exifBrand));
     check(r.hasLive && r.previewW > 0, '实时预览画布已渲染', JSON.stringify({ hasLive: r.hasLive, previewW: r.previewW }));
     check(/放回文档：OK/.test(r.logText), '边框渲染并写回图层', r.logText.split('\n').slice(-2).join(' / '));

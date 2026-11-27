@@ -71,5 +71,6 @@ npm run ps:poc:install -- --ps "D:\PS2026\Adobe Photoshop 2026"
 
 - 未签名、不可直接上架 Adobe Exchange。
 - 只取**当前选中图层**，不处理多图层合成。
+- 输出色域按文档配置自动选择（Adobe RGB / Display P3 / sRGB），也允许手动覆盖；结果会嵌入对应 ICC。
 - 本版不含拼图。
 - 没有把我们的「调色 / RAW / EXIF」链路接进来，只验证加边框。
