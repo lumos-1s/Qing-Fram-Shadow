@@ -59,6 +59,8 @@ npm run ps:poc:install -- --ps "D:\PS2026\Adobe Photoshop 2026"
 装完**重启 Photoshop**，菜单 `窗口 → 扩展功能 → 清框影桥接`。
 选风格 → 在参数面板调边距/缩放/圆角/填充/描边/阴影 → 点「套用边框 → 新图层」。
 
+参数按风格能力显隐：相框风格由 `engine-styles.js` 独立绘制，只读取边距/照片缩放/照片圆角/样式私有参数，填充/描边/阴影分组会对它隐藏；这几组只对「无相框风格」的预设生效。
+
 如果脚本找不到 PS 或权限不足，手动做同样两件事即可：
 1. 把整个 `ps-plugin` 目录拷到 `<PS 安装目录>\Required\CEP\extensions\com.qingframe.ps.bridge.poc\`
 2. 注册表 `HKEY_CURRENT_USER\Software\Adobe\CSXS.12` → `PlayerDebugMode` = `1`（字符串）

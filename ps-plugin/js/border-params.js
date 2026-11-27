@@ -3,8 +3,7 @@
 (function () {
     let t = null;
     let onChange = null;
-    const GROUPS = [['basic', '基础'], ['fill', '填充'], ['stroke', '描边'],
-        ['corner', '圆角'], ['shadow', '阴影 / 发光']];
+    const GROUPS = [['basic', '基础'], ['fill', '填充'], ['stroke', '描边'], ['shadow', '阴影 / 发光']];
 
     function num(v, d) { const n = Number(v); return isFinite(n) ? n : d; }
     function hex(v, d) { const s = String(v || '').replace('#', ''); return /^[0-9a-f]{6}$/i.test(s) ? '#' + s : d; }
@@ -44,12 +43,12 @@
         const cc = t.cornerConfig || (t.cornerConfig = {});
         const set = (fn) => (v) => fn(v);
         return [
-            { g: 'basic', label: '边距', type: 'range', min: 0, max: 200, step: 5, unit: '%',
+            { g: 'basic', label: '边距', only: 'rowGlobalMargin', type: 'range', min: 0, max: 200, step: 5, unit: '%',
               value: Math.round((m.globalMargin == null ? 1 : m.globalMargin) * 100), set: set(applyGlobalMargin) },
-            { g: 'basic', label: '照片缩放', type: 'range', min: 50, max: 200, step: 5, unit: '%',
+            { g: 'basic', label: '照片缩放', only: 'rowImgScale', type: 'range', min: 50, max: 200, step: 5, unit: '%',
               value: Math.round((m.imgScale == null ? 1 : m.imgScale) * 100),
               set: set((v) => { m.imgScale = v / 100; }) },
-            { g: 'basic', label: '照片圆角', type: 'range', min: 0, max: 200, step: 2, unit: '',
+            { g: 'basic', label: '照片圆角', only: 'rowCornerRadius', type: 'range', min: 0, max: 200, step: 2, unit: '',
               value: Math.round(num(cc.cornerRadiusAll, 0)),
               set: set((v) => { cc.cornerRadiusAll = v; cc.cornerRadiusTL = cc.cornerRadiusTR = cc.cornerRadiusBL = cc.cornerRadiusBR = v; }) },
 
@@ -72,10 +71,6 @@
               set: set((v) => { s.strokeColorHex = v.replace('#', ''); }) },
             { g: 'stroke', label: '透明度', type: 'range', min: 0, max: 100, step: 1, unit: '%',
               value: Math.round(num(s.strokeOpacity, 100)), set: set((v) => { s.strokeOpacity = v; }) },
-
-            { g: 'corner', label: '边框圆角', type: 'range', min: 0, max: 200, step: 2, unit: '',
-              value: Math.round(num(lc.cornerRadiusAll, 0)),
-              set: set((v) => { lc.cornerRadiusAll = v; lc.cornerRadiusTL = lc.cornerRadiusTR = lc.cornerRadiusBL = lc.cornerRadiusBR = v; }) },
 
             { g: 'shadow', label: '阴影强度', type: 'range', min: 0, max: 100, step: 1, unit: '%',
               value: Math.round(num(sg.shadowOpacity, 35)),
@@ -113,9 +108,15 @@
         const host = document.getElementById('borderParams');
         if (!host || !t) return;
         const list = defs();
+        const style = String(t.photoFrameStyle || '').toUpperCase();
+        const framed = !!style;
+        const vis = (window.StyleCaps && window.StyleCaps.visibleRows)
+            ? window.StyleCaps.visibleRows(style) : {};
         let out = '';
         GROUPS.forEach(([key, title], gi) => {
-            const rows = list.filter((c) => c.g === key);
+            // 相框风格由 engine-styles 自己画，不读 layerList 的填充/描边/阴影
+            if (framed && (key === 'fill' || key === 'stroke' || key === 'shadow')) return;
+            const rows = list.filter((c) => c.g === key && (!c.only || vis[c.only] !== false));
             if (!rows.length) return;
             const body = rows.map((c) => {
                 const id = `${key}-${c.label}`;
@@ -125,9 +126,12 @@
             out += `<details${gi === 0 ? ' open' : ''}><summary>${title}</summary>${body}</details>`;
         });
 
+        if (framed) {
+            out += '<p class="note">当前风格由引擎独立绘制；填充/描边/阴影只对无相框风格生效。</p>';
+        }
+
         // 风格私有参数：缺省不写字段，改了才写进 styleParams
         const P = window.StyleParams;
-        const style = String(t.photoFrameStyle || '').toUpperCase();
         const params = P && P.forStyle ? P.forStyle(style) : [];
         if (params.length) {
             const body = params.map((p) => {

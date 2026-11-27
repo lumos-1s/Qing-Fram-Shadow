@@ -66,7 +66,10 @@ app.whenReady().then(async () => {
 
         const presets = window.QF_PRESETS || [];
         const sel = document.getElementById('preset');
-        if (sel) sel.value = '0';
+        if (sel) {
+            sel.value = '1'; // 无相框风格：填充/描边/阴影这些控件才有效
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
         const bpCount = document.querySelectorAll('[data-bp]').length;
         const swInput = document.querySelector('[data-bp="stroke-宽度"]');
         if (swInput) { swInput.value = '40'; swInput.dispatchEvent(new Event('input', { bubbles: true })); }
