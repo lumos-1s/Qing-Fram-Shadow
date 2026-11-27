@@ -181,6 +181,33 @@ app.whenReady().then(async () => {
             await wait(500);
             out.scrollAfter = sc ? sc.scrollTop : -1;
             out.stillHome = document.getElementById('app').dataset.page === 'home';
+
+            // 9) 自定义 Logo 导入：PNG 保留透明、落到画布与本机池、预览可见
+            document.querySelector('#tabbar [data-page="edit"]').click();
+            await wait(160);
+            document.querySelector('[data-tab="edit"]').click();
+            await wait(160);
+            document.querySelector('[data-edit-sub="element"]').click();
+            await wait(200);
+            out.importBtn = !!document.getElementById('btnImportLogo');
+            const lm = document.createElement('canvas'); lm.width = 240; lm.height = 80;
+            const lg = lm.getContext('2d');
+            lg.clearRect(0, 0, 240, 80);
+            lg.fillStyle = '#e01b22'; lg.fillRect(20, 10, 200, 60);
+            window.qfsNative.pickImages = async () => [{ el: lm, name: 'my-mark.png', w: 240, h: 80, grade: null }];
+            const beforeLogos = (window.App.template.logoElements || []).length;
+            if (out.importBtn) document.getElementById('btnImportLogo').click();
+            await wait(650);
+            const logos = window.App.template.logoElements || [];
+            const last = logos[logos.length - 1];
+            out.logoCount = logos.length - beforeLogos;
+            out.logoName = last && last.name;
+            out.logoPng = !!(last && String(last.dataUrl || '').startsWith('data:image/png'));
+            out.logoPool = JSON.parse(localStorage.getItem('qfs_custom_icons') || '[]').some(x => x.name === 'my-mark');
+            out.logoChip = !!document.querySelector('[data-el-key^="logo"]');
+            const cv = document.getElementById('previewCanvas');
+            const px = cv.getContext('2d').getImageData(Math.round(cv.width / 2), Math.round(cv.height / 2), 1, 1).data;
+            out.logoPixel = px[0] > 150 && px[1] < 90 && px[2] < 90;
         } catch (e) { out.err = String(e && e.stack || e); }
         return out;
     })()`);
@@ -215,6 +242,11 @@ app.whenReady().then(async () => {
     check(!r.err && r.scrollBefore > 0 && r.scrollAfter === 0 && r.stillHome,
         '首页返回键：滚回顶部且不跳页',
         JSON.stringify({ before: r.scrollBefore, after: r.scrollAfter, home: r.stillHome, err: r.err }));
+    check(!r.err && r.importBtn && r.logoCount === 1 && r.logoName === 'my-mark'
+        && r.logoPng && r.logoPool && r.logoChip && r.logoPixel,
+        'Logo 导入：PNG 保留透明、落到画布与本机池、预览可见',
+        JSON.stringify({ btn: r.importBtn, count: r.logoCount, name: r.logoName, png: r.logoPng,
+            pool: r.logoPool, chip: r.logoChip, px: r.logoPixel, err: r.err }));
     check(errors.length === 0, '细节流程无脚本异常', errors.slice(0, 3).join(' / '));
 
     console.log(fails.length ? `\n${fails.length} FAILURE(S)` : '\nALL PASS');

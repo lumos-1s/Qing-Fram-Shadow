@@ -403,6 +403,7 @@
         const list = elemsOf(t);
         const cur = findEl(list, selectedEl);
         let out = `<div class="text-acts">`
+            + `<button id="btnImportLogo" type="button">＋ 导入图片 Logo</button>`
             + `<button id="btnAddTextLogo" type="button">＋ 用文字做 Logo</button>`
             + `<button id="btnAddSticker" type="button">＋ 贴纸 ★</button></div>`
             + `<div class="ctl-row"><label>Logo 文字</label><input type="text" data-draft-logo value="${esc(draftLogoText)}"></div>`
@@ -635,7 +636,7 @@
         return out || '<p class="panel-note">这个风格没有可调参数</p>';
     }
 
-    function bind(panel, onChange, onRebuild, onReplaced) {
+    function bind(panel, onChange, onRebuild, onReplaced, onImportLogo) {
         panel.querySelectorAll('[data-ctl]').forEach((el) => {
             const c = ctls[Number(el.dataset.ctl)];
             if (!c) return;
@@ -672,6 +673,8 @@
             });
         });
 
+        const importLogo = panel.querySelector('#btnImportLogo');
+        if (importLogo) importLogo.addEventListener('click', () => { if (onImportLogo) onImportLogo(); });
         const draft = panel.querySelector('[data-draft-logo]');
         if (draft) draft.addEventListener('input', () => { draftLogoText = draft.value; });
         const addLogo = panel.querySelector('#btnAddTextLogo');

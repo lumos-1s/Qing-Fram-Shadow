@@ -2508,7 +2508,8 @@
         if (state.tab === 'edit' && window.QF_EditPanel) {
             window.QF_EditPanel.bind(panel, () => { syncSignaturePref(); renderPreviewSoon(); },
                 () => { render('edit'); renderPreviewSoon(); },
-                () => { state.preset = null; A.template = state.template; });
+                () => { state.preset = null; A.template = state.template; },
+                () => { importLogoImage(); });
         }
         panel.querySelectorAll('[data-layout]').forEach((b) => {
             b.addEventListener('click', () => setLayout(b.dataset.layout));
@@ -3016,6 +3017,58 @@
         hint(state.template.focalEq === 1 ? '已启用 35mm 等效焦距' : '已恢复原始焦距');
     }
 
+    /* ── 自定义 Logo：选图（PNG 透明底最佳）→ 叠到画布的可拖动元素 ─────── */
+    async function importLogoImage() {
+        if (!state.template) { hint('先套一个风格'); return; }
+        let list = [];
+        try { list = await window.qfsNative.pickImages(); }
+        catch (_) { hint('选图失败'); return; }
+        if (!list || !list.length) return;
+        const src = list[0];
+        let dataUrl = '';
+        try {
+            const el = src.el;
+            if (el && typeof el.getContext === 'function') {
+                // 选图给的是 canvas，直接出 PNG 保留 alpha，别用 JPEG 把透明底刷成黑块
+                dataUrl = el.toDataURL('image/png');
+            } else {
+                const c = document.createElement('canvas');
+                c.width = (el && (el.naturalWidth || el.width)) || 1;
+                c.height = (el && (el.naturalHeight || el.height)) || 1;
+                c.getContext('2d').drawImage(el, 0, 0);
+                dataUrl = c.toDataURL('image/png');
+            }
+        } catch (_) { hint('图片读取失败'); return; }
+        const bmp = window.qfsImage();
+        await new Promise((res) => { bmp.onload = res; bmp.onerror = res; bmp.src = dataUrl; });
+        if (!bmp.naturalWidth) { hint('图片加载失败'); return; }
+        const ratio = (bmp.naturalHeight / bmp.naturalWidth) || 1;
+        const cw = Math.max(1, (canvas && canvas.width) || 1000);
+        const ch = Math.max(1, (canvas && canvas.height) || 1000);
+        const size = Math.max(40, Math.min(Math.round(cw * 0.16), 500,
+            Math.round(ch * 0.5 / Math.max(ratio, 0.05))));
+        const name = (String(src.name || '').replace(/\.[a-z0-9]+$/i, '').trim() || '我的 Logo').slice(0, 24);
+        const el = {
+            name, dataUrl, img: null,
+            x: Math.round(cw / 2), y: Math.round(ch / 2),
+            size, opacity: 100, rotation: 0, z: 10, free: 1, ratio
+        };
+        state.template.logoElements = state.template.logoElements || [];
+        state.template.logoElements.push(el);
+        A.template = state.template;
+        try { if (typeof window.getElementBitmap === 'function') window.getElementBitmap(dataUrl); } catch (_) {}
+        // 存进本机图标池，换风格/重启后还能再找回来（与桌面 qfs_custom_icons 同键）
+        try {
+            const saved = JSON.parse(localStorage.getItem('qfs_custom_icons') || '[]');
+            saved.push({ name, dataUrl, custom: true });
+            localStorage.setItem('qfs_custom_icons', JSON.stringify(saved.slice(-30)));
+        } catch (_) {}
+        state.editSub = 'element';
+        render('edit');
+        renderPreview(true);
+        hint(`已导入 Logo「${name}」· 画布上可拖动缩放`);
+    }
+
     function openLegalModal(title, html) {
         openStyleModal({
             title,
@@ -3098,7 +3151,7 @@
         state.tab = 'edit';
         state.editSub = 'element';
         render('edit');
-        hint('在这里添加 Logo 文字，画布上可直接拖动');
+        hint('点「＋ 导入图片 Logo」选图，或用文字做 Logo');
     });
     document.getElementById('btnUserTerms').addEventListener('click', () => openLegalModal('用户协议',
         '<b>使用范围</b>清框影是本地照片加框工具，供个人合法使用。导入的照片、调好的风格与署名都只处理在本机。'
