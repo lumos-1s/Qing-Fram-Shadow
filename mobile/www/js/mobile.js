@@ -8,6 +8,7 @@
     const A = window.App;
     const state = {
         image: null, images: [], preset: null, template: window.qfsNative.defaultTemplate(),
+        page: 'home', homeQuery: '',
         tab: 'style', editSub: 'border', selectedElement: '', editingText: null,
         filter: '全部', activeSlot: 0, importing: false, exporting: false,
         query: '', favOnly: false, pendingDel: -1,
@@ -89,6 +90,7 @@
         delete im._gradeCache;
         // 缩略图是按 el 画的，转过之后缓存就过期了（照片条/拼图格会显示旧方向）
         delete im._thumb;
+        Object.keys(im).forEach((k) => { if (k.indexOf('_cover') === 0) delete im[k]; });
         if (typeof A.invalidateGrade === 'function') A.invalidateGrade(im);
     }
     function applyImageOp(op) {
@@ -553,14 +555,23 @@
     }
     // 风格/调色/切图页的当前照片条：导入是追加到照片库的，没有这条的话
     // 第二张之后的照片只能在拼图页看到，主流程里永远切不回去。
+    // 照片条从面板搬到画布下方（全局一条）：面板换页签时它不跟着重建，
+    // 切换照片也不会把面板滚动位置顶回顶部。
     function currentStrip() {
-        if (state.images.length < 2) return '';
-        const items = state.images.map((im, i) => {
+        const host = document.getElementById('filmstrip');
+        if (!host) return '';
+        if (state.images.length < 2) {
+            host.hidden = true;
+            host.innerHTML = '';
+            return '';
+        }
+        host.hidden = false;
+        host.innerHTML = state.images.map((im, i) => {
             const active = im === state.image ? ' active' : '';
             return `<button class="photo-thumb${active}" data-current="${i}" title="${esc(im.name)}">`
                 + `<img src="${thumbOf(im, 0.5)}" alt=""><small>${i + 1}</small></button>`;
         }).join('');
-        return `<div class="photo-strip current-strip">${items}</div>`;
+        return '';
     }
     function presetLabel() {
         return (state.preset && (state.preset.templateName || state.preset._fileName)) || '已套用风格';
@@ -568,11 +579,13 @@
     // 顶栏就是新的「状态条」：风格名 + 尺寸/张数，导出固定在右侧。
     // 保留 stageBar(name, meta) 这个老接口，各页签的调用一行都不用改。
     function stageBar(name, meta) {
+        // 首页/我的有自己的标题，编辑页的进度回调不能把它们覆盖掉
+        if (state.page && state.page !== 'edit') return;
         const n = document.getElementById('hdrName');
         const m = document.getElementById('hdrMeta');
         if (n) n.textContent = name || '未选择风格';
         if (m) m.textContent = meta || '—';
-        const th = document.getElementById('hdrThumb');
+        const th = document.getElementById('hdrThumbImg');
         if (th) {
             const src = state.image ? thumbOf(state.image, 0.5) : '';
             if (src) th.src = src; else th.removeAttribute('src');
@@ -1078,6 +1091,7 @@
             if (errs.length) hint(`已导入 ${list.length} 张，${errs.length} 张失败：${errs[0].name}`, 4800);
             else hint(`已导入 ${list.length} 张 · 照片库共 ${state.images.length} 张`);
             updateEmpty();
+            if (state.page !== 'edit') showPage('edit');
             render(state.tab);
         } finally {
             state.importing = false;
@@ -1256,6 +1270,7 @@
     function applyPreset(p) {
         if (!p) return;
         pushUndo();
+        rememberRecent(p);
         state.preset = p;
         state.template = clone(p);
         state.template.templateName = p.templateName || p._fileName || '';
@@ -2608,122 +2623,293 @@
     });
 
     document.getElementById('tabs').addEventListener('click', (e) => {
-        // 导出/切图途中切页签会把画布重画回预览，正在编码的那一帧就废了
+        // 导出/切图途中切工具会把画布重画回预览，正在编码的那一帧就废了
         if (state.exporting) return;
         const tab = e.target.closest('.tab');
-        if (!tab) return;
-        // 设置是「页签行里的图标按钮」，没有 data-tab，交给它自己的监听
-        if (!tab.dataset.tab) return;
-        if (typeof window.qfOpenSheet === 'function') window.qfOpenSheet('half');
+        if (!tab || !tab.dataset.tab) return;
+        if (state.page !== 'edit') showPage('edit');
         render(tab.dataset.tab);
     });
-    // ── 抽屉：露头 / 半屏 / 全屏三档 ─────────────────────────────────────
-    // 画布优先：默认半屏；看照片时把抽屉压到露头，只留五个页签 + 顶栏导出。
-    const sheet = document.getElementById('sheet');
-    const sheetHandle = document.getElementById('sheetHandle');
-    const SHEET_STATES = ['peek', 'half', 'full'];
-    function sheetState() {
-        return SHEET_STATES.find((s) => sheet.classList.contains(s)) || 'half';
-    }
-    function safeBottom() {
-        const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom'));
-        return isFinite(v) ? v : 0;
-    }
-    function sheetTargets() {
-        const h = document.documentElement.clientHeight || window.innerHeight || 800;
-        return { peek: Math.round(66 + safeBottom()), half: Math.round(h * 0.46), full: Math.round(h * 0.78) };
-    }
-    function setSheet(next) {
-        if (SHEET_STATES.indexOf(next) < 0) next = 'half';
-        // 抽屉高度变了，画布显示矩形也跟着变；裁剪框没法平移，直接退出更稳
-        if (cropEdit) closeCropEdit(true);
-        sheet.style.height = '';
-        sheet.classList.remove('dragging');
-        SHEET_STATES.forEach((s) => sheet.classList.toggle(s, s === next));
-    }
-    function cycleSheet() {
-        const cur = sheetState();
-        setSheet(cur === 'peek' ? 'half' : cur === 'half' ? 'full' : 'peek');
-    }
-    let sheetDrag = null;
-    if (sheetHandle) {
-        sheetHandle.addEventListener('pointerdown', (e) => {
-            if (e.button != null && e.button !== 0) return;
-            sheetDrag = {
-                id: e.pointerId, y0: e.clientY, h0: sheet.getBoundingClientRect().height,
-                moved: false
-            };
-            try { sheetHandle.setPointerCapture(e.pointerId); } catch (_) {}
-        });
-        sheetHandle.addEventListener('pointermove', (e) => {
-            if (!sheetDrag || e.pointerId !== sheetDrag.id) return;
-            const dy = sheetDrag.y0 - e.clientY;
-            if (!sheetDrag.moved && Math.abs(dy) > 4) {
-                sheetDrag.moved = true;
-                sheet.classList.add('dragging');
-            }
-            if (!sheetDrag.moved) return;
-            const t = sheetTargets();
-            const h = Math.max(t.peek, Math.min(t.full, sheetDrag.h0 + dy));
-            sheet.style.height = h + 'px';
-        });
-        const endDrag = (e) => {
-            if (!sheetDrag || (e && e.pointerId != null && e.pointerId !== sheetDrag.id)) return;
-            const moved = sheetDrag.moved;
-            sheetDrag = null;
-            if (!moved) { cycleSheet(); return; }
-            const t = sheetTargets();
-            const h = sheet.getBoundingClientRect().height;
-            const best = ['peek', 'half', 'full']
-                .map((k) => [k, Math.abs(h - t[k])])
-                .sort((a, b) => a[1] - b[1])[0][0];
-            setSheet(best);
-        };
-        sheetHandle.addEventListener('pointerup', endDrag);
-        sheetHandle.addEventListener('pointercancel', endDrag);
-        sheetHandle.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cycleSheet(); }
-        });
-    }
-    // 抽屉收起时点页签，自动展开到半屏（否则点了没反应）
-    window.qfOpenSheet = function (next) {
-        if (sheetState() === 'peek') setSheet(next || 'half');
-    };
 
-    document.getElementById('btnSettings').addEventListener('click', () => {
-        window.qfOpenSheet('half');
-        document.querySelectorAll('#tabs .tab').forEach((b) => b.classList.remove('active'));
-        document.getElementById('btnSettings').classList.add('active');
-        panel.innerHTML = `<h2>设置</h2>
-            <div class="ctl-row"><label>导出设置</label>
-                <button id="btnOpenExport" type="button" class="act-btn" style="flex:1">长边 ${exportOpts.maxEdge || '原图'} · ${exportOpts.format.toUpperCase()}</button>
-            </div>
-            <div class="ctl-row"><label>我的风格</label>
-                <button id="btnShareStyle" type="button" class="act-btn" style="flex:1">复制当前样式分享码</button>
-            </div>
-            <div class="ctl-row"><label></label>
-                <button id="btnImportStyle" type="button" class="act-btn" style="flex:1">从分享码导入</button>
-            </div>
-            <p class="panel-note">已存 ${myStyles.length} 个风格（上限 ${MY_STYLE_MAX}）· 分享码以 QFSCFG1: 开头，与桌面端互通。</p>
-            <p class="panel-note">运行平台：${window.qfsNative.platform()} · 内测版 · 无账号、无上传。</p>
-            <p class="panel-note">轻点顶栏「导出」按这里的设置直接保存；长按「导出」随时改。</p>`;
-        const oe = document.getElementById('btnOpenExport');
-        if (oe) oe.addEventListener('click', openExportSheet);
-        const sh = document.getElementById('btnShareStyle');
-        if (sh) sh.addEventListener('click', openShareCodeModal);
-        const im = document.getElementById('btnImportStyle');
-        if (im) im.addEventListener('click', openImportCodeModal);
+    /* ══ 页面路由：首页 / 编辑 / 我的 ═══════════════════════════════
+       首页负责「发现」，编辑页负责「调整」，我的负责「资产与设置」。
+       三页共用一条顶栏和一粒胶囊导航，画布只存在于编辑页。 */
+    const appEl = document.getElementById('app');
+    const pageHome = document.getElementById('pageHome');
+    const pageEdit = document.getElementById('pageEdit');
+    const pageMine = document.getElementById('pageMine');
+    let homePrevPage = 'home';
+
+    function setHeader(title, meta) {
+        const n = document.getElementById('hdrName');
+        const m = document.getElementById('hdrMeta');
+        if (n) n.textContent = title || '';
+        if (m) m.textContent = meta || '';
+        const img = document.getElementById('hdrThumbImg');
+        if (img) {
+            const src = state.image ? thumbOf(state.image, 0.5) : '';
+            if (src) img.src = src; else img.removeAttribute('src');
+        }
+    }
+    function showPage(page) {
+        if (['home', 'edit', 'mine'].indexOf(page) < 0) page = 'home';
+        if (page !== 'home' && state.page !== page) homePrevPage = state.page || 'home';
+        if (page !== 'edit' && cropEdit) closeCropEdit(false);
+        state.page = page;
+        appEl.dataset.page = page;
+        pageHome.hidden = page !== 'home';
+        pageEdit.hidden = page !== 'edit';
+        pageMine.hidden = page !== 'mine';
+        document.querySelectorAll('#tabbar .nav-item').forEach((b) => {
+            b.classList.toggle('active', b.dataset.page === page);
+        });
+        if (page === 'home') {
+            setHeader('清框影', '为摄影爱好者提供最好的边框');
+            renderHome();
+            return;
+        }
+        if (page === 'mine') {
+            setHeader('我的', '本地处理 · 无账号');
+            refreshMine();
+            return;
+        }
+        // 编辑页：重画一次画布，并把顶栏切回「风格名 + 尺寸」
+        currentStrip();
+        renderPreview(true);
+        const styleName = (state.template && state.template.templateName) || '';
+        stageBar(state.image ? (styleName || state.image.name) : '未选择风格',
+            state.image ? `${dimsOf(state.image)} · ${state.images.length} 张照片` : '先导入一张照片');
+        updateUndoUI();
+    }
+
+    /* ── 首页：一条纵向信息流，每段是一排横滑卡 ─────────────────── */
+    function coverOf(im, edge) {
+        if (!im || !im.el) return '';
+        const key = '_cover' + edge;
+        if (im[key]) return im[key];
+        try {
+            const iw = im.el.naturalWidth || im.el.width || 0;
+            const ih = im.el.naturalHeight || im.el.height || 0;
+            if (!iw || !ih) return '';
+            const k = Math.min(1, edge / Math.max(iw, ih));
+            const c = document.createElement('canvas');
+            c.width = Math.max(1, Math.round(iw * k));
+            c.height = Math.max(1, Math.round(ih * k));
+            c.getContext('2d').drawImage(im.el, 0, 0, c.width, c.height);
+            im[key] = c.toDataURL('image/jpeg', 0.72);
+            return im[key];
+        } catch (_) { return ''; }
+    }
+    // 首页大图直接用画布上的「成品帧」：用户看到的就是刚才那张带边框的照片，
+    // 而不是原始底图 —— 比再开一条离屏渲染便宜，也更符合「继续编辑」的语义。
+    function styledCover() {
+        try {
+            if (!canvas || !canvas.width || !state.image) return '';
+            const k = Math.min(1, 720 / Math.max(canvas.width, canvas.height));
+            const c = document.createElement('canvas');
+            c.width = Math.max(1, Math.round(canvas.width * k));
+            c.height = Math.max(1, Math.round(canvas.height * k));
+            c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height);
+            return c.toDataURL('image/jpeg', 0.72);
+        } catch (_) { return ''; }
+    }
+    function wallOf(name) {
+        const items = (window.QF_WALL && window.QF_WALL.items) || [];
+        return items.find((it) => it.preset === name) || null;
+    }
+    function homeCardHtml(idx, name, cover, tag) {
+        return `<button class="home-card" type="button" data-home-preset="${idx}" aria-label="${esc(name)}">`
+            + `${cover ? `<img src="${esc(cover)}" loading="lazy" alt="">` : ''}`
+            + `${tag ? `<span class="home-card-badge">${esc(tag)}</span>` : ''}`
+            + `<span class="home-card-name">${esc(name)}</span></button>`;
+    }
+    function myCardHtml(i, s2) {
+        return `<button class="home-card" type="button" data-home-my="${i}" aria-label="${esc(s2.name)}">`
+            + `${s2.cover ? `<img src="${esc(s2.cover)}" loading="lazy" alt="">` : ''}`
+            + `<span class="home-card-badge">我的</span>`
+            + `<span class="home-card-name">${esc(s2.name)}</span></button>`;
+    }
+    function homeSection(title, tag, cards, more, muted, filterTag) {
+        if (!cards) return '';
+        return `<section class="home-section">
+            <div class="home-sec-head"><h3>${esc(title)}</h3>${tag ? `<span class="home-sec-tag${muted ? ' muted' : ''}">${esc(tag)}</span>` : ''}
+            ${more ? `<button class="home-sec-more" type="button" data-open-styles data-tag="${esc(filterTag || '')}">${esc(more)}</button>` : ''}</div>
+            <div class="home-rail">${cards}</div></section>`;
+    }
+    const RECENT_KEY = 'qfm_recent';
+    let recentKeys = [];
+    try { recentKeys = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]').filter(Boolean).slice(0, 8); }
+    catch (_) { recentKeys = []; }
+    function rememberRecent(p) {
+        const key = favKey(p);
+        if (!key) return;
+        recentKeys = [key, ...recentKeys.filter((k) => k !== key)].slice(0, 8);
+        try { localStorage.setItem(RECENT_KEY, JSON.stringify(recentKeys)); } catch (_) {}
+    }
+    function homeRecentHtml() {
+        if (!recentKeys.length) return '';
+        const presets = window.QF_PRESETS || [];
+        const byKey = new Map(presets.map((p, i) => [favKey(p), i]));
+        const cards = recentKeys.map((k) => {
+            const i = byKey.get(k);
+            if (i == null) return '';
+            const p = presets[i];
+            const name = p.templateName || p._fileName || ('风格 ' + (i + 1));
+            const wall = wallOf(name);
+            return homeCardHtml(i, name, wall && wall.cover, '');
+        }).join('');
+        return homeSection('最近使用', '', cards, '全部风格 ›');
+    }
+    function homeMineHtml() {
+        if (!myStyles.length) return '';
+        const cards = myStyles.slice(0, 8).map((s2, i) => myCardHtml(i, s2)).join('');
+        return homeSection('我的风格', `${myStyles.length} 个`, cards, '管理 ›');
+    }
+    function homeTagSections() {
+        const presets = window.QF_PRESETS || [];
+        const items = (window.QF_WALL && window.QF_WALL.items) || [];
+        const byName = new Map(items.map((it) => [it.preset, it]));
+        const counts = new Map();
+        items.forEach((it) => { if (it.tag) counts.set(it.tag, (counts.get(it.tag) || 0) + 1); });
+        // 分类顺序按「编辑推荐」而不是纯数量：数量排序会让「个性」这种泛分类排在最前
+        const pref = ['经典', '胶片', '拍立得', '水印', '极简', '复古', '黑白', '艺术', '个性'];
+        const rank = (t) => { const i = pref.indexOf(t); return i < 0 ? 99 : i; };
+        return Array.from(counts.entries())
+            .sort((a, b) => (rank(a[0]) - rank(b[0])) || (b[1] - a[1]))
+            .slice(0, 4)
+            .map(([tag, n]) => {
+                const cards = [];
+                presets.forEach((p, i) => {
+                    if (cards.length >= 8) return;
+                    const name = p.templateName || p._fileName || '';
+                    const wall = byName.get(name);
+                    if (!wall || wall.tag !== tag) return;
+                    cards.push(homeCardHtml(i, name, wall.cover, ''));
+                });
+                return homeSection(tag, `${n} 款`, cards.join(''), '全部 ›', true, tag);
+            }).join('');
+    }
+    function homeSearchHtml(q) {
+        const presets = window.QF_PRESETS || [];
+        const items = (window.QF_WALL && window.QF_WALL.items) || [];
+        const byName = new Map(items.map((it) => [it.preset, it]));
+        const hits = [];
+        presets.forEach((p, i) => {
+            const name = p.templateName || p._fileName || '';
+            const wall = byName.get(name);
+            const tag = (wall && wall.tag) || '';
+            if ((name + ' ' + tag).toLowerCase().indexOf(q) >= 0) hits.push(homeCardHtml(i, name, wall && wall.cover, tag));
+        });
+        myStyles.forEach((s2, i) => {
+            if (s2.name.toLowerCase().indexOf(q) >= 0) hits.push(myCardHtml(i, s2));
+        });
+        if (!hits.length) return '<p class="home-empty">没有匹配的风格，换个关键词试试。</p>';
+        return `<section class="home-section">
+            <div class="home-sec-head"><h3>搜索结果</h3><span class="home-sec-tag">${hits.length}</span></div>
+            <div class="home-grid">${hits.slice(0, 30).join('')}</div></section>`;
+    }
+    function renderHome() {
+        const hero = document.getElementById('homeHero');
+        const im = state.image;
+        if (hero) {
+            if (im) {
+                // 左文右图：缩略图用 contain，边框不会被 hero 的横条比例裁掉
+                const bg = styledCover() || coverOf(im, 900);
+                hero.className = 'home-hero filled';
+                hero.style.backgroundImage = '';
+                hero.innerHTML = `<div class="hero-txt">
+                        <div class="hero-kicker">继续编辑</div>
+                        <h2>${esc((state.template && state.template.templateName) || '未套用风格')}</h2>
+                        <p>${esc(dimsOf(im))} · ${state.images.length} 张照片</p>
+                        <button class="hero-btn" type="button" data-goto-edit>回到编辑</button>
+                    </div>
+                    ${bg ? `<img class="hero-thumb" src="${esc(bg)}" alt="当前成品">` : ''}`;
+            } else {
+                hero.className = 'home-hero is-empty';
+                hero.style.backgroundImage = '';
+                hero.innerHTML = `<div class="hero-kicker">开始</div>
+                    <h2>给照片一个边框</h2>
+                    <p>91 款内置风格 · 相机参数水印 · 全程本地处理</p>
+                    <button class="hero-btn" type="button" data-pick>导入照片</button>`;
+            }
+        }
+        const host = document.getElementById('homeSections');
+        if (!host) return;
+        const q = (state.homeQuery || '').trim().toLowerCase();
+        if (q) { host.innerHTML = homeSearchHtml(q); return; }
+        host.innerHTML = [homeRecentHtml(), homeMineHtml(), homeTagSections()].filter(Boolean).join('')
+            || '<p class="home-empty">风格库还没加载好，稍后再试。</p>';
+    }
+
+    /* ── 我的：资产与设置 ───────────────────────────────────────── */
+    function refreshMine() {
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        set('mineStylesCount', String(myStyles.length));
+        set('mineGradesCount', String(gradePresets.length));
+        set('minePhotosCount', String(state.images.length));
+        set('mineExportSum', `${exportOpts.maxEdge ? exportOpts.maxEdge + 'px' : '原图'} · ${exportOpts.format.toUpperCase()}`);
+        set('minePlatform', window.qfsNative.platform());
+    }
+
+    // 首页交互：卡片直接套用并进编辑页
+    pageHome.addEventListener('click', (e) => {
+        const card = e.target.closest('[data-home-preset]');
+        if (card) {
+            const p = (window.QF_PRESETS || [])[Number(card.dataset.homePreset)];
+            if (p) { applyPreset(p); showPage('edit'); }
+            return;
+        }
+        const mine = e.target.closest('[data-home-my]');
+        if (mine) { applyMyStyle(Number(mine.dataset.homeMy)); showPage('edit'); return; }
+        if (e.target.closest('[data-pick]')) { importPhotos(); return; }
+        if (e.target.closest('[data-goto-edit]')) { showPage('edit'); return; }
+        const more = e.target.closest('[data-open-styles]');
+        if (more) {
+            // 「全部 ›」带着分区名进风格工具，直接落到该分类，而不是回到「全部」
+            state.filter = more.dataset.tag || '全部';
+            showPage('edit');
+            render('style');
+        }
     });
-    const thumbBtn = document.getElementById('btnThumb');
-    if (thumbBtn) thumbBtn.addEventListener('click', () => {
-        if (state.tab !== 'style') render('style');
-        setSheet(sheetState() === 'peek' ? 'half' : sheetState());
+    const homeQueryEl = document.getElementById('homeQuery');
+    if (homeQueryEl) {
+        homeQueryEl.addEventListener('input', () => {
+            state.homeQuery = homeQueryEl.value || '';
+            renderHome();
+        });
+    }
+
+    // 导航 / 顶栏
+    document.getElementById('tabbar').addEventListener('click', (e) => {
+        const b = e.target.closest('.nav-item');
+        if (b) showPage(b.dataset.page);
     });
+    document.getElementById('btnBack').addEventListener('click', () => {
+        showPage(state.page === 'mine' ? (homePrevPage || 'home') : 'home');
+    });
+    document.getElementById('btnSettings').addEventListener('click', () => showPage('mine'));
+    document.getElementById('hdrThumb').addEventListener('click', () => showPage('edit'));
+    const filmstripEl = document.getElementById('filmstrip');
+    if (filmstripEl) {
+        filmstripEl.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-current]');
+            if (b) selectCurrent(Number(b.dataset.current));
+        });
+    }
+
+    // 我的页入口
+    document.getElementById('btnOpenExport').addEventListener('click', openExportSheet);
+    document.getElementById('btnShareStyle').addEventListener('click', openShareCodeModal);
+    document.getElementById('btnImportStyle').addEventListener('click', openImportCodeModal);
+    document.getElementById('mineStylesRow').addEventListener('click', () => { showPage('edit'); render('style'); });
+    document.getElementById('mineGradesRow').addEventListener('click', () => { showPage('edit'); render('grade'); });
+    document.getElementById('minePhotosRow').addEventListener('click', () => { showPage('edit'); render('puzzle'); });
 
     // 有引擎时先用它，否则降级自绘
     if (typeof window.__render !== 'function') paintFallback();
     updateEmpty();
     render('style');
     updateUndoUI();
+    showPage('home');
     window.QF_MOBILE_READY = true;
 })();

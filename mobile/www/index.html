@@ -1,36 +1,48 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#181B1A">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'">
-<title>清框影 · 手机版</title>
-<link rel="stylesheet" href="css/mobile.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0B0C0B">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'">
+  <title>清框影</title>
+  <link rel="stylesheet" href="css/mobile.css">
 </head>
 <body>
-<div id="app">
+<div id="app" data-page="home">
   <header id="mHeader">
-    <button id="btnThumb" class="hdr-thumb" type="button" aria-label="照片库">
-      <img id="hdrThumb" alt="">
-    </button>
+    <button id="btnBack" class="icon-btn back-btn" type="button" aria-label="返回">‹</button>
+    <button id="hdrThumb" class="hdr-thumb" type="button" aria-label="回到编辑"><img id="hdrThumbImg" alt=""></button>
     <div class="hdr-title">
       <b id="hdrName">清框影</b>
-      <small id="hdrMeta">先导入一张照片</small>
+      <small id="hdrMeta">为摄影爱好者提供最好的边框</small>
     </div>
     <div class="header-acts">
       <button id="btnUndo" class="icon-btn" aria-label="撤销" title="撤销" disabled>↶</button>
       <button id="btnRedo" class="icon-btn" aria-label="重做" title="重做" disabled>↷</button>
       <button id="btnPick" class="icon-btn" aria-label="导入照片" title="导入照片">＋</button>
+      <button id="btnSettings" class="icon-btn" aria-label="我的" title="我的">◍</button>
       <button id="btnExport" class="export-btn" type="button">导出</button>
     </div>
   </header>
 
-  <main id="mMain">
+  <!-- ── 首页：发现风格 ─────────────────────────────────────────── -->
+  <main id="pageHome" class="page home-page">
+    <div class="home-scroll" id="homeScroll">
+      <div id="homeHero" class="home-hero"></div>
+      <div class="home-search">
+        <input id="homeQuery" type="search" enterkeyhint="search" placeholder="搜风格或分类，如 拍立得 / 胶片">
+      </div>
+      <div id="homeSections"></div>
+      <p class="home-foot">照片全程本地处理 · 不上传、不需要账号</p>
+    </div>
+  </main>
+
+  <!-- ── 编辑页：画布 + 照片条 + 工具轨 + 面板 ──────────────────── -->
+  <main id="pageEdit" class="page edit-page" hidden>
     <section id="stage">
       <canvas id="previewCanvas"></canvas>
       <textarea id="textEditor" hidden spellcheck="false" aria-label="编辑文字"></textarea>
-      <div id="toast" hidden role="status"></div>
       <div id="stageEmpty" class="empty-hint">
         <div class="empty-ico">▧</div>
         <b>先导入一张照片</b>
@@ -60,59 +72,114 @@
       </div>
     </section>
 
-    <section id="sheet" class="half" aria-label="编辑面板">
-      <div id="sheetHandle" role="button" tabindex="0" aria-label="展开或收起面板">
-        <span></span>
-      </div>
-      <nav id="tabs" aria-label="主功能">
-        <button class="tab active" data-tab="style"><span class="ico">✦</span>风格</button>
-        <button class="tab" data-tab="edit"><span class="ico">✎</span>编辑</button>
-        <button class="tab" data-tab="puzzle"><span class="ico">▤</span>拼图</button>
-        <button class="tab" data-tab="grade"><span class="ico">◐</span>调色</button>
-        <button class="tab" data-tab="crop"><span class="ico">▦</span>切图</button>
-        <button id="btnSettings" class="tab tab-icon" type="button" aria-label="设置" title="设置"><span class="ico">⚙</span></button>
-      </nav>
-      <section id="panel" aria-live="polite"></section>
-    </section>
+    <div id="filmstrip" class="filmstrip" hidden></div>
+
+    <nav id="tabs" aria-label="编辑工具">
+      <button class="tab active" data-tab="style"><span class="ico">✦</span>风格</button>
+      <button class="tab" data-tab="edit"><span class="ico">▤</span>版式</button>
+      <button class="tab" data-tab="grade"><span class="ico">◐</span>调色</button>
+      <button class="tab" data-tab="puzzle"><span class="ico">▦</span>拼图</button>
+      <button class="tab" data-tab="crop"><span class="ico">⌗</span>切图</button>
+    </nav>
+
+    <section id="panel" aria-live="polite"></section>
   </main>
 
-  <!-- 导出选项：长边 / 格式 / 画质；记住上次选择 -->
-  <div id="exportSheet" class="modal" hidden>
-    <div class="modal-mask" data-export-close></div>
-    <div class="modal-card" role="dialog" aria-modal="true" aria-label="导出设置">
-      <h2>导出</h2>
-      <div class="opt-row" id="rowScope" hidden><label>范围</label>
-        <div class="chips" id="optScope">
-          <button class="chip" data-scope="current">当前一张</button>
-          <button class="chip" data-scope="all">全部</button>
+  <!-- ── 我的 ────────────────────────────────────────────────── -->
+  <main id="pageMine" class="page mine-page" hidden>
+    <div class="mine-scroll">
+      <div class="mine-card mine-id">
+        <div class="mine-logo">清</div>
+        <div class="mine-id-txt">
+          <b>清框影</b>
+          <span>照片全程本地处理 · 无账号 · 无上传</span>
         </div>
       </div>
-      <div class="opt-row"><label>长边</label>
-        <div class="chips" id="optSize">
-          <button class="chip" data-size="0">原图</button>
-          <button class="chip" data-size="4000">4000</button>
-          <button class="chip" data-size="2000">2000</button>
-          <button class="chip" data-size="1080">1080</button>
-        </div>
+
+      <section class="mine-group">
+        <h3>我的内容</h3>
+        <button class="mine-row" id="mineStylesRow" type="button">
+          <span class="mine-ico">✦</span><span class="mine-label">我的风格</span><em id="mineStylesCount">0</em><span class="mine-arrow">›</span>
+        </button>
+        <button class="mine-row" id="mineGradesRow" type="button">
+          <span class="mine-ico">◐</span><span class="mine-label">我的调色</span><em id="mineGradesCount">0</em><span class="mine-arrow">›</span>
+        </button>
+        <button class="mine-row" id="minePhotosRow" type="button">
+          <span class="mine-ico">▧</span><span class="mine-label">照片库</span><em id="minePhotosCount">0</em><span class="mine-arrow">›</span>
+        </button>
+      </section>
+
+      <section class="mine-group">
+        <h3>导出</h3>
+        <button class="mine-row" id="btnOpenExport" type="button">
+          <span class="mine-ico">⇩</span><span class="mine-label">导出设置</span><em id="mineExportSum">原图 · JPEG</em><span class="mine-arrow">›</span>
+        </button>
+      </section>
+
+      <section class="mine-group">
+        <h3>样式</h3>
+        <button class="mine-row" id="btnShareStyle" type="button">
+          <span class="mine-ico">⤴</span><span class="mine-label">复制当前样式分享码</span><span class="mine-arrow">›</span>
+        </button>
+        <button class="mine-row" id="btnImportStyle" type="button">
+          <span class="mine-ico">⤵</span><span class="mine-label">从分享码导入</span><span class="mine-arrow">›</span>
+        </button>
+      </section>
+
+      <section class="mine-group">
+        <h3>关于</h3>
+        <div class="mine-row mine-row-static"><span class="mine-ico">◎</span><span class="mine-label">运行平台</span><em id="minePlatform">web</em></div>
+        <div class="mine-row mine-row-static"><span class="mine-ico">◇</span><span class="mine-label">版本</span><em>0.1 · 内测版</em></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- 底部胶囊导航 -->
+  <nav id="tabbar" aria-label="主导航">
+    <button class="nav-item active" data-page="home" type="button"><span class="nav-ico">⌂</span><span>首页</span></button>
+    <button class="nav-item" data-page="edit" type="button"><span class="nav-ico">◨</span><span>编辑</span></button>
+    <button class="nav-item" data-page="mine" type="button"><span class="nav-ico">☺</span><span>我的</span></button>
+  </nav>
+
+  <div id="toast" hidden role="status"></div>
+</div>
+
+<!-- 导出选项：范围 / 长边 / 格式 / 画质；记住上次选择 -->
+<div id="exportSheet" class="modal" hidden>
+  <div class="modal-mask" data-export-close></div>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="导出设置">
+    <h2>导出</h2>
+    <div class="opt-row" id="rowScope" hidden><label>范围</label>
+      <div class="chips" id="optScope">
+        <button class="chip" data-scope="current">当前一张</button>
+        <button class="chip" data-scope="all">全部</button>
       </div>
-      <div class="opt-row"><label>格式</label>
-        <div class="chips" id="optFormat">
-          <button class="chip" data-format="jpeg">JPEG</button>
-          <button class="chip" data-format="png">PNG</button>
-        </div>
+    </div>
+    <div class="opt-row"><label>长边</label>
+      <div class="chips" id="optSize">
+        <button class="chip" data-size="0">原图</button>
+        <button class="chip" data-size="4000">4000</button>
+        <button class="chip" data-size="2000">2000</button>
+        <button class="chip" data-size="1080">1080</button>
       </div>
-      <div class="opt-row" id="rowQuality"><label>画质</label>
-        <div class="chips" id="optQuality">
-          <button class="chip" data-quality="0.92">高</button>
-          <button class="chip" data-quality="0.85">标准</button>
-          <button class="chip" data-quality="0.75">小体积</button>
-        </div>
+    </div>
+    <div class="opt-row"><label>格式</label>
+      <div class="chips" id="optFormat">
+        <button class="chip" data-format="jpeg">JPEG</button>
+        <button class="chip" data-format="png">PNG</button>
       </div>
-      <p class="panel-note" id="exportHint">—</p>
-      <div class="modal-acts">
-        <button id="btnExportCancel" type="button">取消</button>
-        <button id="btnExportGo" class="act-btn primary" type="button">保存 / 分享</button>
+    </div>
+    <div class="opt-row" id="rowQuality"><label>画质</label>
+      <div class="chips" id="optQuality">
+        <button class="chip" data-quality="0.92">高</button>
+        <button class="chip" data-quality="0.85">标准</button>
+        <button class="chip" data-quality="0.75">小体积</button>
       </div>
+    </div>
+    <p class="panel-note" id="exportHint">—</p>
+    <div class="modal-acts">
+      <button id="btnExportCancel" type="button">取消</button>
+      <button id="btnExportGo" class="act-btn primary" type="button">保存 / 分享</button>
     </div>
   </div>
 </div>
