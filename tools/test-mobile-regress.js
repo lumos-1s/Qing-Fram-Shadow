@@ -244,7 +244,7 @@ app.whenReady().then(async () => {
             document.querySelector('[data-tab="edit"]').click();
             await wait(450);
             edit = {
-                tabs: document.querySelectorAll('#tabs .tab').length,
+                tabs: document.querySelectorAll('#tabs .tab[data-tab]').length,
                 subs: document.querySelectorAll('[data-edit-sub]').length,
                 ctls: document.querySelectorAll('[data-ctl]').length,
                 stageName: document.getElementById('hdrName').textContent,
@@ -687,6 +687,87 @@ app.whenReady().then(async () => {
             layout.cards = document.querySelectorAll('.style-big').length;
         } catch (e) { layoutErr = String(e && e.message || e); }
 
+        // 23.5) 撤销 / 重做、导出选项、长按对比原图
+        let extras = {}, extrasErr = '';
+        try {
+            document.querySelector('[data-tab="style"]').click();
+            await wait(200);
+            const beforeName = String(window.App.template.templateName || '');
+            const card = document.querySelector('[data-preset="2"]');
+            if (card) card.click();
+            await wait(320);
+            const applied = String(window.App.template.templateName || '');
+            document.getElementById('btnUndo').click();
+            await wait(320);
+            const undone = String(window.App.template.templateName || '');
+            document.getElementById('btnRedo').click();
+            await wait(320);
+            extras.undo = {
+                beforeName, applied, undone,
+                redone: String(window.App.template.templateName || ''),
+                canUndo: !document.getElementById('btnUndo').disabled
+            };
+
+            // 长按导出 = 选项弹层；改档位后记住，再恢复默认，免得污染后续导出用例
+            const ex = document.getElementById('btnExport');
+            ex.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 11, button: 0 }));
+            await wait(620);
+            extras.exportOpened = !document.getElementById('exportSheet').hidden;
+            document.querySelector('#optSize [data-size="2000"]').click();
+            document.querySelector('#optFormat [data-format="png"]').click();
+            extras.exportHint = (document.getElementById('exportHint').textContent || '');
+            extras.exportStored = localStorage.getItem('qfm_export') || '';
+            document.querySelector('#optSize [data-size="0"]').click();
+            document.querySelector('#optFormat [data-format="jpeg"]').click();
+            document.querySelector('#optQuality [data-quality="0.92"]').click();
+            document.getElementById('btnExportCancel').click();
+            await wait(120);
+            extras.exportClosed = document.getElementById('exportSheet').hidden;
+
+            // 长按画布 = 看原图（状态位由 mobile.js 暴露）
+            const cv = document.getElementById('previewCanvas');
+            const r = cv.getBoundingClientRect();
+            const opts2 = { bubbles: true, pointerId: 12, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+            cv.dispatchEvent(new PointerEvent('pointerdown', opts2));
+            await wait(560);
+            extras.compareOn = !!window.qfCompareActive;
+            cv.dispatchEvent(new PointerEvent('pointerup', opts2));
+            await wait(200);
+            extras.compareOff = !window.qfCompareActive;
+        } catch (e) { extrasErr = String(e && e.message || e); }
+
+        // 23.6) 导出选项真的落到成品：1080 长边 + PNG
+        let exportOpt = {}, exportOptErr = '';
+        try {
+            const ex = document.getElementById('btnExport');
+            ex.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 13, button: 0 }));
+            await wait(620);
+            document.querySelector('#optSize [data-size="1080"]').click();
+            document.querySelector('#optFormat [data-format="png"]').click();
+            let saved = null;
+            const orig = window.qfsNative.saveImage;
+            window.qfsNative.saveImage = async (d, n) => { saved = { d, n }; return { ok: true, mode: 'download' }; };
+            document.getElementById('btnExportGo').click();
+            for (let i = 0; i < 120 && !saved; i++) await wait(150);
+            window.qfsNative.saveImage = orig;
+            const d = (saved && saved.d) || '';
+            const b64 = d.split(',')[1] || '';
+            const bin = atob(b64.slice(0, 48));
+            const pngW = ((bin.charCodeAt(16) << 24) | (bin.charCodeAt(17) << 16)
+                | (bin.charCodeAt(18) << 8) | bin.charCodeAt(19)) >>> 0;
+            const pngH = ((bin.charCodeAt(20) << 24) | (bin.charCodeAt(21) << 16)
+                | (bin.charCodeAt(22) << 8) | bin.charCodeAt(23)) >>> 0;
+            exportOpt = { mime: d.slice(0, 15), name: saved && saved.n, pngW, pngH, len: d.length };
+            // 还原默认，别把 1080/PNG 留给下一次运行
+            ex.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 14, button: 0 }));
+            await wait(620);
+            document.querySelector('#optSize [data-size="0"]').click();
+            document.querySelector('#optFormat [data-format="jpeg"]').click();
+            document.querySelector('#optQuality [data-quality="0.92"]').click();
+            document.getElementById('btnExportCancel').click();
+            await wait(200);
+        } catch (e) { exportOptErr = String(e && e.message || e); }
+
         // 24) 桌面功能同步第一批：自动调色 / 效果 / 拼图选项 / 切图自定义 / 背景模糊
         let sync1 = {}, sync1Err = '';
         try {
@@ -759,7 +840,7 @@ app.whenReady().then(async () => {
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
             edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, dbl, dblErr,
             pinch, pinchErr, exif, exifErr, multi, multiErr, autofs, autofsErr, layout, layoutErr,
-            sync1, sync1Err, rawFull, rawFullErr
+            extras, extrasErr, exportOpt, exportOptErr, sync1, sync1Err, rawFull, rawFullErr
         };
     })()`);
 
@@ -862,6 +943,27 @@ app.whenReady().then(async () => {
         && r.layout.afterTap1 && r.layout.afterTap2
         && r.layout.rail && r.layout.railScroll === 'auto' && r.layout.cards > 0,
         '新版布局：画布优先、顶栏导出、抽屉三档、风格横滑长廊', JSON.stringify({ layout: r.layout, err: r.layoutErr }));
+
+    check(!r.extrasErr && r.extras.undo && r.extras.undo.applied !== r.extras.undo.beforeName
+        && r.extras.undo.undone === r.extras.undo.beforeName
+        && r.extras.undo.redone === r.extras.undo.applied && r.extras.undo.canUndo,
+        '撤销/重做：套预设一步、撤销回原模板、重做再回来',
+        JSON.stringify({ undo: r.extras && r.extras.undo, err: r.extrasErr }));
+
+    check(!r.extrasErr && r.extras.exportOpened && /2000/.test(r.extras.exportHint)
+        && /PNG/.test(r.extras.exportHint) && /"maxEdge":2000/.test(r.extras.exportStored)
+        && r.extras.exportClosed,
+        '导出选项：长按打开、长边/格式写入偏好、取消关闭',
+        JSON.stringify({ extras: r.extras, err: r.extrasErr }));
+
+    check(!r.extrasErr && r.extras.compareOn && r.extras.compareOff,
+        '长按画布看原图、松手恢复', JSON.stringify({ extras: r.extras, err: r.extrasErr }));
+
+    check(!r.exportOptErr && /^data:image\/png/.test(r.exportOpt.mime || '')
+        && Math.max(r.exportOpt.pngW || 0, r.exportOpt.pngH || 0) === 1080
+        && /\.png$/.test(r.exportOpt.name || ''),
+        '导出选项生效：1080 长边 + PNG 真落到成品',
+        JSON.stringify({ exportOpt: r.exportOpt, err: r.exportOptErr }));
 
     check(!r.sync1Err && r.sync1.autoBtn && r.sync1.fx && r.sync1.gradeChanged && r.sync1.vignette === 60,
         '自动调色与效果滑块已同步到手机', JSON.stringify({ sync1: r.sync1, err: r.sync1Err }));

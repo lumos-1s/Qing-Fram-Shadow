@@ -16,6 +16,80 @@
 
     const textEditor = document.getElementById('textEditor');
     let textOrig = '';
+
+    // ── 撤销 / 重做：模板 + 调色各存一份快照 ─────────────────────────────
+    // 快照在「动手之前」压栈（面板 pointerdown / 元素按下 / 套预设前），
+    // 拖一次滑块只算一步；撤销时跳过与当前状态相同的空步。
+    const UNDO_MAX = 20;
+    const undoStack = [];
+    const redoStack = [];
+    function snapNow() {
+        return JSON.stringify({
+            t: state.template,
+            g: state.image ? (state.image.grade || null) : null,
+            p: state.preset ? (state.preset._fileName || '') : ''
+        });
+    }
+    function updateUndoUI() {
+        const u = document.getElementById('btnUndo');
+        const r = document.getElementById('btnRedo');
+        if (u) u.disabled = undoStack.length === 0;
+        if (r) r.disabled = redoStack.length === 0;
+    }
+    function pushUndo() {
+        const s = snapNow();
+        if (undoStack.length && undoStack[undoStack.length - 1] === s) return false;
+        undoStack.push(s);
+        if (undoStack.length > UNDO_MAX) undoStack.shift();
+        redoStack.length = 0;
+        updateUndoUI();
+        return true;
+    }
+    function applySnap(s) {
+        const o = JSON.parse(s);
+        state.template = o.t;
+        A.template = state.template;
+        state.preset = o.p ? ((window.QF_PRESETS || []).find((p) => p._fileName === o.p) || null) : null;
+        if (state.image) {
+            if (o.g) state.image.grade = o.g; else delete state.image.grade;
+            if (typeof A.invalidateGrade === 'function') A.invalidateGrade(state.image);
+        }
+        render(state.tab);   // 面板与画布一起回到快照（render 内部会重画预览）
+        updateUndoUI();
+    }
+    function undo() {
+        const cur = snapNow();
+        let s = null;
+        while (undoStack.length) {
+            const c = undoStack.pop();
+            if (c !== cur) { s = c; break; }
+        }
+        if (s == null) { updateUndoUI(); hint('没有可撤销的操作'); return; }
+        redoStack.push(cur);
+        applySnap(s);
+        hint('已撤销');
+    }
+    function redo() {
+        const cur = snapNow();
+        let s = null;
+        while (redoStack.length) {
+            const c = redoStack.pop();
+            if (c !== cur) { s = c; break; }
+        }
+        if (s == null) { updateUndoUI(); hint('没有可重做的操作'); return; }
+        undoStack.push(cur);
+        applySnap(s);
+        hint('已重做');
+    }
+    document.getElementById('btnUndo').addEventListener('click', undo);
+    document.getElementById('btnRedo').addEventListener('click', redo);
+    // 面板里任何一次「按下/聚焦」都先记一版：滑块拖一次只压一步
+    panel.addEventListener('pointerdown', () => pushUndo(), true);
+    panel.addEventListener('focusin', (e) => {
+        const t = e.target;
+        if (t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) pushUndo();
+    }, true);
+
     let lastTap = { t: 0, key: '' };
     let lastEmptyTap = 0;
     // 双指缩放/平移预览（只改 CSS transform，不碰导出画布）
@@ -299,6 +373,7 @@
     // 双击文字就地编辑：引擎看到 App._textEditor 会跳过同一元素，避免画布字形和输入框重影
     function openTextEditor(line) {
         if (!textEditor || !line) return;
+        pushUndo();
         state.editingText = line;
         textOrig = String(line.text || '');
         A._textEditor = { el: line };
@@ -347,6 +422,36 @@
     }
 
     let elDrag = null;
+
+    // ── 长按画布 = 看原图（松手返回）────────────────────────────────────
+    // 只在可编辑页签生效；按住 420ms 且没有位移/捏合才触发，避免和点选、拖动打架。
+    let pressTimer = 0, pressStart = null, pressComparing = false;
+    function clearPressTimer() {
+        if (pressTimer) { clearTimeout(pressTimer); pressTimer = 0; }
+        pressStart = null;
+    }
+    function startPressTimer(e) {
+        if (!state.image || state.tab === 'puzzle' || state.tab === 'crop') return;
+        if (state.tab === 'edit' && state.selectedElement) return;
+        pressStart = { x: e.clientX, y: e.clientY };
+        window.qfCompareActive = false;
+        clearTimeout(pressTimer);
+        pressTimer = setTimeout(() => {
+            pressTimer = 0;
+            if (elDrag || pinch || state.editingText || !state.image) return;
+            pressComparing = true;
+            window.qfCompareActive = true;
+            try { window.__render(A, true); } catch (_) { pressComparing = false; }
+            if (pressComparing) hint('原图 · 松开返回');
+        }, 420);
+    }
+    function endPressCompare() {
+        clearPressTimer();
+        if (!pressComparing) return;
+        pressComparing = false;
+        window.qfCompareActive = false;
+        renderPreview();
+    }
     function pointerPos(e) {
         const r = canvas.getBoundingClientRect();
         return {
@@ -357,6 +462,7 @@
     canvas.addEventListener('pointerdown', (e) => {
         if (state.exporting || !state.image) return;
         activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        startPressTimer(e);
         try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
         if (activePointers.size === 2) {
             elDrag = null;
@@ -412,6 +518,8 @@
         }
         const hh = handleHit(pt);
         if (hh) {
+            clearPressTimer();
+            pushUndo();
             const o = hh.hit.obj;
             elDrag = {
                 mode: hh.mode, obj: o, kind: hh.hit.key.split(':')[0],
@@ -425,6 +533,7 @@
             return;
         }
         const hit = hitElement(pt);
+        if (hit) { clearPressTimer(); pushUndo(); }
         if (!hit) {
             const nowEmpty = Date.now();
             if (nowEmpty - lastEmptyTap < 400 && (viewZoom !== 1 || viewPan.x || viewPan.y)) {
@@ -459,6 +568,7 @@
         hint('已选中' + ({ logo: 'Logo', sticker: '贴纸', text: '文字' }[elDrag.kind] || '元素') + '，可拖动');
     });
     canvas.addEventListener('pointermove', (e) => {
+        if (pressStart && Math.hypot(e.clientX - pressStart.x, e.clientY - pressStart.y) > 6) clearPressTimer();
         if (activePointers.has(e.pointerId)) {
             activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         }
@@ -508,6 +618,7 @@
         if (e && e.pointerId != null) activePointers.delete(e.pointerId);
         if (activePointers.size < 2) pinch = null;
         elDrag = null;
+        endPressCompare();
     };
     canvas.addEventListener('pointerup', endElDrag);
     canvas.addEventListener('pointercancel', endElDrag);
@@ -685,6 +796,7 @@
 
     function applyPreset(p) {
         if (!p) return;
+        pushUndo();
         state.preset = p;
         state.template = clone(p);
         state.template.templateName = p.templateName || p._fileName || '';
@@ -748,6 +860,86 @@
         }
     }
 
+    // ── 导出选项：长边 / 格式 / 画质，记住上次选择 ───────────────────────
+    const EXPORT_PREF_KEY = 'qfm_export';
+    const exportOpts = { maxEdge: 0, format: 'jpeg', quality: 0.92 };
+    try {
+        const saved = JSON.parse(localStorage.getItem(EXPORT_PREF_KEY) || '{}');
+        if (saved && typeof saved === 'object') Object.assign(exportOpts, saved);
+    } catch (_) { /* 坏数据就用默认 */ }
+    if (['jpeg', 'png'].indexOf(exportOpts.format) < 0) exportOpts.format = 'jpeg';
+    if (!(Number(exportOpts.quality) > 0 && Number(exportOpts.quality) <= 1)) exportOpts.quality = 0.92;
+    exportOpts.maxEdge = Math.max(0, Number(exportOpts.maxEdge) || 0);
+    function saveExportOpts() {
+        try { localStorage.setItem(EXPORT_PREF_KEY, JSON.stringify(exportOpts)); } catch (_) {}
+    }
+    function exportMime() { return exportOpts.format === 'png' ? 'image/png' : 'image/jpeg'; }
+    function exportExt() { return exportOpts.format === 'png' ? 'png' : 'jpg'; }
+    function exportTarget(srcLong) {
+        const cap = Number(exportOpts.maxEdge) || 0;
+        return cap > 0 ? Math.min(srcLong || cap, cap) : (srcLong || 0);
+    }
+    function encodeCanvas() {
+        return exportOpts.format === 'png'
+            ? canvas.toDataURL('image/png')
+            : canvas.toDataURL('image/jpeg', exportOpts.quality);
+    }
+    const exportSheetEl = document.getElementById('exportSheet');
+    function srcLongEdge() {
+        const im = state.image;
+        if (!im) return 0;
+        return Math.max(Number(im.srcW) || 0, Number(im.srcH) || 0)
+            || Math.max(Number(im.w) || 0, Number(im.h) || 0);
+    }
+    function paintExportOpts() {
+        const size = Number(exportOpts.maxEdge) || 0;
+        document.querySelectorAll('#optSize .chip').forEach((b) => {
+            b.classList.toggle('active', Number(b.dataset.size) === size);
+        });
+        document.querySelectorAll('#optFormat .chip').forEach((b) => {
+            b.classList.toggle('active', b.dataset.format === exportOpts.format);
+        });
+        document.querySelectorAll('#optQuality .chip').forEach((b) => {
+            b.classList.toggle('active', Math.abs(Number(b.dataset.quality) - exportOpts.quality) < 0.001);
+        });
+        const rowQ = document.getElementById('rowQuality');
+        if (rowQ) rowQ.hidden = exportOpts.format === 'png';
+        const src = srcLongEdge();
+        const out = exportTarget(src) || 0;
+        const hintEl = document.getElementById('exportHint');
+        if (hintEl) {
+            const tab = state.tab;
+            const subject = tab === 'puzzle' ? '拼图' : tab === 'crop' ? '切图（每块）' : '成品';
+            hintEl.textContent = src
+                ? `${subject}长边 ${out}px · ${exportOpts.format.toUpperCase()}`
+                    + (exportOpts.format === 'png' ? ' · 无损' : ` · 画质 ${Math.round(exportOpts.quality * 100)}%`)
+                : '先导入一张照片';
+        }
+    }
+    function openExportSheet() {
+        if (!state.image && !state.images.length) { hint('先导入照片'); return; }
+        paintExportOpts();
+        exportSheetEl.hidden = false;
+    }
+    function closeExportSheet() { exportSheetEl.hidden = true; }
+    if (exportSheetEl) {
+        exportSheetEl.addEventListener('click', (e) => {
+            const t = e.target;
+            if (t.closest('[data-export-close]') || t.id === 'btnExportCancel') { closeExportSheet(); return; }
+            const sizeBtn = t.closest('[data-size]');
+            if (sizeBtn) { exportOpts.maxEdge = Number(sizeBtn.dataset.size) || 0; saveExportOpts(); paintExportOpts(); return; }
+            const fmtBtn = t.closest('[data-format]');
+            if (fmtBtn) { exportOpts.format = fmtBtn.dataset.format; saveExportOpts(); paintExportOpts(); return; }
+            const qBtn = t.closest('[data-quality]');
+            if (qBtn) { exportOpts.quality = Number(qBtn.dataset.quality) || 0.92; saveExportOpts(); paintExportOpts(); return; }
+            if (t.id === 'btnExportGo') {
+                closeExportSheet();
+                if (state.tab === 'crop') exportGrid();
+                else exportCurrent();
+            }
+        });
+    }
+
     async function exportCurrent() {
         if (state.exporting) return;
         if (state.editingText) closeTextEditor(true);
@@ -761,18 +953,22 @@
         try {
             if (isPuzzle) {
                 hint('正在渲染拼图…', 12000);
-                // 拼图版式坐标固定在 1000 单位，只有 exportScale 能把成品真正放大到 4000px
-                renderPreview(true, { displayMax: 4000, uiDprOverride: 1, exportScale: 4000 });
-                try { data = canvas.toDataURL('image/jpeg', 0.92); }
+                // 拼图版式坐标固定在 1000 单位，只有 exportScale 能把成品真正放大到目标长边
+                const target = exportTarget(4000) || 4000;
+                renderPreview(true, { displayMax: target, uiDprOverride: 1, exportScale: target });
+                if (target !== 4000) note = ` · 长边 ${target}px`;
+                try { data = encodeCanvas(); }
                 catch (e) { hint('导出失败：' + ((e && e.message) || e), 4200); return; }
             } else {
                 // 先渲染全尺寸帧，再释放原图、编码。编码期间不再占着两张 6000px 画布。
                 await withFullImage(state.image, async (targetPx, fallback, capped) => {
                     if (fallback) note = ' · 全尺寸解码失败，已用预览尺寸';
                     else if (capped) note = ' · 已按 6000px 上限导出';
-                    renderPreview(true, { displayMax: targetPx, uiDprOverride: 1 });
+                    const out = Math.max(1, exportTarget(targetPx) || targetPx);
+                    if (out !== targetPx) note = ` · 长边 ${out}px`;
+                    renderPreview(true, { displayMax: out, uiDprOverride: 1, exportScale: out });
                 });
-                try { data = canvas.toDataURL('image/jpeg', 0.92); }
+                try { data = encodeCanvas(); }
                 catch (e) { hint('导出失败：' + ((e && e.message) || e), 4200); return; }
             }
             if (!data || data.length < 64) { hint('导出失败：画布为空'); return; }
@@ -780,7 +976,7 @@
                 .replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, '_');
             const suffix = isPuzzle ? '_拼图' : '_清框影';
             hint('正在保存…', 12000);
-            const r = await window.qfsNative.saveImage(data, `${base}${suffix}.jpg`);
+            const r = await window.qfsNative.saveImage(data, `${base}${suffix}.${exportExt()}`);
             if (r && r.canceled) hint('已取消保存');
             else if (r && r.ok) hint((r.mode === 'native' ? '已调起系统分享，可存到相册' : '已下载到本机') + note);
             else hint('保存失败：' + ((r && r.error) || '未知错误'), 4800);
@@ -868,15 +1064,15 @@
             const im = state.images[sc.imageIndex];
             const t = thumbOf(im, 0.6);
             const thumb = t ? `<img src="${t}" alt="">` : '';
-            return `<button class="slot${state.activeSlot === i ? ' active' : ''}" data-slot="${i}">`
-                + `${thumb || '<span>空格</span>'}<small>${i + 1}</small></button>`;
+            return `<button class="slot-mini${state.activeSlot === i ? ' active' : ''}" data-slot="${i}" aria-label="第 ${i + 1} 格">`
+                + `${thumb}<small>${i + 1}</small></button>`;
         }).join('');
         const photos = state.images.map((im, i) => {
             return `<button class="photo-thumb" data-photo="${i}"><img src="${thumbOf(im, 0.5)}" alt=""><small>${i + 1}</small></button>`;
         }).join('');
         return `
             <div class="chips">${chips}</div>
-            <div class="puzzle-grid">${cells}</div>
+            <div class="slot-strip">${cells}</div>
             <div class="puzzle-acts">
                 <button id="btnRotateSlot">旋转选中格</button>
                 <button id="btnClearSlot">清空选中格</button>
@@ -977,8 +1173,10 @@
                 let block = null;
                 try {
                     block = sliceOne(canvas, rows, cols, i, state.crop.pad, state.crop.offX, state.crop.offY);
-                    const data = block.toDataURL('image/jpeg', 0.92);
-                    const r = await window.qfsNative.saveImage(data, `${base}_${tag}_${i + 1}.jpg`);
+                    const data = exportOpts.format === 'png'
+                        ? block.toDataURL('image/png')
+                        : block.toDataURL('image/jpeg', exportOpts.quality);
+                    const r = await window.qfsNative.saveImage(data, `${base}_${tag}_${i + 1}.${exportExt()}`);
                     if (r && r.canceled) { canceled = true; break; }
                     if (r && r.ok) ok++; else fail++;
                 } catch (_) { fail++; }
@@ -1241,7 +1439,21 @@
         if (state.exporting) return;
         importPhotos();
     });
-    document.getElementById('btnExport').addEventListener('click', () => {
+    // 轻点 = 按上次的设置直接导出；长按 = 打开选项（长边/格式/画质）
+    const exportBtn = document.getElementById('btnExport');
+    let exportHoldTimer = 0;
+    let exportHeld = false;
+    exportBtn.addEventListener('pointerdown', (e) => {
+        if (e.button != null && e.button !== 0) return;
+        exportHeld = false;
+        clearTimeout(exportHoldTimer);
+        exportHoldTimer = setTimeout(() => { exportHeld = true; openExportSheet(); }, 450);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) =>
+        exportBtn.addEventListener(ev, () => clearTimeout(exportHoldTimer)));
+    exportBtn.addEventListener('click', () => {
+        clearTimeout(exportHoldTimer);
+        if (exportHeld) { exportHeld = false; return; }
         if (state.exporting) return;
         if (state.tab === 'crop') exportGrid();
         else exportCurrent();
@@ -1252,6 +1464,8 @@
         if (state.exporting) return;
         const tab = e.target.closest('.tab');
         if (!tab) return;
+        // 设置是「页签行里的图标按钮」，没有 data-tab，交给它自己的监听
+        if (!tab.dataset.tab) return;
         if (typeof window.qfOpenSheet === 'function') window.qfOpenSheet('half');
         render(tab.dataset.tab);
     });
@@ -1328,7 +1542,16 @@
 
     document.getElementById('btnSettings').addEventListener('click', () => {
         window.qfOpenSheet('half');
-        panel.innerHTML = `<h2>设置</h2><p class="panel-note">运行平台：${window.qfsNative.platform()} · 内测版 · 无账号、无上传。</p>`;
+        document.querySelectorAll('#tabs .tab').forEach((b) => b.classList.remove('active'));
+        document.getElementById('btnSettings').classList.add('active');
+        panel.innerHTML = `<h2>设置</h2>
+            <div class="ctl-row"><label>导出设置</label>
+                <button id="btnOpenExport" type="button" class="act-btn" style="flex:1">长边 ${exportOpts.maxEdge || '原图'} · ${exportOpts.format.toUpperCase()}</button>
+            </div>
+            <p class="panel-note">运行平台：${window.qfsNative.platform()} · 内测版 · 无账号、无上传。</p>
+            <p class="panel-note">轻点顶栏「导出」按这里的设置直接保存；长按「导出」随时改。</p>`;
+        const oe = document.getElementById('btnOpenExport');
+        if (oe) oe.addEventListener('click', openExportSheet);
     });
     const thumbBtn = document.getElementById('btnThumb');
     if (thumbBtn) thumbBtn.addEventListener('click', () => {
@@ -1340,5 +1563,6 @@
     if (typeof window.__render !== 'function') paintFallback();
     updateEmpty();
     render('style');
+    updateUndoUI();
     window.QF_MOBILE_READY = true;
 })();

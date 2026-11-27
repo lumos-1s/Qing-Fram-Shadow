@@ -19,8 +19,9 @@
       <small id="hdrMeta">先导入一张照片</small>
     </div>
     <div class="header-acts">
+      <button id="btnUndo" class="icon-btn" aria-label="撤销" title="撤销" disabled>↶</button>
+      <button id="btnRedo" class="icon-btn" aria-label="重做" title="重做" disabled>↷</button>
       <button id="btnPick" class="icon-btn" aria-label="导入照片" title="导入照片">＋</button>
-      <button id="btnSettings" class="icon-btn" aria-label="设置" title="设置">⚙</button>
       <button id="btnExport" class="export-btn" type="button">导出</button>
     </div>
   </header>
@@ -47,10 +48,45 @@
         <button class="tab" data-tab="puzzle"><span class="ico">▤</span>拼图</button>
         <button class="tab" data-tab="grade"><span class="ico">◐</span>调色</button>
         <button class="tab" data-tab="crop"><span class="ico">▦</span>切图</button>
+        <button id="btnSettings" class="tab tab-icon" type="button" aria-label="设置" title="设置"><span class="ico">⚙</span></button>
       </nav>
       <section id="panel" aria-live="polite"></section>
     </section>
   </main>
+
+  <!-- 导出选项：长边 / 格式 / 画质；记住上次选择 -->
+  <div id="exportSheet" class="modal" hidden>
+    <div class="modal-mask" data-export-close></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="导出设置">
+      <h2>导出</h2>
+      <div class="opt-row"><label>长边</label>
+        <div class="chips" id="optSize">
+          <button class="chip" data-size="0">原图</button>
+          <button class="chip" data-size="4000">4000</button>
+          <button class="chip" data-size="2000">2000</button>
+          <button class="chip" data-size="1080">1080</button>
+        </div>
+      </div>
+      <div class="opt-row"><label>格式</label>
+        <div class="chips" id="optFormat">
+          <button class="chip" data-format="jpeg">JPEG</button>
+          <button class="chip" data-format="png">PNG</button>
+        </div>
+      </div>
+      <div class="opt-row" id="rowQuality"><label>画质</label>
+        <div class="chips" id="optQuality">
+          <button class="chip" data-quality="0.92">高</button>
+          <button class="chip" data-quality="0.85">标准</button>
+          <button class="chip" data-quality="0.75">小体积</button>
+        </div>
+      </div>
+      <p class="panel-note" id="exportHint">—</p>
+      <div class="modal-acts">
+        <button id="btnExportCancel" type="button">取消</button>
+        <button id="btnExportGo" class="act-btn primary" type="button">保存 / 分享</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- 引擎与算法：与桌面端同源，由 tools/sync-mobile-engine.js 同步，禁止手改 -->

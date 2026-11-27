@@ -37,7 +37,7 @@ app.whenReady().then(async () => {
         panel: (document.getElementById('panel').textContent || '').slice(0, 40)
     }))()`);
     check(r.ready, '手机壳页面初始化完成', JSON.stringify(r.ready));
-    check(r.tabs.join(',') === 'style,edit,puzzle,grade,crop', '五个底部页签齐全', r.tabs.join(','));
+    check(r.tabs.filter(Boolean).join(',') === 'style,edit,puzzle,grade,crop', '五个底部页签齐全（外加设置入口）', r.tabs.join(','));
     check(r.active === 'style', '默认停在风格页', r.active);
     check(r.canvas && r.render === 'function' && r.applyGeo === 'function' && r.presets === 'function',
         '共享引擎脚本已加载且可用', JSON.stringify(r));
@@ -118,7 +118,7 @@ app.whenReady().then(async () => {
         const strip = document.querySelectorAll('[data-current]').length;
         document.querySelector('[data-tab="puzzle"]').click();
         await new Promise((r) => setTimeout(r, 200));
-        const slots = document.querySelectorAll('.slot').length;
+        const slots = document.querySelectorAll('.slot-mini').length;
         const layouts = document.querySelectorAll('[data-layout]').length;
         const photos = document.querySelectorAll('[data-photo]').length;
         const slot1 = document.querySelector('[data-slot="1"]');
@@ -131,7 +131,7 @@ app.whenReady().then(async () => {
         const fill = document.getElementById('btnFillAll');
         if (fill) fill.click();
         await new Promise((r) => setTimeout(r, 150));
-        const filled = document.querySelectorAll('.slot img').length;
+        const filled = document.querySelectorAll('.slot-mini img').length;
         return { slots, layouts, photos, strip, assigned, canvasW, filled };
     })()`);
     // P1 已导入 1 张；P3 再导入 4 张是「追加」到照片库，共 5 张
