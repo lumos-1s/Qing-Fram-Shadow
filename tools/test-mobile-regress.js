@@ -812,6 +812,35 @@ app.whenReady().then(async () => {
             sync1.blurGroup = Array.from(document.querySelectorAll('.ctl-group > summary')).some((s) => s.textContent.trim() === '背景模糊');
         } catch (e) { sync1Err = String(e && e.message || e); }
 
+        // 24.2) 我的调色：存当前、重置、套用、长按删除
+        let gp = {}, gpErr = '';
+        try {
+            document.querySelector('[data-tab="grade"]').click();
+            await wait(320);
+            const setS = (k, v) => {
+                const el = document.querySelector('[data-grade="' + k + '"]');
+                el.value = String(v);
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            };
+            setS('exp', 1.1); setS('sat', 33);
+            await wait(320);
+            document.getElementById('btnSaveGrade').click();
+            await wait(380);
+            gp.saved = JSON.parse(localStorage.getItem('qfm_grades') || '[]').length;
+            gp.chips = document.querySelectorAll('[data-grade-preset]').length;
+            document.getElementById('btnGradeReset').click();
+            await wait(320);
+            gp.resetExp = Number(window.App.image.grade.exp);
+            document.querySelector('[data-grade-preset="0"]').click();
+            await wait(460);
+            gp.appliedExp = Number(window.App.image.grade.exp);
+            gp.appliedSat = Number(window.App.image.grade.sat);
+            document.querySelector('[data-grade-preset="0"]').dispatchEvent(
+                new PointerEvent('pointerdown', { bubbles: true, pointerId: 41, button: 0 }));
+            await wait(780);
+            gp.afterDel = JSON.parse(localStorage.getItem('qfm_grades') || '[]').length;
+        } catch (e) { gpErr = String(e && e.message || e); }
+
         // 24.5) 风格搜索 / 收藏 / 照片库移除
         let lib = {}, libErr = '';
         try {
@@ -823,7 +852,7 @@ app.whenReady().then(async () => {
             qEl.dispatchEvent(new Event('input', { bubbles: true }));
             await wait(220);
             lib.searchHits = vis();
-            lib.searchTotal = document.querySelectorAll('.style-cell').length;
+            lib.searchTotal = document.querySelectorAll('.style-cell[data-q]').length;
             lib.searchCount = (document.getElementById('styleCount').textContent || '').trim();
             lib.emptyHidden = document.getElementById('styleEmpty').hidden;
             qEl.value = '不存在的风格xyz';
@@ -841,7 +870,7 @@ app.whenReady().then(async () => {
             lib.favStored = JSON.parse(localStorage.getItem('qfm_favs') || '[]').length;
             document.querySelector('[data-fav-toggle]').click();
             await wait(360);
-            lib.favCards = document.querySelectorAll('.style-cell').length;
+            lib.favCards = document.querySelectorAll('.style-cell[data-q]').length;
             lib.favChipOn = document.querySelector('[data-fav-toggle]').classList.contains('on');
             for (let k = 0; k < 2; k++) {
                 const on = document.querySelector('.fav-btn.on');
@@ -850,7 +879,7 @@ app.whenReady().then(async () => {
             document.querySelector('[data-fav-toggle]').click();
             await wait(320);
             lib.favCleared = JSON.parse(localStorage.getItem('qfm_favs') || '[]').length;
-            lib.cardsBack = document.querySelectorAll('.style-cell').length;
+            lib.cardsBack = document.querySelectorAll('.style-cell[data-q]').length;
 
             document.querySelector('[data-tab="puzzle"]').click();
             await wait(380);
@@ -871,6 +900,18 @@ app.whenReady().then(async () => {
                     const sc = window.App.template.puzzle.slots[k];
                     return sc && Number(sc.imageIndex) >= 0 && Number(sc.imageIndex) < window.App.images.length;
                 });
+
+            document.querySelector('[data-tab="style"]').click();
+            await wait(320);
+            const plainBtn = document.getElementById('btnPlainStyle');
+            if (plainBtn) plainBtn.click();
+            await wait(360);
+            lib.plain = {
+                name: String(window.App.template.templateName || ''),
+                pf: String(window.App.template.photoFrameStyle || ''),
+                margin: Number(window.App.template.baseMargin && window.App.template.baseMargin.marginTop) || 0,
+                active: !!(plainBtn && plainBtn.classList.contains('active'))
+            };
         } catch (e) { libErr = String(e && e.message || e); }
 
         // 25) RAW 全尺寸重解（本地有样本时）
@@ -901,7 +942,7 @@ app.whenReady().then(async () => {
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
             edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, dbl, dblErr,
             pinch, pinchErr, exif, exifErr, multi, multiErr, autofs, autofsErr, layout, layoutErr,
-            extras, extrasErr, exportOpt, exportOptErr, lib, libErr, sync1, sync1Err, rawFull, rawFullErr
+            extras, extrasErr, exportOpt, exportOptErr, gp, gpErr, lib, libErr, sync1, sync1Err, rawFull, rawFullErr
         };
     })()`);
 
@@ -1020,6 +1061,12 @@ app.whenReady().then(async () => {
     check(!r.extrasErr && r.extras.compareOn && r.extras.compareOff,
         '长按画布看原图、松手恢复', JSON.stringify({ extras: r.extras, err: r.extrasErr }));
 
+    check(!r.gpErr && r.gp.saved === 1 && r.gp.chips === 1 && Math.abs(r.gp.resetExp) < 1e-6
+        && Math.abs(r.gp.appliedExp - 1.1) < 0.02 && Math.abs(r.gp.appliedSat - 33) < 0.5
+        && r.gp.afterDel === 0,
+        '我的调色：存预设、重置、套用、长按删除',
+        JSON.stringify({ gp: r.gp, err: r.gpErr }));
+
     check(!r.libErr && r.lib.searchHits > 0 && r.lib.searchHits < r.lib.searchTotal
         && r.lib.emptyHidden && r.lib.searchZero === 0 && r.lib.emptyShown
         && new RegExp('^' + r.lib.searchHits + ' / ' + r.lib.searchTotal).test(r.lib.searchCount),
@@ -1030,6 +1077,11 @@ app.whenReady().then(async () => {
         && r.lib.favCleared === 0 && r.lib.cardsBack === r.lib.searchTotal,
         '风格收藏：星标持久化、只看收藏、取消后回到全部',
         JSON.stringify({ lib: r.lib, err: r.libErr }));
+
+    check(!r.libErr && r.lib.plain && !r.lib.plain.name && !r.lib.plain.pf
+        && r.lib.plain.margin === 0 && r.lib.plain.active,
+        '原图卡：一键去掉边框/文字，回到无风格',
+        JSON.stringify({ plain: r.lib && r.lib.plain, err: r.libErr }));
 
     check(!r.libErr && r.lib.armed === 1 && r.lib.photosAfter === r.lib.photosBefore - 1
         && r.lib.stillHasImage && r.lib.slotsValid,

@@ -879,6 +879,31 @@
             const q = (window.QF_PRESETS || [])[Number(b.dataset.preset)];
             b.classList.toggle('active', q === p);
         });
+        const plainBtn = document.getElementById('btnPlainStyle');
+        if (plainBtn) plainBtn.classList.remove('active');
+    }
+
+    // 回到原图：清空边框/文字/Logo，但保留拼图配置——用户可能只是想去掉相框
+    function applyPlainStyle() {
+        pushUndo();
+        const keepPuzzle = state.template && state.template.puzzle;
+        const t = window.qfsNative.defaultTemplate();
+        if (keepPuzzle) t.puzzle = keepPuzzle;
+        state.preset = null;
+        state.template = t;
+        A.template = t;
+        if (state.image) {
+            renderPreview(true);
+            stageBar('原图 · 无边框', dimsOf(state.image));
+            hint('已去掉风格，回到原图');
+        } else {
+            stageBar('原图 · 无边框', '未导入照片');
+            hint('已回到原图，导入照片后生效');
+        }
+        updateEmpty();
+        panel.querySelectorAll('[data-preset]').forEach((b) => b.classList.remove('active'));
+        const plain = document.getElementById('btnPlainStyle');
+        if (plain) plain.classList.add('active');
     }
 
     // 临时把当前照片换成全尺寸源，渲染导出帧后立即还原。
@@ -1092,11 +1117,14 @@
     function applyStyleQuery() {
         const q = state.query.trim().toLowerCase();
         let n = 0;
-        panel.querySelectorAll('.style-cell').forEach((cell) => {
+        panel.querySelectorAll('.style-cell[data-q]').forEach((cell) => {
             const hit = !q || String(cell.dataset.q || '').indexOf(q) >= 0;
             cell.hidden = !hit;
             if (hit) n += 1;
         });
+        // 「原图」卡不是风格，搜索时先收起来，免得占着结果位
+        const plain = panel.querySelector('[data-plain]');
+        if (plain) plain.hidden = !!q;
         const cnt = document.getElementById('styleCount');
         if (cnt) cnt.textContent = `${n} / ${(window.QF_PRESETS || []).length} 款`;
         const empty = document.getElementById('styleEmpty');
@@ -1119,6 +1147,14 @@
         if (q) shown = shown.filter((x) => (x.name + ' ' + x.tag).toLowerCase().indexOf(q) >= 0);
         const chips = tags.map((t) => `<button class="chip${state.filter === t ? ' active' : ''}" data-tag="${esc(t)}">${esc(t)}</button>`).join('');
         const favChip = `<button class="fav-chip${state.favOnly ? ' on' : ''}" data-fav-toggle="1" aria-pressed="${state.favOnly}">★ ${favSet.size}</button>`;
+        // 套了风格之后也要能回到「无边框」：放在长廊最前面，用当前照片当封面
+        const plainCard = (!q && !state.favOnly && state.filter === '全部')
+            ? `<div class="style-cell" data-plain="1">
+                   <button class="style-big${!state.preset ? ' active' : ''}" id="btnPlainStyle" type="button" aria-label="原图，无边框">
+                       ${state.image ? `<img src="${thumbOf(state.image, 0.5)}" alt="">` : ''}<span>原图 · 无边框</span>
+                   </button>
+               </div>`
+            : '';
         // 横向大卡：封面就是风格效果，点一下立刻套到画布上（实时预览）
         const cards = shown.map(({ p, i, wall, name, tag, key }) => {
             const active = state.preset && state.preset._fileName === p._fileName;
@@ -1138,7 +1174,7 @@
                 ${favChip}
             </div>
             <div class="chips">${chips}</div>
-            <div class="style-rail">${cards}</div>
+            <div class="style-rail">${plainCard}${cards}</div>
             <p class="panel-note" id="styleEmpty"${shown.length ? ' hidden' : ''}>没有匹配的风格，换个关键词，或点「★ 收藏」看已收藏的风格。</p>`;
     }
 
@@ -1231,6 +1267,77 @@
         ['tint', '色调', -100, 100, 1], ['vib', '自然饱和度', -100, 100, 1], ['sat', '饱和度', -100, 100, 1]
     ];
 
+    // ── 我的调色：把当前照片的全局调色存成预设，跨照片复用 ────────────────
+    const GRADE_STORE = 'qfm_grades';
+    let gradePresets = [];
+    try {
+        const raw = JSON.parse(localStorage.getItem(GRADE_STORE) || '[]');
+        if (Array.isArray(raw)) gradePresets = raw.filter((x) => x && x.name && x.grade).slice(0, 12);
+    } catch (_) { gradePresets = []; }
+    function saveGradePresets() {
+        try { localStorage.setItem(GRADE_STORE, JSON.stringify(gradePresets)); } catch (_) {}
+    }
+    function gradeHasLook(g) {
+        if (!g) return false;
+        if (GRADE_UI.some(([k]) => Math.abs(Number(g[k]) || 0) > 1e-6)) return true;
+        if (Array.isArray(g.masks) && g.masks.length) return true;
+        return ['curve', 'cal', 'det', 'mix', 'cg', 'bw', 'cb', 'gm', 'lc'].some((k) => {
+            const v = g[k];
+            return v != null && !(typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length);
+        });
+    }
+    function nextGradeName() {
+        const used = new Set(gradePresets.map((p) => p.name));
+        let n = 1;
+        while (used.has(`调色 ${n}`)) n += 1;
+        return `调色 ${n}`;
+    }
+    function saveGradePreset() {
+        if (!state.image) { hint('先导入照片'); return; }
+        // 蒙版是「按这张照片的几何」画的，跨图复用会错位；与桌面端一致，不存进预调
+        const g = JSON.parse(JSON.stringify(state.image.grade || {}));
+        g.masks = [];
+        if (!gradeHasLook(g)) { hint('蒙版不会存进预调，先调两下滑块'); return; }
+        const name = nextGradeName();
+        gradePresets.unshift({ name, grade: g, at: Date.now() });
+        gradePresets = gradePresets.slice(0, 12);
+        saveGradePresets();
+        render('grade');
+        hint(`已存为「${name}」`);
+    }
+    function applyGradePreset(i) {
+        const p = gradePresets[i];
+        if (!p || !state.image) return;
+        pushUndo();
+        // 整套替换（不是合并）：避免上一张照片残留的曲线/混色器混进新预调；
+        // 旧数据里的蒙版也一并丢掉，防止贴到尺寸不同的照片上。
+        const g = JSON.parse(JSON.stringify(p.grade || {}));
+        g.masks = [];
+        state.image.grade = g;
+        delete state.image._gradeCache;
+        if (typeof A.invalidateGrade === 'function') A.invalidateGrade(state.image);
+        render('grade');
+        hint(`已套用「${p.name}」`);
+    }
+    function removeGradePreset(i) {
+        const p = gradePresets[i];
+        if (!p) return;
+        gradePresets.splice(i, 1);
+        saveGradePresets();
+        render('grade');
+        hint(`已删除「${p.name}」`);
+    }
+
+    function gradePresetsHtml() {
+        const chips = gradePresets.map((p, i) =>
+            `<button class="grade-chip" data-grade-preset="${i}" title="点一下套用，长按删除">${esc(p.name)}</button>`).join('');
+        return `<div class="style-head"><h2>我的调色</h2><span class="style-count">${gradePresets.length}/12</span></div>
+            <div class="grade-strip">
+                <button class="grade-save" id="btnSaveGrade" type="button">＋ 存当前调色</button>
+                ${chips}
+            </div>`;
+    }
+
     function gradePage() {
         if (!state.image) return `<p class="panel-note">请先导入照片</p>`;
         const g = state.image.grade || {};
@@ -1241,12 +1348,13 @@
                 + `<output data-out="${k}">${v}</output></div>`;
         }).join('');
         return `${currentStrip()}
+            ${gradePresetsHtml()}
             <div class="text-acts"><button id="btnGradeAuto" type="button">自动调色</button></div>
             <div class="histo-card"><canvas id="gradeHisto" width="600" height="180"></canvas></div>
             <div class="grade-sliders">${rows}</div>
             ${(window.QF_EditPanel && window.QF_EditPanel.fxHtml(state.template)) || ''}
             <div class="puzzle-acts"><button id="btnGradeReset">重置调色</button></div>
-            <p class="panel-note">滑块来自桌面调色引擎；直方图实时读取调色后像素</p>`;
+            <p class="panel-note">滑块来自桌面调色引擎；直方图实时读取调色后像素。点预调套用，长按删除。</p>`;
     }
 
     async function exportGrid() {
@@ -1378,6 +1486,8 @@
         panel.querySelectorAll('[data-preset]').forEach((b) => {
             b.addEventListener('click', () => applyPreset((window.QF_PRESETS || [])[Number(b.dataset.preset)]));
         });
+        const plainBtn = document.getElementById('btnPlainStyle');
+        if (plainBtn) plainBtn.addEventListener('click', applyPlainStyle);
         panel.querySelectorAll('[data-tag]').forEach((b) => {
             b.addEventListener('click', () => { state.filter = b.dataset.tag; render('style'); });
         });
@@ -1479,6 +1589,25 @@
                 const out = panel.querySelector(`[data-out="${key}"]`);
                 if (out) out.textContent = String(v);
                 renderPreviewSoon();
+            });
+        });
+        const saveG = document.getElementById('btnSaveGrade');
+        if (saveG) saveG.addEventListener('click', saveGradePreset);
+        // 预调：轻点套用，长按 650ms 删除（删除前不弹窗，靠 toast 告知）
+        panel.querySelectorAll('[data-grade-preset]').forEach((b) => {
+            const idx = Number(b.dataset.gradePreset);
+            let hold = 0, fired = false;
+            b.addEventListener('pointerdown', () => {
+                fired = false;
+                clearTimeout(hold);
+                hold = setTimeout(() => { fired = true; hold = 0; removeGradePreset(idx); }, 650);
+            });
+            ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) =>
+                b.addEventListener(ev, () => clearTimeout(hold)));
+            b.addEventListener('click', () => {
+                clearTimeout(hold);
+                if (fired) { fired = false; return; }
+                applyGradePreset(idx);
             });
         });
         const gauto = document.getElementById('btnGradeAuto');

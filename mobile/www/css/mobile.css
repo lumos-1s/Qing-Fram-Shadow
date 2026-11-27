@@ -272,6 +272,16 @@ body {
 
 .histo-card { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-soft, #181B1A); padding: 6px; }
 .histo-card canvas { display: block; width: 100%; height: 90px; }
+/* 我的调色：一条横向预调栏，轻点套用、长按删除 */
+.grade-strip { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: none; }
+.grade-strip::-webkit-scrollbar { display: none; }
+.grade-chip, .grade-save {
+  flex: 0 0 auto; min-height: 40px; padding: 0 14px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
+  font-size: 13px; white-space: nowrap;
+}
+.grade-save { border-style: dashed; border-color: rgba(61, 217, 176, .45); color: var(--primary); }
+.grade-chip:active { border-color: var(--primary); color: var(--primary); }
 .grade-sliders { margin-top: 10px; }
 .grade-row { display: flex; align-items: center; gap: 8px; min-height: 44px; border-bottom: 1px solid var(--border); }
 .grade-row label { flex: 0 0 76px; font-size: 12px; color: var(--text-2); }
