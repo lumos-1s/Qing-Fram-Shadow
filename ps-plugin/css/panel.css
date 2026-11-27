@@ -1,0 +1,15 @@
+:root { --bg:#1e1e1e; --panel:#292929; --line:#3a3a3a; --text:#ddd; --muted:#999; --primary:#3dd9b0; }
+* { box-sizing:border-box; }
+body { margin:0; padding:10px; background:var(--bg); color:var(--text); font:12px/1.5 "Microsoft YaHei", sans-serif; }
+.wrap { display:flex; flex-direction:column; gap:8px; }
+h3 { margin:0; font-size:14px; }
+h3 span { color:var(--primary); font-size:10px; font-weight:600; }
+.note { margin:0; color:var(--muted); font-size:11px; }
+label { color:var(--muted); }
+select { width:100%; min-height:30px; padding:0 6px; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:4px; }
+.acts { display:flex; gap:6px; }
+button { flex:1; min-height:34px; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:5px; }
+button.primary { background:var(--primary); border-color:var(--primary); color:#102018; font-weight:600; }
+button:disabled { opacity:.5; }
+pre { margin:0; min-height:120px; max-height:260px; overflow:auto; white-space:pre-wrap; word-break:break-all;
+      background:#151515; border:1px solid var(--line); border-radius:4px; padding:8px; color:#9fd; font:11px/1.5 Consolas, monospace; }

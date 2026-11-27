@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 清框影 PS 桥接 PoC —— CEP 12 扩展清单，仅用于验证流程，未签名。 -->
+<ExtensionManifest Version="12.0"
+    ExtensionBundleId="com.qingframe.ps.bridge.poc"
+    ExtensionBundleVersion="0.1.0"
+    ExtensionBundleName="清框影 PS 桥接 PoC"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ExtensionList>
+    <Extension Id="com.qingframe.ps.bridge.poc.panel" Version="0.1.0" />
+  </ExtensionList>
+  <ExecutionEnvironment>
+    <HostList>
+      <Host Name="PHXS" Version="[12.0,99.9]" />
+      <Host Name="PHSP" Version="[12.0,99.9]" />
+    </HostList>
+    <LocaleList>
+      <Locale Code="All" />
+    </LocaleList>
+    <RequiredRuntimeList>
+      <RequiredRuntime Name="CSXS" Version="12.0" />
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+  <DispatchInfoList>
+    <Extension Id="com.qingframe.ps.bridge.poc.panel">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./index.html</MainPath>
+          <ScriptPath>./jsx/host.jsx</ScriptPath>
+        </Resources>
+        <CommandLine>
+          <EnableStyleSheet>true</EnableStyleSheet>
+        </CommandLine>
+        <Lifecycle>
+          <AutoVisible>true</AutoVisible>
+        </Lifecycle>
+        <UI>
+          <Type>PANEL</Type>
+          <Geometry Width="320" Height="480" />
+          <Icons>
+            <Icon Type="Normal">./icon.png</Icon>
+            <Icon Type="Rollover">./icon.png</Icon>
+            <Icon Type="Disabled">./icon.png</Icon>
+          </Icons>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+</ExtensionManifest>
