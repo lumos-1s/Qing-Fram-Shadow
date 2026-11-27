@@ -19,6 +19,7 @@ app.whenReady().then(async () => {
         webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
     const errors = [];
     win.webContents.on('console-message', (_e, level, message) => {
+        if (/willReadFrequently/.test(message)) return; // getImageData 的常规性能提示，不是错误
         if (level === 2 || /Uncaught|is not defined|Cannot read/i.test(message)) errors.push(message);
     });
     await win.loadFile(INDEX);
@@ -58,6 +59,25 @@ app.whenReady().then(async () => {
                 .map(x => x.textContent.trim());
             const groups = () => Array.from(document.querySelectorAll('#panel details > summary'))
                 .map(x => x.textContent.trim());
+            const hash = () => {
+                const cv = document.getElementById('previewCanvas');
+                const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+                let s = 0;
+                for (let i = 0; i < d.length; i += 401) s = (s * 31 + d[i]) % 1000000007;
+                return s;
+            };
+            const toggleBlur = async (on) => {
+                const row = Array.from(document.querySelectorAll('#panel .ctl-row')).find((x) => {
+                    const l = x.querySelector('label');
+                    return l && l.textContent.trim() === '开启背景模糊';
+                });
+                if (!row) return false;
+                const cb = row.querySelector('[data-ctl]');
+                cb.checked = !!on;
+                cb.dispatchEvent(new Event('change', { bubbles: true }));
+                await wait(350);
+                return true;
+            };
 
             // 1) 老相册角贴：能力表只认照片圆角 → 边距/缩放不出现
             await apply('老相册角贴');
@@ -70,7 +90,19 @@ app.whenReady().then(async () => {
             await openEdit('border');
             out.blurGroups = groups();
 
-            // 2) 赛博故障：五个数值档都支持；相框风格不显示图层四组
+            // 2) 相框预设的「开启背景模糊」必须写 signBgBlur 并真的改变画布
+            await apply('签名纪念');
+            await openEdit('border');
+            const frameHash = hash();
+            out.frameBlurBefore = Number(window.App.template.signBgBlur) || 0;
+            out.frameToggle = await toggleBlur(true);
+            out.frameBlurOn = Number(window.App.template.signBgBlur) || 0;
+            out.frameBlurChanged = hash() !== frameHash;
+            out.frameBlurInt = labels().indexOf('模糊程度') >= 0;
+            await toggleBlur(false);
+            out.frameBlurOff = Number(window.App.template.signBgBlur) || 0;
+
+            // 3) 赛博故障：五个数值档都支持；相框风格不显示图层四组
             await apply('赛博故障');
             await openEdit('border');
             out.cyberLabels = labels();
@@ -144,6 +176,11 @@ app.whenReady().then(async () => {
     check(!r.err && hasGroup(r.blurGroups, '位置微调'),
         '背景模糊-经典：支持位移的风格保留位置微调',
         JSON.stringify({ groups: r.blurGroups, err: r.err }));
+    check(!r.err && r.frameToggle && r.frameBlurBefore === 0 && r.frameBlurOn === 1
+        && r.frameBlurChanged && r.frameBlurInt && r.frameBlurOff === 0,
+        '相框预设：背景模糊开关写 signBgBlur 并真的重绘',
+        JSON.stringify({ before: r.frameBlurBefore, on: r.frameBlurOn, changed: r.frameBlurChanged,
+            intRow: r.frameBlurInt, off: r.frameBlurOff, err: r.err }));
     check(!r.err && has(r.cyberLabels, '边距大小') && has(r.cyberLabels, '照片缩放')
         && !hasGroup(r.cyberGroups, '填充') && !hasGroup(r.cyberGroups, '描边')
         && !hasGroup(r.cyberGroups, '边框圆角') && !hasGroup(r.cyberGroups, '阴影')

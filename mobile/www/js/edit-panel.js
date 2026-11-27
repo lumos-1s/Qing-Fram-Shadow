@@ -42,6 +42,18 @@
         m.globalMargin = scale;
     }
 
+    // 相框风格读 t.signBgBlur（签名/头像/叠字底模糊），图层模板走 baseMargin.bgBlurEnable
+    // 切卡片管线。此前手机端两个路径都写 baseMargin，导致相框预设里开关完全没反应。
+    function isFrameTpl(t) {
+        const pf = String((t && t.photoFrameStyle) || '').toUpperCase();
+        return !!(pf && pf !== 'NONE');
+    }
+    function blurOnOf(t) {
+        return isFrameTpl(t)
+            ? (Number(t.signBgBlur) || 0) === 1
+            : (Number((t.baseMargin || {}).bgBlurEnable) || 0) === 1;
+    }
+
     function layerOf(t) {
         const list = t.layerList || (t.layerList = []);
         let l = list.find((x) => x && x.visible !== false);
@@ -85,8 +97,11 @@
               }) },
 
             { g: 'blur', label: '开启背景模糊', type: 'check', only: 'rowBgBlur',
-              value: (m.bgBlurEnable || 0) === 1,
-              set: set((v, o) => { (o.baseMargin || (o.baseMargin = {})).bgBlurEnable = v ? 1 : 0; }) },
+              value: blurOnOf(t),
+              set: set((v, o) => {
+                  if (isFrameTpl(o)) o.signBgBlur = v ? 1 : 0;
+                  else (o.baseMargin || (o.baseMargin = {})).bgBlurEnable = v ? 1 : 0;
+              }) },
             { g: 'blur', label: '模糊程度', type: 'range', min: 0, max: 100, step: 1, unit: '%',
               only: 'rowBgBlurInt',
               value: Math.round(num(t.blurIntensity, 50)),
@@ -626,8 +641,7 @@
         if (!frame) { vis.rowBgBlur = true; vis.rowBgBlurInt = true; }
         else if (!vis.rowBgBlurInt) {
             // 与桌面同口径：支持「开/关模糊」的风格，打开后才出现程度滑块
-            vis.rowBgBlurInt = !!caps.bi || (vis.rowBgBlur === true
-                && (Number((tmpl.baseMargin || {}).bgBlurEnable) || 0) === 1);
+            vis.rowBgBlurInt = !!caps.bi || (vis.rowBgBlur === true && blurOnOf(tmpl));
         }
         // 背景明暗 / 底部文字排版只服务「背景模糊·经典 / 日期」
         const blurAdv = (window.StyleCaps && window.StyleCaps.BLUR_STYLES || []).indexOf(pfName) >= 0;
