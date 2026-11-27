@@ -348,6 +348,74 @@
         renderPreviewLive();
     }
 
+    const thumbCache = [];
+    const thumbErrors = [];
+
+    function paintWall() {
+        const wall = document.getElementById('presetWall');
+        if (!wall) return;
+        const presets = window.QF_PRESETS || [];
+        wall.innerHTML = presets.map((p, i) => {
+            const name = p.templateName || p._fileName || ('风格 ' + (i + 1));
+            return `<button type="button" data-wall="${i}" title="${esc(name)}">`
+                + (thumbCache[i] ? `<img src="${thumbCache[i]}" alt="">` : '')
+                + `<span>${esc(name)}</span></button>`;
+        }).join('');
+        wall.querySelectorAll('[data-wall]').forEach((b) => {
+            b.addEventListener('click', () => {
+                if (presetSel) {
+                    presetSel.value = b.dataset.wall;
+                    presetSel.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                wall.querySelectorAll('[data-wall]').forEach((x) => x.classList.toggle('active', x === b));
+            });
+        });
+        const cur = presetSel ? Number(presetSel.value) || 0 : 0;
+        const active = wall.querySelector(`[data-wall="${cur}"]`);
+        if (active) active.classList.add('active');
+    }
+
+    function buildPresetWall() {
+        const presets = window.QF_PRESETS || [];
+        if (thumbCache.length === presets.length) { paintWall(); return; }
+        const wall = document.getElementById('presetWall');
+        if (wall) wall.innerHTML = '<p class="note">生成风格缩略图…</p>';
+        const sample = document.createElement('canvas');
+        sample.width = 200; sample.height = 200;
+        sample.naturalWidth = 200; sample.naturalHeight = 200; sample.complete = true;
+        const g = sample.getContext('2d');
+        const gr = g.createLinearGradient(0, 0, 200, 200);
+        gr.addColorStop(0, '#d97757'); gr.addColorStop(0.5, '#e7c177'); gr.addColorStop(1, '#3d7a83');
+        g.fillStyle = gr; g.fillRect(0, 0, 200, 200);
+        g.fillStyle = 'rgba(255,255,255,.7)';
+        g.fillRect(40, 40, 40, 40); g.fillRect(110, 80, 28, 28);
+        const im = { el: sample, w: 200, h: 200, srcW: 200, srcH: 200, grade: null };
+        let i = 0;
+        function step() {
+            for (let n = 0; n < 6 && i < presets.length; n++, i++) {
+                try {
+                    const t = JSON.parse(JSON.stringify(presets[i]));
+                    t.templateName = presets[i].templateName || presets[i]._fileName || '';
+                    const cv = document.createElement('canvas');
+                    cv.width = 160; cv.height = 160;
+                    const A = window.App;
+                    delete A._canvasBaseW; delete A._canvasBaseH; delete A._canvasScale;
+                    delete A._fitStyleName; delete A._photoRect;
+                    A.dom = { canvas: cv };
+                    A.image = im; A.images = [im]; A.template = t;
+                    A.selectedEls = []; A.displayMax = 160; A.uiDprOverride = 1;
+                    A._gesture = false; A._forceFitNext = true;
+                    delete A.exportScale;
+                    window.__render(A, false);
+                    thumbCache[i] = cv.toDataURL('image/jpeg', 0.6);
+                } catch (e) { thumbCache[i] = ''; thumbErrors[i] = String(e && e.stack || e); }
+            }
+            if (i < presets.length) setTimeout(step, 0);
+            else { paintWall(); renderPreviewLive(); }
+        }
+        setTimeout(step, 0);
+    }
+
     function init() {
         const list = window.QF_PRESETS || [];
         if (presetSel) {
@@ -380,6 +448,7 @@
         }
         removeTemp(tempPath('qingframe-source.png')); // 旧版留下的大 PNG
         log('就绪；共 ' + list.length + ' 款预设。' + (cs ? '已连接 Photoshop。' : '本机测试模式。'));
+        buildPresetWall();
         detectExif().catch(() => {});
         prepareSource().catch(() => {});
     }
@@ -390,6 +459,7 @@
     window.QF_PS_POC = {
         apply, detectExif, renderPreviewLive, evalScript, readBase64, writeBase64, tempPath, loadLayer,
         lastTemplate: () => lastTemplate,
+        buildPresetWall, paintWall, thumbErrors,
         invalidateSource: () => { sourceCache = { key: '', loaded: null }; removeTemp(tempPath('qingframe-source.jpg')); }
     };
 })();

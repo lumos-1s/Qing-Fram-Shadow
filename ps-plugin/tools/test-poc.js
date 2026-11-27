@@ -67,6 +67,10 @@ app.whenReady().then(async () => {
         const brandInput = document.querySelector('[data-exif="make"]');
         if (brandInput) { brandInput.value = 'CANON'; brandInput.dispatchEvent(new Event('input', { bubbles: true })); }
 
+        await wait(2500); // 等缩略图墙生成
+        const wallCount = document.querySelectorAll('[data-wall]').length;
+        const thumbImgs = document.querySelectorAll('#presetWall img').length;
+        const thumbErr = (window.QF_PS_POC.thumbErrors || []).filter(Boolean).slice(0, 3);
         const presets = window.QF_PRESETS || [];
         const sel = document.getElementById('preset');
         if (sel) {
@@ -103,7 +107,7 @@ app.whenReady().then(async () => {
 
         return {
             cachedLog,
-            presets: presets.length,
+            presets: presets.length, wallCount, thumbImgs, thumbErr,
             hasRender: typeof window.__render === 'function',
             bpCount, strokeWidth, tpCount, lineText, paramFontSize, paramModel, exifText,
             exifBrand: ((window.QF_PS_POC.lastTemplate() || {}).manualExif || {}).brand,
@@ -132,6 +136,7 @@ app.whenReady().then(async () => {
 
     console.log(JSON.stringify(r, null, 2));
     check(r.presets === 91 && r.hasRender, '引擎与预设已加载', JSON.stringify({ presets: r.presets, hasRender: r.hasRender }));
+    check(r.wallCount === 91 && r.thumbImgs === 91, '风格缩略图墙已生成', JSON.stringify({ wall: r.wallCount, thumbs: r.thumbImgs }));
     check(r.bpCount >= 15 && r.strokeWidth === 40, '边框参数面板可改模板', JSON.stringify({ bpCount: r.bpCount, strokeWidth: r.strokeWidth }));
     check(r.tpCount > 0 && r.lineText === '编辑后的文字', '预设文字可编辑', JSON.stringify({ tpCount: r.tpCount, lineText: r.lineText }));
     check(r.paramFontSize === 88 && r.paramModel === 'CUSTOMMODEL', '参数字号与相机型号可调', JSON.stringify({ paramFontSize: r.paramFontSize, paramModel: r.paramModel }));
