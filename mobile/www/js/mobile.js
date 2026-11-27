@@ -2921,7 +2921,69 @@
         set('mineGradesCount', String(gradePresets.length));
         set('minePhotosCount', String(state.images.length));
         set('mineExportSum', `${exportOpts.maxEdge ? exportOpts.maxEdge + 'px' : '原图'} · ${exportOpts.format.toUpperCase()}`);
+        set('mineProfileSum', getUserName() || '未设置');
+        set('mineFocalSum', (state.template && state.template.focalEq === 1) ? '等效焦距' : '原始焦距');
         set('minePlatform', window.qfsNative.platform());
+    }
+
+    /* ── 用户资料：昵称/署名只存本机，头像沿用 QF_Avatar ─────────── */
+    const USER_NAME_KEY = 'qfm_user_name';
+    function getUserName() {
+        try { return localStorage.getItem(USER_NAME_KEY) || ''; } catch (_) { return ''; }
+    }
+    function setUserName(v) {
+        try { localStorage.setItem(USER_NAME_KEY, v); } catch (_) {}
+    }
+    function openProfileModal() {
+        const name = getUserName();
+        const sig = (state.template && state.template.userSignature) || '';
+        const el = openStyleModal({
+            title: '昵称与签名',
+            body: `<input id="profileName" class="modal-input name-input" value="${esc(name)}" maxlength="18" placeholder="昵称（只存在本机）">`
+                + `<textarea id="profileSign" class="modal-input" rows="2" maxlength="24" placeholder="照片署名，如 © 2026 张三">${esc(sig)}</textarea>`
+                + `<p class="modal-note">昵称只存在本机；署名写进当前风格，供「签名 + 头像」等预设使用。票券类预设默认不显示署名。</p>`,
+            actions: [
+                { label: '取消' },
+                { label: '保存', primary: true, onClick: (root) => {
+                    const n = (root.querySelector('#profileName').value || '').trim().slice(0, 18);
+                    const s = (root.querySelector('#profileSign').value || '').trim().slice(0, 24);
+                    closeStyleModal();
+                    saveProfile(n, s);
+                } }
+            ]
+        });
+        const inp = el.querySelector('#profileName');
+        if (inp) { inp.focus(); inp.select(); }
+    }
+    function saveProfile(name, signature) {
+        setUserName(name);
+        if (state.template) {
+            // 署名优先；没填署名时用昵称；两者都清空则回到默认「清框影」。
+            // 用户手动清空输入框就是明确要清掉旧署名，不该悄悄留着上一版。
+            state.template.userSignature = signature || name || '清框影';
+            A.template = state.template;
+            renderPreview(true);
+        }
+        refreshMine();
+        if (window.QF_Avatar) window.QF_Avatar.updateUI();
+        hint(name || signature ? '昵称与署名已保存到本机' : '已清空昵称与署名');
+    }
+
+    function toggleFocalType() {
+        if (!state.template) { hint('先套一个风格'); return; }
+        state.template.focalEq = state.template.focalEq === 1 ? 0 : 1;
+        A.template = state.template;
+        renderPreview(true);
+        refreshMine();
+        hint(state.template.focalEq === 1 ? '已启用 35mm 等效焦距' : '已恢复原始焦距');
+    }
+
+    function openLegalModal(title, html) {
+        openStyleModal({
+            title,
+            body: `<div class="legal-text">${html}</div>`,
+            actions: [{ label: '知道了', primary: true, onClick: () => closeStyleModal() }]
+        });
     }
 
     // 首页交互：卡片直接套用并进编辑页
@@ -2990,6 +3052,31 @@
     document.getElementById('mineStylesRow').addEventListener('click', () => { showPage('edit'); render('style'); });
     document.getElementById('mineGradesRow').addEventListener('click', () => { showPage('edit'); render('grade'); });
     document.getElementById('minePhotosRow').addEventListener('click', () => { showPage('edit'); render('puzzle'); });
+    document.getElementById('mineProfileRow').addEventListener('click', openProfileModal);
+    document.getElementById('mineFocalRow').addEventListener('click', toggleFocalType);
+    document.getElementById('mineLogoRow').addEventListener('click', () => {
+        showPage('edit');
+        // 元素页不是独立 tab，是编辑 tab 下的一个子页；直接 render('element') 会掉回风格页
+        state.tab = 'edit';
+        state.editSub = 'element';
+        render('edit');
+        hint('在这里添加 Logo 文字，画布上可直接拖动');
+    });
+    document.getElementById('btnUserTerms').addEventListener('click', () => openLegalModal('用户协议',
+        '<b>使用范围</b>清框影是本地照片加框工具，供个人合法使用。导入的照片、调好的风格与署名都只处理在本机。'
+        + '<b>你的内容</b>你保留照片与成片的所有权利。软件不上传照片、不要求账号，也不会替你发布内容。'
+        + '<b>免责</b>软件按“现状”提供；请自行确认导出成片的使用场景符合当地法律与他人权利。'
+        + '<b>反馈</b>问题与建议可通过项目 Issues 提出。'));
+    document.getElementById('btnPrivacy').addEventListener('click', () => openLegalModal('隐私政策',
+        '<b>照片与资料</b>照片、风格、昵称、头像与署名都在本机处理与保存，不上传本项目服务器。'
+        + '<b>账号</b>没有账号体系，也不收集登录信息、分析数据或埋点。'
+        + '<b>本机存储</b>设置、模板、头像等保存在应用数据目录；卸载时系统可能保留这些文件，需要可手动清除。'
+        + '<b>网络</b>手机版不主动联网；分享码由你手动复制发给别人，是否发送完全由你决定。'
+        + '<b>联系</b>隐私问题可通过项目 Issues 提出。'));
+    document.getElementById('btnAbout').addEventListener('click', () => openLegalModal('关于我们',
+        '<b>清框影</b>为摄影爱好者提供最好的边框。照片全程本地处理，不上传、不需要账号。'
+        + '<b>版本</b>0.1 · 内测版。'
+        + '<b>能力</b>风格墙、调色、拼图与切图、自定义署名与头像、分享码互通。'));
 
     // 用户头像：加载本机头像，换头像后重绘预览（引擎读 window.__qfsAvatarImg）
     if (window.QF_Avatar) window.QF_Avatar.bind({ onChange: () => renderPreview(true), hint });

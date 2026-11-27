@@ -33,16 +33,21 @@
 
     function hasAvatar() { return !!window.__qfsAvatarImg; }
 
+    function displayName() {
+        try { return localStorage.getItem('qfm_user_name') || ''; } catch (_) { return ''; }
+    }
+
     function updateUI() {
         const img = document.getElementById('mineAvatarImg');
         const name = document.getElementById('mineAvatarName');
         const hint = document.getElementById('mineAvatarHint');
         const saved = hasAvatar();
+        const nick = displayName();
         if (img) img.src = saved ? window.__qfsAvatarImg.src : AVATAR_DEFAULT;
-        if (name) name.textContent = saved ? '我的头像' : '设置我的头像';
+        if (name) name.textContent = nick || (saved ? '我的头像' : '设置我的头像');
         if (hint) hint.textContent = saved
-            ? '已启用 · 签名 + 头像风格自动使用'
-            : '用于照片上的「签名 + 头像」风格';
+            ? '头像已启用 · 签名 + 头像风格自动使用'
+            : (nick ? '昵称已设置 · 点这里上传头像' : '用于照片上的「签名 + 头像」风格');
     }
 
     function closeSheet() {

@@ -503,6 +503,11 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 .modal-input.name-input { min-height: 0; height: 44px; }
 .modal-input.code-box { font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
 .modal-note { font-size: 11px; line-height: 1.6; color: var(--text-3); margin-top: 8px; }
+.legal-text {
+  max-height: 46dvh; overflow-y: auto; padding-right: 4px;
+  font-size: 12px; line-height: 1.75; color: var(--text-2);
+}
+.legal-text b { display: block; margin-top: 12px; color: var(--text); font-weight: 500; }
 
 /* ── 用户头像裁剪 ──────────────────────────────────────────────── */
 .avatar-modal .panel-note { margin: -4px 0 12px; }
