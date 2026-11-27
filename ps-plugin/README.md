@@ -11,7 +11,7 @@
 
 ```text
 ps-plugin/
-├─ manifest.xml              CEP 12 扩展清单（未签名）
+├─ CSXS/manifest.xml         CEP 12 扩展清单（必须放在 CSXS 目录，未签名）
 ├─ index.html                面板 UI
 ├─ css/panel.css
 ├─ js/main.js                面板侧：导出图层 → 渲染 → 写回
@@ -55,7 +55,7 @@ npm run ps:poc:install -- --ps "D:\PS2026\Adobe Photoshop 2026"
 脚本会找 `C:\Program Files\Adobe\Adobe Photoshop *`，把扩展拷到它的
 `Required\CEP\extensions\com.qingframe.ps.bridge.poc\`，并写入
 `HKCU\Software\Adobe\CSXS.12\PlayerDebugMode=1`。写 Program Files 可能需要管理员权限；
-装完**重启 Photoshop**，菜单 `窗口 → 扩展功能 → 清框影 PS 桥接 PoC`。
+装完**重启 Photoshop**，菜单 `窗口 → 扩展功能 → 清框影桥接`。
 选中一个图层 → 选风格 → 点「边框 → 新图层」或「四宫格 → 新图层」。
 
 如果脚本找不到 PS 或权限不足，手动做同样两件事即可：

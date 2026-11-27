@@ -1,17 +1,16 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!-- 清框影 PS 桥接 PoC —— CEP 12 扩展清单，仅用于验证流程，未签名。 -->
-<ExtensionManifest Version="12.0"
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- 清框影 PS 桥接 PoC —— CEP 扩展清单，仅用于验证流程，未签名。 -->
+<ExtensionManifest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     ExtensionBundleId="com.qingframe.ps.bridge.poc"
     ExtensionBundleVersion="0.1.0"
-    ExtensionBundleName="清框影 PS 桥接 PoC"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    Version="12.0">
   <ExtensionList>
     <Extension Id="com.qingframe.ps.bridge.poc.panel" Version="0.1.0" />
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>
-      <Host Name="PHXS" Version="[12.0,99.9]" />
-      <Host Name="PHSP" Version="[12.0,99.9]" />
+      <Host Name="PHXS" Version="[12.0,30.0]" />
+      <Host Name="PHSP" Version="[12.0,30.0]" />
     </HostList>
     <LocaleList>
       <Locale Code="All" />
@@ -34,8 +33,14 @@
           <AutoVisible>true</AutoVisible>
         </Lifecycle>
         <UI>
-          <Type>PANEL</Type>
-          <Geometry Width="320" Height="480" />
+          <Type>Panel</Type>
+          <Menu>清框影桥接</Menu>
+          <Geometry>
+            <Size>
+              <Height>480</Height>
+              <Width>320</Width>
+            </Size>
+          </Geometry>
           <Icons>
             <Icon Type="Normal">./icon.png</Icon>
             <Icon Type="Rollover">./icon.png</Icon>
