@@ -197,6 +197,35 @@
         } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
     }
 
+    // 批量导出：先把每张写进缓存目录（不弹分享），最后由 shareFiles 一次分享。
+    // 逐张走分享面板的话，9 张照片要点 9 次系统弹窗，实际不可用。
+    async function writeCacheFile(dataUrl, filename) {
+        if (!isNative) return '';
+        const base64 = String(dataUrl || '').split(',').pop() || '';
+        const FS = plugin('Filesystem');
+        const r = await FS.writeFile({ directory: 'CACHE', path: filename, data: base64, encoding: 'base64' });
+        return (r && r.uri) || '';
+    }
+    async function shareFiles(uris, text) {
+        const list = (uris || []).filter(Boolean);
+        if (!list.length) return { ok: false, error: '没有可分享的文件' };
+        if (!isNative) return { ok: false, error: '浏览器不支持多文件分享' };
+        try {
+            const Share = plugin('Share');
+            // Capacitor Share 的 files 只在 iOS / Android 生效，一次把整批交给系统面板
+            await Share.share({
+                title: '清框影',
+                text: String(text || `清框影 · ${list.length} 张照片`),
+                files: list,
+                dialogTitle: '保存到相册或分享'
+            });
+            return { ok: true, count: list.length };
+        } catch (e) {
+            const msg = String((e && e.message) || e);
+            return { ok: false, canceled: /cancel|取消|dismiss/i.test(msg), error: msg };
+        }
+    }
+
     // 配置文件（JSON / 分享码）的写出：原生走 Filesystem + Share，浏览器走 Blob 下载
     async function saveText(text, filename, mime) {
         const name = String(filename || 'export.txt');
@@ -295,6 +324,8 @@
         decodeStill,
         getPickErrors,
         saveImage,
+        writeCacheFile,
+        shareFiles,
         saveText,
         getPrefs,
         savePrefs,

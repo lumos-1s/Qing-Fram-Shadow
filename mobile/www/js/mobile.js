@@ -1063,12 +1063,16 @@
 
     // ── 导出选项：长边 / 格式 / 画质，记住上次选择 ───────────────────────
     const EXPORT_PREF_KEY = 'qfm_export';
-    const exportOpts = { maxEdge: 0, format: 'jpeg', quality: 0.92 };
+    // scope: current = 当前照片，all = 照片库里每一张都按现在的风格导一遍
+    const exportOpts = { maxEdge: 0, format: 'jpeg', quality: 0.92, scope: 'current' };
+    // 只用于提示文案，不进偏好（免得 localStorage 里多一个会过期的张数）
+    let exportAllCount = 0;
     try {
         const saved = JSON.parse(localStorage.getItem(EXPORT_PREF_KEY) || '{}');
         if (saved && typeof saved === 'object') Object.assign(exportOpts, saved);
     } catch (_) { /* 坏数据就用默认 */ }
     if (['jpeg', 'png'].indexOf(exportOpts.format) < 0) exportOpts.format = 'jpeg';
+    if (['current', 'all'].indexOf(exportOpts.scope) < 0) exportOpts.scope = 'current';
     if (!(Number(exportOpts.quality) > 0 && Number(exportOpts.quality) <= 1)) exportOpts.quality = 0.92;
     exportOpts.maxEdge = Math.max(0, Number(exportOpts.maxEdge) || 0);
     function saveExportOpts() {
@@ -1093,6 +1097,18 @@
             || Math.max(Number(im.w) || 0, Number(im.h) || 0);
     }
     function paintExportOpts() {
+        const scopeRow = document.getElementById('rowScope');
+        if (scopeRow) {
+            // 拼图/切图的「全部」语义不同（拼图是整张版式、切图是逐块），不混在一起
+            const multi = state.images.length > 1 && state.tab !== 'puzzle' && state.tab !== 'crop';
+            scopeRow.hidden = !multi;
+            if (!multi) exportOpts.scope = 'current';
+            exportAllCount = state.images.length;
+            document.querySelectorAll('#optScope .chip').forEach((b) => {
+                b.classList.toggle('active', b.dataset.scope === (multi ? exportOpts.scope : 'current'));
+                if (b.dataset.scope === 'all') b.textContent = `全部 ${state.images.length} 张`;
+            });
+        }
         const size = Number(exportOpts.maxEdge) || 0;
         document.querySelectorAll('#optSize .chip').forEach((b) => {
             b.classList.toggle('active', Number(b.dataset.size) === size);
@@ -1105,14 +1121,23 @@
         });
         const rowQ = document.getElementById('rowQuality');
         if (rowQ) rowQ.hidden = exportOpts.format === 'png';
+        // 主按钮跟着范围走：选「全部」时写清楚要出几张，避免点下去才发现是一整批
+        const go = document.getElementById('btnExportGo');
+        if (go) {
+            const many = exportOpts.scope === 'all' && state.images.length > 1
+                && state.tab !== 'puzzle' && state.tab !== 'crop';
+            go.textContent = many ? `导出全部 ${state.images.length} 张` : '保存 / 分享';
+        }
         const src = srcLongEdge();
         const out = exportTarget(src) || 0;
         const hintEl = document.getElementById('exportHint');
         if (hintEl) {
             const tab = state.tab;
             const subject = tab === 'puzzle' ? '拼图' : tab === 'crop' ? '切图（每块）' : '成品';
+            const allNote = (exportOpts.scope === 'all' && exportAllCount > 1)
+                ? `全部 ${exportAllCount} 张 · 每张` : '';
             hintEl.textContent = src
-                ? `${subject}长边 ${out}px · ${exportOpts.format.toUpperCase()}`
+                ? `${allNote}${subject}长边 ${out}px · ${exportOpts.format.toUpperCase()}`
                     + (exportOpts.format === 'png' ? ' · 无损' : ` · 画质 ${Math.round(exportOpts.quality * 100)}%`)
                 : '先导入一张照片';
         }
@@ -1133,9 +1158,12 @@
             if (fmtBtn) { exportOpts.format = fmtBtn.dataset.format; saveExportOpts(); paintExportOpts(); return; }
             const qBtn = t.closest('[data-quality]');
             if (qBtn) { exportOpts.quality = Number(qBtn.dataset.quality) || 0.92; saveExportOpts(); paintExportOpts(); return; }
+            const scBtn = t.closest('[data-scope]');
+            if (scBtn) { exportOpts.scope = scBtn.dataset.scope === 'all' ? 'all' : 'current'; saveExportOpts(); paintExportOpts(); return; }
             if (t.id === 'btnExportGo') {
                 closeExportSheet();
                 if (state.tab === 'crop') exportGrid();
+                else if (exportOpts.scope === 'all' && state.tab !== 'puzzle' && state.images.length > 1) exportBatch();
                 else exportCurrent();
             }
         });
@@ -1188,6 +1216,96 @@
             // 导出帧可能是 4000px 拼图/原尺寸，保存结束后切回 1600px 预览，别让大画布常驻
             try { renderPreview(true); } catch (_) {}
             state.exporting = false;
+        }
+    }
+
+    // 给「不是当前照片」的那一张渲染一帧：renderPreview 读的是 state.image，
+    // 批量导出不能为了渲染把界面切来切去（面板会跟着重建、滚动位置也会跳）。
+    function renderFrameFor(im, opts) {
+        const tpl = renderTemplate(state.template, im);
+        Object.assign(A, { dom: { canvas }, image: im, images: state.images, template: tpl }, renderStubs, opts || {});
+        if (!opts || !('exportScale' in opts)) delete A.exportScale;
+        try {
+            if (typeof window.__render === 'function') window.__render(A, false);
+        } catch (e) {
+            console.warn('[mobile] batch render failed', e);
+        } finally {
+            A.template = state.template;
+        }
+    }
+
+    // 批量导出：照片库里每张照片按当前风格（和当前导出设置）各导一张。
+    // 原生端先把文件写进缓存、最后一次性调起分享面板——逐张分享会连着弹 N 次系统框。
+    async function exportBatch() {
+        if (state.exporting) return;
+        const list = state.images.slice();
+        if (!list.length) { hint('先导入照片'); return; }
+        if (state.editingText) closeTextEditor(true);
+        state.exporting = true;
+        state.batchRunning = true;
+        state.batchCancel = false;
+        const uris = [];
+        let ok = 0, fail = 0;
+        const suffix = exportOpts.format === 'png' ? 'png' : 'jpg';
+        // 只有原生端能「先攒文件、最后分享一次」；浏览器里 writeCacheFile 返回空，
+        // 退回逐张下载（本地调试用）
+        const collect = typeof window.qfsNative.writeCacheFile === 'function'
+            && typeof window.qfsNative.platform === 'function'
+            && window.qfsNative.platform() !== 'web';
+        try {
+            for (let n = 0; n < list.length; n++) {
+                if (state.batchCancel) break;
+                const im = list[n];
+                hint(`正在导出 ${n + 1}/${list.length}…（再点一次导出可取消）`, 20000);
+                // 让出一帧：全尺寸解码是同步重活，不 yield 的话进度提示根本刷不出来
+                await new Promise((r) => setTimeout(r, 0));
+                try {
+                    await withFullImage(im, async (targetPx) => {
+                        const out = Math.max(1, exportTarget(targetPx) || targetPx);
+                        renderFrameFor(im, { displayMax: out, uiDprOverride: 1, exportScale: out });
+                    });
+                    const data = encodeCanvas();
+                    if (!data || data.length < 64) throw new Error('画布为空');
+                    const base = String(im.name || ('photo' + (n + 1)))
+                        .replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, '_');
+                    const filename = `${base}_清框影.${suffix}`;
+                    if (collect) {
+                        const uri = await window.qfsNative.writeCacheFile(data, filename);
+                        if (!uri) throw new Error('写入失败');
+                        uris.push(uri);
+                    } else {
+                        const r = await window.qfsNative.saveImage(data, filename);
+                        if (!r || !r.ok) throw new Error((r && r.error) || '保存失败');
+                    }
+                    ok += 1;
+                } catch (e) {
+                    fail += 1;
+                    console.warn('[mobile] batch item failed', im && im.name, e);
+                }
+            }
+            if (uris.length) {
+                hint('正在打开分享…', 8000);
+                const r = await window.qfsNative.shareFiles(uris, `清框影 · ${uris.length} 张`);
+                if (r && r.canceled) hint(`已取消分享（${uris.length} 张已生成在缓存里）`, 4200);
+                else if (r && r.ok) hint(`已导出 ${ok} 张${fail ? `，${fail} 张失败` : ''}，可存相册或直接发`);
+                else hint(`已生成 ${ok} 张，分享失败：${(r && r.error) || '未知错误'}`, 4800);
+            } else if (ok) {
+                hint(`已导出 ${ok} 张${fail ? `，${fail} 张失败` : ''}`);
+            } else if (state.batchCancel) {
+                hint('已取消批量导出');
+            } else {
+                hint('批量导出失败：没有成功的照片', 4800);
+            }
+        } finally {
+            delete A.exportScale;
+            // 批量渲染改过 A.image/template，也按别的照片重算过字号：切回当前照片的预览
+            try {
+                scalePresetFonts(state.template, state.image);
+                renderPreview(true);
+            } catch (_) {}
+            state.exporting = false;
+            state.batchRunning = false;
+            state.batchCancel = false;
         }
     }
 
@@ -2166,6 +2284,8 @@
     let exportHeld = false;
     exportBtn.addEventListener('pointerdown', (e) => {
         if (e.button != null && e.button !== 0) return;
+        // 导出中不挂长按：这时候点它是「取消批量」，不该再弹设置面板
+        if (state.exporting) return;
         exportHeld = false;
         clearTimeout(exportHoldTimer);
         exportHoldTimer = setTimeout(() => { exportHeld = true; openExportSheet(); }, 450);
@@ -2175,7 +2295,11 @@
     exportBtn.addEventListener('click', () => {
         clearTimeout(exportHoldTimer);
         if (exportHeld) { exportHeld = false; return; }
-        if (state.exporting) return;
+        // 批量导出跑到一半时，再点一次导出 = 停在第 n 张
+        if (state.exporting) {
+            if (state.batchRunning) state.batchCancel = true;
+            return;
+        }
         if (state.tab === 'crop') exportGrid();
         else exportCurrent();
     });

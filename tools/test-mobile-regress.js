@@ -915,6 +915,57 @@ app.whenReady().then(async () => {
             };
         } catch (e) { libErr = String(e && e.message || e); }
 
+        // 24.7) 批量导出：范围=全部时逐张出片，拼图页不掺和
+        let bt = {}, btErr = '';
+        try {
+            document.querySelector('[data-tab="style"]').click();
+            await wait(320);
+            const ex = document.getElementById('btnExport');
+            ex.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 81, button: 0 }));
+            await wait(620);
+            bt.scopeShown = !document.getElementById('rowScope').hidden;
+            const allChip = document.querySelector('#optScope [data-scope="all"]');
+            bt.allLabel = allChip ? allChip.textContent.trim() : '';
+            allChip.click();
+            await wait(220);
+            bt.hint = document.getElementById('exportHint').textContent;
+
+            const saved = [];
+            const origSave = window.qfsNative.saveImage;
+            window.qfsNative.saveImage = async (d, n) => { saved.push({ n, len: d.length }); return { ok: true, mode: 'download' }; };
+            document.getElementById('btnExportGo').click();
+            const expect = window.App.images.length;
+            for (let k = 0; k < 200 && saved.length < expect; k++) await wait(150);
+            await wait(600);
+            window.qfsNative.saveImage = origSave;
+            bt.expect = expect;
+            bt.count = saved.length;
+            bt.names = saved.map((x) => x.n);
+            bt.allFramed = saved.every((x) => /_清框影\.jpg$/.test(x.n));
+            bt.allNonEmpty = saved.every((x) => x.len > 2000);
+            bt.previewBack = window.App.image && window.App.image.name === 'regress.jpg'
+                ? true : !!window.App.image;
+
+            // 拼图页的「全部」语义不同，不该出现范围行
+            document.querySelector('[data-tab="puzzle"]').click();
+            await wait(380);
+            ex.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 82, button: 0 }));
+            await wait(620);
+            bt.scopeOnPuzzle = !document.getElementById('rowScope').hidden;
+            document.getElementById('btnExportCancel').click();
+            await wait(220);
+
+            // 恢复默认「当前一张」，别把偏好留给下一次运行
+            document.querySelector('[data-tab="style"]').click();
+            await wait(320);
+            ex.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 83, button: 0 }));
+            await wait(620);
+            const curChip = document.querySelector('#optScope [data-scope="current"]');
+            if (curChip) curChip.click();
+            document.getElementById('btnExportCancel').click();
+            await wait(220);
+        } catch (e) { btErr = String(e && e.message || e); }
+
         // 24.8) 我的风格：存当前 → 长廊出现 → 套回 → 分享码 → 导入 → 长按删除
         let ms = {}, msErr = '';
         try {
@@ -1132,7 +1183,7 @@ app.whenReady().then(async () => {
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
             edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, dbl, dblErr,
             pinch, pinchErr, exif, exifErr, multi, multiErr, autofs, autofsErr, layout, layoutErr,
-            extras, extrasErr, exportOpt, exportOptErr, gp, gpErr, lib, libErr, ms, msErr, uz, uzErr, rot, rotErr, sync1, sync1Err, rawFull, rawFullErr
+            extras, extrasErr, exportOpt, exportOptErr, bt, btErr, gp, gpErr, lib, libErr, ms, msErr, uz, uzErr, rot, rotErr, sync1, sync1Err, rawFull, rawFullErr
         };
     })()`);
 
@@ -1250,6 +1301,12 @@ app.whenReady().then(async () => {
 
     check(!r.extrasErr && r.extras.compareOn && r.extras.compareOff,
         '长按画布看原图、松手恢复', JSON.stringify({ extras: r.extras, err: r.extrasErr }));
+
+    check(!r.btErr && r.bt.scopeShown && /全部 \d+ 张/.test(r.bt.allLabel)
+        && r.bt.count === r.bt.expect && r.bt.allFramed && r.bt.allNonEmpty
+        && !r.bt.scopeOnPuzzle && r.bt.previewBack,
+        '批量导出：范围=全部时逐张出片，拼图页不出现该选项',
+        JSON.stringify({ bt: r.bt, err: r.btErr }));
 
     check(!r.rotErr && r.rot.buttons === 4 && r.rot.afterR.w === r.rot.before.h
         && r.rot.afterR.h === r.rot.before.w && r.rot.ops === 'r' && r.rot.undone.w === r.rot.before.w,
