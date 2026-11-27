@@ -95,6 +95,10 @@ app.whenReady().then(async () => {
         const tpTpl = window.QF_TextParams.current() || {};
         const paramFontSize = tpTpl.paramFontSize;
         const paramModel = (tpTpl.manualExif || {}).model;
+        const blurCount = document.querySelectorAll('[data-bp^="blur-"]').length;
+        const blurChk = document.querySelector('[data-bp="blur-开启背景模糊"]');
+        if (blurChk) { blurChk.checked = true; blurChk.dispatchEvent(new Event('change', { bubbles: true })); }
+        const blurOn = ((window.QF_BorderParams.current() || {}).baseMargin || {}).bgBlurEnable;
         const swInput = document.querySelector('[data-bp="stroke-宽度"]');
         if (swInput) { swInput.value = '40'; swInput.dispatchEvent(new Event('input', { bubbles: true })); }
         const tpl0 = window.QF_BorderParams.current() || {};
@@ -113,7 +117,7 @@ app.whenReady().then(async () => {
             cachedLog,
             presets: presets.length, wallCount, thumbImgs, thumbErr,
             hasRender: typeof window.__render === 'function',
-            bpCount, strokeWidth, tpCount, lineText, paramFontSize, paramModel, exifText, profileAuto, srgbAuto,
+            bpCount, strokeWidth, blurCount, blurOn, tpCount, lineText, paramFontSize, paramModel, exifText, profileAuto, srgbAuto,
             exifBrand: ((window.QF_PS_POC.lastTemplate() || {}).manualExif || {}).brand,
             previewW: document.getElementById('previewCanvas').width,
             hasLive: typeof window.QF_PS_POC.renderPreviewLive === 'function',
@@ -142,6 +146,7 @@ app.whenReady().then(async () => {
     check(r.presets === 91 && r.hasRender, '引擎与预设已加载', JSON.stringify({ presets: r.presets, hasRender: r.hasRender }));
     check(r.wallCount === 91 && r.thumbImgs === 91, '风格缩略图墙已生成', JSON.stringify({ wall: r.wallCount, thumbs: r.thumbImgs }));
     check(r.bpCount >= 15 && r.strokeWidth === 40, '边框参数面板可改模板', JSON.stringify({ bpCount: r.bpCount, strokeWidth: r.strokeWidth }));
+    check(r.blurCount > 0 && r.blurOn === 1, '背景模糊参数可开启', JSON.stringify({ blurCount: r.blurCount, blurOn: r.blurOn }));
     check(r.tpCount > 0 && r.lineText === '编辑后的文字', '预设文字可编辑', JSON.stringify({ tpCount: r.tpCount, lineText: r.lineText }));
     check(r.paramFontSize === 88 && r.paramModel === 'CUSTOMMODEL', '参数字号与相机型号可调', JSON.stringify({ paramFontSize: r.paramFontSize, paramModel: r.paramModel }));
     check(['ILCE-6000', '35mm', 'f/5.6', '1/125s', 'ISO100']

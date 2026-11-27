@@ -3,7 +3,8 @@
 (function () {
     let t = null;
     let onChange = null;
-    const GROUPS = [['basic', '基础'], ['fill', '填充'], ['stroke', '描边'], ['shadow', '阴影 / 发光']];
+    const GROUPS = [['basic', '基础'], ['blur', '背景模糊'], ['fill', '填充'],
+        ['stroke', '描边'], ['shadow', '阴影 / 发光']];
 
     function num(v, d) { const n = Number(v); return isFinite(n) ? n : d; }
     function hex(v, d) { const s = String(v || '').replace('#', ''); return /^[0-9a-f]{6}$/i.test(s) ? '#' + s : d; }
@@ -52,6 +53,25 @@
               value: Math.round(num(cc.cornerRadiusAll, 0)),
               set: set((v) => { cc.cornerRadiusAll = v; cc.cornerRadiusTL = cc.cornerRadiusTR = cc.cornerRadiusBL = cc.cornerRadiusBR = v; }) },
 
+            { g: 'blur', label: '开启背景模糊', type: 'check', value: (m.bgBlurEnable || 0) === 1,
+              set: set((v) => { m.bgBlurEnable = v ? 1 : 0; }) },
+            { g: 'blur', label: '模糊程度', type: 'range', min: 0, max: 100, step: 1, unit: '%',
+              value: Math.round(num(t.blurIntensity, 50)), set: set((v) => { t.blurIntensity = v; }) },
+            { g: 'blur', label: '背景明暗', type: 'range', min: 0, max: 80, step: 2, unit: '%',
+              value: t.blurBackdropDim == null ? 40 : Math.round(num(t.blurBackdropDim, 40)),
+              set: set((v) => { t.blurBackdropDim = v; }) },
+            { g: 'blur', label: '背景取景', type: 'range', min: 100, max: 200, step: 5, unit: '%',
+              value: t.blurBackdropZoom == null ? 100 : Math.round(num(t.blurBackdropZoom, 100)),
+              set: set((v) => { t.blurBackdropZoom = v; }) },
+            { g: 'blur', label: '主体阴影', type: 'range', min: 0, max: 200, step: 10, unit: '%',
+              value: t.blurSubjectShadow == null ? 100 : Math.round(num(t.blurSubjectShadow, 100)),
+              set: set((v) => { t.blurSubjectShadow = v; }) },
+            { g: 'blur', label: '文字上下', type: 'range', min: -100, max: 100, step: 5, unit: '%',
+              value: Math.round(num(t.blurTextOffset, 0)), set: set((v) => { t.blurTextOffset = v; }) },
+            { g: 'blur', label: '文字行距', type: 'range', min: 0, max: 300, step: 5, unit: '%',
+              value: t.blurTextGap == null ? 100 : Math.round(num(t.blurTextGap, 100)),
+              set: set((v) => { t.blurTextGap = v; }) },
+
             { g: 'fill', label: '填充', type: 'select', value: f.fillType || 'transparent',
               options: [['transparent', '透明'], ['solid', '纯色'], ['gradient', '渐变'], ['texture', '纹理']],
               set: set((v) => { f.fillType = v; }) },
@@ -98,6 +118,8 @@
         } else if (c.type === 'select') {
             input = `<select data-bp="${id}">` + c.options.map(([v, l]) =>
                 `<option value="${v}"${v === c.value ? ' selected' : ''}>${l}</option>`).join('') + '</select>';
+        } else if (c.type === 'check') {
+            input = `<input type="checkbox" data-bp="${id}"${c.value ? ' checked' : ''}>`;
         } else {
             input = `<input type="color" data-bp="${id}" value="${c.value}">`;
         }
@@ -116,6 +138,10 @@
         GROUPS.forEach(([key, title], gi) => {
             // 相框风格由 engine-styles 自己画，不读 layerList 的填充/描边/阴影
             if (framed && (key === 'fill' || key === 'stroke' || key === 'shadow')) return;
+            if (key === 'blur' && framed) {
+                const caps = (window.StyleCaps && window.StyleCaps.caps) ? window.StyleCaps.caps(style) : {};
+                if (!caps.bi) return; // 这个风格引擎不读模糊参数
+            }
             const rows = list.filter((c) => c.g === key && (!c.only || vis[c.only] !== false));
             if (!rows.length) return;
             const body = rows.map((c) => {
@@ -149,12 +175,13 @@
         host.querySelectorAll('[data-bp]').forEach((el) => {
             const c = byId.get(el.dataset.bp);
             if (!c) return;
-            const ev = c.type === 'select' ? 'change' : 'input';
+            const ev = (c.type === 'select' || c.type === 'check') ? 'change' : 'input';
             el.addEventListener(ev, () => {
-                const v = c.type === 'range' ? Number(el.value) : el.value;
+                const v = c.type === 'range' ? Number(el.value)
+                    : (c.type === 'check' ? el.checked : el.value);
                 c.set(v);
                 const o = host.querySelector(`[data-out="${el.dataset.bp}"]`);
-                if (o) o.textContent = v + (c.unit || '');
+                if (o && c.type === 'range') o.textContent = v + (c.unit || '');
                 if (onChange) onChange();
             });
         });
