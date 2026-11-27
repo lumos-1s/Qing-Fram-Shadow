@@ -320,8 +320,11 @@
             if (!ok) return;
             const hideSrc = document.getElementById('chkHideSrc');
             const hide = hideSrc && hideSrc.checked ? 'true' : 'false';
+            const smartEl = document.getElementById('chkSmart');
+            const smart = smartEl && smartEl.checked ? 'true' : 'false';
             const placed = await evalScript('qfPlacePng(' + JSON.stringify(out) + ','
-                + JSON.stringify('清框影边框') + ',' + JSON.stringify(hide) + ')');
+                + JSON.stringify('清框影边框') + ',' + JSON.stringify(hide) + ','
+                + JSON.stringify(smart) + ')');
             log('放回文档：' + placed);
             removeTemp(out); // 结果已经贴进文档，临时 JPEG 不再需要
         } catch (e) {

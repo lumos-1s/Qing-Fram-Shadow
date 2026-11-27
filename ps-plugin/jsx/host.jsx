@@ -48,7 +48,7 @@ function qfGetDocPath() {
     }
 }
 
-function qfPlacePng(path, name, hideSrc) {
+function qfPlacePng(path, name, hideSrc, asSmart) {
     var oldDialogs = app.displayDialogs;
     // JPEG 是 sRGB，目标文档可能是 Adobe RGB；不关对话框会弹「配置文件不匹配」把自动化卡住
     app.displayDialogs = DialogModes.NO;
@@ -58,13 +58,19 @@ function qfPlacePng(path, name, hideSrc) {
         var srcLayer = doc.activeLayer;
         var png = new File(path);
         if (!png.exists) return 'ERR:渲染结果不存在';
-        var tmp = app.open(png);
-        tmp.activeLayer.copy();
-        // 先关掉 PNG 文档，确保原文档重新成为最前面文档，再粘贴
-        tmp.close(SaveOptions.DONOTSAVECHANGES);
-        // ExtendScript 里没有 doc.activate()，赋值 app.activeDocument 即可把文档切到最前
-        app.activeDocument = doc;
-        var layer = doc.paste();
+        var layer = null;
+        if (String(asSmart) === 'true' && typeof doc.place === 'function') {
+            // 直接置入为智能对象：嵌入原图数据，后续缩放不失真
+            app.activeDocument = doc;
+            layer = doc.place(png);
+        } else {
+            var tmp = app.open(png);
+            tmp.activeLayer.copy();
+            // 先关掉 JPEG 文档，确保原文档重新成为最前面文档，再粘贴
+            tmp.close(SaveOptions.DONOTSAVECHANGES);
+            app.activeDocument = doc;
+            layer = doc.paste();
+        }
         if (!layer) return 'ERR:粘贴失败，没有生成新图层';
         layer.name = name || '清框影';
         layer.visible = true;
