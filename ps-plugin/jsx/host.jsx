@@ -11,24 +11,15 @@ function qfGetLayerPng(path) {
     try {
         var doc = app.activeDocument;
         if (!doc) return 'ERR:没有打开的文档';
-        var layer = doc.activeLayer;
-        if (!layer) return 'ERR:没有选中图层';
 
-        var b = layer.bounds;
-        var x0 = b[0].as('px'), y0 = b[1].as('px');
-        var x1 = b[2].as('px'), y1 = b[3].as('px');
-        var w = Math.max(1, Math.round(x1 - x0));
-        var h = Math.max(1, Math.round(y1 - y0));
-        var res = doc.resolution;
+        // 取整份文档的合成，尺寸就是文档画布，不是选中图层的外框。
+        // 这样边框成品和文档 1:1 对应，不会出现下层露出或白边。
+        var w = Math.max(1, Math.round(doc.width.as('px')));
+        var h = Math.max(1, Math.round(doc.height.as('px')));
 
-        // 必须先激活原文档并复制图层，再新建临时文档；
-        // 否则新建的临时文档变成最前面，layer.copy() 会报「目标文档必须是最前面的文档」。
         app.activeDocument = doc;
-        layer.copy();
-
-        var tmp = app.documents.add(w, h, res, 'qingframe_export_tmp',
-            NewDocumentMode.RGB, DocumentFill.TRANSPARENT);
-        tmp.paste();
+        var tmp = doc.duplicate();
+        tmp.flatten();
 
         var file = new File(path);
         tmp.saveAs(file, new PNGSaveOptions(), true);
@@ -67,7 +58,8 @@ function qfPlacePng(path, name) {
         var lw = Math.max(1, b[2].as('px') - b[0].as('px'));
         var lh = Math.max(1, b[3].as('px') - b[1].as('px'));
         var dw = doc.width.as('px'), dh = doc.height.as('px');
-        var s = Math.min(dw / lw, dh / lh);
+        // cover（取较大比例）：成品必须盖满文档画布，避免下层露出或留白边
+        var s = Math.max(dw / lw, dh / lh);
         if (Math.abs(s - 1) > 0.001) {
             layer.resize(Math.max(1, Math.round(lw * s)), Math.max(1, Math.round(lh * s)),
                 AnchorPosition.MIDDLECENTER);

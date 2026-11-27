@@ -114,13 +114,18 @@
             const got = await evalScript('qfGetLayerPng(' + JSON.stringify(src) + ')');
             log('导出图层：' + got);
             if (String(got).indexOf('ERR') === 0) return;
+            const dm = /OK:(\d+)x(\d+)/.exec(String(got));
+            const docW = dm ? Number(dm[1]) : 0;
+            const docH = dm ? Number(dm[2]) : 0;
 
             const image = await loadLayer(src);
             log('图层尺寸：' + image.w + '×' + image.h);
             const template = presetAt();
+            // 让引擎按文档比例出图；否则模板自己的画布比例会让成品和文档对不上
+            if (docW && docH) template.canvasRatio = docW + ':' + docH;
             log('套用风格：' + (template.templateName || '默认'));
 
-            const A = setupApp(image, template, Math.max(image.w, image.h));
+            const A = setupApp(image, template, Math.max(docW || image.w, docH || image.h));
             window.__render(A, false);
 
             // 输出走 JPEG（质量 95）：带边框的成品不需要 alpha，体积比 PNG 小一个量级
