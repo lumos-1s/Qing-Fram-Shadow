@@ -1274,9 +1274,19 @@
         if (!p) return;
         pushUndo();
         rememberRecent(p);
+        // 签名/头像参数：预设没写的键沿用用户当前值，与桌面 mergePreset 同口径。
+        // 「头像纪念 / 签名+参数」等预设显式写 avatarShow:1，表示这套风格要带头像；
+        // 票根类显式写 avatarShow:0，表示默认不带，不能被上一份模板盖回去。
+        const prevT = state.template;
         state.preset = p;
         state.template = clone(p);
         state.template.templateName = p.templateName || p._fileName || '';
+        ['userSignature', 'signFont', 'signColor', 'avatarScale', 'signSize',
+            'signIncludeModel', 'avatarShow', 'creditMode'].forEach((k) => {
+            if (prevT[k] !== undefined && (state.template[k] === undefined || state.template[k] === null)) {
+                state.template[k] = prevT[k];
+            }
+        });
         // 不要给没有 photoFrameStyle 的预设补一个风格名：引擎会把未知名字当成
         // 相框风格去查表，结果 23 个「默认图层」预设全变成灰色占位图。
         A.template = state.template;
@@ -2915,6 +2925,9 @@
     document.getElementById('mineStylesRow').addEventListener('click', () => { showPage('edit'); render('style'); });
     document.getElementById('mineGradesRow').addEventListener('click', () => { showPage('edit'); render('grade'); });
     document.getElementById('minePhotosRow').addEventListener('click', () => { showPage('edit'); render('puzzle'); });
+
+    // 用户头像：加载本机头像，换头像后重绘预览（引擎读 window.__qfsAvatarImg）
+    if (window.QF_Avatar) window.QF_Avatar.bind({ onChange: () => renderPreview(true) });
 
     // 有引擎时先用它，否则降级自绘
     if (typeof window.__render !== 'function') paintFallback();

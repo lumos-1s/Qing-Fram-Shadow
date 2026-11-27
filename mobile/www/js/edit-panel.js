@@ -232,6 +232,8 @@
         S('sign', '署名大小', 'range', Math.round((t.signSize == null ? 1 : t.signSize) * 100),
             (v) => { t.signSize = v / 100; }, { min: 50, max: 200, step: 5, unit: '%' });
         S('sign', '显示头像', 'check', t.avatarShow !== 0, (v) => { t.avatarShow = v ? 1 : 0; });
+        S('sign', '头像大小', 'range', Math.round((t.avatarScale == null ? 0.85 : t.avatarScale) * 100),
+            (v) => { t.avatarScale = v / 100; }, { min: 50, max: 160, step: 5, unit: '%' });
 
         S('exif', 'EXIF 参数条', 'check', (decor.exifAutoText || 0) === 1,
             (v) => { decor.exifAutoText = v ? 1 : 0; });

@@ -504,6 +504,26 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 .modal-input.code-box { font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
 .modal-note { font-size: 11px; line-height: 1.6; color: var(--text-3); margin-top: 8px; }
 
+/* ── 用户头像裁剪 ──────────────────────────────────────────────── */
+.avatar-modal .panel-note { margin: -4px 0 12px; }
+.avatar-crop-stage {
+  position: relative; width: min(72vw, 300px); height: min(72vw, 300px);
+  margin: 0 auto; overflow: hidden; border-radius: 12px;
+  background: var(--surface-3); touch-action: none; cursor: grab;
+}
+.avatar-crop-stage.dragging { cursor: grabbing; }
+.avatar-crop-stage::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  border: 1px solid rgba(255,255,255,.35); border-radius: 12px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.25);
+}
+.avatar-crop-stage img { position: absolute; display: block; max-width: none; user-select: none; -webkit-user-drag: none; }
+.avatar-zoom-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.avatar-zoom-row label { flex: 0 0 36px; font-size: 12px; color: var(--text-3); }
+.avatar-zoom-row input { flex: 1; min-width: 0; }
+.avatar-zoom-row output { flex: 0 0 46px; text-align: right; font-size: 12px; color: var(--text-3); }
+#btnAvatarClear { color: var(--text-3); }
+
 /* ── 自由裁剪 ─────────────────────────────────────────────────── */
 #cropLayer { position: absolute; z-index: 9; touch-action: none; overflow: visible; }
 .crop-dim { position: absolute; background: rgba(0,0,0,.58); pointer-events: none; }
@@ -590,7 +610,9 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 }
 .mine-scroll::-webkit-scrollbar { display: none; }
 .mine-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); }
-.mine-id { display: flex; align-items: center; gap: 14px; padding: 18px 16px; margin-bottom: 18px; }
+.mine-id { display: flex; align-items: center; gap: 14px; padding: 18px 16px; margin-bottom: 18px; width: 100%; text-align: left; color: var(--text); cursor: pointer; }
+.mine-id:active { background: var(--surface-alt); }
+.mine-id .mine-id-txt { flex: 1 1 auto; }
 .mine-logo {
   flex: 0 0 auto; width: 54px; height: 54px; border-radius: 50%;
   overflow: hidden; background: var(--surface-3);
