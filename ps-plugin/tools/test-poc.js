@@ -58,17 +58,12 @@ app.whenReady().then(async () => {
         if (sel) sel.value = '0';
         document.getElementById('btnBorder').click();
         await wait(1200);
-        const borderLog = document.getElementById('log').textContent;
-
-        document.getElementById('btnPuzzle').click();
-        await wait(1200);
-        const both = document.getElementById('log').textContent;
+        const logText = document.getElementById('log').textContent;
 
         return {
             presets: presets.length,
             hasRender: typeof window.__render === 'function',
-            hasPuzzle: typeof window.__renderPuzzle === 'function',
-            borderLog, both, placed: window.qfMockPlaced,
+            logText, placed: window.qfMockPlaced,
             outputs: window.qfMockPlaced.map((p) => {
                 const b64 = window.qfMockFiles[p.path] || '';
                 return { len: b64.length, png: /^iVBORw0KGgo/.test(b64) };
@@ -78,10 +73,10 @@ app.whenReady().then(async () => {
     })()`);
 
     console.log(JSON.stringify(r, null, 2));
-    check(r.presets === 91 && r.hasRender && r.hasPuzzle, '引擎与预设已加载', JSON.stringify({ presets: r.presets, hasRender: r.hasRender, hasPuzzle: r.hasPuzzle }));
-    check(/放回文档：OK/.test(r.borderLog), '边框渲染并写回图层', r.borderLog.split('\n').slice(-2).join(' / '));
-    check(r.placed.length === 2 && r.placed[0].name === '清框影边框' && r.placed[1].name === '清框影拼图',
-        '边框与拼图各写回一次', JSON.stringify(r.placed.map((p) => p.name)));
+    check(r.presets === 91 && r.hasRender, '引擎与预设已加载', JSON.stringify({ presets: r.presets, hasRender: r.hasRender }));
+    check(/放回文档：OK/.test(r.logText), '边框渲染并写回图层', r.logText.split('\n').slice(-2).join(' / '));
+    check(r.placed.length === 1 && r.placed[0].name === '清框影边框',
+        '只写回一层边框', JSON.stringify(r.placed.map((p) => p.name)));
     check(r.outputs.every((f) => f.len > 10000 && f.png), '写回的是有效 PNG', JSON.stringify(r.outputs));
     check(errors.length === 0, '无控制台错误', errors.slice(0, 3).join(' / '));
 

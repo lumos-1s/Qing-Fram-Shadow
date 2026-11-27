@@ -10,7 +10,6 @@
     const presetSel = document.getElementById('preset');
     const canvas = document.getElementById('renderCanvas');
     const btnBorder = document.getElementById('btnBorder');
-    const btnPuzzle = document.getElementById('btnPuzzle');
 
     function log(s) { if (logEl) logEl.textContent += String(s) + '\n'; }
     function clearLog() { if (logEl) logEl.textContent = ''; }
@@ -62,7 +61,7 @@
         };
     }
 
-    function setupApp(image, template, targetPx, puzzle) {
+    function setupApp(image, template, targetPx) {
         const A = window.App;
         A.dom = { canvas };
         A.image = image;
@@ -73,12 +72,7 @@
         A.uiDprOverride = 1;
         A._gesture = false;
         A._forceFitNext = true;
-        A._activePuzzleSlot = -1;
         delete A.exportScale;
-        if (puzzle) {
-            A.exportScale = 4000;
-            A.displayMax = 4000;
-        }
         return A;
     }
 
@@ -91,9 +85,9 @@
         return t;
     }
 
-    async function apply(kind) {
+    async function apply() {
         clearLog();
-        btnBorder.disabled = btnPuzzle.disabled = true;
+        btnBorder.disabled = true;
         try {
             const src = tempPath('qingframe-source.png');
             const got = await evalScript('qfGetLayerPng(' + JSON.stringify(src) + ')');
@@ -105,33 +99,22 @@
             const template = presetAt();
             log('套用风格：' + (template.templateName || '默认'));
 
-            let A;
-            if (kind === 'puzzle') {
-                template.puzzle = {
-                    enabled: 1, layout: 'grid4', gap: 6, bgMode: 0,
-                    slots: { 0: { imageIndex: 0 }, 1: { imageIndex: 0 },
-                        2: { imageIndex: 0 }, 3: { imageIndex: 0 } }
-                };
-                A = setupApp(image, template, 4000, true);
-                window.__renderPuzzle(A, false, true);
-            } else {
-                A = setupApp(image, template, Math.max(image.w, image.h), false);
-                window.__render(A, false);
-            }
+            const A = setupApp(image, template, Math.max(image.w, image.h));
+            window.__render(A, false);
 
             const data = canvas.toDataURL('image/png').split(',')[1] || '';
             if (!data || data.length < 128) throw new Error('渲染结果为空');
-            const out = tempPath(kind === 'puzzle' ? 'qingframe-puzzle.png' : 'qingframe-border.png');
+            const out = tempPath('qingframe-border.png');
             const ok = await writeBase64(out, data);
             log('写出结果：' + (ok ? out : '失败'));
             if (!ok) return;
             const placed = await evalScript('qfPlacePng(' + JSON.stringify(out) + ','
-                + JSON.stringify(kind === 'puzzle' ? '清框影拼图' : '清框影边框') + ')');
+                + JSON.stringify('清框影边框') + ')');
             log('放回文档：' + placed);
         } catch (e) {
             log('失败：' + ((e && e.message) || e));
         } finally {
-            btnBorder.disabled = btnPuzzle.disabled = false;
+            btnBorder.disabled = false;
         }
     }
 
@@ -142,8 +125,7 @@
                 `<option value="${i}">${String(p.templateName || p._fileName || ('风格 ' + (i + 1))).replace(/</g, '&lt;')}</option>`
             ).join('');
         }
-        if (btnBorder) btnBorder.addEventListener('click', () => apply('border'));
-        if (btnPuzzle) btnPuzzle.addEventListener('click', () => apply('puzzle'));
+        if (btnBorder) btnBorder.addEventListener('click', () => apply());
         log('就绪；共 ' + list.length + ' 款预设。' + (cs ? '已连接 Photoshop。' : '本机测试模式。'));
     }
 

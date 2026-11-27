@@ -68,7 +68,7 @@ function main() {
     }
 
     if (dirs.length > 1) console.log('检测到多个 Photoshop 版本，本次只装到第一个；其他目录：\n  ' + dirs.slice(1).join('\n  '));
-    console.log('\n请重启 Photoshop，然后：窗口 → 扩展功能 → 清框影 PS 桥接 PoC');
+    console.log('\n请重启 Photoshop，然后：窗口 → 扩展功能 → 清框影桥接');
 }
 
 main();

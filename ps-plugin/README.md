@@ -1,6 +1,6 @@
-# 清框影 · Photoshop 桥接 PoC
+# 清框影 · Photoshop 加边框插件 PoC
 
-目标：验证「把桌面端的边框 / 拼图作为 Photoshop 面板插件」是否可行。当前只是**概念验证**，不是可分发产品。
+目标：验证「把桌面端的边框作为 Photoshop 面板插件」是否可行。当前只是**概念验证**，不是可分发产品；本版只做加边框，不含拼图。
 
 ## 结论（技术）
 
@@ -27,7 +27,7 @@ ps-plugin/
 
 1. `qfGetLayerPng`：ExtendScript 把当前选中图层复制到一个临时文档，导出透明 PNG。
 2. 面板用 `cep.fs.readFile` 读成 base64，`Image` 解码后画进离屏 canvas。
-3. 用桌面同一份 `window.__render` / `window.__renderPuzzle` 渲染，输出 PNG。
+3. 用桌面同一份 `window.__render` 渲染选中风格，输出 PNG。
 4. `cep.fs.writeFile` 写临时 PNG，`qfPlacePng` 在 Photoshop 里打开它、复制图层、贴回当前文档。
 
 输出是**一张扁平化的新图层**，不是可逐层编辑的相框元素。
@@ -38,7 +38,7 @@ ps-plugin/
 npm run test:ps:poc
 ```
 
-用 Electron 加载面板，注入 `window.qfMockHost` 代替 Photoshop，验证：引擎/预设加载、边框渲染、拼图渲染、两次 PNG 写回均成功。
+用 Electron 加载面板，注入 `window.qfMockHost` 代替 Photoshop，验证：引擎/预设加载、边框渲染、PNG 写回成功。
 
 ## 在 Photoshop 里试用（开发模式）
 
@@ -56,7 +56,7 @@ npm run ps:poc:install -- --ps "D:\PS2026\Adobe Photoshop 2026"
 `Required\CEP\extensions\com.qingframe.ps.bridge.poc\`，并写入
 `HKCU\Software\Adobe\CSXS.12\PlayerDebugMode=1`。写 Program Files 可能需要管理员权限；
 装完**重启 Photoshop**，菜单 `窗口 → 扩展功能 → 清框影桥接`。
-选中一个图层 → 选风格 → 点「边框 → 新图层」或「四宫格 → 新图层」。
+选中一个图层 → 选风格 → 点「套用边框 → 新图层」。
 
 如果脚本找不到 PS 或权限不足，手动做同样两件事即可：
 1. 把整个 `ps-plugin` 目录拷到 `<PS 安装目录>\Required\CEP\extensions\com.qingframe.ps.bridge.poc\`
@@ -68,5 +68,5 @@ npm run ps:poc:install -- --ps "D:\PS2026\Adobe Photoshop 2026"
 
 - 未签名、不可直接上架 Adobe Exchange。
 - 只取**当前选中图层**，不处理多图层合成。
-- 拼图 PoC 用同一张图铺满 4 格，没有换图 UI。
-- 没有把我们的「调色 / RAW / EXIF」链路接进来，只验证边框与拼图。
+- 本版不含拼图。
+- 没有把我们的「调色 / RAW / EXIF」链路接进来，只验证加边框。
