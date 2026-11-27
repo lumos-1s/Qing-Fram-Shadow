@@ -2,6 +2,7 @@
 /* PS 插件的边框参数面板：直接改 template 上的既有字段，渲染仍交给桌面引擎。 */
 (function () {
     let t = null;
+    let onChange = null;
     const GROUPS = [['basic', '基础'], ['fill', '填充'], ['stroke', '描边'],
         ['corner', '圆角'], ['shadow', '阴影 / 发光']];
 
@@ -150,6 +151,7 @@
                 c.set(v);
                 const o = host.querySelector(`[data-out="${el.dataset.bp}"]`);
                 if (o) o.textContent = v + (c.unit || '');
+                if (onChange) onChange();
             });
         });
     }
@@ -157,6 +159,7 @@
     window.QF_BorderParams = {
         setTemplate(x) { t = x; render(); },
         current() { return t; },
+        onChange(fn) { onChange = fn; },
         render
     };
 })();

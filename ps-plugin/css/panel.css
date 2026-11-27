@@ -15,7 +15,11 @@ button:disabled { opacity:.5; }
 #exifPanel summary { cursor:pointer; color:var(--primary); }
 .exif-text { color:var(--muted); font-size:11px; padding:4px 0; min-height:16px; }
 .exif-auto { color:var(--muted); font-size:11px; }
-.params { max-height:230px; overflow-y:auto; border:1px solid var(--line); border-radius:4px; padding:2px 6px; }
+.preview {
+  width:100%; max-height:170px; display:block; object-fit:contain;
+  background:#111; border:1px solid var(--line); border-radius:4px;
+}
+.params { max-height:210px; overflow-y:auto; border:1px solid var(--line); border-radius:4px; padding:2px 6px; }
 .params details { border-bottom:1px solid var(--line); }
 .params details:last-child { border-bottom:none; }
 .params summary { cursor:pointer; padding:5px 0; color:var(--primary); font-weight:600; }

@@ -51,6 +51,34 @@
         });
     }
     let exifInfo = null;
+    let previewSource = null;
+    let liveTemplate = null;
+    let previewTimer = 0;
+
+    function renderPreviewLive() {
+        if (!previewSource || !liveTemplate) return;
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(() => {
+            try {
+                const pc = document.getElementById('previewCanvas');
+                if (!pc) return;
+                const A = window.App;
+                A.dom = { canvas: pc };
+                A.image = previewSource;
+                A.images = [previewSource];
+                A.template = liveTemplate;
+                A.selectedEls = [];
+                A.displayMax = Math.max(previewSource.w, previewSource.h);
+                A.uiDprOverride = 1;
+                A._gesture = false;
+                A._forceFitNext = true;
+                delete A.exportScale;
+                window.__render(A, false);
+            } catch (e) {
+                log('预览失败：' + ((e && e.message) || e));
+            }
+        }, 60);
+    }
 
     async function readBytes(path) {
         if (window.qfMockHost) {
@@ -127,10 +155,20 @@
         el.width = img.naturalWidth; el.height = img.naturalHeight;
         el.getContext('2d').drawImage(img, 0, 0);
         el.naturalWidth = el.width; el.naturalHeight = el.height; el.complete = true;
-        return {
-            el, name: 'photoshop-layer.png', w: el.width, h: el.height,
+
+        // 实时预览用缩略图，避免每次拖滑块都渲染 5905×3937
+        const k = Math.min(1, 1200 / Math.max(1, el.width, el.height));
+        const pv = document.createElement('canvas');
+        pv.width = Math.max(1, Math.round(el.width * k));
+        pv.height = Math.max(1, Math.round(el.height * k));
+        pv.getContext('2d').drawImage(el, 0, 0, pv.width, pv.height);
+        pv.naturalWidth = pv.width; pv.naturalHeight = pv.height; pv.complete = true;
+
+        const mk = (c) => ({
+            el: c, name: 'photoshop-layer.png', w: c.width, h: c.height,
             srcW: el.width, srcH: el.height, grade: null
-        };
+        });
+        return { full: mk(el), preview: mk(pv) };
     }
 
     function setupApp(image, template, targetPx) {
@@ -169,15 +207,19 @@
             const docW = dm ? Number(dm[1]) : 0;
             const docH = dm ? Number(dm[2]) : 0;
 
-            const image = await loadLayer(src);
+            const loaded = await loadLayer(src);
+            const image = loaded.full;
+            previewSource = loaded.preview;
             log('图层尺寸：' + image.w + '×' + image.h);
             const template = presetAt();
             applyExif(template);
+            liveTemplate = template;
             if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(template);
             // 让引擎按文档比例出图；否则模板自己的画布比例会让成品和文档对不上
             if (docW && docH) template.canvasRatio = docW + ':' + docH;
             log('套用风格：' + (template.templateName || '默认'));
 
+            renderPreviewLive();
             const A = setupApp(image, template, Math.max(docW || image.w, docH || image.h));
             window.__render(A, false);
 
@@ -216,6 +258,17 @@
         }
     }
 
+    async function prepareSource() {
+        if (!cs && !window.qfMockHost) return; // 本地回归不在这里预加载
+        const src = tempPath('qingframe-source.png');
+        const got = await evalScript('qfGetLayerPng(' + JSON.stringify(src) + ')');
+        if (String(got).indexOf('ERR') === 0) return;
+        const loaded = await loadLayer(src);
+        previewSource = loaded.preview;
+        liveTemplate = window.QF_BorderParams ? window.QF_BorderParams.current() : presetAt();
+        renderPreviewLive();
+    }
+
     function init() {
         const list = window.QF_PRESETS || [];
         if (presetSel) {
@@ -226,14 +279,23 @@
         if (btnBorder) btnBorder.addEventListener('click', () => apply());
         if (presetSel) presetSel.addEventListener('change', () => {
             if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(presetAt());
+            liveTemplate = window.QF_BorderParams ? window.QF_BorderParams.current() : presetAt();
+            renderPreviewLive();
         });
-        if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(presetAt());
+        if (window.QF_BorderParams) {
+            window.QF_BorderParams.onChange(() => {
+                liveTemplate = window.QF_BorderParams.current();
+                renderPreviewLive();
+            });
+            window.QF_BorderParams.setTemplate(presetAt());
+        }
         log('就绪；共 ' + list.length + ' 款预设。' + (cs ? '已连接 Photoshop。' : '本机测试模式。'));
         detectExif();
+        prepareSource();
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
     else init();
 
-    window.QF_PS_POC = { apply, detectExif, evalScript, readBase64, writeBase64, tempPath, loadLayer };
+    window.QF_PS_POC = { apply, detectExif, renderPreviewLive, evalScript, readBase64, writeBase64, tempPath, loadLayer };
 })();

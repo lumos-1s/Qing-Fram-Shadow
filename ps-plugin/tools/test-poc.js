@@ -81,6 +81,8 @@ app.whenReady().then(async () => {
             presets: presets.length,
             hasRender: typeof window.__render === 'function',
             bpCount, strokeWidth, exifText,
+            previewW: document.getElementById('previewCanvas').width,
+            hasLive: typeof window.QF_PS_POC.renderPreviewLive === 'function',
             hasEmbedApi: typeof window.QF_IccEmbed === 'object' && typeof window.QF_IccEmbed.embed === 'function',
             iccLen: (window.QF_ICC_ADOBERGB || '').length,
             logText, placed: window.qfMockPlaced,
@@ -107,6 +109,7 @@ app.whenReady().then(async () => {
     check(r.bpCount >= 15 && r.strokeWidth === 40, '边框参数面板可改模板', JSON.stringify({ bpCount: r.bpCount, strokeWidth: r.strokeWidth }));
     check(['SONY', 'ILCE-6000', '35mm', '52mm', 'f/5.6', '1/125s', 'ISO100']
         .every((s) => r.exifText.indexOf(s) >= 0), '自动识别 EXIF 拍摄参数', r.exifText);
+    check(r.hasLive && r.previewW > 0, '实时预览画布已渲染', JSON.stringify({ hasLive: r.hasLive, previewW: r.previewW }));
     check(/放回文档：OK/.test(r.logText), '边框渲染并写回图层', r.logText.split('\n').slice(-2).join(' / '));
     check(r.placed.length === 1 && r.placed[0].name === '清框影边框',
         '只写回一层边框', JSON.stringify(r.placed.map((p) => p.name)));
