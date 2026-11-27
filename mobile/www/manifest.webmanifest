@@ -1,0 +1,15 @@
+{
+  "name": "清框影",
+  "short_name": "清框影",
+  "description": "给照片加边框、水印与相机参数，全程本地处理。",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0B0C0B",
+  "theme_color": "#0B0C0B",
+  "icons": [
+    { "src": "img/favicon-32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "img/apple-touch-icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "img/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
