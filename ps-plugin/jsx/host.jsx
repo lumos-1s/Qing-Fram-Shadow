@@ -60,8 +60,20 @@ function qfPlacePng(path, name) {
         layer.name = name || '清框影';
         layer.visible = true;
         layer.opacity = 100;
-        doc.activeLayer = layer;
+
+        // 边框模板会在照片外加密度/留白，成品画布可能比文档大；
+        // 不缩放直接粘进去会被画布裁掉，所以按比例缩放到刚好装进文档并居中。
         var b = layer.bounds;
+        var lw = Math.max(1, b[2].as('px') - b[0].as('px'));
+        var lh = Math.max(1, b[3].as('px') - b[1].as('px'));
+        var dw = doc.width.as('px'), dh = doc.height.as('px');
+        var s = Math.min(dw / lw, dh / lh);
+        if (Math.abs(s - 1) > 0.001) {
+            layer.resize(Math.max(1, Math.round(lw * s)), Math.max(1, Math.round(lh * s)),
+                AnchorPosition.MIDDLECENTER);
+        }
+        doc.activeLayer = layer;
+        b = layer.bounds;
         return 'OK:' + layer.name + ' ' + Math.round(b[2].as('px') - b[0].as('px'))
             + 'x' + Math.round(b[3].as('px') - b[1].as('px'));
     } catch (e) {
