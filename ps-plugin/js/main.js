@@ -50,6 +50,57 @@
             else resolve({ error: 'cep.fs 不可用' });
         });
     }
+    let exifInfo = null;
+
+    async function readBytes(path) {
+        if (window.qfMockHost) {
+            const b64 = await readBase64(path);
+            if (!b64) throw new Error('读不到源文件');
+            const bin = atob(b64);
+            const out = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+            return out;
+        }
+        const nodeFs = require('fs');
+        const buf = nodeFs.readFileSync(path);
+        return new Uint8Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+    }
+
+    async function detectExif() {
+        const el = document.getElementById('exifText');
+        if (!el) return;
+        try {
+            const r = await evalScript('qfGetDocPath()');
+            if (String(r).indexOf('ERR') === 0) { el.textContent = r; return; }
+            const bytes = await readBytes(String(r).slice(3));
+            const raw = window.__parseExif(bytes.buffer);
+            const info = window.__exifSummary(raw) || {};
+            exifInfo = info;
+            const parts = [];
+            if (info.make) parts.push(info.make);
+            if (info.model) parts.push(info.model);
+            if (info.focal) parts.push(info.focal + (info.focal35 ? `（等效 ${info.focal35}mm）` : ''));
+            if (info.aperture) parts.push(info.aperture);
+            if (info.shutter) parts.push(info.shutter);
+            if (info.iso) parts.push(info.iso);
+            el.textContent = parts.length ? parts.join(' · ') : '未识别到 EXIF 参数';
+        } catch (e) {
+            el.textContent = '识别失败：' + ((e && e.message) || e);
+        }
+    }
+
+    function applyExif(t) {
+        const chk = document.getElementById('chkExifAuto');
+        if (!exifInfo || !chk || !chk.checked) return;
+        const decor = t.decorConfig || (t.decorConfig = {});
+        t.manualExif = Object.assign({}, t.manualExif || {}, {
+            brand: exifInfo.make || '', model: exifInfo.model || '',
+            focal: exifInfo.focal || '', aperture: exifInfo.aperture || '',
+            iso: exifInfo.iso || '', shutter: exifInfo.shutter || ''
+        });
+        decor.exifAutoText = 1;
+    }
+
     function tempPath(name) {
         if (window.qfMockHost) return window.qfMockHost.tempPath(name);
         let dir = '';
@@ -121,6 +172,7 @@
             const image = await loadLayer(src);
             log('图层尺寸：' + image.w + '×' + image.h);
             const template = presetAt();
+            applyExif(template);
             if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(template);
             // 让引擎按文档比例出图；否则模板自己的画布比例会让成品和文档对不上
             if (docW && docH) template.canvasRatio = docW + ':' + docH;
@@ -177,10 +229,11 @@
         });
         if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(presetAt());
         log('就绪；共 ' + list.length + ' 款预设。' + (cs ? '已连接 Photoshop。' : '本机测试模式。'));
+        detectExif();
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
     else init();
 
-    window.QF_PS_POC = { apply, evalScript, readBase64, writeBase64, tempPath, loadLayer };
+    window.QF_PS_POC = { apply, detectExif, evalScript, readBase64, writeBase64, tempPath, loadLayer };
 })();

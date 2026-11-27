@@ -11,6 +11,10 @@ select { width:100%; min-height:30px; padding:0 6px; background:var(--panel); co
 button { flex:1; min-height:34px; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:5px; }
 button.primary { background:var(--primary); border-color:var(--primary); color:#102018; font-weight:600; }
 button:disabled { opacity:.5; }
+#exifPanel { border:1px solid var(--line); border-radius:4px; padding:4px 8px; }
+#exifPanel summary { cursor:pointer; color:var(--primary); }
+.exif-text { color:var(--muted); font-size:11px; padding:4px 0; min-height:16px; }
+.exif-auto { color:var(--muted); font-size:11px; }
 .params { max-height:230px; overflow-y:auto; border:1px solid var(--line); border-radius:4px; padding:2px 6px; }
 .params details { border-bottom:1px solid var(--line); }
 .params details:last-child { border-bottom:none; }

@@ -31,6 +31,18 @@ function qfGetLayerPng(path) {
     }
 }
 
+// 返回当前文档的源文件路径，面板侧用 Node fs + exif.js 读 EXIF
+function qfGetDocPath() {
+    try {
+        var doc = app.activeDocument;
+        if (!doc) return 'ERR:没有打开的文档';
+        if (!doc.fullName) return 'ERR:文档尚未保存，没有源文件可读取 EXIF';
+        return 'OK:' + doc.fullName.fsName;
+    } catch (e) {
+        return 'ERR:' + (e.message || e);
+    }
+}
+
 function qfPlacePng(path, name) {
     var oldDialogs = app.displayDialogs;
     // JPEG 是 sRGB，目标文档可能是 Adobe RGB；不关对话框会弹「配置文件不匹配」把自动化卡住
