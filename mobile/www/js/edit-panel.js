@@ -531,7 +531,9 @@
             + `<div class="puzzle-acts"><button id="btnFxReset" type="button">重置效果</button></div></details>`;
     }
 
-    function bindFx(panel, onChange, onRebuild) {
+    // tpl 必须由调用方传入当前模板：调色页直接调 fxHtml 而不走 html()，
+    // 内部 tmpl 还停在上一张编辑子页，拿它重置会改了个寂寞。
+    function bindFx(panel, onChange, onRebuild, tpl) {
         panel.querySelectorAll('[data-ctl]').forEach((el) => {
             const c = fxCtls[Number(el.dataset.ctl)];
             if (!c) return;
@@ -546,9 +548,11 @@
         });
         const reset = panel.querySelector('#btnFxReset');
         if (reset) reset.addEventListener('click', () => {
-            const le = tmpl.lightEffect || (tmpl.lightEffect = {});
+            const target = tpl || tmpl;
+            const le = target.lightEffect || (target.lightEffect = {});
             le.vignetteStrength = 0; le.vignetteEnable = 0; le.vignetteFeather = 50;
             le.lightLeakOpacity = 0; le.lightLeakEnable = 0;
+            le.lightLeakType = 'warm'; le.lightLeakAngle = 225;
             le.filmGrainIntensity = 0; le.filmGrainEnable = 0;
             onRebuild();
         });

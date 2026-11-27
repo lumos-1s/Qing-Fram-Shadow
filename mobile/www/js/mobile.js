@@ -1908,7 +1908,7 @@
         const el = openStyleModal({
             title: '样式分享码',
             body: `<textarea id="styleCodeBox" class="modal-input code-box" readonly>${esc(code)}</textarea>`
-                + `<p class="modal-note" id="styleCodeNote">约 ${Math.round(code.length / 1024)} KB。复制发给朋友，对方在「设置 → 从分享码导入」里粘贴即可。</p>`,
+                + `<p class="modal-note" id="styleCodeNote">约 ${Math.round(code.length / 1024)} KB。复制发给朋友，对方在「我的 → 从分享码导入」里粘贴即可。</p>`,
             actions: [
                 { label: '关闭' },
                 { label: '复制', primary: true, onClick: async () => {
@@ -1950,23 +1950,70 @@
             ]
         });
     }
-    function openDeleteStyleModal(i) {
+    function renameMyStyle(i, name) {
+        const s = myStyles[i];
+        if (!s) return;
+        const finalName = String(name || '').trim().slice(0, 18);
+        if (!finalName) { hint('名字不能为空'); return; }
+        if (finalName === s.name) return;
+        if (myStyles.some((x, k) => k !== i && x.name === finalName)) {
+            hint('已经有同名风格了，换个名字'); return;
+        }
+        s.name = finalName;
+        if (s.tpl) s.tpl.templateName = finalName;
+        saveMyStyles();
+        render('style');
+        hint(`已改名为「${finalName}」`);
+    }
+    function openRenameStyleModal(i) {
+        const s = myStyles[i];
+        if (!s) return;
+        const el = openStyleModal({
+            title: '重命名风格',
+            body: `<input id="styleRenameInput" class="modal-input name-input" value="${esc(s.name)}" maxlength="18" enterkeyhint="done">`
+                + `<p class="modal-note">改完名字后，卡片与分享码都会用新名字。</p>`,
+            actions: [
+                { label: '取消' },
+                { label: '保存', primary: true, onClick: (root) => {
+                    const v = (root.querySelector('#styleRenameInput').value || '').trim() || s.name;
+                    closeStyleModal();
+                    renameMyStyle(i, v);
+                } }
+            ]
+        });
+        const inp = el.querySelector('#styleRenameInput');
+        if (inp) {
+            inp.focus(); inp.select();
+            inp.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                const v = (inp.value || '').trim() || s.name;
+                closeStyleModal();
+                renameMyStyle(i, v);
+            });
+        }
+    }
+    function openMyStyleActions(i) {
         const s = myStyles[i];
         if (!s) return;
         openStyleModal({
-            title: '删除这个风格？',
-            body: `<p class="modal-note">「${esc(s.name)}」会从本机删除，之后只能靠分享码找回。</p>`,
+            title: `管理「${s.name}」`,
+            body: `<p class="modal-note">可以改名；删除不可撤销，之后只能靠分享码找回。</p>`,
             actions: [
                 { label: '取消' },
-                { label: '删除', primary: true, onClick: () => { closeStyleModal(); removeMyStyle(i); } }
+                { label: '删除', primary: true, onClick: () => { closeStyleModal(); removeMyStyle(i); } },
+                { label: '重命名', onClick: () => { closeStyleModal(); openRenameStyleModal(i); } }
             ]
         });
     }
     // 搜索只隐藏卡片、不重建整面墙，输入焦点和滚动位置都不会跳
     function applyStyleQuery() {
         const q = state.query.trim().toLowerCase();
+        // 分母取当前面板实际渲染出来的卡数：自建风格也在这里，收藏/分类筛选后也会变，
+        // 不能拿内置预设总数硬除，否则会出现「0 / 91 款」却还有卡可见。
+        const cells = panel.querySelectorAll('.style-cell[data-q]');
         let n = 0;
-        panel.querySelectorAll('.style-cell[data-q]').forEach((cell) => {
+        cells.forEach((cell) => {
             const hit = !q || String(cell.dataset.q || '').indexOf(q) >= 0;
             cell.hidden = !hit;
             if (hit) n += 1;
@@ -1975,7 +2022,7 @@
         const plain = panel.querySelector('[data-plain]');
         if (plain) plain.hidden = !!q;
         const cnt = document.getElementById('styleCount');
-        if (cnt) cnt.textContent = `${n} / ${(window.QF_PRESETS || []).length} 款`;
+        if (cnt) cnt.textContent = `${n} / ${cells.length} 款`;
         const empty = document.getElementById('styleEmpty');
         if (empty) empty.hidden = n > 0;
     }
@@ -2016,10 +2063,10 @@
                 + `</div>`;
         }).join('');
         // 我存下来的风格排在内置风格前面（同一根长廊，不额外占一段高度）：
-        // 只有「浏览全部」时露出，搜索/收藏/分类筛选时不掺进来。
-        const showMine = myStyles.length && !q && !state.favOnly && state.filter === '全部';
+        // 收藏/分类筛选时不掺进来；搜索时按名字一起筛，自建风格不该在结果里隐身。
+        const showMine = myStyles.length && !state.favOnly && state.filter === '全部';
         const mineCards = showMine ? myStyles.map((s2, i) =>
-            `<div class="style-cell">
+            `<div class="style-cell" data-q="${esc((s2.name + ' 我的').toLowerCase())}" data-mine="1">
                 <button class="style-big" data-my-style="${i}" aria-label="我的风格 ${esc(s2.name)}">
                     ${s2.cover ? `<img src="${esc(s2.cover)}" alt="">` : ''}<span>${esc(s2.name)}</span>
                     <small class="own-badge">我的</small>
@@ -2116,12 +2163,13 @@
     function fillAll() {
         const n = PUZZLE_N[state.puzzle.layout] || 1;
         if (!state.images.length) { hint('先导入照片'); return; }
+        const empty = [];
+        for (let i = 0; i < n; i++) if (!state.puzzle.slots[i]) empty.push(i);
+        if (!empty.length) { hint('格子已经铺满了 · 点单格可换照片'); return; }
         pushUndo();
-        for (let i = 0; i < n; i++) {
-            if (!state.puzzle.slots[i]) {
-                state.puzzle.slots[i] = { imageIndex: i % state.images.length, rotate: 0 };
-            }
-        }
+        empty.forEach((i) => {
+            state.puzzle.slots[i] = { imageIndex: i % state.images.length, rotate: 0 };
+        });
         clampActiveSlot();
         render('puzzle');
     }
@@ -2237,6 +2285,9 @@
             .replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, '_');
         const tag = `${rows}x${cols}`;
         state.exporting = true;
+        // 与批量导出同一组标志：切图导出途中再点一次「导出块」就能停下。
+        state.batchRunning = true;
+        state.batchCancel = false;
         let ok = 0, fail = 0, canceled = false;
         let note = '';
         try {
@@ -2248,8 +2299,9 @@
                 renderPreview(true, { displayMax: targetPx, uiDprOverride: 1 });
             });
             for (let n = 0; n < picks.length; n++) {
+                if (state.batchCancel) { canceled = true; break; }
                 const i = picks[n];
-                hint(`正在导出 ${n + 1}/${picks.length}…`, 12000);
+                hint(`正在导出 ${n + 1}/${picks.length}…（再点一次导出可取消）`, 20000);
                 let block = null;
                 try {
                     block = sliceOne(canvas, rows, cols, i, state.crop.pad, state.crop.offX, state.crop.offY);
@@ -2271,6 +2323,8 @@
             delete A.exportScale;
             try { renderPreview(true); } catch (_) {}
             state.exporting = false;
+            state.batchRunning = false;
+            state.batchCancel = false;
         }
     }
 
@@ -2352,6 +2406,9 @@
         // 此时点「保存」导出的是上一页的拼图。
         if (state.tab !== 'puzzle' && state.image) renderPreview(true);
         panel.innerHTML = (PAGES[state.tab] || PAGES.style)();
+        // 搜索词存在时重画面板（切 tab / 套风格 / 撤销）也要重新收起不匹配的卡，
+        // 否则输入框还在显示关键词，墙上的卡却全回来了。
+        if (state.tab === 'style') applyStyleQuery();
         document.querySelectorAll('#tabs .tab').forEach((b) => {
             b.classList.toggle('active', b.dataset.tab === state.tab);
         });
@@ -2377,7 +2434,7 @@
             b.addEventListener('pointerdown', () => {
                 fired = false;
                 clearTimeout(hold);
-                hold = setTimeout(() => { fired = true; hold = 0; openDeleteStyleModal(idx); }, 650);
+                hold = setTimeout(() => { fired = true; hold = 0; openMyStyleActions(idx); }, 650);
             });
             ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) =>
                 b.addEventListener(ev, () => clearTimeout(hold)));
@@ -2521,11 +2578,12 @@
             }
         });
         if (state.tab === 'grade' && window.QF_EditPanel) {
-            window.QF_EditPanel.bindFx(panel, () => renderPreviewSoon(), () => render('grade'));
+            window.QF_EditPanel.bindFx(panel, () => renderPreviewSoon(), () => render('grade'), state.template);
         }
         const greset = document.getElementById('btnGradeReset');
         if (greset) greset.addEventListener('click', () => {
-            if (typeof A.resetGrade === 'function') A.resetGrade();
+            if (typeof A.resetGrade !== 'function') { hint('重置调色模块未就绪'); return; }
+            A.resetGrade();
             hint('已重置调色');
             render('grade');
         });
@@ -2900,6 +2958,13 @@
         if (b) showPage(b.dataset.page);
     });
     document.getElementById('btnBack').addEventListener('click', () => {
+        // 已经在首页：返回键当作「回到顶部」，而不是点了个寂寞
+        if (state.page === 'home') {
+            const sc = document.getElementById('homeScroll');
+            // 直接赋值：平滑滚动在隐藏窗口/原生 WebView 里可能不触发，点了就像没反应
+            if (sc) sc.scrollTop = 0;
+            return;
+        }
         showPage(state.page === 'mine' ? (homePrevPage || 'home') : 'home');
     });
     document.getElementById('btnSettings').addEventListener('click', () => showPage('mine'));
@@ -2927,7 +2992,7 @@
     document.getElementById('minePhotosRow').addEventListener('click', () => { showPage('edit'); render('puzzle'); });
 
     // 用户头像：加载本机头像，换头像后重绘预览（引擎读 window.__qfsAvatarImg）
-    if (window.QF_Avatar) window.QF_Avatar.bind({ onChange: () => renderPreview(true) });
+    if (window.QF_Avatar) window.QF_Avatar.bind({ onChange: () => renderPreview(true), hint });
 
     // 有引擎时先用它，否则降级自绘
     if (typeof window.__render !== 'function') paintFallback();

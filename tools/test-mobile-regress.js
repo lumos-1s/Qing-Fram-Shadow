@@ -1575,7 +1575,8 @@ app.whenReady().then(async () => {
 
     console.log(fails.length ? `\n${fails.length} FAILURE(S)` : '\nALL PASS');
     win.destroy();
-    if (fs.existsSync(rawTestFile)) fs.unlinkSync(rawTestFile);
+    // 沙箱里 safe-delete 偶尔会 EPERM，清理失败不能盖住测试结果、更不能中断后续测试链
+    try { if (fs.existsSync(rawTestFile)) fs.unlinkSync(rawTestFile); } catch (_) {}
     app.exit(fails.length ? 1 : 0);
 }).catch((e) => {
     console.error(e && e.stack || e);

@@ -44,5 +44,7 @@ nwu2027/
 
 # 临时脚本与截图(.tmp 下是开发期产物,不入库)
 .tmp/
+# 手机版 RAW 回归用例拷进 www 的临时样本（跑完即删，删不掉也别入库）
+mobile/www/.tmp-raw-full.ARW
 # AI 边框工作流：预览图是产物，SKILL.md / frame.json 是作品（入库）
 frames/*.png

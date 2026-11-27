@@ -7,6 +7,7 @@
     const AVATAR_DEFAULT = 'img/avatar.png';
 
     let onChange = () => {};
+    let toast = () => {};
     let crop = null;          // { iw, ih, w, scale, min, max, x, y, img }
     let picking = false;
 
@@ -57,8 +58,10 @@
         try {
             const list = await window.qfsNative.pickImages();
             if (list && list.length) openCrop(list[0].el);
+            else toast('没有选到照片，头像没变');
         } catch (e) {
-            // 选图异常不打断主流程，提示由上层给出
+            // 选图异常不打断主流程，但不能静默：否则点「设置头像」看起来像没反应
+            toast('读取照片失败，换一张试试');
         } finally {
             picking = false;
         }
@@ -107,12 +110,15 @@
             paint();
         };
         img.onload = setup;
-        img.src = src.src || '';
-        // 选图给的是 canvas；toDataURL 是 1600px 大图，转一次 base64 开销可接受，
-        // 但优先直接把像素画进裁剪用的 img：用 canvas 的 dataURL 让后续 getImageData 不 taint。
-        if (!src.src && src.getContext) {
-            try { img.src = src.toDataURL('image/jpeg', 0.92); } catch (_) {}
+        img.onerror = () => { toast('这张照片读不出来，换一张试试'); closeSheet(); };
+        // 只赋一次 src：先给空串会多触发一次无效加载，再被真正的内容覆盖。
+        // 选图给的是 canvas，转成 dataURL 后续 getImageData 才不会 taint。
+        let source = src && src.src;
+        if (!source && src && src.getContext) {
+            try { source = src.toDataURL('image/jpeg', 0.92); } catch (_) {}
         }
+        if (!source) { toast('这张照片读不出来，换一张试试'); closeSheet(); return; }
+        img.src = source;
         if (img.complete && img.naturalWidth) setup();
 
         img.onpointerdown = null;
@@ -171,6 +177,7 @@
 
     function bind(opts) {
         onChange = (opts && opts.onChange) || onChange;
+        toast = (opts && opts.hint) || toast;
         const row = document.getElementById('mineAvatarRow');
         if (row) row.addEventListener('click', openSheet);
         const sheet = document.getElementById('avatarSheet');
