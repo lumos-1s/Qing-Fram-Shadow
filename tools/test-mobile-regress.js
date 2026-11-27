@@ -1217,6 +1217,71 @@ app.whenReady().then(async () => {
             cp.restored = size();
         } catch (e) { cpErr = String(e && e.message || e); }
 
+        // 24.98) 自由裁剪：取景框、锁定比例、应用、导出、撤销
+        let fc = {}, fcErr = '';
+        try {
+            const cvEl = document.getElementById('previewCanvas');
+            document.querySelector('[data-tab="edit"]').click();
+            await wait(320);
+            document.querySelector('[data-edit-sub="photo"]').click();
+            await wait(240);
+            document.querySelector('[data-crop-ratio="free"]').click();
+            await wait(700);
+            fc.open = {
+                layer: !document.getElementById('cropLayer').hidden,
+                bar: !document.getElementById('cropBar').hidden,
+                handles: document.querySelectorAll('.crop-h').length,
+                box: Math.round(document.getElementById('cropBox').getBoundingClientRect().width)
+            };
+            // 锁定 1:1：框应变成正方形（贴满短边）
+            document.querySelector('#cropRatios [data-crop-lock="1:1"]').click();
+            await wait(280);
+            const rb = document.getElementById('cropBox').getBoundingClientRect();
+            fc.locked = { w: Math.round(rb.width), h: Math.round(rb.height) };
+            document.getElementById('btnCropApply').click();
+            await wait(800);
+            fc.applied = {
+                w: cvEl.width, h: cvEl.height,
+                src: [window.App.image.srcW, window.App.image.srcH],
+                ratio: window.App.image.cropRatio,
+                ops: (window.App.image.ops || []).map((o) => (typeof o === 'string' ? o : 'crop')),
+                layerHidden: document.getElementById('cropLayer').hidden
+            };
+
+            // 导出：400×300 的夹具按 1:1 裁完，再用 1600×1200 的「原图」重放，应出 1200×1200
+            const full = document.createElement('canvas');
+            full.width = 1600; full.height = 1200;
+            full.getContext('2d').fillRect(0, 0, 1600, 1200);
+            const origFull = window.qfFullSource;
+            const origSave = window.qfsNative.saveImage;
+            window.qfFullSource = async () => ({ canvas: full, changed: true, capped: false, fallback: false, release() {} });
+            let saved = null;
+            window.qfsNative.saveImage = async (d, n) => { saved = { d, n }; return { ok: true, mode: 'download' }; };
+            const ex = document.getElementById('btnExport');
+            ex.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 97, button: 0 }));
+            await wait(620);
+            document.querySelector('#optFormat [data-format="png"]').click();
+            document.getElementById('btnExportGo').click();
+            for (let i = 0; i < 160 && !saved; i++) await wait(150);
+            const b64 = ((saved && saved.d) || '').split(',')[1] || '';
+            const bin = atob(b64.slice(0, 48));
+            fc.expW = ((bin.charCodeAt(16) << 24) | (bin.charCodeAt(17) << 16)
+                | (bin.charCodeAt(18) << 8) | bin.charCodeAt(19)) >>> 0;
+            fc.expH = ((bin.charCodeAt(20) << 24) | (bin.charCodeAt(21) << 16)
+                | (bin.charCodeAt(22) << 8) | bin.charCodeAt(23)) >>> 0;
+            window.qfFullSource = origFull;
+            window.qfsNative.saveImage = origSave;
+            ex.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 98, button: 0 }));
+            await wait(620);
+            document.querySelector('#optFormat [data-format="jpeg"]').click();
+            document.getElementById('btnExportCancel').click();
+            await wait(260);
+
+            document.getElementById('btnUndo').click();
+            await wait(700);
+            fc.undone = { w: cvEl.width, h: cvEl.height };
+        } catch (e) { fcErr = String(e && e.message || e); }
+
         // 25) RAW 全尺寸重解（本地有样本时）
         let rawFull = {}, rawFullErr = '';
         if (${JSON.stringify(fs.existsSync(rawSample))}) {
@@ -1245,7 +1310,7 @@ app.whenReady().then(async () => {
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
             edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, dbl, dblErr,
             pinch, pinchErr, exif, exifErr, multi, multiErr, autofs, autofsErr, layout, layoutErr,
-            extras, extrasErr, exportOpt, exportOptErr, bt, btErr, gp, gpErr, lib, libErr, ms, msErr, uz, uzErr, rot, rotErr, cp, cpErr, sync1, sync1Err, rawFull, rawFullErr
+            extras, extrasErr, exportOpt, exportOptErr, bt, btErr, gp, gpErr, lib, libErr, ms, msErr, uz, uzErr, rot, rotErr, cp, cpErr, fc, fcErr, sync1, sync1Err, rawFull, rawFullErr
         };
     })()`);
 
@@ -1364,7 +1429,19 @@ app.whenReady().then(async () => {
     check(!r.extrasErr && r.extras.compareOn && r.extras.compareOff,
         '长按画布看原图、松手恢复', JSON.stringify({ extras: r.extras, err: r.extrasErr }));
 
-    check(!r.cpErr && r.cp.chips === 5 && r.cp.square.w === r.cp.square.h
+    check(!r.fcErr && r.fc.open && r.fc.open.layer && r.fc.open.bar && r.fc.open.handles === 4
+        && Math.abs(r.fc.locked.w - r.fc.locked.h) <= 2
+        && Math.abs(r.fc.applied.src[0] - r.fc.applied.src[1]) < 0.5 && r.fc.applied.ratio === '1:1'
+        && r.fc.applied.layerHidden,
+        '自由裁剪：取景框就位、锁 1:1 后成方图并写回照片',
+        JSON.stringify({ fc: r.fc, err: r.fcErr }));
+
+    check(!r.fcErr && r.fc.expW === 1200 && r.fc.expH === 1200
+        && r.fc.undone.w === r.fc.applied.w * 4 / 3,
+        '自由裁剪：导出按取景框比例重放，撤销回到裁前尺寸',
+        JSON.stringify({ fc: r.fc, err: r.fcErr }));
+
+    check(!r.cpErr && r.cp.chips === 6 && r.cp.square.w === r.cp.square.h
         && r.cp.src[0] === r.cp.src[1] && r.cp.expW === 1200 && r.cp.expH === 1200,
         '居中等比裁剪：1:1 出方图，导出按同一裁剪比例重放',
         JSON.stringify({ cp: r.cp, err: r.cpErr }));

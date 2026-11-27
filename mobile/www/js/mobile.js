@@ -112,6 +112,8 @@
     function setCropRatio(ratio) {
         const im = state.image;
         if (!im || !im.el) { hint('先导入照片'); return; }
+        // 「自由裁剪」不是一步裁切，而是进交互取景框
+        if (ratio === 'free') { openFreeCrop(); return; }
         pushUndo();
         ensureImgBase(im);
         // 保留旋转/翻转，替换掉旧的裁剪
@@ -159,7 +161,7 @@
         render(state.tab);
         hint('已恢复照片原始方向');
     }
-    const CROP_RATIOS = [['orig', '原图'], ['1:1', '1:1'], ['4:5', '4:5'], ['3:2', '3:2'], ['16:9', '16:9']];
+    const CROP_RATIOS = [['orig', '原图'], ['free', '自由裁剪'], ['1:1', '1:1'], ['4:5', '4:5'], ['3:2', '3:2'], ['16:9', '16:9']];
     function photoOrientHtml() {
         const im = state.image;
         const ops = (im && im.ops) || [];
@@ -176,6 +178,232 @@
             </div>
             <p class="panel-note">方向存在照片上：预览、导出、切图都是同一个方向。已放进拼图的照片，请在拼图页单独旋转那一格。</p>
             ${ops.length ? `<div class="puzzle-acts"><button id="btnImgReset" type="button">恢复原始方向</button></div>` : ''}`;
+    }
+
+    /* ── 自由裁剪：只在「照片」子页用。进裁剪时画布切成「只画照片」，
+          框的坐标就是照片的坐标，导出时按同一组比例重放。 ── */
+    const cropLayer = document.getElementById('cropLayer');
+    const cropBar = document.getElementById('cropBar');
+    const cropBoxEl = document.getElementById('cropBox');
+    const cropRatiosEl = document.getElementById('cropRatios');
+    const CROP_LOCKS = [['free', '自由'], ['1:1', '1:1'], ['4:5', '4:5'], ['3:2', '3:2'], ['16:9', '16:9']];
+    let cropEdit = null;
+
+    function renderPhotoOnly() {
+        Object.assign(A, { dom: { canvas }, image: state.image, images: state.images, template: state.template }, renderStubs, { displayMax: 1600, uiDprOverride: 1 });
+        delete A.exportScale;
+        try {
+            if (typeof window.__render === 'function') window.__render(A, true);
+        } catch (e) {
+            console.warn('[mobile] crop preview failed', e);
+        }
+    }
+    // 按锁定比例取最大内接矩形并居中；free 时就是整幅（fill 用来留一点边）
+    function fitCropRect(w, h, ratio, fill) {
+        const k = fill || 1;
+        if (!ratio || ratio === 'free') {
+            const bw = w * k, bh = h * k;
+            return { x: (w - bw) / 2, y: (h - bh) / 2, w: bw, h: bh };
+        }
+        const wh = String(ratio).split(':').map(Number);
+        const t = (wh[0] > 0 && wh[1] > 0) ? wh[0] / wh[1] : 1;
+        let bw = w, bh = w / t;
+        if (bh > h) { bh = h; bw = h * t; }
+        bw *= k; bh *= k;
+        return { x: (w - bw) / 2, y: (h - bh) / 2, w: bw, h: bh };
+    }
+    function paintCropBox() {
+        if (!cropEdit || !cropBoxEl) return;
+        const b = cropEdit.box;
+        const W = cropEdit.w, H = cropEdit.h;
+        cropBoxEl.style.left = b.x + 'px';
+        cropBoxEl.style.top = b.y + 'px';
+        cropBoxEl.style.width = b.w + 'px';
+        cropBoxEl.style.height = b.h + 'px';
+        // 框外四条压暗带
+        const dim = (k, x, y, w, h) => {
+            const el = cropLayer.querySelector('[data-dim="' + k + '"]');
+            if (!el) return;
+            el.style.left = Math.max(0, x) + 'px';
+            el.style.top = Math.max(0, y) + 'px';
+            el.style.width = Math.max(0, w) + 'px';
+            el.style.height = Math.max(0, h) + 'px';
+        };
+        dim('t', 0, 0, W, b.y);
+        dim('b', 0, b.y + b.h, W, H - (b.y + b.h));
+        dim('l', 0, b.y, b.x, b.h);
+        dim('r', b.x + b.w, b.y, W - (b.x + b.w), b.h);
+        cropRatiosEl.querySelectorAll('[data-crop-lock]').forEach((el) => {
+            el.classList.toggle('active', el.dataset.cropLock === cropEdit.ratio);
+        });
+    }
+    function openFreeCrop() {
+        if (!state.image || !state.image.el) { hint('先导入照片'); return; }
+        if (state.exporting) return;
+        // 手势缩放会改变画布的显示矩形：进裁剪前先复位，框才不会画偏
+        viewZoom = 1; viewPan = { x: 0, y: 0 }; applyView();
+        // 先给底部操作条腾出位置，再测量画布：否则框会被按钮压住
+        const stageEl0 = document.getElementById('stage');
+        stageEl0.classList.add('cropping');
+        renderPhotoOnly();
+        // 同步量：隐藏窗口/后台标签页里 requestAnimationFrame 可能一直不触发，
+        // 裁剪框就会“点了没反应”。getBoundingClientRect 本身会强制一次布局。
+        {
+            const stageEl = document.getElementById('stage');
+            const sr = stageEl.getBoundingClientRect();
+            const cr = canvas.getBoundingClientRect();
+            // 尺寸不取整：取整会让「方图」少裁/多裁 1~2px（1600×1200 裁出 1202×1200）
+            const w = Math.max(40, cr.width);
+            const h = Math.max(40, cr.height);
+            // 层只盖住照片本身（画布盒子=照片显示框），四周留白不参与裁剪
+            cropLayer.style.left = (cr.left - sr.left) + 'px';
+            cropLayer.style.top = (cr.top - sr.top) + 'px';
+            cropLayer.style.width = w + 'px';
+            cropLayer.style.height = h + 'px';
+            cropLayer.hidden = false;
+            const im = state.image;
+            const ratio = (im.cropRatio && im.cropRatio !== 'free') ? im.cropRatio : 'free';
+            // 已有裁剪时，画面上看到的就是裁过的部分：框从「整幅」开始
+            cropEdit = { w, h, ratio, box: fitCropRect(w, h, ratio, 1), drag: null };
+            cropRatiosEl.innerHTML = CROP_LOCKS.map(([v, l]) =>
+                `<button class="chip${ratio === v ? ' active' : ''}" type="button" data-crop-lock="${v}">${l}</button>`).join('');
+            paintCropBox();
+            cropBar.hidden = false;
+        }
+    }
+    function closeCropEdit(restore) {
+        cropEdit = null;
+        const stageEl = document.getElementById('stage');
+        if (stageEl) stageEl.classList.remove('cropping');
+        if (cropLayer) cropLayer.hidden = true;
+        if (cropBar) cropBar.hidden = true;
+        if (restore) { try { renderPreview(true); } catch (_) {} }
+    }
+    function applyFreeCrop() {
+        const im = state.image;
+        if (!cropEdit || !im || !im.el) { closeCropEdit(true); return; }
+        const R = {
+            x: cropEdit.box.x / cropEdit.w,
+            y: cropEdit.box.y / cropEdit.h,
+            w: cropEdit.box.w / cropEdit.w,
+            h: cropEdit.box.h / cropEdit.h
+        };
+        // 框几乎盖满整幅时不记这一步，免得序列里堆一堆「没裁」的操作
+        const full = R.x < 0.004 && R.y < 0.004 && R.w > 0.992 && R.h > 0.992;
+        const ratio = cropEdit.ratio;
+        closeCropEdit(false);
+        if (full) { render(state.tab); hint('裁剪框没有变化'); return; }
+        pushUndo();
+        ensureImgBase(im);
+        const baseOps = (im.ops || []).filter((o) => typeof o === 'string');
+        const prev = (im.ops || []).find((o) => o && o.t === 'crop');
+        let crop = { t: 'crop', ...R };
+        if (prev) {
+            // 本次是在「已经裁过的画面」上再裁：两次裁切换算成一次，
+            // 否则基准变成裁剪后的画面，叠加后越裁越小
+            crop = {
+                t: 'crop',
+                x: prev.x + R.x * prev.w,
+                y: prev.y + R.y * prev.h,
+                w: R.w * prev.w,
+                h: R.h * prev.h
+            };
+        }
+        im.ops = baseOps.concat(crop);
+        im.cropRatio = (ratio && ratio !== 'free') ? ratio : 'free';
+        rebuildImageCanvas(im);
+        scalePresetFonts(state.template, im);
+        render(state.tab);
+        hint('裁剪已应用');
+    }
+
+    if (cropLayer) {
+        cropLayer.addEventListener('pointerdown', (e) => {
+            if (!cropEdit) return;
+            const lr = cropLayer.getBoundingClientRect();
+            const px = e.clientX - lr.left, py = e.clientY - lr.top;
+            const handle = e.target.closest('[data-ch]');
+            const b = cropEdit.box;
+            const inBox = px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h;
+            if (!handle && !inBox) return;
+            e.preventDefault();
+            try { cropLayer.setPointerCapture(e.pointerId); } catch (_) {}
+            cropEdit.drag = {
+                id: e.pointerId, mode: handle ? 'resize' : 'move',
+                corner: handle ? handle.dataset.ch : '',
+                sx: px, sy: py, box: { ...b }
+            };
+        });
+        cropLayer.addEventListener('pointermove', (e) => {
+            const d = cropEdit && cropEdit.drag;
+            if (!d || d.id !== e.pointerId) return;
+            const lr = cropLayer.getBoundingClientRect();
+            const px = Math.min(cropEdit.w, Math.max(0, e.clientX - lr.left));
+            const py = Math.min(cropEdit.h, Math.max(0, e.clientY - lr.top));
+            const W = cropEdit.w, H = cropEdit.h;
+            if (d.mode === 'move') {
+                cropEdit.box = {
+                    x: Math.min(W - d.box.w, Math.max(0, d.box.x + (px - d.sx))),
+                    y: Math.min(H - d.box.h, Math.max(0, d.box.y + (py - d.sy))),
+                    w: d.box.w, h: d.box.h
+                };
+            } else {
+                const ax = d.corner.indexOf('w') >= 0 ? d.box.x + d.box.w : d.box.x;
+                const ay = d.corner.indexOf('n') >= 0 ? d.box.y + d.box.h : d.box.y;
+                const maxW = px < ax ? ax : W - ax;
+                const maxH = py < ay ? ay : H - ay;
+                let bw = Math.abs(px - ax), bh = Math.abs(py - ay);
+                const wh = String(cropEdit.ratio || 'free').split(':').map(Number);
+                const t = (cropEdit.ratio && cropEdit.ratio !== 'free' && wh[0] > 0 && wh[1] > 0)
+                    ? wh[0] / wh[1] : 0;
+                if (t) {
+                    // 锁定比例：以指针更贴近的那条边为准，另一边等比跟
+                    if (bw / Math.max(1, bh) > t) bh = bw / t; else bw = bh * t;
+                    if (bw > maxW) { bw = maxW; bh = bw / t; }
+                    if (bh > maxH) { bh = maxH; bw = bh * t; }
+                } else {
+                    bw = Math.min(bw, maxW);
+                    bh = Math.min(bh, maxH);
+                }
+                bw = Math.max(24, bw);
+                bh = Math.max(24, bh);
+                cropEdit.box = {
+                    x: Math.min(W - bw, Math.max(0, px < ax ? ax - bw : ax)),
+                    y: Math.min(H - bh, Math.max(0, py < ay ? ay - bh : ay)),
+                    w: bw, h: bh
+                };
+            }
+            paintCropBox();
+        });
+        const endDrag = (e) => {
+            if (cropEdit && cropEdit.drag && cropEdit.drag.id === e.pointerId) cropEdit.drag = null;
+        };
+        cropLayer.addEventListener('pointerup', endDrag);
+        cropLayer.addEventListener('pointercancel', endDrag);
+        cropRatiosEl.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-crop-lock]');
+            if (!b || !cropEdit) return;
+            cropEdit.ratio = b.dataset.cropLock;
+            // 保留用户已经框好的位置和大致范围：中心不动，按新比例收一档
+            const box = cropEdit.box;
+            if (cropEdit.ratio !== 'free') {
+                const wh = cropEdit.ratio.split(':').map(Number);
+                const t = (wh[0] > 0 && wh[1] > 0) ? wh[0] / wh[1] : 1;
+                let bw = Math.min(box.w, box.h * t);
+                let bh = bw / t;
+                const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+                bw = Math.min(bw, cropEdit.w);
+                bh = Math.min(bh, cropEdit.h);
+                cropEdit.box = {
+                    x: Math.min(cropEdit.w - bw, Math.max(0, cx - bw / 2)),
+                    y: Math.min(cropEdit.h - bh, Math.max(0, cy - bh / 2)),
+                    w: bw, h: bh
+                };
+            }
+            paintCropBox();
+        });
+        document.getElementById('btnCropCancel').addEventListener('click', () => closeCropEdit(true));
+        document.getElementById('btnCropApply').addEventListener('click', applyFreeCrop);
     }
 
     function snapNow() {
@@ -1213,6 +1441,7 @@
     }
     function openExportSheet() {
         if (!state.image && !state.images.length) { hint('先导入照片'); return; }
+        if (cropEdit) closeCropEdit(true);
         paintExportOpts();
         exportSheetEl.hidden = false;
     }
@@ -2087,6 +2316,8 @@
 
     function render(name) {
         if (state.editingText) closeTextEditor(true);
+        // 切页签/切照片/撤销都会走到这里：裁剪取景框是临时的，先收掉再重画
+        if (cropEdit) closeCropEdit(false);
         state.tab = name || state.tab;
         if (state.tab === 'puzzle') clampActiveSlot();
         // 切页签先把画布画回当前照片，否则从拼图切回风格/调色时会继续显示拼图，
@@ -2404,6 +2635,8 @@
     }
     function setSheet(next) {
         if (SHEET_STATES.indexOf(next) < 0) next = 'half';
+        // 抽屉高度变了，画布显示矩形也跟着变；裁剪框没法平移，直接退出更稳
+        if (cropEdit) closeCropEdit(true);
         sheet.style.height = '';
         sheet.classList.remove('dragging');
         SHEET_STATES.forEach((s) => sheet.classList.toggle(s, s === next));

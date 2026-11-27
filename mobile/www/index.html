@@ -36,6 +36,28 @@
         <b>先导入一张照片</b>
         <span>点右上角的 ＋ 选图</span>
       </div>
+      <!-- 自由裁剪：框只覆盖照片本身（进裁剪时画布切成「只画照片」），
+           所以这里的百分比就是照片的百分比，导出时按同一组比例重放 -->
+      <div id="cropLayer" hidden>
+        <div class="crop-dim" data-dim="t"></div>
+        <div class="crop-dim" data-dim="b"></div>
+        <div class="crop-dim" data-dim="l"></div>
+        <div class="crop-dim" data-dim="r"></div>
+        <div id="cropBox">
+          <div class="crop-grid"></div>
+          <span class="crop-h" data-ch="nw"></span>
+          <span class="crop-h" data-ch="ne"></span>
+          <span class="crop-h" data-ch="sw"></span>
+          <span class="crop-h" data-ch="se"></span>
+        </div>
+      </div>
+      <div id="cropBar" hidden>
+        <div class="chips crop-ratios" id="cropRatios"></div>
+        <div class="crop-acts">
+          <button id="btnCropCancel" type="button">取消</button>
+          <button id="btnCropApply" class="act-btn primary" type="button">应用裁剪</button>
+        </div>
+      </div>
     </section>
 
     <section id="sheet" class="half" aria-label="编辑面板">

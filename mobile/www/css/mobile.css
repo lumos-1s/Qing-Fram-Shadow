@@ -408,3 +408,55 @@ body {
 /* 比例行：5 个短标签要在一行里放得下，别让「16:9」藏在横向滚动后面 */
 .crop-ratios { flex-wrap: wrap; overflow: visible; gap: 6px; padding-bottom: 0; }
 .crop-ratios .chip { min-height: 36px; padding: 0 12px; font-size: 12px; border-radius: 10px; }
+
+/* ── 自由裁剪：取景框只覆盖照片本身，框外压暗，四角可拖 ── */
+#cropLayer {
+  position: absolute; z-index: 9; touch-action: none;
+  /* 手柄要能露出照片边缘，所以层不裁剪；压暗交给四块独立的遮罩 */
+  overflow: visible;
+}
+/* 框外压暗：四条边各一块，跟着框实时改尺寸 */
+.crop-dim { position: absolute; background: rgba(0,0,0,.55); pointer-events: none; }
+#cropBox {
+  position: absolute; box-sizing: border-box;
+  border: 1px solid rgba(255,255,255,.95);
+  cursor: move;
+}
+/* 裁剪时上下都留出位置：上边给四角手柄，下边给比例/按钮条 */
+#stage.cropping { padding-top: 24px; padding-bottom: 124px; }
+.crop-grid {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,.28) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,.28) 1px, transparent 1px);
+  background-size: 33.333% 33.333%;
+  background-position: -1px -1px;
+}
+.crop-h {
+  position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px;
+  border-radius: 50%; background: rgba(255,255,255,.94);
+  border: 1px solid rgba(0,0,0,.4);
+  box-shadow: 0 2px 6px rgba(0,0,0,.45);
+}
+.crop-h[data-ch="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+.crop-h[data-ch="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
+.crop-h[data-ch="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+.crop-h[data-ch="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+#cropBar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 10;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 14px calc(10px + var(--safe-bottom));
+  background: linear-gradient(to top, rgba(8,10,9,.96), rgba(8,10,9,.78) 62%, transparent);
+}
+#cropBar .crop-ratios { justify-content: center; }
+#cropBar .chip {
+  background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.22); color: #e8ecea;
+}
+#cropBar .chip.active { background: rgba(86,214,168,.18); border-color: var(--primary); color: var(--primary); }
+#cropBar .crop-acts { display: flex; gap: 10px; }
+#cropBar .crop-acts button {
+  flex: 1; min-height: 46px; border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.1);
+  color: #fff; font-size: 14px;
+}
+#cropBar .crop-acts .act-btn.primary { flex: 2; border: none; }
