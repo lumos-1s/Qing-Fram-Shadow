@@ -812,6 +812,67 @@ app.whenReady().then(async () => {
             sync1.blurGroup = Array.from(document.querySelectorAll('.ctl-group > summary')).some((s) => s.textContent.trim() === '背景模糊');
         } catch (e) { sync1Err = String(e && e.message || e); }
 
+        // 24.5) 风格搜索 / 收藏 / 照片库移除
+        let lib = {}, libErr = '';
+        try {
+            document.querySelector('[data-tab="style"]').click();
+            await wait(300);
+            const qEl = document.getElementById('styleQuery');
+            const vis = () => document.querySelectorAll('.style-cell:not([hidden])').length;
+            qEl.value = '拍立得';
+            qEl.dispatchEvent(new Event('input', { bubbles: true }));
+            await wait(220);
+            lib.searchHits = vis();
+            lib.searchTotal = document.querySelectorAll('.style-cell').length;
+            lib.searchCount = (document.getElementById('styleCount').textContent || '').trim();
+            lib.emptyHidden = document.getElementById('styleEmpty').hidden;
+            qEl.value = '不存在的风格xyz';
+            qEl.dispatchEvent(new Event('input', { bubbles: true }));
+            await wait(220);
+            lib.searchZero = vis();
+            lib.emptyShown = !document.getElementById('styleEmpty').hidden;
+            qEl.value = '';
+            qEl.dispatchEvent(new Event('input', { bubbles: true }));
+            await wait(220);
+
+            const stars = document.querySelectorAll('.fav-btn');
+            stars[0].click(); stars[1].click();
+            await wait(180);
+            lib.favStored = JSON.parse(localStorage.getItem('qfm_favs') || '[]').length;
+            document.querySelector('[data-fav-toggle]').click();
+            await wait(360);
+            lib.favCards = document.querySelectorAll('.style-cell').length;
+            lib.favChipOn = document.querySelector('[data-fav-toggle]').classList.contains('on');
+            for (let k = 0; k < 2; k++) {
+                const on = document.querySelector('.fav-btn.on');
+                if (on) { on.click(); await wait(260); }
+            }
+            document.querySelector('[data-fav-toggle]').click();
+            await wait(320);
+            lib.favCleared = JSON.parse(localStorage.getItem('qfm_favs') || '[]').length;
+            lib.cardsBack = document.querySelectorAll('.style-cell').length;
+
+            document.querySelector('[data-tab="puzzle"]').click();
+            await wait(380);
+            lib.photosBefore = window.App.images.length;
+            const delBtn = () => {
+                const all = document.querySelectorAll('[data-del-photo]');
+                return all[all.length - 1];
+            };
+            delBtn().click();
+            await wait(220);
+            lib.armed = document.querySelectorAll('.photo-cell.armed').length;
+            delBtn().click();
+            await wait(460);
+            lib.photosAfter = window.App.images.length;
+            lib.stillHasImage = !!window.App.image;
+            lib.slotsValid = Object.keys(window.App.template.puzzle ? window.App.template.puzzle.slots : {})
+                .every((k) => {
+                    const sc = window.App.template.puzzle.slots[k];
+                    return sc && Number(sc.imageIndex) >= 0 && Number(sc.imageIndex) < window.App.images.length;
+                });
+        } catch (e) { libErr = String(e && e.message || e); }
+
         // 25) RAW 全尺寸重解（本地有样本时）
         let rawFull = {}, rawFullErr = '';
         if (${JSON.stringify(fs.existsSync(rawSample))}) {
@@ -840,7 +901,7 @@ app.whenReady().then(async () => {
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
             edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, dbl, dblErr,
             pinch, pinchErr, exif, exifErr, multi, multiErr, autofs, autofsErr, layout, layoutErr,
-            extras, extrasErr, exportOpt, exportOptErr, sync1, sync1Err, rawFull, rawFullErr
+            extras, extrasErr, exportOpt, exportOptErr, lib, libErr, sync1, sync1Err, rawFull, rawFullErr
         };
     })()`);
 
@@ -958,6 +1019,22 @@ app.whenReady().then(async () => {
 
     check(!r.extrasErr && r.extras.compareOn && r.extras.compareOff,
         '长按画布看原图、松手恢复', JSON.stringify({ extras: r.extras, err: r.extrasErr }));
+
+    check(!r.libErr && r.lib.searchHits > 0 && r.lib.searchHits < r.lib.searchTotal
+        && r.lib.emptyHidden && r.lib.searchZero === 0 && r.lib.emptyShown
+        && new RegExp('^' + r.lib.searchHits + ' / ' + r.lib.searchTotal).test(r.lib.searchCount),
+        '风格搜索：实时收窄、计数同步、无结果给提示',
+        JSON.stringify({ lib: r.lib, err: r.libErr }));
+
+    check(!r.libErr && r.lib.favStored === 2 && r.lib.favCards === 2 && r.lib.favChipOn
+        && r.lib.favCleared === 0 && r.lib.cardsBack === r.lib.searchTotal,
+        '风格收藏：星标持久化、只看收藏、取消后回到全部',
+        JSON.stringify({ lib: r.lib, err: r.libErr }));
+
+    check(!r.libErr && r.lib.armed === 1 && r.lib.photosAfter === r.lib.photosBefore - 1
+        && r.lib.stillHasImage && r.lib.slotsValid,
+        '照片库：两下确认才移除、槽位索引跟着重排',
+        JSON.stringify({ lib: r.lib, err: r.libErr }));
 
     check(!r.exportOptErr && /^data:image\/png/.test(r.exportOpt.mime || '')
         && Math.max(r.exportOpt.pngW || 0, r.exportOpt.pngH || 0) === 1080

@@ -10,6 +10,7 @@
         image: null, images: [], preset: null, template: window.qfsNative.defaultTemplate(),
         tab: 'style', editSub: 'border', selectedElement: '', editingText: null,
         filter: '全部', activeSlot: 0, importing: false, exporting: false,
+        query: '', favOnly: false, pendingDel: -1,
         puzzle: { enabled: 1, layout: 'grid4', gap: 6, bgMode: 0, canvasRatio: 'auto', borderColor: 'ffffff', slots: {} },
         crop: { rows: 3, cols: 3, pad: 0, offX: 0, offY: 0, picked: new Set(), blocks: [], touched: false }
     };
@@ -693,6 +694,62 @@
         render(state.tab);
     }
 
+    // 照片库移除：第一下「上膛」，2.8 秒内再点一下才真删。
+    // 只动内存里的照片库，手机相册的原图不受影响；槽位索引会跟着前移。
+    function removePhoto(i) {
+        if (!state.images[i]) return;
+        if (state.pendingDel !== i) {
+            state.pendingDel = i;
+            render('puzzle');
+            hint('再点一次 × 移除这张照片');
+            setTimeout(() => {
+                if (state.pendingDel !== i) return;
+                state.pendingDel = -1;
+                panel.querySelectorAll('.photo-cell.armed').forEach((c) => {
+                    c.classList.remove('armed');
+                    const b = c.querySelector('.photo-del');
+                    if (b) b.textContent = '×';
+                });
+            }, 2800);
+            return;
+        }
+        state.pendingDel = -1;
+        const gone = state.images[i];
+        state.images.splice(i, 1);
+        // 槽位里的 imageIndex 跟着前移；指向被删照片的格子直接清空
+        const slots = {};
+        Object.keys(state.puzzle.slots || {}).forEach((k) => {
+            const sc = state.puzzle.slots[k];
+            if (!sc) return;
+            const idx = Number(sc.imageIndex);
+            if (!Number.isFinite(idx)) { slots[k] = sc; return; }
+            if (idx === i) return;
+            slots[k] = Object.assign({}, sc, { imageIndex: idx > i ? idx - 1 : idx });
+        });
+        state.puzzle.slots = slots;
+        clampActiveSlot();
+        state.crop.picked = new Set();
+        state.crop.blocks = [];
+        state.crop.touched = false;
+        if (state.image === gone) {
+            state.image = state.images[0] || null;
+            if (state.image) {
+                scalePresetFonts(state.template, state.image);
+                viewZoom = 1; viewPan = { x: 0, y: 0 }; applyView();
+            }
+        }
+        Object.assign(A, { image: state.image, images: state.images, template: state.template });
+        render('puzzle');
+        if (!state.image) {
+            // render 在拼图页不会重画画布；照片删空时手动清成占位底
+            paintFallback();
+            stageBar('照片库已空', '点 ＋ 重新导入');
+            hint('照片库已空，点 ＋ 重新导入');
+        } else {
+            hint(`已移除 1 张 · 还剩 ${state.images.length} 张`);
+        }
+    }
+
     // 预设里的文字字号是按参考短边写死的；换到不同尺寸的照片要跟着缩放，
     // 否则同一款预设在小图上字巨大、在 24MP 原片上字小得看不见。
     const TEXT_REF_EDGE = 2000;
@@ -1019,27 +1076,70 @@
         return cv;
     }
 
+    // ── 风格收藏：91 款风格横滑找太慢，收藏与搜索都存本地 ─────────────────
+    const FAV_KEY = 'qfm_favs';
+    const favSet = new Set();
+    try {
+        (JSON.parse(localStorage.getItem(FAV_KEY) || '[]') || []).forEach((k) => {
+            if (k) favSet.add(String(k));
+        });
+    } catch (_) { /* 坏数据就当没收藏过 */ }
+    function favKey(p) { return p ? String(p._fileName || p.templateName || '') : ''; }
+    function saveFavs() {
+        try { localStorage.setItem(FAV_KEY, JSON.stringify(Array.from(favSet))); } catch (_) {}
+    }
+    // 搜索只隐藏卡片、不重建整面墙，输入焦点和滚动位置都不会跳
+    function applyStyleQuery() {
+        const q = state.query.trim().toLowerCase();
+        let n = 0;
+        panel.querySelectorAll('.style-cell').forEach((cell) => {
+            const hit = !q || String(cell.dataset.q || '').indexOf(q) >= 0;
+            cell.hidden = !hit;
+            if (hit) n += 1;
+        });
+        const cnt = document.getElementById('styleCount');
+        if (cnt) cnt.textContent = `${n} / ${(window.QF_PRESETS || []).length} 款`;
+        const empty = document.getElementById('styleEmpty');
+        if (empty) empty.hidden = n > 0;
+    }
+
     function stylePage() {
         const presets = window.QF_PRESETS || [];
         const items = (window.QF_WALL && window.QF_WALL.items) || [];
         const byName = new Map(items.map((it) => [it.preset, it]));
         const tags = ['全部', ...Array.from(new Set(items.map((it) => it.tag).filter(Boolean)))];
-        const all = presets.map((p, i) => ({ p, i, wall: byName.get(p.templateName || p._fileName) }));
-        const shown = state.filter === '全部' ? all : all.filter((x) => x.wall && x.wall.tag === state.filter);
-        const chips = tags.map((t) => `<button class="chip${state.filter === t ? ' active' : ''}" data-tag="${esc(t)}">${esc(t)}</button>`).join('');
-        // 横向大卡：封面就是风格效果，点一下立刻套到画布上（实时预览）
-        const cards = shown.map(({ p, i, wall }) => {
+        const q = state.query.trim().toLowerCase();
+        const all = presets.map((p, i) => {
             const name = p.templateName || p._fileName || ('风格 ' + (i + 1));
+            const wall = byName.get(p.templateName || p._fileName);
+            return { p, i, wall, name, tag: (wall && wall.tag) || '', key: favKey(p) };
+        });
+        let shown = state.filter === '全部' ? all : all.filter((x) => x.tag === state.filter);
+        if (state.favOnly) shown = shown.filter((x) => favSet.has(x.key));
+        if (q) shown = shown.filter((x) => (x.name + ' ' + x.tag).toLowerCase().indexOf(q) >= 0);
+        const chips = tags.map((t) => `<button class="chip${state.filter === t ? ' active' : ''}" data-tag="${esc(t)}">${esc(t)}</button>`).join('');
+        const favChip = `<button class="fav-chip${state.favOnly ? ' on' : ''}" data-fav-toggle="1" aria-pressed="${state.favOnly}">★ ${favSet.size}</button>`;
+        // 横向大卡：封面就是风格效果，点一下立刻套到画布上（实时预览）
+        const cards = shown.map(({ p, i, wall, name, tag, key }) => {
             const active = state.preset && state.preset._fileName === p._fileName;
             const cover = wall && wall.cover ? wall.cover : '';
-            return `<button class="style-big${active ? ' active' : ''}" data-preset="${i}" aria-label="${esc(name)}">`
-                + `${cover ? `<img src="${esc(cover)}" loading="lazy" alt="">` : ''}<span>${esc(name)}</span></button>`;
+            const on = favSet.has(key);
+            return `<div class="style-cell" data-q="${esc((name + ' ' + tag).toLowerCase())}">`
+                + `<button class="style-big${active ? ' active' : ''}" data-preset="${i}" aria-label="${esc(name)}">`
+                + `${cover ? `<img src="${esc(cover)}" loading="lazy" alt="">` : ''}<span>${esc(name)}</span></button>`
+                + `<button class="fav-btn${on ? ' on' : ''}" data-fav="${esc(key)}" aria-label="${on ? '取消收藏' : '收藏'} ${esc(name)}" title="收藏">★</button>`
+                + `</div>`;
         }).join('');
         return `
-            <div class="style-head"><h2>选一个风格</h2><span class="style-count">${shown.length} / ${presets.length} 款</span></div>
+            <div class="style-head"><h2>选一个风格</h2><span class="style-count" id="styleCount">${shown.length} / ${presets.length} 款</span></div>
             ${currentStrip()}
+            <div class="style-search">
+                <input id="styleQuery" type="search" enterkeyhint="search" placeholder="搜风格或分类，如 拍立得 / 胶片" value="${esc(state.query)}">
+                ${favChip}
+            </div>
             <div class="chips">${chips}</div>
-            <div class="style-rail">${cards || '<p class="panel-note">这个分类下暂无风格</p>'}</div>`;
+            <div class="style-rail">${cards}</div>
+            <p class="panel-note" id="styleEmpty"${shown.length ? ' hidden' : ''}>没有匹配的风格，换个关键词，或点「★ 收藏」看已收藏的风格。</p>`;
     }
 
     const PUZZLE_N = { single: 1, h2: 2, v2: 2, as2: 2, h3: 3, v3: 3, grid4: 4, as4: 4, h4: 4, v4: 4, grid6: 6, grid9: 9 };
@@ -1068,8 +1168,12 @@
                 + `${thumb}<small>${i + 1}</small></button>`;
         }).join('');
         const photos = state.images.map((im, i) => {
-            return `<button class="photo-thumb" data-photo="${i}"><img src="${thumbOf(im, 0.5)}" alt=""><small>${i + 1}</small></button>`;
-        }).join('');
+            const armed = state.pendingDel === i;
+            return `<span class="photo-cell${armed ? ' armed' : ''}">`
+                + `<button class="photo-thumb" data-photo="${i}" title="放入第 ${state.activeSlot + 1} 格"><img src="${thumbOf(im, 0.5)}" alt=""><small>${i + 1}</small></button>`
+                + `<button class="photo-del" data-del-photo="${i}" aria-label="移除第 ${i + 1} 张">${armed ? '!' : '×'}</button>`
+                + `</span>`;
+        }).join('') + '<button class="photo-add" id="btnAddPhotos" type="button" aria-label="添加照片">＋</button>';
         return `
             <div class="chips">${chips}</div>
             <div class="slot-strip">${cells}</div>
@@ -1087,8 +1191,9 @@
                 </select></div>
                 <div class="ctl-row"><label>底色</label><input type="color" data-puzzle-opt="borderColor" value="#${String(state.puzzle.borderColor || 'ffffff').replace('#', '')}"></div>
             </details>
-            <h2 style="margin-top:14px">照片库</h2>
-            <div class="photo-strip">${photos || '<p class="panel-note">先导入照片</p>'}</div>`;
+            <h2 style="margin-top:14px">照片库 <span class="style-count">${state.images.length} 张</span></h2>
+            <div class="photo-strip">${photos}</div>
+            <p class="panel-note">点缩略图放进当前格 · 点 × 两下移除（不会动手机原图）</p>`;
     }
 
     function setLayout(name) {
@@ -1275,6 +1380,41 @@
         });
         panel.querySelectorAll('[data-tag]').forEach((b) => {
             b.addEventListener('click', () => { state.filter = b.dataset.tag; render('style'); });
+        });
+        const qEl = document.getElementById('styleQuery');
+        if (qEl) {
+            const onQuery = () => { state.query = qEl.value; applyStyleQuery(); };
+            qEl.addEventListener('input', onQuery);
+            qEl.addEventListener('search', onQuery);
+        }
+        panel.querySelectorAll('[data-fav-toggle]').forEach((b) => {
+            b.addEventListener('click', () => { state.favOnly = !state.favOnly; render('style'); });
+        });
+        panel.querySelectorAll('[data-fav]').forEach((b) => {
+            b.addEventListener('click', () => {
+                const k = b.dataset.fav;
+                if (!k) return;
+                if (favSet.has(k)) favSet.delete(k); else favSet.add(k);
+                saveFavs();
+                const on = favSet.has(k);
+                b.classList.toggle('on', on);
+                b.setAttribute('aria-label', on ? '取消收藏' : '收藏');
+                const chip = panel.querySelector('[data-fav-toggle]');
+                if (chip) {
+                    chip.textContent = `★ ${favSet.size}`;
+                    chip.classList.toggle('on', state.favOnly);
+                }
+                // 「只看收藏」里取消收藏，卡片要立刻退场
+                if (state.favOnly) render('style');
+            });
+        });
+        panel.querySelectorAll('[data-del-photo]').forEach((b) => {
+            b.addEventListener('click', () => removePhoto(Number(b.dataset.delPhoto)));
+        });
+        const addPhotos = document.getElementById('btnAddPhotos');
+        if (addPhotos) addPhotos.addEventListener('click', () => {
+            if (state.exporting) return;
+            importPhotos();
         });
         panel.querySelectorAll('[data-edit-sub]').forEach((b) => {
             b.addEventListener('click', () => { state.editSub = b.dataset.editSub; render('edit'); });

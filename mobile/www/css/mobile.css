@@ -165,8 +165,10 @@ body {
   scroll-snap-type: x proximity; scrollbar-width: none;
 }
 .style-rail::-webkit-scrollbar { display: none; }
+/* 卡片外面再包一层：收藏星章不能是 button 套 button */
+.style-cell { position: relative; flex: 0 0 120px; scroll-snap-align: start; }
 .style-big {
-  flex: 0 0 120px; scroll-snap-align: start; padding: 0; overflow: hidden;
+  width: 100%; padding: 0; overflow: hidden;
   border: 1px solid var(--border); border-radius: 12px; background: var(--surface-alt);
   text-align: left; color: var(--text-2);
 }
@@ -185,14 +187,39 @@ body {
   flex-wrap: wrap; align-content: flex-start; overflow-y: auto;
   scroll-snap-type: none;
 }
-#sheet.full .style-big { flex: 0 0 calc((100% - 20px) / 3); }
+#sheet.full .style-big { width: 100%; }
+#sheet.full .style-cell { flex: 0 0 calc((100% - 20px) / 3); }
 #sheet.full .style-big img { height: 112px; }
 /* 小屏（SE / 老安卓）把卡压矮一档，半屏也能露出完整一张卡 + 名字 */
 @media (max-height: 700px) {
-  .style-big { flex-basis: 108px; }
+  .style-cell { flex-basis: 108px; }
   .style-big img { height: 118px; }
   .style-big span { padding: 5px 6px 6px; font-size: 11px; }
 }
+
+/* 风格搜索 + 收藏：91 款风格靠横滑找太慢，给一条搜索框和一个收藏筛选 */
+.style-search { display: flex; gap: 8px; align-items: center; margin: 8px 0 4px; }
+.style-search input {
+  flex: 1 1 auto; min-width: 0; height: 38px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  color: var(--text); font-size: 14px; outline: none;
+}
+.style-search input::placeholder { color: var(--text-3); }
+.style-search input:focus { border-color: var(--primary); }
+.fav-chip {
+  flex: 0 0 auto; min-height: 38px; padding: 0 12px; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text-2);
+}
+.fav-chip.on { border-color: #e3b341; color: #f0c350; background: rgba(227,179,65,.12); }
+.fav-btn {
+  position: absolute; top: 5px; right: 5px; z-index: 2;
+  width: 30px; height: 30px; padding: 0; border: none; border-radius: 50%;
+  background: rgba(8, 12, 11, .55); color: rgba(255,255,255,.72);
+  font-size: 16px; line-height: 30px; text-align: center;
+  backdrop-filter: blur(3px);
+}
+.fav-btn.on { color: #f4c542; background: rgba(8, 12, 11, .68); }
+.fav-btn:active { transform: scale(.9); }
 
 .act-btn {
   min-height: 44px; border: 1px solid var(--border-strong, var(--border));
@@ -216,7 +243,7 @@ body {
   background: var(--surface); color: var(--text-2); font-size: 13px;
 }
 .puzzle-acts button:active { border-color: var(--primary); color: var(--primary); }
-.photo-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
+.photo-strip { display: flex; gap: 8px; overflow-x: auto; padding: 6px 2px 6px; scrollbar-width: none; }
 .photo-strip::-webkit-scrollbar { display: none; }
 .photo-thumb {
   position: relative; flex: 0 0 52px; height: 52px; padding: 0; border: 1px solid var(--border);
@@ -225,6 +252,22 @@ body {
 .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .photo-thumb small { position: absolute; right: 2px; bottom: 2px; background: rgba(0,0,0,.65); color: #fff; font-size: 9px; padding: 0 3px; border-radius: 3px; }
 .photo-thumb:active, .photo-thumb.active { border-color: var(--primary); outline: 2px solid var(--primary); outline-offset: -2px; }
+/* 照片库管理：× 先「上膛」再点一次才真删，避免误触丢图 */
+.photo-cell { position: relative; flex: 0 0 52px; height: 52px; }
+.photo-cell .photo-thumb { flex: none; width: 52px; height: 52px; }
+.photo-del {
+  position: absolute; top: -5px; right: -5px; z-index: 2;
+  width: 20px; height: 20px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--border); background: #202624; color: var(--text-2);
+  font-size: 12px; line-height: 18px; text-align: center;
+}
+.photo-cell.armed .photo-del { background: #b3261e; border-color: #b3261e; color: #fff; }
+.photo-cell.armed .photo-thumb { border-color: #b3261e; outline: 2px solid #b3261e; outline-offset: -2px; }
+.photo-add {
+  flex: 0 0 52px; height: 52px; padding: 0; border: 1px dashed var(--border-strong, var(--border));
+  border-radius: 8px; background: transparent; color: var(--text-3); font-size: 20px;
+}
+.photo-add:active { border-color: var(--primary); color: var(--primary); }
 .current-strip { margin: 0 0 10px; }
 
 .histo-card { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-soft, #181B1A); padding: 6px; }
