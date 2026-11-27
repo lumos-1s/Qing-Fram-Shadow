@@ -65,10 +65,22 @@ app.whenReady().then(async () => {
         return {
             presets: presets.length,
             hasRender: typeof window.__render === 'function',
+            hasEmbedApi: typeof window.QF_IccEmbed === 'object' && typeof window.QF_IccEmbed.embed === 'function',
+            iccLen: (window.QF_ICC_ADOBERGB || '').length,
             logText, placed: window.qfMockPlaced,
             outputs: window.qfMockPlaced.map((p) => {
                 const b64 = window.qfMockFiles[p.path] || '';
-                return { len: b64.length, jpeg: /^\\/9j\\//.test(b64) };
+                const head = (() => { try { return atob(b64).slice(0, 60); } catch (e) { return ''; } })();
+                let hasIcc = false;
+                try {
+                    const bin = atob(b64);
+                    for (let i = 0; i < bin.length - 12; i++) {
+                        if (bin.charCodeAt(i) === 0xE2 && bin.substr(i + 3, 11) === 'ICC_PROFILE') {
+                            hasIcc = true; break;
+                        }
+                    }
+                } catch (e) { /* 忽略 */ }
+                return { len: b64.length, jpeg: /^\\/9j\\//.test(b64), hasIcc, head: head.replace(/[^\x20-\x7e]/g, '.') };
             }),
             canvas: document.getElementById('renderCanvas').width + 'x' + document.getElementById('renderCanvas').height
         };
@@ -79,7 +91,7 @@ app.whenReady().then(async () => {
     check(/放回文档：OK/.test(r.logText), '边框渲染并写回图层', r.logText.split('\n').slice(-2).join(' / '));
     check(r.placed.length === 1 && r.placed[0].name === '清框影边框',
         '只写回一层边框', JSON.stringify(r.placed.map((p) => p.name)));
-    check(r.outputs.every((f) => f.len > 10000 && f.jpeg), '写回的是有效 JPEG', JSON.stringify(r.outputs));
+    check(r.outputs.every((f) => f.len > 10000 && f.jpeg && f.hasIcc), '写回的是带 Adobe RGB ICC 的 JPEG', JSON.stringify(r.outputs));
     check(errors.length === 0, '无控制台错误', errors.slice(0, 3).join(' / '));
 
     win.destroy();

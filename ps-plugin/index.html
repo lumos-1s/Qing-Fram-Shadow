@@ -11,6 +11,11 @@
     <p class="note">把当前选中图层套上边框，作为新图层放回文档。</p>
     <label>风格</label>
     <select id="preset"></select>
+    <label>输出色域</label>
+    <select id="selColorSpace">
+      <option value="adobergb" selected>Adobe RGB (1998)</option>
+      <option value="srgb">sRGB</option>
+    </select>
     <div class="acts">
       <button id="btnBorder" class="primary">套用边框 → 新图层</button>
     </div>
@@ -26,6 +31,8 @@
   <script src="js/style-params.js"></script>
   <script src="js/style-caps.js"></script>
   <script src="js/color-space.js"></script>
+<script src="lib/icc-adobergb.js"></script>
+<script src="js/icc-embed.js"></script>
   <script src="js/qfs-img.js"></script>
   <script src="js/exif.js"></script>
   <script src="js/focal-eq.js"></script>

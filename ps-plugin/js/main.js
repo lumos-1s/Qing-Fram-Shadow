@@ -129,8 +129,25 @@
             window.__render(A, false);
 
             // 输出走 JPEG（质量 95）：带边框的成品不需要 alpha，体积比 PNG 小一个量级
-            const data = canvas.toDataURL('image/jpeg', 0.95).split(',')[1] || '';
+            const csSel = document.getElementById('selColorSpace');
+            const cs = (csSel && csSel.value) || 'adobergb';
+            let outCanvas = canvas;
+            if (cs === 'adobergb' && window.QfsColorSpace) {
+                const tmp = document.createElement('canvas');
+                tmp.width = canvas.width; tmp.height = canvas.height;
+                const g = tmp.getContext('2d', { willReadFrequently: true });
+                g.drawImage(canvas, 0, 0);
+                const img = g.getImageData(0, 0, tmp.width, tmp.height);
+                window.QfsColorSpace.convertRgbaInPlace(img.data, 'adobergb');
+                g.putImageData(img, 0, 0);
+                outCanvas = tmp;
+            }
+            let data = outCanvas.toDataURL('image/jpeg', 0.95).split(',')[1] || '';
+            if (cs === 'adobergb' && window.QF_IccEmbed && window.QF_ICC_ADOBERGB) {
+                data = window.QF_IccEmbed.embed(data, window.QF_ICC_ADOBERGB);
+            }
             if (!data || data.length < 128) throw new Error('渲染结果为空');
+            log('输出色域：' + (cs === 'adobergb' ? 'Adobe RGB (1998)' : 'sRGB'));
             const out = tempPath('qingframe-border.jpg');
             const wr = await writeBase64(out, data);
             const ok = wr === true;
