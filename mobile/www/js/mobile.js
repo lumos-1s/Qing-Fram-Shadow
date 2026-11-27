@@ -24,11 +24,103 @@
     const UNDO_MAX = 20;
     const undoStack = [];
     const redoStack = [];
+    // ── 照片方向：把用户点的旋转/翻转记成操作序列，导出时在全尺寸上重放 ────
+    // 不直接把角度写进模板：模板是「相框/文字」的容器，方向属于照片本身。
+    // 代理画布旋转后按 im.base 重建，撤销就能靠操作序列回到任意一步。
+    const IMG_OPS = { r: 1, l: 1, f: 1, v: 1 };
+    function bakeOps(src, ops) {
+        let cur = src;
+        for (let i = 0; i < ops.length; i++) {
+            const op = ops[i];
+            const w = cur.width, h = cur.height;
+            const out = document.createElement('canvas');
+            if (op === 'r' || op === 'l') { out.width = h; out.height = w; }
+            else { out.width = w; out.height = h; }
+            const g = out.getContext('2d');
+            if (op === 'r' || op === 'l') {
+                g.translate(out.width / 2, out.height / 2);
+                g.rotate((op === 'r' ? 1 : -1) * Math.PI / 2);
+                g.drawImage(cur, -w / 2, -h / 2);
+            } else if (op === 'f') {
+                g.translate(w, 0); g.scale(-1, 1); g.drawImage(cur, 0, 0);
+            } else {
+                g.translate(0, h); g.scale(1, -1); g.drawImage(cur, 0, 0);
+            }
+            out.naturalWidth = out.width; out.naturalHeight = out.height; out.complete = true;
+            cur = out;
+        }
+        return cur;
+    }
+    function ensureImgBase(im) {
+        if (im.base) return;
+        const el = im.el;
+        im.base = el;
+        // 旋转是「在 90° 网格上翻面」，原图逻辑尺寸也要跟着换宽高，
+        // 否则 proxyRatio 会认为长边变了，把相框边距算错。
+        im.baseSrcW = Number(im.srcW) || Number(el && el.naturalWidth) || (el && el.width) || 0;
+        im.baseSrcH = Number(im.srcH) || Number(el && el.naturalHeight) || (el && el.height) || 0;
+    }
+    function rebuildImageCanvas(im) {
+        if (!im || !im.base) return;
+        const ops = im.ops || [];
+        im.el = ops.length ? bakeOps(im.base, ops) : im.base;
+        im.w = im.el.naturalWidth || im.el.width;
+        im.h = im.el.naturalHeight || im.el.height;
+        const quarter = ops.filter((o) => o === 'r' || o === 'l').length % 2 === 1;
+        im.srcW = quarter ? im.baseSrcH : im.baseSrcW;
+        im.srcH = quarter ? im.baseSrcW : im.baseSrcH;
+        delete im._gradeCache;
+        // 缩略图是按 el 画的，转过之后缓存就过期了（照片条/拼图格会显示旧方向）
+        delete im._thumb;
+        if (typeof A.invalidateGrade === 'function') A.invalidateGrade(im);
+    }
+    function applyImageOp(op) {
+        const im = state.image;
+        if (!im || !im.el || !IMG_OPS[op]) { hint('先导入照片'); return; }
+        pushUndo();
+        ensureImgBase(im);
+        im.ops = (im.ops || []).concat(op);
+        rebuildImageCanvas(im);
+        scalePresetFonts(state.template, im);
+        if (state.tab !== 'edit') state.tab = 'edit';
+        state.editSub = 'photo';
+        render('edit');
+        const label = { r: '右转 90°', l: '左转 90°', f: '水平翻转', v: '垂直翻转' }[op];
+        hint(`已${label}`);
+    }
+    function resetImageOps() {
+        const im = state.image;
+        if (!im || !(im.ops || []).length) { hint('方向没有改过'); return; }
+        pushUndo();
+        im.ops = [];
+        rebuildImageCanvas(im);
+        scalePresetFonts(state.template, im);
+        render(state.tab);
+        hint('已恢复照片原始方向');
+    }
+    function photoOrientHtml() {
+        const im = state.image;
+        const ops = (im && im.ops) || [];
+        return `<div class="orient-grid">
+                <button type="button" data-img-op="l">↺ 左转 90°</button>
+                <button type="button" data-img-op="r">↻ 右转 90°</button>
+                <button type="button" data-img-op="f">⇆ 水平翻转</button>
+                <button type="button" data-img-op="v">⇅ 垂直翻转</button>
+            </div>
+            <p class="panel-note">方向存在照片上：预览、导出、切图都是同一个方向。已放进拼图的照片，请在拼图页单独旋转那一格。</p>
+            ${ops.length ? `<div class="puzzle-acts"><button id="btnImgReset" type="button">恢复原始方向</button></div>` : ''}`;
+    }
+
     function snapNow() {
         return JSON.stringify({
             t: state.template,
             g: state.image ? (state.image.grade || null) : null,
-            p: state.preset ? (state.preset._fileName || '') : ''
+            p: state.preset ? (state.preset._fileName || '') : '',
+            // 拼图的版式/槽位也是「用户刚做的改动」，不进快照的话点撤销会去撤销更早的
+            // 模板改动，看起来像「撤销没反应 / 撤错了」
+            z: state.puzzle ? { layout: state.puzzle.layout, slots: state.puzzle.slots } : null,
+            // 方向同理：照片像素被转过了，撤销必须能把画布转回去
+            r: state.image ? (state.image.ops || []) : null
         });
     }
     function updateUndoUI() {
@@ -51,6 +143,19 @@
         state.template = o.t;
         A.template = state.template;
         state.preset = o.p ? ((window.QF_PRESETS || []).find((p) => p._fileName === o.p) || null) : null;
+        if (state.image && o.r) {
+            const cur = JSON.stringify(state.image.ops || []);
+            if (cur !== JSON.stringify(o.r)) {
+                state.image.ops = o.r.slice();
+                rebuildImageCanvas(state.image);
+                scalePresetFonts(state.template, state.image);
+            }
+        }
+        if (o.z && state.puzzle) {
+            state.puzzle.layout = o.z.layout || state.puzzle.layout;
+            state.puzzle.slots = o.z.slots || {};
+            clampActiveSlot();
+        }
         if (state.image) {
             if (o.g) state.image.grade = o.g; else delete state.image.grade;
             if (typeof A.invalidateGrade === 'function') A.invalidateGrade(state.image);
@@ -919,6 +1024,20 @@
             hint('正在准备原尺寸…', 12000);
             full = await window.qfFullSource(im);
             if (!full || !full.canvas) return await fn(1600, false, false);
+            // 方向：全尺寸重新解出来的是「没转过」的原图，导出前把用户点过的旋转/翻转重放一遍。
+            // 先转出新画布再把原画布还回去，避免两张 6000px 同时驻留太久。
+            if (im.ops && im.ops.length) {
+                const baseCv = full.canvas;
+                const turned = bakeOps(baseCv, im.ops);
+                if (full.changed && baseCv !== im.el) {
+                    try { baseCv.width = 0; baseCv.height = 0; } catch (_) {}
+                }
+                full = {
+                    canvas: turned, changed: true,
+                    fallback: !!full.fallback, capped: !!full.capped,
+                    release() { try { turned.width = 0; turned.height = 0; } catch (_) {} }
+                };
+            }
             if (full.changed) {
                 prevEl = im.el; prevW = im.w; prevH = im.h;
                 im.el = full.canvas;
@@ -1534,7 +1653,8 @@
     }
 
     function setLayout(name) {
-        if (!PUZZLE_N[name]) return;
+        if (!PUZZLE_N[name] || state.puzzle.layout === name) return;
+        pushUndo();
         state.puzzle.layout = name;
         state.puzzle.axisVals = {};
         clampActiveSlot();
@@ -1544,6 +1664,7 @@
         if (!state.images[imageIndex]) return;
         const n = PUZZLE_N[state.puzzle.layout] || 1;
         if (i < 0 || i >= n) return;
+        pushUndo();
         state.puzzle.slots[i] = { imageIndex, rotate: 0 };
         state.activeSlot = i;
         render('puzzle');
@@ -1551,6 +1672,7 @@
     function fillAll() {
         const n = PUZZLE_N[state.puzzle.layout] || 1;
         if (!state.images.length) { hint('先导入照片'); return; }
+        pushUndo();
         for (let i = 0; i < n; i++) {
             if (!state.puzzle.slots[i]) {
                 state.puzzle.slots[i] = { imageIndex: i % state.images.length, rotate: 0 };
@@ -1750,19 +1872,22 @@
             <p class="panel-note">已勾选 ${state.crop.picked.size}/${blocks.length} 块 · 点右上角「导出块」逐块保存/分享</p>`;
     }
 
-    const EDIT_SUBS = [['border', '边框'], ['text', '文字'], ['element', '元素'], ['style', '样式']];
+    const EDIT_SUBS = [['photo', '照片'], ['border', '边框'], ['text', '文字'], ['element', '元素'], ['style', '样式']];
     function editPage() {
         const chips = EDIT_SUBS.map(([k, label]) =>
             `<button class="chip${state.editSub === k ? ' active' : ''}" data-edit-sub="${k}">${label}</button>`).join('');
         if (!state.image) {
             return `<div class="chips edit-subs">${chips}</div><p class="panel-note">先导入一张照片，再选一个风格</p>`;
         }
-        return `${currentStrip()}
-            <div class="chips edit-subs">${chips}</div>
-            ${(window.QF_EditPanel && window.QF_EditPanel.html(state.editSub, state.template, state.template.photoFrameStyle, {
+        const body = state.editSub === 'photo'
+            ? photoOrientHtml()
+            : ((window.QF_EditPanel && window.QF_EditPanel.html(state.editSub, state.template, state.template.photoFrameStyle, {
                 baseW: A._canvasBaseW || (state.image && state.image.el && state.image.el.naturalWidth) || 1000,
                 baseH: A._canvasBaseH || (state.image && state.image.el && state.image.el.naturalHeight) || 1000
-            })) || '<p class="panel-note">编辑面板尚未就绪</p>'}`;
+            })) || '<p class="panel-note">编辑面板尚未就绪</p>');
+        return `${currentStrip()}
+            <div class="chips edit-subs">${chips}</div>
+            ${body}`;
     }
 
     const PAGES = {
@@ -1789,6 +1914,11 @@
         });
         const plainBtn = document.getElementById('btnPlainStyle');
         if (plainBtn) plainBtn.addEventListener('click', applyPlainStyle);
+        panel.querySelectorAll('[data-img-op]').forEach((b) => {
+            b.addEventListener('click', () => applyImageOp(b.dataset.imgOp));
+        });
+        const imgReset = document.getElementById('btnImgReset');
+        if (imgReset) imgReset.addEventListener('click', resetImageOps);
         const saveStyleBtn = document.getElementById('btnSaveStyle');
         if (saveStyleBtn) saveStyleBtn.addEventListener('click', openSaveStyleModal);
         // 我的风格：轻点套用，长按 650ms 问一句再删（删样式比删调色贵，给一次确认）
@@ -1870,6 +2000,7 @@
         if (rot) rot.addEventListener('click', () => {
             const sc = state.puzzle.slots[state.activeSlot];
             if (!sc) { hint('先选一个已放照片的格子'); return; }
+            pushUndo();
             // 引擎里 rotate 是「90° 的倍数」(0..3)，不是角度值。
             sc.rotate = ((Number(sc.rotate) || 0) + 1) % 4;
             renderPreview();
@@ -1878,6 +2009,7 @@
         const clr = document.getElementById('btnClearSlot');
         if (clr) clr.addEventListener('click', () => {
             if (!state.puzzle.slots[state.activeSlot]) { hint('这个格子本来就是空的'); return; }
+            pushUndo();
             delete state.puzzle.slots[state.activeSlot];
             render('puzzle');
         });

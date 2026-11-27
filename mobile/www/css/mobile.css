@@ -398,3 +398,10 @@ body {
 .modal-input.name-input { min-height: 0; height: 44px; }
 .modal-input.code-box { font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
 .modal-note { font-size: 11px; line-height: 1.6; color: var(--text-3); margin-top: 8px; }
+/* 照片方向：2×2 大按钮，单手也点得准 */
+.orient-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0 4px; }
+.orient-grid button {
+  min-height: 46px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-alt); color: var(--text); font-size: 13px;
+}
+.orient-grid button:active { border-color: var(--primary); color: var(--primary); }

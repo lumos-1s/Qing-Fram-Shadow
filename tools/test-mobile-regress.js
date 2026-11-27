@@ -1004,6 +1004,106 @@ app.whenReady().then(async () => {
             ms.afterDelete = readStore().length;
         } catch (e) { msErr = String(e && e.message || e); }
 
+        // 24.9) 撤销要能撤掉拼图版式（否则点了撤销会去撤更早的模板改动）
+        let uz = {}, uzErr = '';
+        try {
+            document.querySelector('[data-tab="puzzle"]').click();
+            await wait(420);
+            const activeLayout = () => {
+                const b = document.querySelector('[data-layout].active');
+                return b ? b.dataset.layout : '';
+            };
+            const first = activeLayout();
+            const other = Array.from(document.querySelectorAll('[data-layout]'))
+                .find((b) => b.dataset.layout !== first);
+            other.click();
+            await wait(420);
+            uz.changed = activeLayout();
+            document.getElementById('btnUndo').click();
+            await wait(520);
+            uz.afterUndo = activeLayout();
+            document.getElementById('btnRedo').click();
+            await wait(520);
+            uz.afterRedo = activeLayout();
+            uz.first = first;
+            uz.other = other.dataset.layout;
+        } catch (e) { uzErr = String(e && e.message || e); }
+
+        // 24.95) 照片方向：旋转/翻转、撤销、导出全尺寸重放、重置
+        let rot = {}, rotErr = '';
+        try {
+            const cvEl = document.getElementById('previewCanvas');
+            const size = () => ({ w: cvEl.width, h: cvEl.height });
+            document.querySelector('[data-tab="edit"]').click();
+            await wait(320);
+            document.querySelector('[data-edit-sub="photo"]').click();
+            await wait(260);
+            rot.buttons = document.querySelectorAll('[data-img-op]').length;
+            rot.before = size();
+            document.querySelector('[data-img-op="r"]').click();
+            await wait(560);
+            rot.afterR = size();
+            rot.ops = (window.App.image.ops || []).join('');
+            rot.dimsText = document.getElementById('hdrMeta').textContent;
+            document.getElementById('btnUndo').click();
+            await wait(560);
+            rot.undone = size();
+
+            // 导出时要在全尺寸上重放方向：挂一张 1600×1200 的假「原图」
+            document.querySelector('[data-edit-sub="photo"]').click();
+            await wait(220);
+            document.querySelector('[data-img-op="r"]').click();
+            await wait(520);
+            // 换成「原图」再导出：带相框的模板会额外加边距，画布尺寸就不再等于照片本身
+            document.querySelector('[data-tab="style"]').click();
+            await wait(420);
+            const plainBtn = document.getElementById('btnPlainStyle');
+            if (plainBtn) plainBtn.click();
+            await wait(420);
+            const full = document.createElement('canvas');
+            full.width = 1600; full.height = 1200;
+            const fg = full.getContext('2d');
+            fg.fillStyle = '#234'; fg.fillRect(0, 0, 1600, 1200);
+            const origFull = window.qfFullSource;
+            const origSave = window.qfsNative.saveImage;
+            window.qfFullSource = async () => ({ canvas: full, changed: true, capped: false, fallback: false, release() {} });
+            let saved = null;
+            window.qfsNative.saveImage = async (d, n) => { saved = { d, n }; return { ok: true, mode: 'download' }; };
+            const ex = document.getElementById('btnExport');
+            ex.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 91, button: 0 }));
+            await wait(620);
+            document.querySelector('#optFormat [data-format="png"]').click();
+            document.getElementById('btnExportGo').click();
+            for (let i = 0; i < 140 && !saved; i++) await wait(150);
+            const b64 = ((saved && saved.d) || '').split(',')[1] || '';
+            const bin = atob(b64.slice(0, 48));
+            rot.expW = ((bin.charCodeAt(16) << 24) | (bin.charCodeAt(17) << 16)
+                | (bin.charCodeAt(18) << 8) | bin.charCodeAt(19)) >>> 0;
+            rot.expH = ((bin.charCodeAt(20) << 24) | (bin.charCodeAt(21) << 16)
+                | (bin.charCodeAt(22) << 8) | bin.charCodeAt(23)) >>> 0;
+            window.qfFullSource = origFull;
+            window.qfsNative.saveImage = origSave;
+            // 格式改回默认，别影响下一次运行
+            ex.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 92, button: 0 }));
+            await wait(620);
+            document.querySelector('#optFormat [data-format="jpeg"]').click();
+            document.querySelector('#optSize [data-size="0"]').click();
+            document.querySelector('#optQuality [data-quality="0.92"]').click();
+            document.getElementById('btnExportCancel').click();
+            await wait(320);
+
+            document.querySelector('[data-tab="edit"]').click();
+            await wait(300);
+            document.querySelector('[data-edit-sub="photo"]').click();
+            await wait(250);
+            const rb = document.getElementById('btnImgReset');
+            rot.hasReset = !!rb;
+            if (rb) rb.click();
+            await wait(480);
+            rot.afterReset = size();
+            rot.resetOps = (window.App.image.ops || []).length;
+        } catch (e) { rotErr = String(e && e.message || e); }
+
         // 25) RAW 全尺寸重解（本地有样本时）
         let rawFull = {}, rawFullErr = '';
         if (${JSON.stringify(fs.existsSync(rawSample))}) {
@@ -1032,7 +1132,7 @@ app.whenReady().then(async () => {
             puzzleExport, puzzleExportErr, cropFull, cropFullErr,
             edit, editErr, text, textErr, el, elErr, tpl, tplErr, drag, dragErr, handle, handleErr, dbl, dblErr,
             pinch, pinchErr, exif, exifErr, multi, multiErr, autofs, autofsErr, layout, layoutErr,
-            extras, extrasErr, exportOpt, exportOptErr, gp, gpErr, lib, libErr, ms, msErr, sync1, sync1Err, rawFull, rawFullErr
+            extras, extrasErr, exportOpt, exportOptErr, gp, gpErr, lib, libErr, ms, msErr, uz, uzErr, rot, rotErr, sync1, sync1Err, rawFull, rawFullErr
         };
     })()`);
 
@@ -1071,9 +1171,9 @@ app.whenReady().then(async () => {
     check(!r.cropFullErr && Number(String(r.cropFull.dims[0]).split('x')[0]) >= 800 && r.cropFull.count === 9,
         '切图从全尺寸成品上切出 9 块', JSON.stringify({ crop: r.cropFull, err: r.cropFullErr }));
 
-    check(!r.editErr && r.edit.tabs === 5 && r.edit.subs === 4 && r.edit.ctls > 10
+    check(!r.editErr && r.edit.tabs === 5 && r.edit.subs === 5 && r.edit.ctls > 10
         && r.edit.textCtls > 10 && /编辑 · 边框/.test(r.edit.stageMeta),
-        '编辑页五个页签、四个子页与边框/文字控件都在', JSON.stringify({ edit: r.edit, err: r.editErr }));
+        '编辑页五个页签、五个子页（含照片方向）与边框/文字控件都在', JSON.stringify({ edit: r.edit, err: r.editErr }));
     check(!r.editErr && r.edit.changedStroke && r.edit.changedFill && r.edit.stroke === 40 && r.edit.fill === '00ff00',
         '边框控件写入 template.layerList（描边宽度/填充颜色）', JSON.stringify({ edit: r.edit, err: r.editErr }));
 
@@ -1150,6 +1250,26 @@ app.whenReady().then(async () => {
 
     check(!r.extrasErr && r.extras.compareOn && r.extras.compareOff,
         '长按画布看原图、松手恢复', JSON.stringify({ extras: r.extras, err: r.extrasErr }));
+
+    check(!r.rotErr && r.rot.buttons === 4 && r.rot.afterR.w === r.rot.before.h
+        && r.rot.afterR.h === r.rot.before.w && r.rot.ops === 'r' && r.rot.undone.w === r.rot.before.w,
+        '照片方向：右转 90° 换宽高、撤销能转回去',
+        JSON.stringify({ rot: r.rot, err: r.rotErr }));
+
+    check(!r.rotErr && r.rot.expW === 1200 && r.rot.expH === 1600,
+        '照片方向：导出时在全尺寸上重放旋转（1600×1200 → 1200×1600）',
+        JSON.stringify({ expW: r.rot && r.rot.expW, expH: r.rot && r.rot.expH, err: r.rotErr }));
+
+    // 重置时画布已经换成「原图」模板，尺寸等于夹具本身（400×300），
+    // 不能拿旋转前带相框的 660×560 来比
+    check(!r.rotErr && r.rot.hasReset && r.rot.afterReset.w === 400
+        && r.rot.afterReset.h === 300 && r.rot.resetOps === 0,
+        '照片方向：可一键恢复原始方向', JSON.stringify({ rot: r.rot, err: r.rotErr }));
+
+    check(!r.uzErr && r.uz.changed === r.uz.other && r.uz.afterUndo === r.uz.first
+        && r.uz.afterRedo === r.uz.other,
+        '撤销/重做覆盖拼图版式，不会误撤到更早的模板改动',
+        JSON.stringify({ uz: r.uz, err: r.uzErr }));
 
     check(!r.msErr && r.ms.modalOpen && r.ms.saved === 1 && /^回归风格/.test(r.ms.storedName || '')
         && r.ms.hasCover && r.ms.badge && r.ms.cards >= 1,
