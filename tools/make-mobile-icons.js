@@ -131,6 +131,17 @@ app.whenReady().then(async () => {
         const mc = Math.round(N * 0.74), mo = Math.round((N - mc) / 2);
         mg.drawImage(squareImg, mo, mo, mc, mc, 0, 0, 256, 256);
         shots.logomark = mark.toDataURL('image/png');
+
+        // 应用内圆形头像：整枚图标缩到圆内，金框四角不会被圆形裁掉
+        const av = document.createElement('canvas');
+        av.width = 256; av.height = 256;
+        const ag = av.getContext('2d');
+        ag.beginPath(); ag.arc(128, 128, 128, 0, Math.PI * 2); ag.clip();
+        ag.fillStyle = 'rgb(' + green.join(',') + ')';
+        ag.fillRect(0, 0, 256, 256);
+        const avs = Math.round(256 * 0.76), avo = Math.round((256 - avs) / 2);
+        ag.drawImage(squareImg, avo, avo, avs, avs);
+        shots.avatar = av.toDataURL('image/png');
         Object.keys(${JSON.stringify(DENSITIES)}).forEach((d) => {
             const k = ${JSON.stringify(DENSITIES)}[d];
             shots['legacy_' + d] = make(Math.round(48 * k), 'rounded');
@@ -151,6 +162,7 @@ app.whenReady().then(async () => {
     writePng(WEB, 'favicon-32.png', out.shots.fav32);
     writePng(WEB, 'apple-touch-icon-180.png', out.shots.touch180);
     writePng(WEB, 'logo-mark.png', out.shots.logomark);
+    writePng(WEB, 'avatar.png', out.shots.avatar);
     Object.keys(DENSITIES).forEach((d) => {
         writePng(path.join(ANDROID, 'mipmap-' + d), 'ic_launcher.png', out.shots['legacy_' + d]);
         writePng(path.join(ANDROID, 'mipmap-' + d), 'ic_launcher_round.png', out.shots['round_' + d]);

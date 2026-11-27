@@ -592,8 +592,9 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 .mine-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); }
 .mine-id { display: flex; align-items: center; gap: 14px; padding: 18px 16px; margin-bottom: 18px; }
 .mine-logo {
-  flex: 0 0 auto; width: 52px; height: 52px; border-radius: var(--r-md);
+  flex: 0 0 auto; width: 54px; height: 54px; border-radius: 50%;
   overflow: hidden; background: var(--surface-3);
+  box-shadow: 0 0 0 1px rgba(233,168,87,.22);
 }
 .mine-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mine-id-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
