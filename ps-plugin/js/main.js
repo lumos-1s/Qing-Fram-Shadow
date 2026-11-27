@@ -463,6 +463,15 @@
             window.QF_TextParams.onChange(changed);
             window.QF_TextParams.setTemplate(window.QF_BorderParams ? window.QF_BorderParams.current() : presetAt());
         }
+        // 恢复上次选的个性签名头像（引擎从 window.__qfsAvatarImg 读）
+        try {
+            const av = localStorage.getItem('qfs_user_avatar');
+            if (av) {
+                const im = new Image();
+                im.onload = () => { window.__qfsAvatarImg = im; renderPreviewLive(); };
+                im.src = av;
+            }
+        } catch (_) { /* 本地存储不可用时忽略 */ }
         removeTemp(tempPath('qingframe-source.png')); // 旧版留下的大 PNG
         log('就绪；共 ' + list.length + ' 款预设。' + (cs ? '已连接 Photoshop。' : '本机测试模式。'));
         buildPresetWall();

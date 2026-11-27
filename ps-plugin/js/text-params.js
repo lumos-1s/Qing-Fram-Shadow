@@ -39,6 +39,8 @@
         } else if (type === 'select') {
             input = `<select data-tp="${id}">` + extra.options.map(([v, l]) =>
                 `<option value="${esc(v)}"${v === value ? ' selected' : ''}>${esc(l)}</option>`).join('') + '</select>';
+        } else if (type === 'check') {
+            input = `<input type="checkbox" data-tp="${id}"${value ? ' checked' : ''}>`;
         } else if (type === 'color') {
             input = `<input type="color" data-tp="${id}" value="${value}">`;
         } else {
@@ -81,11 +83,23 @@
         });
         out += '</details>';
 
-        out += '<details><summary>署名</summary>'
+        out += '<details><summary>个性签名</summary>'
             + ctl('text', '内容', t.userSignature || '', (v) => { t.userSignature = v; })
+            + ctl('select', '字体', t.signFont || 'Courier New', (v) => { t.signFont = v; }, {
+                options: [['Courier New', 'Courier New'], ['Microsoft YaHei', '微软雅黑'],
+                    ['Georgia', 'Georgia'], ['Times New Roman', 'Times New Roman']]
+            })
             + ctl('range', '大小', num(t.signSize, 1), (v) => { t.signSize = v; },
                 { min: 0.5, max: 2, step: 0.05, unit: '' })
             + ctl('color', '颜色', hex(t.signColor, '#555555'), (v) => { t.signColor = v; })
+            + ctl('check', '显示头像', t.avatarShow !== 0, (v) => { t.avatarShow = v ? 1 : 0; })
+            + ctl('range', '头像大小', num(t.avatarScale, 0.85), (v) => { t.avatarScale = v; },
+                { min: 0.3, max: 2, step: 0.05, unit: '' })
+            + ctl('check', '带型号', (t.signIncludeModel || 0) === 1,
+                (v) => { t.signIncludeModel = v ? 1 : 0; })
+            + ctl('check', '签名背景模糊', (t.signBgBlur || 0) === 1,
+                (v) => { t.signBgBlur = v ? 1 : 0; })
+            + '<div class="text-acts"><button id="btnPickAvatar" type="button">选择头像图片</button></div>'
             + '</details>';
 
         const manual = t.manualExif || (t.manualExif = {});
@@ -114,12 +128,13 @@
         host.querySelectorAll('[data-tp]').forEach((el) => {
             const c = ctls[Number(el.dataset.tp)];
             if (!c) return;
-            const ev = c.type === 'select' ? 'change' : 'input';
+            const ev = (c.type === 'select' || c.type === 'check') ? 'change' : 'input';
             el.addEventListener(ev, () => {
-                const v = c.type === 'range' ? Number(el.value) : el.value;
+                const v = c.type === 'range' ? Number(el.value)
+                    : (c.type === 'check' ? el.checked : el.value);
                 c.setter(v);
                 const o = host.querySelector(`[data-out="${c.id}"]`);
-                if (o) o.textContent = v + c.unit;
+                if (o && c.type === 'range') o.textContent = v + c.unit;
                 if (onChange) onChange();
             });
         });
@@ -140,6 +155,25 @@
                 if (onChange) onChange();
                 render();
             });
+        });
+        const avatarBtn = host.querySelector('#btnPickAvatar');
+        if (avatarBtn) avatarBtn.addEventListener('click', () => {
+            const inp = document.createElement('input');
+            inp.type = 'file'; inp.accept = 'image/*';
+            inp.onchange = () => {
+                const f = inp.files && inp.files[0];
+                if (!f) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const data = String(reader.result);
+                    try { localStorage.setItem('qfs_user_avatar', data); } catch (e) { /* 忽略 */ }
+                    const im = new Image();
+                    im.onload = () => { window.__qfsAvatarImg = im; if (onChange) onChange(); };
+                    im.src = data;
+                };
+                reader.readAsDataURL(f);
+            };
+            inp.click();
         });
     }
 
