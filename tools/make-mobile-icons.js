@@ -122,6 +122,15 @@ app.whenReady().then(async () => {
         shots.web512 = make(512, 'none');
         shots.fav32 = make(32, 'rounded');
         shots.touch180 = make(180, 'none');
+
+        // 应用内品牌位：顶栏只有 28px，整张图标缩下去金框只剩 15px，
+        // 这里把中间 74% 裁出来放大成一张「标记图」，细节才立得住
+        const mark = document.createElement('canvas');
+        mark.width = 256; mark.height = 256;
+        const mg = mark.getContext('2d');
+        const mc = Math.round(N * 0.74), mo = Math.round((N - mc) / 2);
+        mg.drawImage(squareImg, mo, mo, mc, mc, 0, 0, 256, 256);
+        shots.logomark = mark.toDataURL('image/png');
         Object.keys(${JSON.stringify(DENSITIES)}).forEach((d) => {
             const k = ${JSON.stringify(DENSITIES)}[d];
             shots['legacy_' + d] = make(Math.round(48 * k), 'rounded');
@@ -141,6 +150,7 @@ app.whenReady().then(async () => {
     writePng(WEB, 'icon-512.png', out.shots.web512);
     writePng(WEB, 'favicon-32.png', out.shots.fav32);
     writePng(WEB, 'apple-touch-icon-180.png', out.shots.touch180);
+    writePng(WEB, 'logo-mark.png', out.shots.logomark);
     Object.keys(DENSITIES).forEach((d) => {
         writePng(path.join(ANDROID, 'mipmap-' + d), 'ic_launcher.png', out.shots['legacy_' + d]);
         writePng(path.join(ANDROID, 'mipmap-' + d), 'ic_launcher_round.png', out.shots['round_' + d]);

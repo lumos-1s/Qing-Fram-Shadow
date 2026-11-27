@@ -106,14 +106,13 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 #app[data-page="mine"] #btnSettings,
 #app[data-page="mine"] #btnPick { display: none; }
 
-/* 首页品牌位：一小块琥珀色标，比纯文字更像一个“产品” */
+/* 首页品牌位：直接用应用图标，和桌面图标保持一致 */
 #app[data-page="home"] .hdr-title { padding-left: 38px; position: relative; }
 #app[data-page="home"] .hdr-title::before {
-  content: '清'; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
   width: 28px; height: 28px; border-radius: 9px;
-  background: var(--primary); color: var(--on-primary);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px; font-weight: 500;
+  background: url("../img/logo-mark.png") center/cover no-repeat;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
 }
 /* 翻页只做 4px 的位移，够区分层级又不拖慢操作 */
 .page:not([hidden]) { animation: pageIn .16s ease-out; }
@@ -547,10 +546,9 @@ button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent
 .mine-id { display: flex; align-items: center; gap: 14px; padding: 18px 16px; margin-bottom: 18px; }
 .mine-logo {
   flex: 0 0 auto; width: 52px; height: 52px; border-radius: var(--r-md);
-  background: var(--primary); color: var(--on-primary);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 22px; font-weight: 500;
+  overflow: hidden; background: var(--surface-3);
 }
+.mine-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mine-id-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .mine-id-txt b { font-size: 17px; font-weight: 500; letter-spacing: -0.2px; }
 .mine-id-txt span { font-size: 11px; color: var(--text-3); }
