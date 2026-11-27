@@ -32,6 +32,14 @@ app.whenReady().then(async () => {
         const row = (label) => Array.from(document.querySelectorAll('#panel .ctl-row'))
             .find(x => x.querySelector('label') && x.querySelector('label').textContent.trim() === label);
         try {
+            // 0) 首页是完整目录：所有分类、每组全部预设都要露出，不能被 4 组 / 8 张截断
+            const wall = (window.QF_WALL && window.QF_WALL.items) || [];
+            const allTags = Array.from(new Set(wall.map(x => x.tag).filter(Boolean)));
+            out.wallItems = wall.length;
+            out.homeTags = allTags.length;
+            out.tagSections = document.querySelectorAll('#homeSections .home-sec-more[data-tag]').length;
+            out.homePresets = document.querySelectorAll('#homeSections [data-home-preset]').length;
+
             const ph = document.createElement('canvas'); ph.width = 400; ph.height = 300;
             const pg = ph.getContext('2d'); pg.fillStyle = '#889'; pg.fillRect(0, 0, 400, 300);
             ph.naturalWidth = 400; ph.naturalHeight = 300; ph.complete = true;
@@ -191,6 +199,9 @@ app.whenReady().then(async () => {
         JSON.stringify({ start: r.exportingToast, cancel: r.cancelToast, saves: r.savesAfterCancel, retry: r.savesAfterRetry, err: r.err }));
     check(!r.err && /我的 → 从分享码导入/.test(r.shareNote || ''),
         '分享码文案指向真实入口', JSON.stringify({ note: r.shareNote, err: r.err }));
+    check(!r.err && r.tagSections === r.homeTags && r.homePresets === r.wallItems && r.wallItems > 80,
+        '首页风格目录：全部分类与全部预设都露出',
+        JSON.stringify({ tags: r.tagSections + '/' + r.homeTags, cards: r.homePresets + '/' + r.wallItems, err: r.err }));
     check(!r.err && /没有选到照片/.test(r.avatarToast || ''),
         '头像选图取消后不再静默', JSON.stringify({ toast: r.avatarToast, err: r.err }));
     check(!r.err && r.mineVisible === 1 && r.allVisible === 1 && r.countMatches && r.emptyHidden,

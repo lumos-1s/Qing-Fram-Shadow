@@ -2865,13 +2865,13 @@
         // 分类顺序按「编辑推荐」而不是纯数量：数量排序会让「个性」这种泛分类排在最前
         const pref = ['经典', '胶片', '拍立得', '水印', '极简', '复古', '黑白', '艺术', '个性'];
         const rank = (t) => { const i = pref.indexOf(t); return i < 0 ? 99 : i; };
+        // 首页就是完整风格目录：所有分类、每组全部预设都要露出。
+        // 横滑 rail 只影响「一屏看到几张」，不该把没滑到的预设直接砍掉。
         return Array.from(counts.entries())
             .sort((a, b) => (rank(a[0]) - rank(b[0])) || (b[1] - a[1]))
-            .slice(0, 4)
             .map(([tag, n]) => {
                 const cards = [];
                 presets.forEach((p, i) => {
-                    if (cards.length >= 8) return;
                     const name = p.templateName || p._fileName || '';
                     const wall = byName.get(name);
                     if (!wall || wall.tag !== tag) return;
@@ -2897,7 +2897,7 @@
         if (!hits.length) return '<p class="home-empty">没有匹配的风格，换个关键词试试。</p>';
         return `<section class="home-section">
             <div class="home-sec-head"><h3>搜索结果</h3><span class="home-sec-tag">${hits.length}</span></div>
-            <div class="home-grid">${hits.slice(0, 30).join('')}</div></section>`;
+            <div class="home-grid">${hits.join('')}</div></section>`;
     }
     function renderHome() {
         const hero = document.getElementById('homeHero');
@@ -2921,7 +2921,7 @@
                 // 空态只留一条引导：首屏优先给风格，别让一张 136px 的卡把列表压到第二屏
                 hero.innerHTML = `<div class="hero-txt">
                         <h2>给照片一个边框</h2>
-                        <p>91 款风格 · 相机参数水印 · 本地处理</p>
+                        <p>${(window.QF_PRESETS || []).length} 款风格 · 相机参数水印 · 本地处理</p>
                     </div>
                     <button class="hero-btn" type="button" data-pick>导入照片</button>`;
             }
