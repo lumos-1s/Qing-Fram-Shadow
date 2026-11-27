@@ -47,14 +47,20 @@
     }
 
     async function loadLayer(path) {
-        const b64 = await readBase64(path);
-        if (!b64) throw new Error('读不到导出的图层 PNG：' + path);
         const img = new Image();
         await new Promise((res, rej) => {
             img.onload = res;
-            img.onerror = () => rej(new Error('图层 PNG 解码失败'));
-            img.src = 'data:image/png;base64,' + b64;
+            img.onerror = () => rej(new Error('图层图片解码失败：' + path));
+            // CEP 面板已开 --allow-file-access-from-files；直接走 file://，
+            // 不再把 69MB 的 PNG 读成 93MB 的 base64（ cep.fs.readFile 会卡住不回调）
+            img.src = window.qfMockHost
+                ? 'data:image/png;base64,' + (await0(path))
+                : 'file:///' + String(path).replace(/\\/g, '/');
         });
+        function await0(p) {
+            // 同步占位：mock 的读取在下方 await 之前已完成，这里只用数据 URL
+            return window.qfMockFiles ? window.qfMockFiles[p] : '';
+        }
         const el = document.createElement('canvas');
         el.width = img.naturalWidth; el.height = img.naturalHeight;
         el.getContext('2d').drawImage(img, 0, 0);
@@ -106,9 +112,10 @@
             const A = setupApp(image, template, Math.max(image.w, image.h));
             window.__render(A, false);
 
-            const data = canvas.toDataURL('image/png').split(',')[1] || '';
+            // 输出走 JPEG（质量 95）：带边框的成品不需要 alpha，体积比 PNG 小一个量级
+            const data = canvas.toDataURL('image/jpeg', 0.95).split(',')[1] || '';
             if (!data || data.length < 128) throw new Error('渲染结果为空');
-            const out = tempPath('qingframe-border.png');
+            const out = tempPath('qingframe-border.jpg');
             const ok = await writeBase64(out, data);
             log('写出结果：' + (ok ? out : '失败'));
             if (!ok) return;

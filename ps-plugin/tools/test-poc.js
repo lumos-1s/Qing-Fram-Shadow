@@ -66,7 +66,7 @@ app.whenReady().then(async () => {
             logText, placed: window.qfMockPlaced,
             outputs: window.qfMockPlaced.map((p) => {
                 const b64 = window.qfMockFiles[p.path] || '';
-                return { len: b64.length, png: /^iVBORw0KGgo/.test(b64) };
+                return { len: b64.length, jpeg: /^\\/9j\\//.test(b64) };
             }),
             canvas: document.getElementById('renderCanvas').width + 'x' + document.getElementById('renderCanvas').height
         };
@@ -77,7 +77,7 @@ app.whenReady().then(async () => {
     check(/放回文档：OK/.test(r.logText), '边框渲染并写回图层', r.logText.split('\n').slice(-2).join(' / '));
     check(r.placed.length === 1 && r.placed[0].name === '清框影边框',
         '只写回一层边框', JSON.stringify(r.placed.map((p) => p.name)));
-    check(r.outputs.every((f) => f.len > 10000 && f.png), '写回的是有效 PNG', JSON.stringify(r.outputs));
+    check(r.outputs.every((f) => f.len > 10000 && f.jpeg), '写回的是有效 JPEG', JSON.stringify(r.outputs));
     check(errors.length === 0, '无控制台错误', errors.slice(0, 3).join(' / '));
 
     win.destroy();
