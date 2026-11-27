@@ -40,6 +40,7 @@
     "test:ps:poc": "node tools/run-electron.js ps-plugin/tools/test-poc.js",
     "ps:poc:install": "node ps-plugin/tools/install.js",
     "mobile:serve": "node tools/mobile-serve.js",
+    "mobile:icons": "node tools/run-electron.js tools/make-mobile-icons.js && node tools/run-electron.js tools/make-mobile-splash.js",
     "mobile:sync": "node tools/sync-mobile-engine.js",
     "mobile:check": "node tools/sync-mobile-engine.js --check",
     "test:presetkeep": "node tools/run-electron.js tools/test-preset-keep-content.js",
