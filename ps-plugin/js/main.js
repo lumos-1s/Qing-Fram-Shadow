@@ -58,6 +58,7 @@
     let previewSource = null;
     let liveTemplate = null;
     let lastTemplate = null;
+    let sourceCache = { key: '', loaded: null };
     let previewTimer = 0;
 
     function renderPreviewLive() {
@@ -187,7 +188,7 @@
             // CEP 面板已开 --allow-file-access-from-files；直接走 file://，
             // 不再把 69MB 的 PNG 读成 93MB 的 base64（ cep.fs.readFile 会卡住不回调）
             img.src = window.qfMockHost
-                ? 'data:image/png;base64,' + (await0(path))
+                ? 'data:image/jpeg;base64,' + (await0(path))
                 : 'file:///' + String(path).replace(/\\/g, '/');
         });
         function await0(p) {
@@ -212,6 +213,27 @@
             srcW: el.width, srcH: el.height, grade: null
         });
         return { full: mk(el), preview: mk(pv) };
+    }
+
+    async function getSource() {
+        const src = tempPath('qingframe-source.jpg');
+        const got = await evalScript('qfGetLayerPng(' + JSON.stringify(src) + ')');
+        const parts = String(got).split('|');
+        const key = parts.slice(1).join('|') + '#' + src;
+        if (String(got).indexOf('ERR') === 0) return { got, loaded: null, cached: false };
+        if (sourceCache.key === key && sourceCache.loaded) {
+            return { got, loaded: sourceCache.loaded, cached: true };
+        }
+        const loaded = await loadLayer(src);
+        sourceCache = { key, loaded };
+        return { got, loaded, cached: false };
+    }
+
+    function removeTemp(path) {
+        try {
+            if (window.qfMockHost && window.qfMockHost.unlink) window.qfMockHost.unlink(path);
+            else require('fs').unlinkSync(path);
+        } catch (_) { /* 临时文件删不掉不影响功能 */ }
     }
 
     function setupApp(image, template, targetPx) {
@@ -242,15 +264,13 @@
         clearLog();
         btnBorder.disabled = true;
         try {
-            const src = tempPath('qingframe-source.png');
-            const got = await evalScript('qfGetLayerPng(' + JSON.stringify(src) + ')');
-            log('导出图层：' + got);
-            if (String(got).indexOf('ERR') === 0) return;
+            const { got, loaded, cached } = await getSource();
+            log('导出图层：' + got + (cached ? '（缓存）' : ''));
+            if (!loaded) return;
             const dm = /OK:(\d+)x(\d+)/.exec(String(got));
             const docW = dm ? Number(dm[1]) : 0;
             const docH = dm ? Number(dm[2]) : 0;
 
-            const loaded = await loadLayer(src);
             const image = loaded.full;
             previewSource = loaded.preview;
             log('图层尺寸：' + image.w + '×' + image.h);
@@ -301,6 +321,7 @@
             const placed = await evalScript('qfPlacePng(' + JSON.stringify(out) + ','
                 + JSON.stringify('清框影边框') + ')');
             log('放回文档：' + placed);
+            removeTemp(out); // 结果已经贴进文档，临时 JPEG 不再需要
         } catch (e) {
             log('失败：' + ((e && e.message) || e));
         } finally {
@@ -310,10 +331,8 @@
 
     async function prepareSource() {
         if (!cs && !window.qfMockHost) return; // 本地回归不在这里预加载
-        const src = tempPath('qingframe-source.png');
-        const got = await evalScript('qfGetLayerPng(' + JSON.stringify(src) + ')');
-        if (String(got).indexOf('ERR') === 0) return;
-        const loaded = await loadLayer(src);
+        const { got, loaded } = await getSource();
+        if (!loaded) return;
         previewSource = loaded.preview;
         liveTemplate = window.QF_BorderParams ? window.QF_BorderParams.current() : presetAt();
         const dm = /OK:(\d+)x(\d+)/.exec(String(got));
@@ -354,6 +373,7 @@
             window.QF_TextParams.onChange(changed);
             window.QF_TextParams.setTemplate(window.QF_BorderParams ? window.QF_BorderParams.current() : presetAt());
         }
+        removeTemp(tempPath('qingframe-source.png')); // 旧版留下的大 PNG
         log('就绪；共 ' + list.length + ' 款预设。' + (cs ? '已连接 Photoshop。' : '本机测试模式。'));
         detectExif().catch(() => {});
         prepareSource().catch(() => {});
@@ -364,6 +384,7 @@
 
     window.QF_PS_POC = {
         apply, detectExif, renderPreviewLive, evalScript, readBase64, writeBase64, tempPath, loadLayer,
-        lastTemplate: () => lastTemplate
+        lastTemplate: () => lastTemplate,
+        invalidateSource: () => { sourceCache = { key: '', loaded: null }; removeTemp(tempPath('qingframe-source.jpg')); }
     };
 })();

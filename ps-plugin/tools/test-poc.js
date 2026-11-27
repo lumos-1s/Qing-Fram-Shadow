@@ -54,7 +54,7 @@ app.whenReady().then(async () => {
         const gr = g.createLinearGradient(0, 0, 800, 1000);
         gr.addColorStop(0, '#c9624e'); gr.addColorStop(1, '#3d7a83');
         g.fillStyle = gr; g.fillRect(0, 0, 800, 1000);
-        window.qfMockFiles[prefix + 'qingframe-source.png'] = c.toDataURL('image/png').split(',')[1];
+        window.qfMockFiles[prefix + 'qingframe-source.jpg'] = c.toDataURL('image/jpeg').split(',')[1];
         window.qfMockFiles[prefix + 'exif-source.jpg'] = c.toDataURL('image/jpeg').split(',')[1];
         window.__parseExif = () => ({
             0x010F: 'SONY', 0x0110: 'ILCE-6000',
@@ -96,7 +96,13 @@ app.whenReady().then(async () => {
         await wait(1200);
         const logText = document.getElementById('log').textContent;
 
+        // 第二次套用应命中缓存，不再从 PS 重新导出源图
+        document.getElementById('btnBorder').click();
+        await wait(800);
+        const cachedLog = document.getElementById('log').textContent;
+
         return {
+            cachedLog,
             presets: presets.length,
             hasRender: typeof window.__render === 'function',
             bpCount, strokeWidth, tpCount, lineText, paramFontSize, paramModel, exifText,
@@ -134,8 +140,9 @@ app.whenReady().then(async () => {
     check(r.exifBrand === 'CANON', '相机参数可手动修改并写回模板', String(r.exifBrand));
     check(r.hasLive && r.previewW > 0, '实时预览画布已渲染', JSON.stringify({ hasLive: r.hasLive, previewW: r.previewW }));
     check(/放回文档：OK/.test(r.logText), '边框渲染并写回图层', r.logText.split('\n').slice(-2).join(' / '));
-    check(r.placed.length === 1 && r.placed[0].name === '清框影边框',
-        '只写回一层边框', JSON.stringify(r.placed.map((p) => p.name)));
+    check(r.placed.length >= 1 && r.placed[0].name === '清框影边框',
+        '写回边框图层', JSON.stringify(r.placed.map((p) => p.name)));
+    check(/缓存/.test(r.cachedLog), '重复套用命中源图缓存', r.cachedLog.split('\n')[0]);
     check(r.outputs.every((f) => f.len > 10000 && f.jpeg && f.hasIcc), '写回的是带 Adobe RGB ICC 的 JPEG', JSON.stringify(r.outputs));
     check(errors.length === 0, '无控制台错误', errors.slice(0, 3).join(' / '));
 

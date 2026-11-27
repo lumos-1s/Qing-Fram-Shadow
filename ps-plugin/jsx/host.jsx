@@ -16,16 +16,21 @@ function qfGetLayerPng(path) {
         // 这样边框成品和文档 1:1 对应，不会出现下层露出或白边。
         var w = Math.max(1, Math.round(doc.width.as('px')));
         var h = Math.max(1, Math.round(doc.height.as('px')));
+        var layerName = doc.activeLayer ? String(doc.activeLayer.name) : '';
+        var docPath = doc.fullName ? String(doc.fullName.fsName) : '';
 
         app.activeDocument = doc;
         var tmp = doc.duplicate();
         tmp.flatten();
 
+        // 整份文档合成后没有 alpha；高质量 JPEG 比 PNG 小一个量级，面板加载快得多
         var file = new File(path);
-        tmp.saveAs(file, new PNGSaveOptions(), true);
+        var opts = new JPEGSaveOptions();
+        opts.quality = 12;
+        tmp.saveAs(file, opts, true);
         tmp.close(SaveOptions.DONOTSAVECHANGES);
         app.activeDocument = doc;
-        return 'OK:' + w + 'x' + h;
+        return 'OK:' + w + 'x' + h + '|' + docPath + '|' + layerName;
     } catch (e) {
         return 'ERR:' + (e.message || e);
     }

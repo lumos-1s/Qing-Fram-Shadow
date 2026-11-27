@@ -26,10 +26,10 @@ ps-plugin/
 
 ## 流程
 
-1. `qfGetLayerPng`：ExtendScript 把当前选中图层复制到一个临时文档，导出透明 PNG。
+1. `qfGetLayerPng`：ExtendScript 复制整份文档并合成，导出高质量 JPEG（同一文档/图层会缓存，不重复导出）。
 2. 面板用 `file://` 直接加载该 PNG（manifest 已开文件访问）；不读 69MB 的 base64。
 3. 用桌面同一份 `window.__render` 渲染选中风格，输出高质量 JPEG（体积比 PNG 小一个量级）。
-4. `cep.fs.writeFile` 写临时 JPEG，`qfPlacePng` 在 Photoshop 里打开它、复制图层、贴回当前文档。
+4. Node `fs.writeFile` 写临时 JPEG，`qfPlacePng` 在 Photoshop 里打开它、复制图层、贴回当前文档，随后删除临时结果文件。
 
 输出是**一张扁平化的新图层**，不是可逐层编辑的相框元素。
 
