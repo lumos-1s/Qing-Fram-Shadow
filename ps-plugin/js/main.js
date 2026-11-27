@@ -78,6 +78,7 @@
                 A._gesture = false;
                 A._forceFitNext = true;
                 delete A.exportScale;
+                syncImageExif(liveTemplate, previewSource);
                 window.__render(A, false);
             } catch (e) {
                 log('预览失败：' + ((e && e.message) || e));
@@ -132,6 +133,11 @@
             const raw = window.__parseExif(bytes.buffer);
             const info = window.__exifSummary(raw) || {};
             exifInfo = info;
+            if (liveTemplate) {
+                applyExif(liveTemplate);
+                syncImageExif(liveTemplate, previewSource);
+                renderPreviewLive();
+            }
             renderExifFields(info.focal35 ? `等效 ${info.focal35}mm · 可手动修改` : '可手动修改');
         } catch (e) {
             renderExifFields('识别失败：' + ((e && e.message) || e));
@@ -148,6 +154,22 @@
             iso: exifInfo.iso || '', shutter: exifInfo.shutter || ''
         });
         decor.exifAutoText = 1;
+    }
+
+    // 相框引擎从 image.exif 读相机型号/参数；把 EXIF 面板和模板里的手改值都同步过去
+    function syncImageExif(t, im) {
+        if (!im) return;
+        const m = (t && t.manualExif) || {};
+        const src = exifInfo || {};
+        im.exif = {
+            make: m.brand || src.make || '',
+            model: m.model || src.model || '',
+            focal: m.focal || src.focal || '',
+            aperture: m.aperture || src.aperture || '',
+            iso: m.iso || src.iso || '',
+            shutter: m.shutter || src.shutter || '',
+            focal35: src.focal35 || 0
+        };
     }
 
     function tempPath(name) {
@@ -234,6 +256,8 @@
             log('图层尺寸：' + image.w + '×' + image.h);
             const template = presetAt();
             applyExif(template);
+            syncImageExif(template, image);
+            syncImageExif(template, previewSource);
             liveTemplate = template;
             lastTemplate = template;
             if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(template);

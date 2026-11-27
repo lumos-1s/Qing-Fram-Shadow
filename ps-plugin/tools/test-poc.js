@@ -79,6 +79,14 @@ app.whenReady().then(async () => {
         if (textInput) { textInput.value = '编辑后的文字'; textInput.dispatchEvent(new Event('input', { bubbles: true })); }
         const editedLine = ((window.QF_TextParams.current() || {}).decorConfig || {}).textLines || [];
         const lineText = editedLine.length ? editedLine[0].text : '';
+        const paramGroup = Array.from(document.querySelectorAll('#textParams details'))
+            .find((d) => d.querySelector('summary') && d.querySelector('summary').textContent === '参数文字');
+        const paramInputs = paramGroup ? paramGroup.querySelectorAll('[data-tp]') : [];
+        if (paramInputs[0]) { paramInputs[0].value = '88'; paramInputs[0].dispatchEvent(new Event('input', { bubbles: true })); }
+        if (paramInputs[1]) { paramInputs[1].value = 'CUSTOMMODEL'; paramInputs[1].dispatchEvent(new Event('input', { bubbles: true })); }
+        const tpTpl = window.QF_TextParams.current() || {};
+        const paramFontSize = tpTpl.paramFontSize;
+        const paramModel = (tpTpl.manualExif || {}).model;
         const swInput = document.querySelector('[data-bp="stroke-宽度"]');
         if (swInput) { swInput.value = '40'; swInput.dispatchEvent(new Event('input', { bubbles: true })); }
         const tpl0 = window.QF_BorderParams.current() || {};
@@ -91,7 +99,7 @@ app.whenReady().then(async () => {
         return {
             presets: presets.length,
             hasRender: typeof window.__render === 'function',
-            bpCount, strokeWidth, tpCount, lineText, exifText,
+            bpCount, strokeWidth, tpCount, lineText, paramFontSize, paramModel, exifText,
             exifBrand: ((window.QF_PS_POC.lastTemplate() || {}).manualExif || {}).brand,
             previewW: document.getElementById('previewCanvas').width,
             hasLive: typeof window.QF_PS_POC.renderPreviewLive === 'function',
@@ -120,6 +128,7 @@ app.whenReady().then(async () => {
     check(r.presets === 91 && r.hasRender, '引擎与预设已加载', JSON.stringify({ presets: r.presets, hasRender: r.hasRender }));
     check(r.bpCount >= 15 && r.strokeWidth === 40, '边框参数面板可改模板', JSON.stringify({ bpCount: r.bpCount, strokeWidth: r.strokeWidth }));
     check(r.tpCount > 0 && r.lineText === '编辑后的文字', '预设文字可编辑', JSON.stringify({ tpCount: r.tpCount, lineText: r.lineText }));
+    check(r.paramFontSize === 88 && r.paramModel === 'CUSTOMMODEL', '参数字号与相机型号可调', JSON.stringify({ paramFontSize: r.paramFontSize, paramModel: r.paramModel }));
     check(['ILCE-6000', '35mm', 'f/5.6', '1/125s', 'ISO100']
         .every((s) => r.exifText.indexOf(s) >= 0), '自动识别 EXIF 拍摄参数', r.exifText);
     check(r.exifBrand === 'CANON', '相机参数可手动修改并写回模板', String(r.exifBrand));

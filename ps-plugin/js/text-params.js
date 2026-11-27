@@ -88,6 +88,21 @@
             + ctl('color', '颜色', hex(t.signColor, '#555555'), (v) => { t.signColor = v; })
             + '</details>';
 
+        const manual = t.manualExif || (t.manualExif = {});
+        out += '<details><summary>参数文字</summary>'
+            + ctl('range', '字号', num(t.paramFontSize, 33), (v) => { t.paramFontSize = v; },
+                { min: 0, max: 160, step: 1, unit: '' })
+            + ctl('text', '相机型号', String(manual.model || ''), (v) => { manual.model = v; })
+            + ctl('select', '类型', String(t.paramType == null ? 0 : t.paramType),
+                (v) => { t.paramType = Number(v); }, {
+                    options: [['0', '型号+参数'], ['1', '只有参数'], ['2', '只有型号']]
+                })
+            + ctl('select', '位置', t.paramPosition || 'CENTER',
+                (v) => { t.paramPosition = v; }, {
+                    options: [['CENTER', '居中'], ['RIGHT', '靠右'], ['SPLIT', '两端']]
+                })
+            + '</details>';
+
         const caps = CAPTIONS.filter(([path]) => getPath(path, null) != null);
         if (caps.length) {
             out += '<details><summary>风格文案</summary>' + caps.map(([path, label]) =>
