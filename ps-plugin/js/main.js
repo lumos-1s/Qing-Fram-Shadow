@@ -82,7 +82,8 @@
     let sourceCache = { key: '', loaded: null, path: '' };
     let previewTimer = 0;
     let lastPreviewAt = 0;
-    const PREVIEW_GAP = 90; // 拖动滑块时最多约 11 帧/秒，避免每个 input 都重渲染
+    const PREVIEW_GAP = 90;   // 拖动滑块时最多约 11 帧/秒，避免每个 input 都重渲染
+    const PREVIEW_MAX = 700;  // 预览后备像素长边上限；排版逻辑仍按原图尺寸，和成品一致
 
     function doPreviewRender() {
         if (!previewSource || !liveTemplate) return;
@@ -95,7 +96,7 @@
             A.images = [previewSource];
             A.template = liveTemplate;
             A.selectedEls = [];
-            A.displayMax = Math.max(previewSource.w, previewSource.h);
+            A.displayMax = PREVIEW_MAX;
             A.uiDprOverride = 1;
             A._gesture = false;
             A._forceFitNext = true;
@@ -201,11 +202,14 @@
         const chk = document.getElementById('chkExifAuto');
         if (!exifInfo || !chk || !chk.checked) return;
         const decor = t.decorConfig || (t.decorConfig = {});
-        t.manualExif = Object.assign({}, t.manualExif || {}, {
+        // 自动识别只填空，用户在「参数文字」里手改过的型号/参数优先级更高，
+        // 否则每次套用都会把手改值冲掉，预览和成品也会对不上。
+        const auto = {
             brand: exifInfo.make || '', model: exifInfo.model || '',
             focal: exifInfo.focal || '', aperture: exifInfo.aperture || '',
             iso: exifInfo.iso || '', shutter: exifInfo.shutter || ''
-        });
+        };
+        t.manualExif = Object.assign({}, auto, t.manualExif || {});
         decor.exifAutoText = 1;
     }
 
@@ -265,22 +269,13 @@
         });
         const iw = img.naturalWidth || img.width;
         const ih = img.naturalHeight || img.height;
-
-        // 预览底图：面板显示高度只有 ~170px，700px 已经足够（约 2x DPR），
-        // 渲染量只有原来的三分之一，拖滑块明显更跟手。
-        const k = Math.min(1, 700 / Math.max(1, iw, ih));
-        const pv = document.createElement('canvas');
-        pv.width = Math.max(1, Math.round(iw * k));
-        pv.height = Math.max(1, Math.round(ih * k));
-        pv.getContext('2d').drawImage(img, 0, 0, pv.width, pv.height);
-        pv.naturalWidth = pv.width; pv.naturalHeight = pv.height; pv.complete = true;
-
-        const mk = (el, w, h) => ({
-            el, name: 'photoshop-layer.png', w, h,
+        const full = {
+            el: img, name: 'photoshop-layer.png', w: iw, h: ih,
             srcW: iw, srcH: ih, grade: null
-        });
-        // 全尺寸直接用已解码的 Image：不再复制一张与源图等大的 Canvas（大图约 100MB）。
-        return { full: mk(img, iw, ih), preview: mk(pv, pv.width, pv.height) };
+        };
+        // 预览和成品共用同一张已解码 Image，只把 displayMax 压到 700 限制后备像素。
+        // 不再做缩略代理图：排版走完全相同的逻辑尺寸，预览与成品不会因代理缩放错位。
+        return { full, preview: full };
     }
 
     let sourceSeq = 0;
@@ -383,14 +378,15 @@
                 lastDocPath = docPathOnly; // 未保存文档读不到 EXIF 时也别每次都重试
             }
 
-            const template = presetAt();
+            // 用面板里当前正在编辑的那份模板，而不是重新克隆预设——
+            // 否则用户刚调好的边距/模糊/签名会被默认值覆盖，预览和成品对不上。
+            const template = (window.QF_BorderParams && window.QF_BorderParams.current())
+                || liveTemplate || presetAt();
             applyExif(template);
             syncImageExif(template, image);
             syncImageExif(template, previewSource);
             liveTemplate = template;
             lastTemplate = template;
-            if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(template);
-            if (window.QF_TextParams) window.QF_TextParams.setTemplate(template);
             // 让引擎按文档比例出图；否则模板自己的画布比例会让成品和文档对不上
             if (docW && docH) {
                 template.canvasRatio = docW + ':' + docH;

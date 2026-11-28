@@ -131,6 +131,12 @@ app.whenReady().then(async () => {
         await wait(150);
         const logText = document.getElementById('log').textContent;
         const statusText = document.getElementById('status').textContent;
+        // 套用时必须拿面板里正在编辑的模板，不能重新克隆预设把改动冲掉
+        const applied0 = window.QF_PS_POC.lastTemplate() || {};
+        const appliedStroke = ((applied0.layerList || [])[0] || {}).strokeConfig
+            ? applied0.layerList[0].strokeConfig.strokeWidth : null;
+        const appliedSign = applied0.userSignature;
+        const appliedModel = (applied0.manualExif || {}).model;
 
         // 第二次套用应命中缓存，不再从 PS 重新导出源图
         document.getElementById('btnBorder').click();
@@ -143,6 +149,7 @@ app.whenReady().then(async () => {
 
         return {
             cachedLog, statusText, filteredWall, strokeAfterReset,
+            appliedStroke, appliedSign, appliedModel,
             presets: presets.length, wallCount, thumbImgs, thumbErr,
             hasRender: typeof window.__render === 'function',
             bpCount, bpTotal, strokeWidth, blurCount, blurOn, tpCount, lineText, signCtls, hasAvatarBtn, defaultSignature,
@@ -193,6 +200,8 @@ app.whenReady().then(async () => {
         '写回边框图层', JSON.stringify(r.placed.map((p) => p.name)));
     check(/缓存/.test(r.cachedLog), '重复套用命中源图缓存', r.cachedLog.split('\n')[0]);
     check(/已放回文档/.test(r.statusText), '状态栏显示写回结果', r.statusText);
+    check(r.appliedStroke === 40 && r.appliedSign === '个性签名测试' && r.appliedModel === 'CUSTOMMODEL',
+        '套用时使用面板当前编辑值', JSON.stringify({ stroke: r.appliedStroke, sign: r.appliedSign, model: r.appliedModel }));
     check(r.strokeAfterReset === '0', '重置参数恢复预设默认值', r.strokeAfterReset);
     check(r.placed.every((p) => p.hide === 'true'), '隐藏原图层参数已传给 PS', JSON.stringify(r.placed.map((p) => p.hide)));
     check(r.placed.every((p) => p.smart === 'true'), '智能对象参数已传给 PS', JSON.stringify(r.placed.map((p) => p.smart)));
