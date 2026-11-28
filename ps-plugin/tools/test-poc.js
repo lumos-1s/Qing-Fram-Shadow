@@ -90,37 +90,45 @@ app.whenReady().then(async () => {
             .filter((b) => !b.hidden).length;
         window.QF_PS_POC.searchPresets('');
         const sel = document.getElementById('preset');
-        if (sel) {
-            sel.value = '1'; // 无相框风格：填充/描边/阴影这些控件才有效
-            sel.dispatchEvent(new Event('change', { bubbles: true }));
-        }
+        const groupByTitle = (title) => Array.from(document.querySelectorAll('#textParams details'))
+            .find((d) => d.querySelector('summary') && d.querySelector('summary').textContent === title);
+
+        // 签名控件只在支持签名/头像的风格里出现
+        sel.value = '71'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+        const signGroup = groupByTitle('个性签名');
+        const signCtls = signGroup ? signGroup.querySelectorAll('[data-tp]').length : 0;
+        const signInput = signGroup ? signGroup.querySelector('[data-tp]') : null;
+        const defaultSignature = (window.QF_BorderParams.current() || {}).userSignature || '';
+        if (signInput) { signInput.value = '个性签名测试'; signInput.dispatchEvent(new Event('input', { bubbles: true })); }
+        const hasAvatarBtn = !!(signGroup && signGroup.querySelector('#btnPickAvatar'));
+        const signText = ((window.QF_TextParams.current() || {}).userSignature) || '';
+
+        // 背景模糊控件只在实测支持的风格里出现
+        sel.value = '77'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+        const blurCount = document.querySelectorAll('[data-bp^="blur-"]').length;
+        const blurChk = document.querySelector('[data-bp="blur-开启背景模糊"]');
+        if (blurChk) { blurChk.checked = true; blurChk.dispatchEvent(new Event('change', { bubbles: true })); }
+        const blurOn = ((window.QF_BorderParams.current() || {}).baseMargin || {}).bgBlurEnable;
+
+        // 无相框风格：填充/描边/阴影、文字、边框参数都可用
+        sel.value = '1'; sel.dispatchEvent(new Event('change', { bubbles: true }));
         const bpCount = document.querySelectorAll('[data-bp]').length;
         const tpCount = document.querySelectorAll('#textParams [data-tp]').length;
         const textInput = document.querySelector('#textParams [data-tp="0"]');
         if (textInput) { textInput.value = '编辑后的文字'; textInput.dispatchEvent(new Event('input', { bubbles: true })); }
         const editedLine = ((window.QF_TextParams.current() || {}).decorConfig || {}).textLines || [];
         const lineText = editedLine.length ? editedLine[0].text : '';
-        const paramGroup = Array.from(document.querySelectorAll('#textParams details'))
-            .find((d) => d.querySelector('summary') && d.querySelector('summary').textContent === '参数文字');
+        const paramGroup = groupByTitle('参数文字');
         const paramInputs = paramGroup ? paramGroup.querySelectorAll('[data-tp]') : [];
         if (paramInputs[0]) { paramInputs[0].value = '88'; paramInputs[0].dispatchEvent(new Event('input', { bubbles: true })); }
         if (paramInputs[1]) { paramInputs[1].value = 'CUSTOMMODEL'; paramInputs[1].dispatchEvent(new Event('input', { bubbles: true })); }
-        const signGroup = Array.from(document.querySelectorAll('#textParams details'))
-            .find((d) => d.querySelector('summary') && d.querySelector('summary').textContent === '个性签名');
-        const signCtls = signGroup ? signGroup.querySelectorAll('[data-tp]').length : 0;
-        const signInput = signGroup ? signGroup.querySelector('[data-tp]') : null;
-        const defaultSignature = (window.QF_BorderParams.current() || {}).userSignature || '';
-        if (signInput) { signInput.value = '个性签名测试'; signInput.dispatchEvent(new Event('input', { bubbles: true })); }
-        const hasAvatarBtn = !!(signGroup && signGroup.querySelector('#btnPickAvatar'));
         const tpTpl = window.QF_TextParams.current() || {};
         const paramFontSize = tpTpl.paramFontSize;
         const paramModel = (tpTpl.manualExif || {}).model;
-        // 无相框风格下也应把不读的参数隐藏；这里只检查有值的控件确实可用
+        // 不支持的风格必须把控件收起来，不能摆死滑块
+        const signHiddenOnPlain = !groupByTitle('个性签名');
+        const blurHiddenOnPlain = document.querySelectorAll('[data-bp^="blur-"]').length === 0;
         const bpTotal = document.querySelectorAll('[data-bp]').length;
-        const blurCount = document.querySelectorAll('[data-bp^="blur-"]').length;
-        const blurChk = document.querySelector('[data-bp="blur-开启背景模糊"]');
-        if (blurChk) { blurChk.checked = true; blurChk.dispatchEvent(new Event('change', { bubbles: true })); }
-        const blurOn = ((window.QF_BorderParams.current() || {}).baseMargin || {}).bgBlurEnable;
         const swInput = document.querySelector('[data-bp="stroke-宽度"]');
         if (swInput) { swInput.value = '40'; swInput.dispatchEvent(new Event('input', { bubbles: true })); }
         const tpl0 = window.QF_BorderParams.current() || {};
@@ -132,7 +140,8 @@ app.whenReady().then(async () => {
         sel.value = '0'; sel.dispatchEvent(new Event('change', { bubbles: true }));
         sel.value = '1'; sel.dispatchEvent(new Event('change', { bubbles: true }));
         await wait(100);
-        const rememberedStroke = document.querySelector('[data-bp="stroke-宽度"]').value;
+        const strokeEl = document.querySelector('[data-bp="stroke-宽度"]');
+        const rememberedStroke = strokeEl ? strokeEl.value : null;
 
         document.getElementById('btnBorder').click();
         for (let i = 0; i < 100 && window.QF_PS_POC.isBusy(); i++) await wait(100);
@@ -163,7 +172,7 @@ app.whenReady().then(async () => {
             presets: presets.length, wallCount, thumbImgs, thumbErr,
             hasRender: typeof window.__render === 'function',
             bpCount, bpTotal, strokeWidth, blurCount, blurOn, tpCount, lineText, signCtls, hasAvatarBtn, defaultSignature,
-            signText: tpTpl.userSignature, paramFontSize, paramModel, exifText, profileAuto, srgbAuto,
+            signHiddenOnPlain, blurHiddenOnPlain, signText, paramFontSize, paramModel, exifText, profileAuto, srgbAuto,
             exifBrand: ((window.QF_PS_POC.lastTemplate() || {}).manualExif || {}).brand,
             previewW: document.getElementById('previewCanvas').width,
             hasLive: typeof window.QF_PS_POC.renderPreviewLive === 'function',
@@ -194,6 +203,8 @@ app.whenReady().then(async () => {
     check(r.filteredWall >= 2, '风格搜索可过滤', String(r.filteredWall));
     check(r.bpCount >= 15 && r.strokeWidth === 40, '边框参数面板可改模板', JSON.stringify({ bpCount: r.bpCount, strokeWidth: r.strokeWidth }));
     check(r.blurCount > 0 && r.blurOn === 1, '背景模糊参数可开启', JSON.stringify({ blurCount: r.blurCount, blurOn: r.blurOn }));
+    check(r.signHiddenOnPlain && r.blurHiddenOnPlain, '不支持的风格隐藏签名/模糊控件',
+        JSON.stringify({ signHidden: r.signHiddenOnPlain, blurHidden: r.blurHiddenOnPlain }));
     check(r.tpCount > 0 && r.lineText === '编辑后的文字', '预设文字可编辑', JSON.stringify({ tpCount: r.tpCount, lineText: r.lineText }));
     check(!!r.defaultSignature, '空签名预设自动补默认签名', String(r.defaultSignature));
     check(r.signCtls >= 7 && r.hasAvatarBtn && r.signText === '个性签名测试', '个性签名（含头像）可编辑',

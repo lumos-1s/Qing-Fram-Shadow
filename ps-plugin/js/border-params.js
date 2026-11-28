@@ -134,19 +134,21 @@
         const framed = !!style;
         const vis = (window.StyleCaps && window.StyleCaps.visibleRows)
             ? window.StyleCaps.visibleRows(style) : {};
+        const caps = (window.StyleCaps && window.StyleCaps.caps) ? window.StyleCaps.caps(style) : {};
         let out = '';
         GROUPS.forEach(([key, title], gi) => {
             // 相框风格由 engine-styles 自己画，不读 layerList 的填充/描边/阴影
             if (framed && (key === 'fill' || key === 'stroke' || key === 'shadow')) return;
-            if (key === 'blur' && framed) {
-                const caps = (window.StyleCaps && window.StyleCaps.caps) ? window.StyleCaps.caps(style) : {};
-                if (!caps.bi) return; // 这个风格引擎不读模糊参数
+            if (key === 'blur') {
+                // 相框风格看引擎实测能力；无相框风格只有 bgBlurEnable=1
+                // 走 renderCardStyle 时才读这组参数，否则摆出来也是死滑块。
+                const bm = t.baseMargin || {};
+                const wantsBlur = framed ? !!caps.bi : ((bm.bgBlurEnable || 0) === 1);
+                if (!wantsBlur) return;
             }
             let rows = list.filter((c) => c.g === key && (!c.only || vis[c.only] !== false));
-            // 相框风格里「边距/图片缩放」也只在实测支持时才摆出来；
-            // 模糊组内除「开关」外，其他项都依赖 bi
+            // 相框风格里「边距/图片缩放/圆角」也只在实测支持时才摆出来
             if (framed) {
-                const caps = (window.StyleCaps && window.StyleCaps.caps) ? window.StyleCaps.caps(style) : {};
                 rows = rows.filter((c) => {
                     if (c.label === '边距') return !!caps.gm;
                     if (c.label === '照片缩放') return !!caps.isc;
@@ -170,7 +172,10 @@
 
         // 风格私有参数：缺省不写字段，改了才写进 styleParams
         const P = window.StyleParams;
-        const params = P && P.forStyle ? P.forStyle(style) : [];
+        // 只显示真正的「风格私有参数」；背景模糊那几个 root 字段已经在上面的
+        // 背景模糊分组里出现过，不要再重复摆一组。
+        const params = P && P.styleParams ? P.styleParams(style)
+            : (P && P.forStyle ? P.forStyle(style) : []);
         if (params.length) {
             const body = params.map((p) => {
                 const id = `style-${p.key}`;

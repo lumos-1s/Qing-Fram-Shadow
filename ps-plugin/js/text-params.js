@@ -50,13 +50,13 @@
     }
 
     const CAPTIONS = [
-        [['polaroidCaption'], '拍立得文案'],
-        [['hassyCaption'], '哈苏文案'],
-        [['appleCard', 'dateText'], '苹果卡日期'],
-        [['xmLeica', 'brandText'], '联名品牌'],
-        [['xmLeica', 'line1'], '联名第一行'],
-        [['xmLeica', 'line2'], '联名第二行'],
-        [['xmLeica', 'partnerBrand'], '联名合作方']
+        [['polaroidCaption'], '拍立得文案', 'rowPolaroidCaption'],
+        [['hassyCaption'], '哈苏文案', 'rowHassyCaption'],
+        [['appleCard', 'dateText'], '苹果卡日期', 'rowAppleDate'],
+        [['xmLeica', 'brandText'], '联名品牌', 'rowXmText1'],
+        [['xmLeica', 'line1'], '联名第一行', 'rowXmText1'],
+        [['xmLeica', 'line2'], '联名第二行', 'rowXmText2'],
+        [['xmLeica', 'partnerBrand'], '联名合作方', 'rowXmPartner']
     ];
 
     function render() {
@@ -65,6 +65,11 @@
         ctls = [];
         const decor = t.decorConfig || (t.decorConfig = {});
         const lines = decor.textLines || (decor.textLines = []);
+        // 与桌面端同一张能力表：这个风格不读的字段连控件都不摆出来
+        const style = String(t.photoFrameStyle || '').toUpperCase();
+        const vis = (window.StyleCaps && window.StyleCaps.visibleRows)
+            ? window.StyleCaps.visibleRows(style) : {};
+        const show = (row) => vis[row] !== false;
         let out = '';
 
         out += '<details open><summary>文字行</summary>';
@@ -83,44 +88,70 @@
         });
         out += '</details>';
 
-        out += '<details><summary>个性签名</summary>'
-            + ctl('text', '内容', t.userSignature || '', (v) => {
+        // 个性签名：没有签名/头像区的风格整组隐藏
+        let signOut = '';
+        if (show('rowSignText')) {
+            signOut += ctl('text', '内容', t.userSignature || '', (v) => {
                 t.userSignature = v;
                 try { localStorage.setItem('qfs_user_signature', v); } catch (e) { /* 忽略 */ }
-            })
-            + ctl('select', '字体', t.signFont || 'Courier New', (v) => { t.signFont = v; }, {
+            });
+        }
+        if (show('rowSignFont')) {
+            signOut += ctl('select', '字体', t.signFont || 'Courier New', (v) => { t.signFont = v; }, {
                 options: [['Courier New', 'Courier New'], ['Microsoft YaHei', '微软雅黑'],
                     ['Georgia', 'Georgia'], ['Times New Roman', 'Times New Roman']]
-            })
-            + ctl('range', '大小', num(t.signSize, 1), (v) => { t.signSize = v; },
-                { min: 0.5, max: 2, step: 0.05, unit: '' })
-            + ctl('color', '颜色', hex(t.signColor, '#555555'), (v) => { t.signColor = v; })
-            + ctl('check', '显示头像', t.avatarShow !== 0, (v) => { t.avatarShow = v ? 1 : 0; })
-            + ctl('range', '头像大小', num(t.avatarScale, 0.85), (v) => { t.avatarScale = v; },
-                { min: 0.3, max: 2, step: 0.05, unit: '' })
-            + ctl('check', '带型号', (t.signIncludeModel || 0) === 1,
-                (v) => { t.signIncludeModel = v ? 1 : 0; })
-            + ctl('check', '签名背景模糊', (t.signBgBlur || 0) === 1,
-                (v) => { t.signBgBlur = v ? 1 : 0; })
-            + '<div class="text-acts"><button id="btnPickAvatar" type="button">选择头像图片</button></div>'
-            + '</details>';
+            });
+        }
+        if (show('rowSignSize')) {
+            signOut += ctl('range', '大小', num(t.signSize, 1), (v) => { t.signSize = v; },
+                { min: 0.5, max: 2, step: 0.05, unit: '' });
+        }
+        if (show('rowSignColor')) {
+            signOut += ctl('color', '颜色', hex(t.signColor, '#555555'), (v) => { t.signColor = v; });
+        }
+        if (show('rowAvatarShow')) {
+            signOut += ctl('check', '显示头像', t.avatarShow !== 0, (v) => { t.avatarShow = v ? 1 : 0; });
+        }
+        if (show('rowAvatarScale')) {
+            signOut += ctl('range', '头像大小', num(t.avatarScale, 0.85), (v) => { t.avatarScale = v; },
+                { min: 0.3, max: 2, step: 0.05, unit: '' });
+        }
+        if (show('rowSignModel')) {
+            signOut += ctl('check', '带型号', (t.signIncludeModel || 0) === 1,
+                (v) => { t.signIncludeModel = v ? 1 : 0; });
+        }
+        if (show('rowBgBlur')) {
+            signOut += ctl('check', '签名背景模糊', (t.signBgBlur || 0) === 1,
+                (v) => { t.signBgBlur = v ? 1 : 0; });
+        }
+        if (show('rowAvatarShow') || show('rowAvatarScale')) {
+            signOut += '<div class="text-acts"><button id="btnPickAvatar" type="button">选择头像图片</button></div>';
+        }
+        if (signOut) out += '<details><summary>个性签名</summary>' + signOut + '</details>';
 
+        // 参数文字：型号始终可用（EXIF 底条会读），其余按风格能力显隐
         const manual = t.manualExif || (t.manualExif = {});
-        out += '<details><summary>参数文字</summary>'
-            + ctl('range', '字号', num(t.paramFontSize, 33), (v) => { t.paramFontSize = v; },
-                { min: 0, max: 160, step: 1, unit: '' })
-            + ctl('text', '相机型号', String(manual.model || ''), (v) => { manual.model = v; })
-            + ctl('select', '类型', String(t.paramType == null ? 0 : t.paramType),
+        let paramOut = '';
+        if (show('rowParamFontSize')) {
+            paramOut += ctl('range', '字号', num(t.paramFontSize, 33), (v) => { t.paramFontSize = v; },
+                { min: 0, max: 160, step: 1, unit: '' });
+        }
+        paramOut += ctl('text', '相机型号', String(manual.model || ''), (v) => { manual.model = v; });
+        if (show('rowParamType')) {
+            paramOut += ctl('select', '类型', String(t.paramType == null ? 0 : t.paramType),
                 (v) => { t.paramType = Number(v); }, {
                     options: [['0', '型号+参数'], ['1', '只有参数'], ['2', '只有型号']]
-                })
-            + ctl('select', '位置', t.paramPosition || 'CENTER',
+                });
+        }
+        if (show('rowParamPos')) {
+            paramOut += ctl('select', '位置', t.paramPosition || 'CENTER',
                 (v) => { t.paramPosition = v; }, {
                     options: [['CENTER', '居中'], ['RIGHT', '靠右'], ['SPLIT', '两端']]
-                })
-            + '</details>';
+                });
+        }
+        out += '<details><summary>参数文字</summary>' + paramOut + '</details>';
 
-        const caps = CAPTIONS.filter(([path]) => getPath(path, null) != null);
+        const caps = CAPTIONS.filter(([path, , row]) => getPath(path, null) != null && show(row));
         if (caps.length) {
             out += '<details><summary>风格文案</summary>' + caps.map(([path, label]) =>
                 ctl('text', label, String(getPath(path, '')), (v) => setPath(path, v))

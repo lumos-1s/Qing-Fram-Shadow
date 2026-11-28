@@ -356,6 +356,19 @@
         editSaveTimer = setTimeout(() => saveEditsNow(currentPresetIndex, liveTemplate), 300);
     }
 
+    // 风格没有参数/签名区域时，「写入参数条」这个开关也没有意义，直接收起来
+    function updateExifAutoVisibility() {
+        const el = document.getElementById('chkExifAuto');
+        if (!el || !liveTemplate || !el.parentElement) return;
+        const style = String(liveTemplate.photoFrameStyle || '').toUpperCase();
+        if (!style) { el.parentElement.hidden = false; return; }
+        const vis = (window.StyleCaps && window.StyleCaps.visibleRows)
+            ? window.StyleCaps.visibleRows(style) : {};
+        const any = ['rowParamFontSize', 'rowParamType', 'rowParamPos', 'rowBgBlur', 'rowSignText']
+            .some((k) => vis[k] !== false);
+        el.parentElement.hidden = !any;
+    }
+
     function freshPreset() {
         const list = window.QF_PRESETS || [];
         const i = Number(presetSel && presetSel.value) || 0;
@@ -817,12 +830,14 @@
             if (window.QF_TextParams) window.QF_TextParams.setTemplate(tpl);
             liveTemplate = tpl;
             syncWallActive();
+            updateExifAutoVisibility();
             renderPreviewLive();
         });
         const changed = () => {
             liveTemplate = window.QF_BorderParams ? window.QF_BorderParams.current()
                 : (window.QF_TextParams ? window.QF_TextParams.current() : presetAt());
             scheduleEditSave();
+            updateExifAutoVisibility();
             renderPreviewLive();
         };
         if (window.QF_BorderParams) {
@@ -833,6 +848,7 @@
             window.QF_TextParams.onChange(changed);
             window.QF_TextParams.setTemplate(window.QF_BorderParams ? window.QF_BorderParams.current() : presetAt());
         }
+        updateExifAutoVisibility();
         // 恢复上次选的个性签名头像（引擎从 window.__qfsAvatarImg 读）
         try {
             const av = localStorage.getItem('qfs_user_avatar');
