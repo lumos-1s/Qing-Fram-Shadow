@@ -443,6 +443,8 @@
         btnBorder.disabled = true;
         btnReset.disabled = true;
         btnBorder.textContent = '处理中…';
+        const wrap = document.querySelector('.wrap');
+        if (wrap) wrap.classList.add('busy');
         setStatus('正在读取当前文档…', 'busy');
         try {
             const { got, loaded, cached } = await getSource();
@@ -556,6 +558,8 @@
             btnBorder.disabled = false;
             btnReset.disabled = false;
             btnBorder.textContent = '套用边框 → 新图层';
+            const wrapDone = document.querySelector('.wrap');
+            if (wrapDone) wrapDone.classList.remove('busy');
         }
     }
 

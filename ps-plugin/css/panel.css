@@ -93,6 +93,12 @@ button.primary:not(:disabled):hover { border-color:#6ff0cc; }
 }
 .params .ctl-row input[type=color] { flex:0 0 34px; }
 
+/* 套用过程中锁住参数区，避免边写回边改模板造成状态错位 */
+.wrap.busy #presetWall, .wrap.busy #presetSearch, .wrap.busy #borderParams,
+.wrap.busy #textParams, .wrap.busy #exifPanel, .wrap.busy #outputPanel {
+  pointer-events:none; opacity:.55;
+}
+
 .status { min-height:16px; color:var(--muted); font-size:11px; }
 .status.ok { color:var(--primary); }
 .status.err { color:var(--danger); }
