@@ -96,6 +96,7 @@ app.whenReady().then(async () => {
             .find((d) => d.querySelector('summary') && d.querySelector('summary').textContent === '个性签名');
         const signCtls = signGroup ? signGroup.querySelectorAll('[data-tp]').length : 0;
         const signInput = signGroup ? signGroup.querySelector('[data-tp]') : null;
+        const defaultSignature = (window.QF_BorderParams.current() || {}).userSignature || '';
         if (signInput) { signInput.value = '个性签名测试'; signInput.dispatchEvent(new Event('input', { bubbles: true })); }
         const hasAvatarBtn = !!(signGroup && signGroup.querySelector('#btnPickAvatar'));
         const tpTpl = window.QF_TextParams.current() || {};
@@ -125,7 +126,7 @@ app.whenReady().then(async () => {
             cachedLog,
             presets: presets.length, wallCount, thumbImgs, thumbErr,
             hasRender: typeof window.__render === 'function',
-            bpCount, bpTotal, strokeWidth, blurCount, blurOn, tpCount, lineText, signCtls, hasAvatarBtn,
+            bpCount, bpTotal, strokeWidth, blurCount, blurOn, tpCount, lineText, signCtls, hasAvatarBtn, defaultSignature,
             signText: tpTpl.userSignature, paramFontSize, paramModel, exifText, profileAuto, srgbAuto,
             exifBrand: ((window.QF_PS_POC.lastTemplate() || {}).manualExif || {}).brand,
             previewW: document.getElementById('previewCanvas').width,
@@ -157,6 +158,7 @@ app.whenReady().then(async () => {
     check(r.bpCount >= 15 && r.strokeWidth === 40, '边框参数面板可改模板', JSON.stringify({ bpCount: r.bpCount, strokeWidth: r.strokeWidth }));
     check(r.blurCount > 0 && r.blurOn === 1, '背景模糊参数可开启', JSON.stringify({ blurCount: r.blurCount, blurOn: r.blurOn }));
     check(r.tpCount > 0 && r.lineText === '编辑后的文字', '预设文字可编辑', JSON.stringify({ tpCount: r.tpCount, lineText: r.lineText }));
+    check(!!r.defaultSignature, '空签名预设自动补默认签名', String(r.defaultSignature));
     check(r.signCtls >= 7 && r.hasAvatarBtn && r.signText === '个性签名测试', '个性签名（含头像）可编辑',
         JSON.stringify({ signCtls: r.signCtls, hasAvatarBtn: r.hasAvatarBtn, signText: r.signText }));
     check(r.paramFontSize === 88 && r.paramModel === 'CUSTOMMODEL', '参数字号与相机型号可调', JSON.stringify({ paramFontSize: r.paramFontSize, paramModel: r.paramModel }));

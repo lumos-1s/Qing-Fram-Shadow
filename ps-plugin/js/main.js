@@ -271,6 +271,18 @@
         const p = list[i] || list[0] || {};
         const t = JSON.parse(JSON.stringify(p));
         t.templateName = p.templateName || p._fileName || '';
+        // 多数预设没写 userSignature；引擎只在非空时才画签名，这里补默认值，
+        // 与桌面/手机端行为一致。用户在个性签名面板里改过的值优先。
+        try {
+            const saved = localStorage.getItem('qfs_user_signature');
+            if (saved) t.userSignature = saved;
+            else if (!t.userSignature) {
+                const style = String(t.photoFrameStyle || '').toUpperCase();
+                const defaultOff = ['TICKET_VINTAGE', 'TICKET_SCRAP', 'TICKET_CONCERT',
+                    'MOVIE_TICKET', 'BOARDING_PASS'].indexOf(style) >= 0;
+                if (!defaultOff) t.userSignature = '清框影';
+            }
+        } catch (_) { /* 本地存储不可用就用空签名 */ }
         return t;
     }
 

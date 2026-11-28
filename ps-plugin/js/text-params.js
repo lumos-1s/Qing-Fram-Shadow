@@ -84,7 +84,10 @@
         out += '</details>';
 
         out += '<details><summary>个性签名</summary>'
-            + ctl('text', '内容', t.userSignature || '', (v) => { t.userSignature = v; })
+            + ctl('text', '内容', t.userSignature || '', (v) => {
+                t.userSignature = v;
+                try { localStorage.setItem('qfs_user_signature', v); } catch (e) { /* 忽略 */ }
+            })
             + ctl('select', '字体', t.signFont || 'Courier New', (v) => { t.signFont = v; }, {
                 options: [['Courier New', 'Courier New'], ['Microsoft YaHei', '微软雅黑'],
                     ['Georgia', 'Georgia'], ['Times New Roman', 'Times New Roman']]
