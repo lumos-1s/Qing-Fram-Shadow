@@ -59,6 +59,78 @@
         [['xmLeica', 'partnerBrand'], '联名合作方', 'rowXmPartner']
     ];
 
+    // 能力表登记了、但桌面端放在别的页签里的风格专属字段。
+    // 只在对应 row 为 true 时生成控件，面板里不再出现无主滑块。
+    // scale:100 表示模板存倍率(1 = 100%)，面板显示百分数。
+    const STYLE_ROWS = [
+        { row: 'rowBrandLogo', label: '品牌显示', type: 'select', path: ['brandLogo'], def: 0,
+          options: [['0', '仅文字'], ['1', '文字+Logo'], ['2', '仅Logo'], ['3', '不显示品牌']] },
+        { row: 'rowBrandSize', label: '品牌大小', type: 'range', path: ['brandSize'], def: 100,
+          min: 50, max: 300, step: 5, scale: 100, unit: '%' },
+        { row: 'rowParamColor', label: '参数颜色', type: 'select', path: ['paramColor'], def: 'auto',
+          options: [['auto', '自动'], ['#000', '黑色'], ['#fff', '白色']] },
+        { row: 'rowCreditMode', label: '署名内容', type: 'select', path: ['creditMode'], def: 0,
+          options: [['0', '个性签名'], ['1', '相机型号']] },
+
+        // 苹果信息卡
+        { row: 'rowAppleFont', label: '信息卡字体', type: 'select', path: ['appleCard', 'fontFamily'], def: 'Courier New',
+          options: [['Courier New', 'Courier New'], ['Helvetica', 'Helvetica'], ['Georgia', 'Georgia'],
+              ['Times New Roman', 'Times New Roman'], ['Consolas', 'Consolas'], ['Arial Black', 'Arial Black']] },
+        { row: 'rowAppleShow', label: '显示·品牌', type: 'check', path: ['appleCard', 'showBrand'], def: 1 },
+        { row: 'rowAppleShow', label: '显示·型号', type: 'check', path: ['appleCard', 'showModel'], def: 1 },
+        { row: 'rowAppleShow', label: '显示·参数', type: 'check', path: ['appleCard', 'showParams'], def: 1 },
+        { row: 'rowAppleShow', label: '显示·日期', type: 'check', path: ['appleCard', 'showDate'], def: 1 },
+        { row: 'rowAppleShow', label: '显示·Logo', type: 'check', path: ['appleCard', 'showLogo'], def: 1 },
+        { row: 'rowAppleShow', label: '显示·竖线', type: 'check', path: ['appleCard', 'showLine'], def: 1 },
+        { row: 'rowAppleModelSize', label: '型号字号', type: 'range', path: ['appleCard', 'modelScale'], def: 100,
+          min: 50, max: 250, step: 5, scale: 100, unit: '%' },
+        { row: 'rowAppleParamSize', label: '参数字号', type: 'range', path: ['appleCard', 'paramScale'], def: 100,
+          min: 50, max: 250, step: 5, scale: 100, unit: '%' },
+        { row: 'rowAppleDateSize', label: '日期字号', type: 'range', path: ['appleCard', 'dateScale'], def: 100,
+          min: 50, max: 250, step: 5, scale: 100, unit: '%' },
+        { row: 'rowAppleLogoSize', label: 'Logo 大小', type: 'range', path: ['appleCard', 'logoScale'], def: 100,
+          min: 30, max: 300, step: 5, scale: 100, unit: '%' },
+        { row: 'rowAppleLogoOpacity', label: 'Logo 透明度', type: 'range', path: ['appleCard', 'logoOpacity'], def: 60,
+          min: 0, max: 100, step: 1, unit: '%' },
+        { row: 'rowAppleLineWidth', label: '竖线宽度', type: 'range', path: ['appleCard', 'lineScale'], def: 100,
+          min: 20, max: 500, step: 5, scale: 100, unit: '%' },
+        { row: 'rowAppleColors', label: '主文字色', type: 'color', path: ['appleCard', 'textColor'], def: '#1d1d1f' },
+        { row: 'rowAppleColors', label: '副文字色', type: 'color', path: ['appleCard', 'subColor'], def: '#86868b' },
+        { row: 'rowAppleColors', label: '竖线颜色', type: 'color', path: ['appleCard', 'lineColor'], def: '#d2d2d7' },
+        { row: 'rowAppleColors', label: '信息卡底色', type: 'color', path: ['appleCard', 'barBg'], def: '#ffffff' },
+
+        // 联名水印
+        { row: 'rowXmShow', label: '显示·竖线', type: 'check', path: ['xmLeica', 'showDiv'], def: 1 },
+        { row: 'rowXmShow', label: '显示·渐变', type: 'check', path: ['xmLeica', 'showScrim'], def: 1 },
+        { row: 'rowXmAlign', label: '对齐', type: 'select', path: ['xmLeica', 'align'], def: 1,
+          options: [['0', '左下'], ['1', '底部居中'], ['2', '右下']] },
+        { row: 'rowXmFont', label: '联名字体', type: 'select', path: ['xmLeica', 'fontFamily'], def: 'Courier New',
+          options: [['Courier New', 'Courier New'], ['Arial', 'Arial'], ['Helvetica', 'Helvetica'],
+              ['Georgia', 'Georgia'], ['Times New Roman', 'Times New Roman'], ['Consolas', 'Consolas'],
+              ['Arial Black', 'Arial Black']] },
+        { row: 'rowXmBrandSize', label: '字标字号', type: 'range', path: ['xmLeica', 'brandScale'], def: 100,
+          min: 40, max: 300, step: 5, scale: 100, unit: '%' },
+        { row: 'rowXmBrandTrack', label: '字标字距', type: 'range', path: ['xmLeica', 'brandTracking'], def: 16,
+          min: 0, max: 50, step: 1, scale: 100, unit: '%' },
+        { row: 'rowXmLineWeight', label: '文案字重', type: 'select', path: ['xmLeica', 'lineWeight'], def: 600,
+          options: [['300', '细 300'], ['400', '常规 400'], ['500', '中等 500'], ['600', '半粗 600'], ['700', '粗 700']] },
+        { row: 'rowXmLineSize', label: '文案字号', type: 'range', path: ['xmLeica', 'lineScale'], def: 100,
+          min: 40, max: 300, step: 5, scale: 100, unit: '%' },
+        { row: 'rowXmLogoSize', label: '联名 Logo 大小', type: 'range', path: ['xmLeica', 'logoScale'], def: 100,
+          min: 30, max: 300, step: 5, scale: 100, unit: '%' },
+        { row: 'rowXmLogoOpacity', label: '联名 Logo 透明度', type: 'range', path: ['xmLeica', 'logoOpacity'], def: 100,
+          min: 0, max: 100, step: 1, unit: '%' },
+        { row: 'rowXmLogoColor', label: 'Logo 颜色', type: 'color', path: ['xmLeica', 'logoColor'], def: '#ffffff' },
+        { row: 'rowXmLogoColor', label: '保留 Logo 原色', type: 'check', path: ['xmLeica', 'logoRaw'], def: 1 },
+        { row: 'rowXmPad', label: '边距', type: 'range', path: ['xmLeica', 'padScale'], def: 100,
+          min: 40, max: 300, step: 5, scale: 100, unit: '%' },
+        { row: 'rowXmScrim', label: '渐变强度', type: 'range', path: ['xmLeica', 'scrim'], def: 45,
+          min: 0, max: 100, step: 1, unit: '%' },
+        { row: 'rowXmColors', label: '主文字色', type: 'color', path: ['xmLeica', 'textColor'], def: '#ffffff' },
+        { row: 'rowXmColors', label: '副文字色', type: 'color', path: ['xmLeica', 'subColor'], def: '#d9d9d9' },
+        { row: 'rowXmColors', label: '竖线颜色', type: 'color', path: ['xmLeica', 'divColor'], def: '#ffffff' }
+    ];
+
     function render() {
         const host = document.getElementById('textParams');
         if (!host || !t) return;
@@ -150,6 +222,23 @@
                 });
         }
         out += '<details><summary>参数文字</summary>' + paramOut + '</details>';
+
+        // 风格专属字段：完全由能力表驱动，没登记的行一个都不摆
+        let styleOut = '';
+        for (const d of STYLE_ROWS) {
+            if (!show(d.row)) continue;
+            const raw = getPath(d.path, null);
+            let value = raw == null ? d.def : (d.scale ? Number(raw) * d.scale : raw);
+            if (d.type === 'range') value = Math.round(num(value, d.def));
+            if (d.type === 'check') value = !!value;
+            styleOut += ctl(d.type, d.label, value, (v) => {
+                setPath(d.path, d.type === 'check' ? (v ? 1 : 0)
+                    : (d.scale ? v / d.scale : v));
+            }, d.type === 'range'
+                ? { min: d.min, max: d.max, step: d.step, unit: d.unit || '%' }
+                : (d.type === 'select' ? { options: d.options } : undefined));
+        }
+        if (styleOut) out += '<details><summary>风格专属</summary>' + styleOut + '</details>';
 
         const caps = CAPTIONS.filter(([path, , row]) => getPath(path, null) != null && show(row));
         if (caps.length) {

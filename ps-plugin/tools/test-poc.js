@@ -118,6 +118,29 @@ app.whenReady().then(async () => {
         const glassSize = (window.QF_BorderParams.current() || {}).liquidGlassSize;
         const signHiddenOnGlass = !groupByTitle('个性签名');
 
+        // 其它风格的专属字段也要有控件，并写回引擎认的口径
+        const findCtl = (group, label) => {
+            const rows = group ? Array.from(group.querySelectorAll('.exif-row')) : [];
+            const row = rows.find((r) => r.querySelector('label')
+                && r.querySelector('label').textContent === label);
+            return row ? row.querySelector('[data-tp]') : null;
+        };
+        sel.value = '6'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+        const brandGroup = groupByTitle('风格专属');
+        const brandSizeEl = findCtl(brandGroup, '品牌大小');
+        if (brandSizeEl) { brandSizeEl.value = '150'; brandSizeEl.dispatchEvent(new Event('input', { bubbles: true })); }
+        const brandSize = (window.QF_TextParams.current() || {}).brandSize;
+
+        sel.value = '83'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+        const appleModelEl = findCtl(groupByTitle('风格专属'), '型号字号');
+        if (appleModelEl) { appleModelEl.value = '120'; appleModelEl.dispatchEvent(new Event('input', { bubbles: true })); }
+        const appleModelScale = (((window.QF_TextParams.current() || {}).appleCard || {}).modelScale);
+
+        sel.value = '76'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+        const xmTrackEl = findCtl(groupByTitle('风格专属'), '字标字距');
+        if (xmTrackEl) { xmTrackEl.value = '20'; xmTrackEl.dispatchEvent(new Event('input', { bubbles: true })); }
+        const xmTracking = (((window.QF_TextParams.current() || {}).xmLeica || {}).brandTracking);
+
         // 无相框风格：填充/描边/阴影、文字、边框参数都可用
         sel.value = '1'; sel.dispatchEvent(new Event('change', { bubbles: true }));
         const bpCount = document.querySelectorAll('[data-bp]').length;
@@ -182,6 +205,7 @@ app.whenReady().then(async () => {
             bpCount, bpTotal, strokeWidth, blurCount, blurOn, tpCount, lineText, signCtls, hasAvatarBtn, defaultSignature,
             signHiddenOnPlain, blurHiddenOnPlain, signText, paramFontSize, paramModel, exifText, profileAuto, srgbAuto,
             glassSlider: !!glassSlider, glassDate: !!glassDate, glassSize, signHiddenOnGlass,
+            brandSize, appleModelScale, xmTracking,
             exifBrand: ((window.QF_PS_POC.lastTemplate() || {}).manualExif || {}).brand,
             previewW: document.getElementById('previewCanvas').width,
             hasLive: typeof window.QF_PS_POC.renderPreviewLive === 'function',
@@ -217,6 +241,9 @@ app.whenReady().then(async () => {
     check(r.glassSlider && r.glassDate && r.glassSize === 1.5 && r.signHiddenOnGlass,
         '液态玻璃有玻璃条大小/日期开关且无签名控件',
         JSON.stringify({ slider: r.glassSlider, date: r.glassDate, size: r.glassSize, signHidden: r.signHiddenOnGlass }));
+    check(r.brandSize === 1.5 && r.appleModelScale === 1.2 && r.xmTracking === 0.2,
+        '其它风格的专属字段可改且按引擎口径写回',
+        JSON.stringify({ brand: r.brandSize, apple: r.appleModelScale, xm: r.xmTracking }));
     check(r.tpCount > 0 && r.lineText === '编辑后的文字', '预设文字可编辑', JSON.stringify({ tpCount: r.tpCount, lineText: r.lineText }));
     check(!!r.defaultSignature, '空签名预设自动补默认签名', String(r.defaultSignature));
     check(r.signCtls >= 7 && r.hasAvatarBtn && r.signText === '个性签名测试', '个性签名（含头像）可编辑',
