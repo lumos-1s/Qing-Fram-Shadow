@@ -510,7 +510,22 @@
                     cs = 'srgb';
                 }
             }
-            let data = canvas.toDataURL('image/jpeg', 0.95).split(',')[1] || '';
+            // 在面板侧先把成品等比缩到文档内，PS 侧就可以 1:1 置入，
+            // 避免对 5905×3937 这种大图做自由变换把暂存盘撑满。
+            let outCanvas = canvas;
+            if (docW && docH && canvas.width && canvas.height) {
+                const fit = Math.min(1, docW / canvas.width, docH / canvas.height);
+                if (fit < 0.999) {
+                    const tw = Math.max(1, Math.round(canvas.width * fit));
+                    const th = Math.max(1, Math.round(canvas.height * fit));
+                    const scaled = document.createElement('canvas');
+                    scaled.width = tw; scaled.height = th;
+                    scaled.getContext('2d').drawImage(canvas, 0, 0, tw, th);
+                    outCanvas = scaled;
+                    log('适配文档：成品缩到 ' + tw + '×' + th + '（PS 侧不再缩放）');
+                }
+            }
+            let data = outCanvas.toDataURL('image/jpeg', 0.95).split(',')[1] || '';
             const profileB64 = cs === 'adobergb' ? window.QF_ICC_ADOBERGB
                 : (cs === 'p3' ? window.QF_ICC_P3 : null);
             if (profileB64 && window.QF_IccEmbed) {
@@ -537,7 +552,8 @@
             const fitDoc = fitEl && fitEl.checked ? 'true' : 'false';
             const placed = await evalScript('qfPlacePng(' + JSON.stringify(out) + ','
                 + JSON.stringify('清框影边框') + ',' + JSON.stringify(hide) + ','
-                + JSON.stringify(smart) + ',' + JSON.stringify(fitDoc) + ')');
+                + JSON.stringify(smart) + ',' + JSON.stringify(fitDoc) + ','
+                + JSON.stringify(outCanvas.width) + ',' + JSON.stringify(outCanvas.height) + ')');
             log('放回文档：' + placed);
             if (String(placed).indexOf('OK') === 0) {
                 setStatus('已放回文档：' + placed, 'ok');

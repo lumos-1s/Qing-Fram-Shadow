@@ -90,7 +90,7 @@ function qfGetDocPath() {
     }
 }
 
-function qfPlacePng(path, name, hideSrc, asSmart, fitDoc) {
+function qfPlacePng(path, name, hideSrc, asSmart, fitDoc, outW, outH) {
     var oldDialogs = app.displayDialogs;
     // JPEG 是 sRGB，目标文档可能是 Adobe RGB；不关对话框会弹「配置文件不匹配」把自动化卡住
     app.displayDialogs = DialogModes.NO;
@@ -122,15 +122,26 @@ function qfPlacePng(path, name, hideSrc, asSmart, fitDoc) {
         // 这样预设写死的边框宽度不会被撑大，成品四边也不会被画布裁掉。
         // 只有用户显式勾选「缩放铺满文档」时才做 cover，允许放大并裁切补满。
         var b = layer.bounds;
-        var lw = Math.max(1, b[2].as('px') - b[0].as('px'));
-        var lh = Math.max(1, b[3].as('px') - b[1].as('px'));
         var dw = doc.width.as('px'), dh = doc.height.as('px');
-        var s = (String(fitDoc) === 'true') ? Math.max(dw / lw, dh / lh)
-            : Math.min(1, dw / lw, dh / lh); // 只缩不放，保证完整可见
-        if (s < 0.999 || s > 1.001) {
+        var srcW = Math.max(1, Number(outW) || Math.max(1, b[2].as('px') - b[0].as('px')));
+        var srcH = Math.max(1, Number(outH) || Math.max(1, b[3].as('px') - b[1].as('px')));
+        var s = 1;
+        // 默认路径：成品已在面板侧等比缩到文档内，这里只 1:1 置入，
+        // 绝不调用 resize —— 大图上的自由变换会把 Photoshop 暂存盘撑满而失败。
+        // 只有显式勾选「缩放铺满文档」才在这里做一次 cover 变换。
+        if (String(fitDoc) === 'true') {
+            var lw = Math.max(1, b[2].as('px') - b[0].as('px'));
+            var lh = Math.max(1, b[3].as('px') - b[1].as('px'));
+            s = Math.max(dw / lw, dh / lh);
             layer.resize(Math.max(1, Math.round(lw * s)), Math.max(1, Math.round(lh * s)),
                 AnchorPosition.MIDDLECENTER);
         }
+        // 微调居中（不缩放，move 不会占大量暂存盘）
+        b = layer.bounds;
+        var curW = b[2].as('px') - b[0].as('px'), curH = b[3].as('px') - b[1].as('px');
+        var dx = Math.round((dw - curW) / 2) - b[0].as('px');
+        var dy = Math.round((dh - curH) / 2) - b[1].as('px');
+        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) layer.translate(dx, dy);
         // 默认隐藏原图层，避免下面还堆着一层原始照片；保留在文档里方便恢复
         if (String(hideSrc) === 'true' && srcLayer && srcLayer !== layer) {
             srcLayer.visible = false;
@@ -138,7 +149,8 @@ function qfPlacePng(path, name, hideSrc, asSmart, fitDoc) {
         doc.activeLayer = layer;
         b = layer.bounds;
         return 'OK:' + layer.name + ' ' + Math.round(b[2].as('px') - b[0].as('px'))
-            + 'x' + Math.round(b[3].as('px') - b[1].as('px'));
+            + 'x' + Math.round(b[3].as('px') - b[1].as('px'))
+            + ' (从 ' + srcW + 'x' + srcH + ' 缩放 ' + s.toFixed(2) + ')';
     } catch (e) {
         return 'ERR:' + (e.message || e);
     } finally {
