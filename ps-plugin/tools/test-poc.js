@@ -50,7 +50,7 @@ app.whenReady().then(async () => {
                     window.qfMockFiles[m[1]] = window.qfMockSourceB64;
                     cb(key); return;
                 }
-                const p = /qfPlacePng\\("([^"]+)","([^"]+)","([^"]+)","([^"]+)","([^"]+)",([^,]+),([^,]+),([^)]+)\\)/.exec(src);
+                const p = /qfPlacePng(?:Direct)?\\("([^"]+)","([^"]+)","([^"]+)","([^"]+)","([^"]+)",([^,]+),([^,]+),([^)]+)\\)/.exec(src);
                 if (p) { window.qfMockPlaced.push({ path: p[1], name: p[2], hide: p[3], smart: p[4], fit: p[5], out: p[6] + 'x' + p[7], canvasFit: p[8] }); cb('OK:' + p[2]); return; }
                 if (/qfGetDocPath/.test(src)) { cb('OK:' + prefix + 'exif-source.jpg|Adobe RGB (1998)'); return; }
                 cb('ERR:unknown script');

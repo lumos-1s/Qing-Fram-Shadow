@@ -582,11 +582,16 @@
             const fitDoc = fitEl && fitEl.checked ? 'true' : 'false';
             const stamp = new Date().toLocaleTimeString('zh-CN', { hour12: false });
             const layerName = '清框影边框 · ' + (template.templateName || '预设') + ' ' + stamp;
-            const placed = await evalScript('qfPlacePng(' + JSON.stringify(out) + ','
-                + JSON.stringify(layerName) + ',' + JSON.stringify(hide) + ','
-                + JSON.stringify(smart) + ',' + JSON.stringify(fitDoc) + ','
+            const placeArgs = JSON.stringify(out) + ',' + JSON.stringify(layerName) + ','
+                + JSON.stringify(hide) + ',' + JSON.stringify(smart) + ',' + JSON.stringify(fitDoc) + ','
                 + JSON.stringify(outCanvas.width) + ',' + JSON.stringify(outCanvas.height) + ','
-                + JSON.stringify(canvasFit) + ')');
+                + JSON.stringify(canvasFit);
+            let placed = await evalScript('qfPlacePng(' + placeArgs + ')');
+            // suspendHistory 在个别版本会让 EvalScript 解析失败，退回不走撤销分组的直接写回
+            if (String(placed).indexOf('EvalScript error') >= 0) {
+                log('撤销分组不可用，改用直接写回');
+                placed = await evalScript('qfPlacePngDirect(' + placeArgs + ')');
+            }
             log('放回文档：' + placed);
             if (String(placed).indexOf('OK') === 0) {
                 setStatus('已放回文档：' + placed, 'ok');

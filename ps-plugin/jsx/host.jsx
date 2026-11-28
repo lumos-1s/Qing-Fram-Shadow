@@ -109,9 +109,12 @@ function qfGetDocPath() {
 }
 
 var qfLastPlaceResult = '';
+var qfPlaceArgs = null;
+var qfPlaceDidRun = false;
 
 // 真正的写回实现
 function qfPlacePngImpl(path, name, hideSrc, asSmart, fitDoc, outW, outH, canvasFit) {
+    qfPlaceDidRun = true;
     var oldDialogs = app.displayDialogs;
     var result = '';
     app.displayDialogs = DialogModes.NO;
@@ -194,19 +197,31 @@ function qfPlacePngImpl(path, name, hideSrc, asSmart, fitDoc, outW, outH, canvas
     return result;
 }
 
+// 不使用 suspendHistory 的直接入口，供 panel 在 EvalScript 报错时兜底
+function qfPlacePngDirect(path, name, hideSrc, asSmart, fitDoc, outW, outH, canvasFit) {
+    qfLastPlaceResult = '';
+    qfPlaceDidRun = false;
+    return qfPlacePngImpl(path, name, hideSrc, asSmart, fitDoc, outW, outH, canvasFit);
+}
+
 // 把「替换旧图层 + 调画布 + 置入 + 隐藏原图层」合成一次历史，Ctrl+Z 一步撤销
 function qfPlacePng(path, name, hideSrc, asSmart, fitDoc, outW, outH, canvasFit) {
     qfLastPlaceResult = '';
-    var args = [path, name, hideSrc, asSmart, fitDoc, outW, outH, canvasFit];
-    var parts = [];
-    for (var i = 0; i < args.length; i++) parts.push(JSON.stringify(String(args[i])));
-    var code = 'qfPlacePngImpl(' + parts.join(',') + ')';
+    qfPlaceDidRun = false;
+    // 用全局变量传参：ExtendScript 的 suspendHistory 只能吃代码字符串，
+    // 把中文图层名/路径 JSON 序列化进去在某些版本会解析失败（EvalScript error）。
+    qfPlaceArgs = [path, name, hideSrc, asSmart, fitDoc, outW, outH, canvasFit];
+    var code = 'qfPlacePngImpl(qfPlaceArgs[0],qfPlaceArgs[1],qfPlaceArgs[2],qfPlaceArgs[3],'
+        + 'qfPlaceArgs[4],qfPlaceArgs[5],qfPlaceArgs[6],qfPlaceArgs[7])';
     try {
         var doc = app.activeDocument;
         if (doc && typeof doc.suspendHistory === 'function') {
             doc.suspendHistory('清框影边框', code);
-            return qfLastPlaceResult;
+            if (qfPlaceDidRun) return qfLastPlaceResult;
         }
     } catch (e) { /* 旧版 PS 没有 suspendHistory，退回直接调用 */ }
-    return qfPlacePngImpl(path, name, hideSrc, asSmart, fitDoc, outW, outH, canvasFit);
+    // 已经执行过就绝不重复执行，避免贴两层
+    if (qfPlaceDidRun) return qfLastPlaceResult;
+    return qfPlacePngImpl(qfPlaceArgs[0], qfPlaceArgs[1], qfPlaceArgs[2], qfPlaceArgs[3],
+        qfPlaceArgs[4], qfPlaceArgs[5], qfPlaceArgs[6], qfPlaceArgs[7]);
 }
