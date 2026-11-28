@@ -87,6 +87,28 @@
     // 液态玻璃每帧要做逐像素折射，连续重绘非常贵；重风格改成停手后只渲一次
     const HEAVY_PREVIEW_STYLES = ['LIQUID_GLASS'];
 
+    function updatePreviewMeta(pc, t) {
+        const meta = document.getElementById('previewMeta');
+        if (meta) {
+            meta.textContent = (t && t.templateName || '自定义风格')
+                + ' · 预览 ' + pc.width + '×' + pc.height;
+        }
+    }
+
+    // 套用时已经全尺寸渲染过一遍，预览直接从成品缩小即可，
+    // 不必再为预览跑一次引擎（液态玻璃这类逐像素风格省一大笔）。
+    function paintPreviewFromFull(t) {
+        const pc = document.getElementById('previewCanvas');
+        if (!pc || !canvas.width || !canvas.height) return;
+        const k = Math.min(1, PREVIEW_MAX / Math.max(canvas.width, canvas.height));
+        pc.width = Math.max(1, Math.round(canvas.width * k));
+        pc.height = Math.max(1, Math.round(canvas.height * k));
+        const g = pc.getContext('2d');
+        g.clearRect(0, 0, pc.width, pc.height);
+        g.drawImage(canvas, 0, 0, pc.width, pc.height);
+        updatePreviewMeta(pc, t);
+    }
+
     function doPreviewRender() {
         if (!previewSource || !liveTemplate) return;
         try {
@@ -105,11 +127,7 @@
             delete A.exportScale;
             syncImageExif(liveTemplate, previewSource);
             window.__render(A, false);
-            const meta = document.getElementById('previewMeta');
-            if (meta) {
-                meta.textContent = (liveTemplate.templateName || '自定义风格')
-                    + ' · 预览 ' + pc.width + '×' + pc.height;
-            }
+            updatePreviewMeta(pc, liveTemplate);
         } catch (e) {
             log('预览失败：' + ((e && e.message) || e));
         }
@@ -465,10 +483,13 @@
             }
             log('套用风格：' + (template.templateName || '默认'));
 
-            renderPreviewLive();
+            // 下面马上全尺寸渲染，预览直接从成品缩放，不再多跑一次引擎
+            clearTimeout(previewTimer);
+            previewTimer = 0;
             setStatus('正在渲染边框…', 'busy');
             const A = setupApp(image, template, Math.max(docW || image.w, docH || image.h));
             window.__render(A, false);
+            paintPreviewFromFull(template); // 在色域转换前取图，保证预览仍是 sRGB
 
             // 输出走 JPEG（质量 95）：带边框的成品不需要 alpha，体积比 PNG 小一个量级。
             // 色域转换直接在输出画布上原地做，省掉一张与成品等大的临时 Canvas。

@@ -174,9 +174,14 @@ app.whenReady().then(async () => {
         const strokeEl = document.querySelector('[data-bp="stroke-宽度"]');
         const rememberedStroke = strokeEl ? strokeEl.value : null;
 
+        await wait(200); // 让切换预设可能排队的预览先渲完，避免计入套用
+        const origApplyRender = window.__render;
+        let applyRenderCount = 0;
+        window.__render = function () { applyRenderCount++; return origApplyRender.apply(this, arguments); };
         document.getElementById('btnBorder').click();
         for (let i = 0; i < 100 && window.QF_PS_POC.isBusy(); i++) await wait(100);
         await wait(150);
+        window.__render = origApplyRender;
         const logText = document.getElementById('log').textContent;
         const statusText = document.getElementById('status').textContent;
         // 套用时必须拿面板里正在编辑的模板，不能重新克隆预设把改动冲掉
@@ -219,7 +224,7 @@ app.whenReady().then(async () => {
 
         return {
             cachedLog, statusText, filteredWall, strokeAfterReset, rememberedStroke, hasSavedEdit,
-            appliedStroke, appliedSign, appliedModel, heavyRenderCount,
+            appliedStroke, appliedSign, appliedModel, heavyRenderCount, applyRenderCount,
             presets: presets.length, wallCount, thumbImgs, thumbErr,
             hasRender: typeof window.__render === 'function',
             bpCount, bpTotal, strokeWidth, blurCount, blurOn, tpCount, lineText, signCtls, hasAvatarBtn, defaultSignature,
@@ -283,6 +288,7 @@ app.whenReady().then(async () => {
     check(r.appliedStroke === 40 && r.appliedSign === '个性签名测试' && r.appliedModel === 'CUSTOMMODEL',
         '套用时使用面板当前编辑值', JSON.stringify({ stroke: r.appliedStroke, sign: r.appliedSign, model: r.appliedModel }));
     check(r.heavyRenderCount === 1, '液态玻璃连续调参只渲染一次', String(r.heavyRenderCount));
+    check(r.applyRenderCount === 1, '套用只跑一次引擎（预览复用成品）', String(r.applyRenderCount));
     check(r.rememberedStroke === '40', '切走再切回还原该预设的参数', r.rememberedStroke);
     check(r.strokeAfterReset === '0' && !r.hasSavedEdit, '重置会清除该预设的记忆',
         JSON.stringify({ stroke: r.strokeAfterReset, saved: r.hasSavedEdit }));

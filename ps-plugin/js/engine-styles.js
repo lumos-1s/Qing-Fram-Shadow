@@ -5687,6 +5687,8 @@ const w = natW;
                 const v = Number(t.liquidGlassSize);
                 return clampP(Number.isFinite(v) && v > 0 ? v : 1, 0.5, 2);
             })(),
+            // 折射是逐像素的：预览按 displayMax 预算降采样，全尺寸仍可用满 2048。
+            glassCap: Math.min(2048, Math.max(256, Number(app.displayMax) || 2048)),
             glassDateShow: t.liquidGlassDate !== 0,
             // 拍立得底部自定义文字(留空=显示默认日期)
             polaroidCaption: String(t.polaroidCaption || ''),
@@ -8435,7 +8437,8 @@ const w = natW;
 
     // 玻璃底板:只渲染胶囊区域,上限 2048(APK 为 4096;这里是每帧实时预览,分辨率对模糊底不可见)。
     function liquidGlassBitmap(img, iw, ih, geo, S) {
-        const cap = Math.min(1, 2048 / Math.max(geo.w, geo.h));
+        const budget = (S && S.glassCap) || 2048;
+        const cap = Math.min(1, budget / Math.max(geo.w, geo.h));
         const gw = Math.max(1, Math.round(geo.w * cap));
         const gh = Math.max(1, Math.round(geo.h * cap));
         const dp = geo.scale * cap;
