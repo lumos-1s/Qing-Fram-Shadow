@@ -118,20 +118,18 @@ function qfPlacePng(path, name, hideSrc, asSmart, fitDoc) {
         layer.visible = true;
         layer.opacity = 100;
 
-        // 默认严格按预设的原始尺寸放入，不自动放大/铺满文档——
-        // 那会把预设写死的边框宽度一起缩放，成品就不是预设那个边框大小了。
-        // 只有用户显式勾选「缩放铺满文档」时才做 cover 缩放。
-        var b = null;
-        if (String(fitDoc) === 'true') {
-            b = layer.bounds;
-            var lw = Math.max(1, b[2].as('px') - b[0].as('px'));
-            var lh = Math.max(1, b[3].as('px') - b[1].as('px'));
-            var dw = doc.width.as('px'), dh = doc.height.as('px');
-            var s = Math.max(dw / lw, dh / lh);
-            if (Math.abs(s - 1) > 0.001) {
-                layer.resize(Math.max(1, Math.round(lw * s)), Math.max(1, Math.round(lh * s)),
-                    AnchorPosition.MIDDLECENTER);
-            }
+        // 默认：等比缩小到刚好完整放进文档（contain），绝不放大——
+        // 这样预设写死的边框宽度不会被撑大，成品四边也不会被画布裁掉。
+        // 只有用户显式勾选「缩放铺满文档」时才做 cover，允许放大并裁切补满。
+        var b = layer.bounds;
+        var lw = Math.max(1, b[2].as('px') - b[0].as('px'));
+        var lh = Math.max(1, b[3].as('px') - b[1].as('px'));
+        var dw = doc.width.as('px'), dh = doc.height.as('px');
+        var s = (String(fitDoc) === 'true') ? Math.max(dw / lw, dh / lh)
+            : Math.min(1, dw / lw, dh / lh); // 只缩不放，保证完整可见
+        if (s < 0.999 || s > 1.001) {
+            layer.resize(Math.max(1, Math.round(lw * s)), Math.max(1, Math.round(lh * s)),
+                AnchorPosition.MIDDLECENTER);
         }
         // 默认隐藏原图层，避免下面还堆着一层原始照片；保留在文档里方便恢复
         if (String(hideSrc) === 'true' && srcLayer && srcLayer !== layer) {
