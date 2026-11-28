@@ -48,8 +48,8 @@ app.whenReady().then(async () => {
                     window.qfMockFiles[m[1]] = window.qfMockSourceB64;
                     cb(key); return;
                 }
-                const p = /qfPlacePng\\("([^"]+)","([^"]+)","([^"]+)","([^"]+)"\\)/.exec(src);
-                if (p) { window.qfMockPlaced.push({ path: p[1], name: p[2], hide: p[3], smart: p[4] }); cb('OK:' + p[2]); return; }
+                const p = /qfPlacePng\\("([^"]+)","([^"]+)","([^"]+)","([^"]+)","([^"]+)"\\)/.exec(src);
+                if (p) { window.qfMockPlaced.push({ path: p[1], name: p[2], hide: p[3], smart: p[4], fit: p[5] }); cb('OK:' + p[2]); return; }
                 if (/qfGetDocPath/.test(src)) { cb('OK:' + prefix + 'exif-source.jpg|Adobe RGB (1998)'); return; }
                 cb('ERR:unknown script');
             }
@@ -190,6 +190,7 @@ app.whenReady().then(async () => {
             ? applied0.layerList[0].strokeConfig.strokeWidth : null;
         const appliedSign = applied0.userSignature;
         const appliedModel = (applied0.manualExif || {}).model;
+        const appliedRatio = applied0.canvasRatio;
 
         // 液态玻璃是重风格：连续拖滑块只应渲染一次（停手后的那一次）
         sel.value = '55'; sel.dispatchEvent(new Event('change', { bubbles: true }));
@@ -224,7 +225,7 @@ app.whenReady().then(async () => {
 
         return {
             cachedLog, statusText, filteredWall, strokeAfterReset, rememberedStroke, hasSavedEdit,
-            appliedStroke, appliedSign, appliedModel, heavyRenderCount, applyRenderCount,
+            appliedStroke, appliedSign, appliedModel, appliedRatio, heavyRenderCount, applyRenderCount,
             presets: presets.length, wallCount, thumbImgs, thumbErr,
             hasRender: typeof window.__render === 'function',
             bpCount, bpTotal, strokeWidth, blurCount, blurOn, tpCount, lineText, signCtls, hasAvatarBtn, defaultSignature,
@@ -289,11 +290,13 @@ app.whenReady().then(async () => {
         '套用时使用面板当前编辑值', JSON.stringify({ stroke: r.appliedStroke, sign: r.appliedSign, model: r.appliedModel }));
     check(r.heavyRenderCount === 1, '液态玻璃连续调参只渲染一次', String(r.heavyRenderCount));
     check(r.applyRenderCount === 1, '套用只跑一次引擎（预览复用成品）', String(r.applyRenderCount));
+    check(r.appliedRatio === 'original', '边框画布比例按预设，不扩成文档比例', String(r.appliedRatio));
     check(r.rememberedStroke === '40', '切走再切回还原该预设的参数', r.rememberedStroke);
     check(r.strokeAfterReset === '0' && !r.hasSavedEdit, '重置会清除该预设的记忆',
         JSON.stringify({ stroke: r.strokeAfterReset, saved: r.hasSavedEdit }));
     check(r.placed.every((p) => p.hide === 'true'), '隐藏原图层参数已传给 PS', JSON.stringify(r.placed.map((p) => p.hide)));
     check(r.placed.every((p) => p.smart === 'true'), '智能对象参数已传给 PS', JSON.stringify(r.placed.map((p) => p.smart)));
+    check(r.placed.every((p) => p.fit === 'false'), '默认不缩放铺满文档', JSON.stringify(r.placed.map((p) => p.fit)));
     check(r.outputs.every((f) => f.len > 10000 && f.jpeg && f.hasIcc), '写回的是带 Adobe RGB ICC 的 JPEG', JSON.stringify(r.outputs));
     check(errors.length === 0, '无控制台错误', errors.slice(0, 3).join(' / '));
 

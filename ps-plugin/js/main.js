@@ -431,6 +431,8 @@
             if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
                 Object.assign(t, saved);
                 t.templateName = fresh.templateName;
+                // 旧快照里可能存着被强制写过的文档比例，恢复时一律用预设自己的
+                t.canvasRatio = fresh.canvasRatio;
             }
         } catch (_) { /* 快照坏了就按预设默认值来 */ }
         return t;
@@ -478,9 +480,9 @@
             syncImageExif(template, previewSource);
             liveTemplate = template;
             lastTemplate = template;
-            // 让引擎按文档比例出图；否则模板自己的画布比例会让成品和文档对不上
+            // 只告诉面板文档尺寸（文字坐标用），画布比例完全交给预设自己，
+            // 不再强制扩成文档比例——那会把预设的边框/留白自动撑大。
             if (docW && docH) {
-                template.canvasRatio = docW + ':' + docH;
                 template.__qfDocW = docW; template.__qfDocH = docH;
             }
             log('套用风格：' + (template.templateName || '默认'));
@@ -531,9 +533,11 @@
             const hide = hideSrc && hideSrc.checked ? 'true' : 'false';
             const smartEl = document.getElementById('chkSmart');
             const smart = smartEl && smartEl.checked ? 'true' : 'false';
+            const fitEl = document.getElementById('chkFitDoc');
+            const fitDoc = fitEl && fitEl.checked ? 'true' : 'false';
             const placed = await evalScript('qfPlacePng(' + JSON.stringify(out) + ','
                 + JSON.stringify('清框影边框') + ',' + JSON.stringify(hide) + ','
-                + JSON.stringify(smart) + ')');
+                + JSON.stringify(smart) + ',' + JSON.stringify(fitDoc) + ')');
             log('放回文档：' + placed);
             if (String(placed).indexOf('OK') === 0) {
                 setStatus('已放回文档：' + placed, 'ok');

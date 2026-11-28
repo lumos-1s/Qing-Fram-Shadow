@@ -90,7 +90,7 @@ function qfGetDocPath() {
     }
 }
 
-function qfPlacePng(path, name, hideSrc, asSmart) {
+function qfPlacePng(path, name, hideSrc, asSmart, fitDoc) {
     var oldDialogs = app.displayDialogs;
     // JPEG 是 sRGB，目标文档可能是 Adobe RGB；不关对话框会弹「配置文件不匹配」把自动化卡住
     app.displayDialogs = DialogModes.NO;
@@ -118,17 +118,20 @@ function qfPlacePng(path, name, hideSrc, asSmart) {
         layer.visible = true;
         layer.opacity = 100;
 
-        // 边框模板会在照片外加密度/留白，成品画布可能比文档大；
-        // 不缩放直接粘进去会被画布裁掉，所以按比例缩放到刚好装进文档并居中。
-        var b = layer.bounds;
-        var lw = Math.max(1, b[2].as('px') - b[0].as('px'));
-        var lh = Math.max(1, b[3].as('px') - b[1].as('px'));
-        var dw = doc.width.as('px'), dh = doc.height.as('px');
-        // cover（取较大比例）：成品必须盖满文档画布，避免下层露出或留白边
-        var s = Math.max(dw / lw, dh / lh);
-        if (Math.abs(s - 1) > 0.001) {
-            layer.resize(Math.max(1, Math.round(lw * s)), Math.max(1, Math.round(lh * s)),
-                AnchorPosition.MIDDLECENTER);
+        // 默认严格按预设的原始尺寸放入，不自动放大/铺满文档——
+        // 那会把预设写死的边框宽度一起缩放，成品就不是预设那个边框大小了。
+        // 只有用户显式勾选「缩放铺满文档」时才做 cover 缩放。
+        var b = null;
+        if (String(fitDoc) === 'true') {
+            b = layer.bounds;
+            var lw = Math.max(1, b[2].as('px') - b[0].as('px'));
+            var lh = Math.max(1, b[3].as('px') - b[1].as('px'));
+            var dw = doc.width.as('px'), dh = doc.height.as('px');
+            var s = Math.max(dw / lw, dh / lh);
+            if (Math.abs(s - 1) > 0.001) {
+                layer.resize(Math.max(1, Math.round(lw * s)), Math.max(1, Math.round(lh * s)),
+                    AnchorPosition.MIDDLECENTER);
+            }
         }
         // 默认隐藏原图层，避免下面还堆着一层原始照片；保留在文档里方便恢复
         if (String(hideSrc) === 'true' && srcLayer && srcLayer !== layer) {
