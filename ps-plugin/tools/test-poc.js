@@ -40,8 +40,14 @@ app.whenReady().then(async () => {
             read: (p, cb) => cb(window.qfMockFiles[p] || null),
             write: (p, b64, cb) => { window.qfMockFiles[p] = b64; cb(true); },
             eval: (src, cb) => {
+                const key = 'OK:800x1000|' + prefix + 'exif-source.jpg|1|Layer 1';
+                if (/qfGetDocKey/.test(src)) { cb(key); return; }
                 const m = /qfGetLayerPng\\("([^"]+)"\\)/.exec(src);
-                if (m) { cb('OK:800x1000'); return; }
+                if (m) {
+                    // 面板每次导出用新的临时文件名，mock 也要按实际路径回填
+                    window.qfMockFiles[m[1]] = window.qfMockSourceB64;
+                    cb(key); return;
+                }
                 const p = /qfPlacePng\\("([^"]+)","([^"]+)","([^"]+)","([^"]+)"\\)/.exec(src);
                 if (p) { window.qfMockPlaced.push({ path: p[1], name: p[2], hide: p[3], smart: p[4] }); cb('OK:' + p[2]); return; }
                 if (/qfGetDocPath/.test(src)) { cb('OK:' + prefix + 'exif-source.jpg|Adobe RGB (1998)'); return; }
@@ -54,8 +60,9 @@ app.whenReady().then(async () => {
         const gr = g.createLinearGradient(0, 0, 800, 1000);
         gr.addColorStop(0, '#c9624e'); gr.addColorStop(1, '#3d7a83');
         g.fillStyle = gr; g.fillRect(0, 0, 800, 1000);
-        window.qfMockFiles[prefix + 'qingframe-source.jpg'] = c.toDataURL('image/jpeg').split(',')[1];
-        window.qfMockFiles[prefix + 'exif-source.jpg'] = c.toDataURL('image/jpeg').split(',')[1];
+        window.qfMockSourceB64 = c.toDataURL('image/jpeg').split(',')[1];
+        window.qfMockFiles[prefix + 'qingframe-source.jpg'] = window.qfMockSourceB64;
+        window.qfMockFiles[prefix + 'exif-source.jpg'] = window.qfMockSourceB64;
         window.__parseExif = () => ({
             0x010F: 'SONY', 0x0110: 'ILCE-6000',
             0x829A: { num: 1, den: 125 }, 0x829D: { num: 56, den: 10 },
@@ -71,11 +78,17 @@ app.whenReady().then(async () => {
         const brandInput = document.querySelector('[data-exif="make"]');
         if (brandInput) { brandInput.value = 'CANON'; brandInput.dispatchEvent(new Event('input', { bubbles: true })); }
 
-        await wait(2500); // 等缩略图墙生成
+        await wait(400);
+        await window.QF_PS_POC.ensureAllThumbs(); // 懒加载：测试里强制补齐，验证 91 张都能出图
+        await wait(150);
         const wallCount = document.querySelectorAll('[data-wall]').length;
         const thumbImgs = document.querySelectorAll('#presetWall img').length;
         const thumbErr = (window.QF_PS_POC.thumbErrors || []).filter(Boolean).slice(0, 3);
         const presets = window.QF_PRESETS || [];
+        window.QF_PS_POC.searchPresets('背景模糊');
+        const filteredWall = Array.from(document.querySelectorAll('[data-wall]'))
+            .filter((b) => !b.hidden).length;
+        window.QF_PS_POC.searchPresets('');
         const sel = document.getElementById('preset');
         if (sel) {
             sel.value = '1'; // 无相框风格：填充/描边/阴影这些控件才有效
@@ -114,16 +127,22 @@ app.whenReady().then(async () => {
         const strokeWidth = ((tpl0.layerList || [])[0] || {}).strokeConfig
             ? tpl0.layerList[0].strokeConfig.strokeWidth : null;
         document.getElementById('btnBorder').click();
-        await wait(1200);
+        for (let i = 0; i < 100 && window.QF_PS_POC.isBusy(); i++) await wait(100);
+        await wait(150);
         const logText = document.getElementById('log').textContent;
+        const statusText = document.getElementById('status').textContent;
 
         // 第二次套用应命中缓存，不再从 PS 重新导出源图
         document.getElementById('btnBorder').click();
-        await wait(800);
+        for (let i = 0; i < 100 && window.QF_PS_POC.isBusy(); i++) await wait(100);
+        await wait(150);
         const cachedLog = document.getElementById('log').textContent;
 
+        window.QF_PS_POC.resetCurrent();
+        const strokeAfterReset = document.querySelector('[data-bp="stroke-宽度"]').value;
+
         return {
-            cachedLog,
+            cachedLog, statusText, filteredWall, strokeAfterReset,
             presets: presets.length, wallCount, thumbImgs, thumbErr,
             hasRender: typeof window.__render === 'function',
             bpCount, bpTotal, strokeWidth, blurCount, blurOn, tpCount, lineText, signCtls, hasAvatarBtn, defaultSignature,
@@ -155,6 +174,7 @@ app.whenReady().then(async () => {
     console.log(JSON.stringify(r, null, 2));
     check(r.presets === 91 && r.hasRender, '引擎与预设已加载', JSON.stringify({ presets: r.presets, hasRender: r.hasRender }));
     check(r.wallCount === 91 && r.thumbImgs === 91, '风格缩略图墙已生成', JSON.stringify({ wall: r.wallCount, thumbs: r.thumbImgs }));
+    check(r.filteredWall >= 2, '风格搜索可过滤', String(r.filteredWall));
     check(r.bpCount >= 15 && r.strokeWidth === 40, '边框参数面板可改模板', JSON.stringify({ bpCount: r.bpCount, strokeWidth: r.strokeWidth }));
     check(r.blurCount > 0 && r.blurOn === 1, '背景模糊参数可开启', JSON.stringify({ blurCount: r.blurCount, blurOn: r.blurOn }));
     check(r.tpCount > 0 && r.lineText === '编辑后的文字', '预设文字可编辑', JSON.stringify({ tpCount: r.tpCount, lineText: r.lineText }));
@@ -172,6 +192,8 @@ app.whenReady().then(async () => {
     check(r.placed.length >= 1 && r.placed[0].name === '清框影边框',
         '写回边框图层', JSON.stringify(r.placed.map((p) => p.name)));
     check(/缓存/.test(r.cachedLog), '重复套用命中源图缓存', r.cachedLog.split('\n')[0]);
+    check(/已放回文档/.test(r.statusText), '状态栏显示写回结果', r.statusText);
+    check(r.strokeAfterReset === '0', '重置参数恢复预设默认值', r.strokeAfterReset);
     check(r.placed.every((p) => p.hide === 'true'), '隐藏原图层参数已传给 PS', JSON.stringify(r.placed.map((p) => p.hide)));
     check(r.placed.every((p) => p.smart === 'true'), '智能对象参数已传给 PS', JSON.stringify(r.placed.map((p) => p.smart)));
     check(r.outputs.every((f) => f.len > 10000 && f.jpeg && f.hasIcc), '写回的是带 Adobe RGB ICC 的 JPEG', JSON.stringify(r.outputs));

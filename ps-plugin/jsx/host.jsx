@@ -1,38 +1,78 @@
 /*
  * 清框影 PS 桥接 PoC — Photoshop ExtendScript 宿主端
- * 两个入口：
- *   qfGetLayerPng(path)        把当前选中图层导出成透明 PNG 到 path
- *   qfPlacePng(path, name)     把 PNG 作为新图层放回当前文档
- * 只用Photoshop自带 API，不依赖任何第三方库。
+ * 入口：
+ *   qfGetDocKey()              轻量返回文档 key（尺寸/路径/图层/历史步数）
+ *   qfGetLayerPng(path)        把当前文档合成导出成高质量 JPEG 到 path
+ *   qfGetDocPath()             返回当前文档源文件路径与色彩配置
+ *   qfPlacePng(path, name...)  把渲染结果作为新图层放回当前文档
+ * 只用 Photoshop 自带 API，不依赖任何第三方库。
  */
 #target photoshop
 
-function qfGetLayerPng(path) {
+// 文档 key：面板用它判断「文档没改动就复用缓存的源图」。
+// 历史步数变化 = 用户改过图，必须重新导出；图层 id/名称变化也要重导。
+function qfDocKeyOf(doc) {
+    var w = Math.max(1, Math.round(doc.width.as('px')));
+    var h = Math.max(1, Math.round(doc.height.as('px')));
+    // 源图取整份文档合成，所以选中哪个图层不影响像素；key 只看文档身份和编辑历史。
+    var ident = '';
+    try { ident = doc.fullName ? String(doc.fullName.fsName) : String(doc.name || ''); } catch (e) { ident = ''; }
+    try { if (doc.id) ident += '#' + doc.id; } catch (e) { /* 旧版 PS 没有 id */ }
+    var hist = 0;
+    try { hist = doc.historyStates.length; } catch (e) { hist = 0; }
+    // 历史步数有上限，达到上限后长度不变；再带上最后一步的名字，编辑后仍能失效缓存
+    var histName = '';
+    try {
+        if (hist > 0) histName = String(doc.historyStates[hist - 1].name || '');
+    } catch (e) { histName = ''; }
+    return w + 'x' + h + '|' + ident + '|' + hist + '|' + histName;
+}
+
+function qfGetDocKey() {
     try {
         var doc = app.activeDocument;
+        if (!doc) return 'ERR:没有打开的文档';
+        return 'OK:' + qfDocKeyOf(doc);
+    } catch (e) {
+        return 'ERR:' + (e.message || e);
+    }
+}
+
+function qfGetLayerPng(path) {
+    var oldDialogs = app.displayDialogs;
+    var doc = null;
+    var tmp = null;
+    try {
+        doc = app.activeDocument;
         if (!doc) return 'ERR:没有打开的文档';
 
         // 取整份文档的合成，尺寸就是文档画布，不是选中图层的外框。
         // 这样边框成品和文档 1:1 对应，不会出现下层露出或白边。
-        var w = Math.max(1, Math.round(doc.width.as('px')));
-        var h = Math.max(1, Math.round(doc.height.as('px')));
-        var layerName = doc.activeLayer ? String(doc.activeLayer.name) : '';
-        var docPath = doc.fullName ? String(doc.fullName.fsName) : '';
+        var key = qfDocKeyOf(doc);
 
-        app.activeDocument = doc;
-        var tmp = doc.duplicate();
+        // 保存到已存在的文件时不要弹「是否替换」把自动化卡住
+        app.displayDialogs = DialogModes.NO;
+        tmp = doc.duplicate();
         tmp.flatten();
 
         // 整份文档合成后没有 alpha；高质量 JPEG 比 PNG 小一个量级，面板加载快得多
         var file = new File(path);
+        if (file.exists) file.remove();
         var opts = new JPEGSaveOptions();
         opts.quality = 12;
         tmp.saveAs(file, opts, true);
         tmp.close(SaveOptions.DONOTSAVECHANGES);
+        tmp = null;
         app.activeDocument = doc;
-        return 'OK:' + w + 'x' + h + '|' + docPath + '|' + layerName;
+        return 'OK:' + key;
     } catch (e) {
+        if (tmp) {
+            try { tmp.close(SaveOptions.DONOTSAVECHANGES); } catch (e2) { /* 忽略 */ }
+        }
         return 'ERR:' + (e.message || e);
+    } finally {
+        try { app.displayDialogs = oldDialogs; } catch (e3) { /* 忽略 */ }
+        try { if (doc) app.activeDocument = doc; } catch (e4) { /* 忽略 */ }
     }
 }
 

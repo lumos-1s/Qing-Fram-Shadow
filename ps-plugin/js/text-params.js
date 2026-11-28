@@ -168,11 +168,27 @@
                 if (!f) return;
                 const reader = new FileReader();
                 reader.onload = () => {
-                    const data = String(reader.result);
-                    try { localStorage.setItem('qfs_user_avatar', data); } catch (e) { /* 忽略 */ }
-                    const im = new Image();
-                    im.onload = () => { window.__qfsAvatarImg = im; if (onChange) onChange(); };
-                    im.src = data;
+                    const raw = String(reader.result);
+                    // 头像缩到 256px 再存：原图动辄几 MB，直接塞 localStorage 会超配额
+                    const src = new Image();
+                    src.onload = () => {
+                        let data = raw;
+                        try {
+                            const max = 256;
+                            const k = Math.min(1, max / Math.max(1, src.naturalWidth, src.naturalHeight));
+                            const cv = document.createElement('canvas');
+                            cv.width = Math.max(1, Math.round(src.naturalWidth * k));
+                            cv.height = Math.max(1, Math.round(src.naturalHeight * k));
+                            cv.getContext('2d').drawImage(src, 0, 0, cv.width, cv.height);
+                            data = cv.toDataURL('image/png');
+                        } catch (e) { /* 解码失败就用原图 */ }
+                        try { localStorage.setItem('qfs_user_avatar', data); } catch (e) { /* 忽略 */ }
+                        const im = new Image();
+                        im.onload = () => { window.__qfsAvatarImg = im; if (onChange) onChange(); };
+                        im.src = data;
+                    };
+                    src.onerror = () => { /* 读不出来的图片直接忽略 */ };
+                    src.src = raw;
                 };
                 reader.readAsDataURL(f);
             };
