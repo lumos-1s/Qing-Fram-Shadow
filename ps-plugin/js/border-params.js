@@ -142,7 +142,19 @@
                 const caps = (window.StyleCaps && window.StyleCaps.caps) ? window.StyleCaps.caps(style) : {};
                 if (!caps.bi) return; // 这个风格引擎不读模糊参数
             }
-            const rows = list.filter((c) => c.g === key && (!c.only || vis[c.only] !== false));
+            let rows = list.filter((c) => c.g === key && (!c.only || vis[c.only] !== false));
+            // 相框风格里「边距/图片缩放」也只在实测支持时才摆出来；
+            // 模糊组内除「开关」外，其他项都依赖 bi
+            if (framed) {
+                const caps = (window.StyleCaps && window.StyleCaps.caps) ? window.StyleCaps.caps(style) : {};
+                rows = rows.filter((c) => {
+                    if (c.label === '边距') return !!caps.gm;
+                    if (c.label === '照片缩放') return !!caps.isc;
+                    if (c.label === '照片圆角') return !!caps.cr;
+                    if (c.g === 'blur') return !!caps.bi;
+                    return true;
+                });
+            }
             if (!rows.length) return;
             const body = rows.map((c) => {
                 const id = `${key}-${c.label}`;

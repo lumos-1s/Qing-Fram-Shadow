@@ -101,6 +101,8 @@ app.whenReady().then(async () => {
         const tpTpl = window.QF_TextParams.current() || {};
         const paramFontSize = tpTpl.paramFontSize;
         const paramModel = (tpTpl.manualExif || {}).model;
+        // 无相框风格下也应把不读的参数隐藏；这里只检查有值的控件确实可用
+        const bpTotal = document.querySelectorAll('[data-bp]').length;
         const blurCount = document.querySelectorAll('[data-bp^="blur-"]').length;
         const blurChk = document.querySelector('[data-bp="blur-开启背景模糊"]');
         if (blurChk) { blurChk.checked = true; blurChk.dispatchEvent(new Event('change', { bubbles: true })); }
@@ -123,7 +125,7 @@ app.whenReady().then(async () => {
             cachedLog,
             presets: presets.length, wallCount, thumbImgs, thumbErr,
             hasRender: typeof window.__render === 'function',
-            bpCount, strokeWidth, blurCount, blurOn, tpCount, lineText, signCtls, hasAvatarBtn,
+            bpCount, bpTotal, strokeWidth, blurCount, blurOn, tpCount, lineText, signCtls, hasAvatarBtn,
             signText: tpTpl.userSignature, paramFontSize, paramModel, exifText, profileAuto, srgbAuto,
             exifBrand: ((window.QF_PS_POC.lastTemplate() || {}).manualExif || {}).brand,
             previewW: document.getElementById('previewCanvas').width,
