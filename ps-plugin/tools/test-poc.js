@@ -48,8 +48,8 @@ app.whenReady().then(async () => {
                     window.qfMockFiles[m[1]] = window.qfMockSourceB64;
                     cb(key); return;
                 }
-                const p = /qfPlacePng\\("([^"]+)","([^"]+)","([^"]+)","([^"]+)","([^"]+)",([^,]+),([^)]+)\\)/.exec(src);
-                if (p) { window.qfMockPlaced.push({ path: p[1], name: p[2], hide: p[3], smart: p[4], fit: p[5], out: p[6] + 'x' + p[7] }); cb('OK:' + p[2]); return; }
+                const p = /qfPlacePng\\("([^"]+)","([^"]+)","([^"]+)","([^"]+)","([^"]+)",([^,]+),([^,]+),([^)]+)\\)/.exec(src);
+                if (p) { window.qfMockPlaced.push({ path: p[1], name: p[2], hide: p[3], smart: p[4], fit: p[5], out: p[6] + 'x' + p[7], canvasFit: p[8] }); cb('OK:' + p[2]); return; }
                 if (/qfGetDocPath/.test(src)) { cb('OK:' + prefix + 'exif-source.jpg|Adobe RGB (1998)'); return; }
                 cb('ERR:unknown script');
             }
@@ -191,6 +191,8 @@ app.whenReady().then(async () => {
         const appliedSign = applied0.userSignature;
         const appliedModel = (applied0.manualExif || {}).model;
         const appliedRatio = applied0.canvasRatio;
+        const canvasAtApply = document.getElementById('renderCanvas').width + 'x'
+            + document.getElementById('renderCanvas').height;
 
         // 液态玻璃是重风格：连续拖滑块只应渲染一次（停手后的那一次）
         sel.value = '55'; sel.dispatchEvent(new Event('change', { bubbles: true }));
@@ -225,7 +227,7 @@ app.whenReady().then(async () => {
 
         return {
             cachedLog, statusText, filteredWall, strokeAfterReset, rememberedStroke, hasSavedEdit,
-            appliedStroke, appliedSign, appliedModel, appliedRatio, heavyRenderCount, applyRenderCount,
+            appliedStroke, appliedSign, appliedModel, appliedRatio, canvasAtApply, heavyRenderCount, applyRenderCount,
             presets: presets.length, wallCount, thumbImgs, thumbErr,
             hasRender: typeof window.__render === 'function',
             bpCount, bpTotal, strokeWidth, blurCount, blurOn, tpCount, lineText, signCtls, hasAvatarBtn, defaultSignature,
@@ -297,11 +299,9 @@ app.whenReady().then(async () => {
     check(r.placed.every((p) => p.hide === 'true'), '隐藏原图层参数已传给 PS', JSON.stringify(r.placed.map((p) => p.hide)));
     check(r.placed.every((p) => p.smart === 'true'), '智能对象参数已传给 PS', JSON.stringify(r.placed.map((p) => p.smart)));
     check(r.placed.every((p) => p.fit === 'false'), '默认不缩放铺满文档', JSON.stringify(r.placed.map((p) => p.fit)));
-    check(r.placed.every((p) => {
-        const wh = p.out.split('x').map(Number);
-        return wh[0] > 0 && wh[1] > 0 && wh[0] <= 800 && wh[1] <= 1000;
-    }), '成品在面板侧缩到文档内，PS 无需自由变换',
-        JSON.stringify({ out: r.placed.map((p) => p.out), canvas: r.canvas }));
+    check(r.placed[0].canvasFit === 'true' && r.placed[0].out === r.canvasAtApply,
+        '画布按预设尺寸调整，成品不缩放不裁切',
+        JSON.stringify({ out: r.placed[0].out, canvas: r.canvasAtApply, fit: r.placed[0].canvasFit }));
     check(r.outputs.every((f) => f.len > 10000 && f.jpeg && f.hasIcc), '写回的是带 Adobe RGB ICC 的 JPEG', JSON.stringify(r.outputs));
     check(errors.length === 0, '无控制台错误', errors.slice(0, 3).join(' / '));
 

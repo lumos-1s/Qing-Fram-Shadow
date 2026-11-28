@@ -90,7 +90,7 @@ function qfGetDocPath() {
     }
 }
 
-function qfPlacePng(path, name, hideSrc, asSmart, fitDoc, outW, outH) {
+function qfPlacePng(path, name, hideSrc, asSmart, fitDoc, outW, outH, canvasFit) {
     var oldDialogs = app.displayDialogs;
     // JPEG 是 sRGB，目标文档可能是 Adobe RGB；不关对话框会弹「配置文件不匹配」把自动化卡住
     app.displayDialogs = DialogModes.NO;
@@ -100,6 +100,16 @@ function qfPlacePng(path, name, hideSrc, asSmart, fitDoc, outW, outH) {
         var srcLayer = doc.activeLayer;
         var png = new File(path);
         if (!png.exists) return 'ERR:渲染结果不存在';
+        // 按预设尺寸调整文档画布：只改画布边界，不做重采样，不需要自由变换，
+        // 所以不会撑满暂存盘；成品 1:1 放进去也不会留白边或被裁切。
+        if (String(canvasFit) === 'true' && Number(outW) > 0 && Number(outH) > 0) {
+            try {
+                doc.resizeCanvas(new UnitValue(Number(outW), 'px'),
+                    new UnitValue(Number(outH), 'px'), AnchorPosition.MIDDLECENTER);
+            } catch (e) {
+                return 'ERR:调整文档画布失败：' + (e.message || e);
+            }
+        }
         var layer = null;
         if (String(asSmart) === 'true' && typeof doc.place === 'function') {
             // 直接置入为智能对象：嵌入原图数据，后续缩放不失真
