@@ -78,12 +78,9 @@ app.whenReady().then(async () => {
         const brandInput = document.querySelector('[data-exif="make"]');
         if (brandInput) { brandInput.value = 'CANON'; brandInput.dispatchEvent(new Event('input', { bubbles: true })); }
 
-        await wait(400);
-        await window.QF_PS_POC.ensureAllThumbs(); // 懒加载：测试里强制补齐，验证 91 张都能出图
-        await wait(150);
+        await wait(200);
         const wallCount = document.querySelectorAll('[data-wall]').length;
         const thumbImgs = document.querySelectorAll('#presetWall img').length;
-        const thumbErr = (window.QF_PS_POC.thumbErrors || []).filter(Boolean).slice(0, 3);
         const presets = window.QF_PRESETS || [];
         window.QF_PS_POC.searchPresets('背景模糊');
         const filteredWall = Array.from(document.querySelectorAll('[data-wall]'))
@@ -228,7 +225,7 @@ app.whenReady().then(async () => {
         return {
             cachedLog, statusText, filteredWall, strokeAfterReset, rememberedStroke, hasSavedEdit,
             appliedStroke, appliedSign, appliedModel, appliedRatio, canvasAtApply, heavyRenderCount, applyRenderCount,
-            presets: presets.length, wallCount, thumbImgs, thumbErr,
+            presets: presets.length, wallCount, thumbImgs,
             hasRender: typeof window.__render === 'function',
             bpCount, bpTotal, strokeWidth, blurCount, blurOn, tpCount, lineText, signCtls, hasAvatarBtn, defaultSignature,
             signHiddenOnPlain, blurHiddenOnPlain, signText, paramFontSize, paramModel, exifText, profileAuto, srgbAuto,
@@ -260,7 +257,7 @@ app.whenReady().then(async () => {
 
     console.log(JSON.stringify(r, null, 2));
     check(r.presets === 91 && r.hasRender, '引擎与预设已加载', JSON.stringify({ presets: r.presets, hasRender: r.hasRender }));
-    check(r.wallCount === 91 && r.thumbImgs === 91, '风格缩略图墙已生成', JSON.stringify({ wall: r.wallCount, thumbs: r.thumbImgs }));
+    check(r.wallCount === 91 && r.thumbImgs === 0, '风格列表为纯文字按钮', JSON.stringify({ buttons: r.wallCount, images: r.thumbImgs }));
     check(r.filteredWall >= 2, '风格搜索可过滤', String(r.filteredWall));
     check(r.bpCount >= 15 && r.strokeWidth === 40, '边框参数面板可改模板', JSON.stringify({ bpCount: r.bpCount, strokeWidth: r.strokeWidth }));
     check(r.blurCount > 0 && r.blurOn === 1, '背景模糊参数可开启', JSON.stringify({ blurCount: r.blurCount, blurOn: r.blurOn }));
