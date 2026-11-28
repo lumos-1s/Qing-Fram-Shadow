@@ -186,12 +186,32 @@ app.whenReady().then(async () => {
         const appliedSign = applied0.userSignature;
         const appliedModel = (applied0.manualExif || {}).model;
 
+        // 液态玻璃是重风格：连续拖滑块只应渲染一次（停手后的那一次）
+        sel.value = '55'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+        await wait(250);
+        const origRender = window.__render;
+        let heavyCount = 0;
+        window.__render = function () { heavyCount++; return origRender.apply(this, arguments); };
+        const heavyEl = document.querySelector('[data-bp="style-liquidGlassSize"]');
+        for (let i = 0; i < 8; i++) {
+            if (!heavyEl) break;
+            heavyEl.value = String(100 + i * 10);
+            heavyEl.dispatchEvent(new Event('input', { bubbles: true }));
+            await wait(25);
+        }
+        await wait(300);
+        const heavyRenderCount = heavyCount;
+        window.__render = origRender;
+
         // 第二次套用应命中缓存，不再从 PS 重新导出源图
         document.getElementById('btnBorder').click();
         for (let i = 0; i < 100 && window.QF_PS_POC.isBusy(); i++) await wait(100);
         await wait(150);
         const cachedLog = document.getElementById('log').textContent;
 
+        // 回到无相框预设再验证重置（液态玻璃那边没有描边滑块）
+        sel.value = '1'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+        await wait(120);
         window.QF_PS_POC.resetCurrent();
         const strokeAfterReset = document.querySelector('[data-bp="stroke-宽度"]').value;
         const editsAfterReset = JSON.parse(localStorage.getItem('qfs_preset_edits_v1') || '{}');
@@ -199,7 +219,7 @@ app.whenReady().then(async () => {
 
         return {
             cachedLog, statusText, filteredWall, strokeAfterReset, rememberedStroke, hasSavedEdit,
-            appliedStroke, appliedSign, appliedModel,
+            appliedStroke, appliedSign, appliedModel, heavyRenderCount,
             presets: presets.length, wallCount, thumbImgs, thumbErr,
             hasRender: typeof window.__render === 'function',
             bpCount, bpTotal, strokeWidth, blurCount, blurOn, tpCount, lineText, signCtls, hasAvatarBtn, defaultSignature,
@@ -262,6 +282,7 @@ app.whenReady().then(async () => {
     check(/已放回文档/.test(r.statusText), '状态栏显示写回结果', r.statusText);
     check(r.appliedStroke === 40 && r.appliedSign === '个性签名测试' && r.appliedModel === 'CUSTOMMODEL',
         '套用时使用面板当前编辑值', JSON.stringify({ stroke: r.appliedStroke, sign: r.appliedSign, model: r.appliedModel }));
+    check(r.heavyRenderCount === 1, '液态玻璃连续调参只渲染一次', String(r.heavyRenderCount));
     check(r.rememberedStroke === '40', '切走再切回还原该预设的参数', r.rememberedStroke);
     check(r.strokeAfterReset === '0' && !r.hasSavedEdit, '重置会清除该预设的记忆',
         JSON.stringify({ stroke: r.strokeAfterReset, saved: r.hasSavedEdit }));

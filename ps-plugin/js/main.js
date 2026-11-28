@@ -84,6 +84,8 @@
     let lastPreviewAt = 0;
     const PREVIEW_GAP = 90;   // 拖动滑块时最多约 11 帧/秒，避免每个 input 都重渲染
     const PREVIEW_MAX = 700;  // 预览后备像素长边上限；排版逻辑仍按原图尺寸，和成品一致
+    // 液态玻璃每帧要做逐像素折射，连续重绘非常贵；重风格改成停手后只渲一次
+    const HEAVY_PREVIEW_STYLES = ['LIQUID_GLASS'];
 
     function doPreviewRender() {
         if (!previewSource || !liveTemplate) return;
@@ -116,6 +118,17 @@
     // 节流而不是防抖：拖动过程中也能持续看到变化，同时不会把主线程塞满。
     function renderPreviewLive() {
         if (!previewSource || !liveTemplate) return;
+        const style = String(liveTemplate.photoFrameStyle || '').toUpperCase();
+        if (HEAVY_PREVIEW_STYLES.indexOf(style) >= 0) {
+            // 重风格：拖动过程中不画，停手 140ms 后只画一次，避免逐帧折射
+            clearTimeout(previewTimer);
+            previewTimer = setTimeout(() => {
+                previewTimer = 0;
+                lastPreviewAt = performance.now();
+                doPreviewRender();
+            }, 140);
+            return;
+        }
         if (previewTimer) return;
         const wait = Math.max(0, PREVIEW_GAP - (performance.now() - lastPreviewAt));
         previewTimer = setTimeout(() => {
