@@ -12,6 +12,12 @@
       <p class="note">取当前文档合成，套边框后作为新图层放回。</p>
     </div>
 
+    <div class="preview-box">
+      <canvas id="previewCanvas" class="preview"></canvas>
+      <div id="previewMeta" class="preview-meta">选择风格后显示预览</div>
+      <label class="exif-auto"><input id="chkPreviewColor" type="checkbox"> 预览按输出色域显示（默认 sRGB）</label>
+    </div>
+
     <div class="wall-head">
       <label for="presetSearch">风格</label>
       <span id="presetCount" class="count">0</span>
@@ -20,12 +26,6 @@
     <div id="presetWall" class="wall"></div>
     <p id="wallEmpty" class="note" hidden>没有匹配的风格</p>
     <select id="preset" hidden></select>
-
-    <div class="preview-box">
-      <canvas id="previewCanvas" class="preview"></canvas>
-      <div id="previewMeta" class="preview-meta">选择风格后显示预览</div>
-      <label class="exif-auto"><input id="chkPreviewColor" type="checkbox"> 预览按输出色域显示（默认 sRGB）</label>
-    </div>
 
     <div id="borderParams" class="params"></div>
     <div id="textParams" class="params"></div>
