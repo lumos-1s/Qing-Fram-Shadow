@@ -110,6 +110,14 @@ app.whenReady().then(async () => {
         if (blurChk) { blurChk.checked = true; blurChk.dispatchEvent(new Event('change', { bubbles: true })); }
         const blurOn = ((window.QF_BorderParams.current() || {}).baseMargin || {}).bgBlurEnable;
 
+        // 液态玻璃：玻璃条大小可调，且不该出现签名/头像控件（模糊是真实用到的）
+        sel.value = '55'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+        const glassSlider = document.querySelector('[data-bp="style-liquidGlassSize"]');
+        const glassDate = document.querySelector('[data-bp="style-liquidGlassDate"]');
+        if (glassSlider) { glassSlider.value = '150'; glassSlider.dispatchEvent(new Event('input', { bubbles: true })); }
+        const glassSize = (window.QF_BorderParams.current() || {}).liquidGlassSize;
+        const signHiddenOnGlass = !groupByTitle('个性签名');
+
         // 无相框风格：填充/描边/阴影、文字、边框参数都可用
         sel.value = '1'; sel.dispatchEvent(new Event('change', { bubbles: true }));
         const bpCount = document.querySelectorAll('[data-bp]').length;
@@ -173,6 +181,7 @@ app.whenReady().then(async () => {
             hasRender: typeof window.__render === 'function',
             bpCount, bpTotal, strokeWidth, blurCount, blurOn, tpCount, lineText, signCtls, hasAvatarBtn, defaultSignature,
             signHiddenOnPlain, blurHiddenOnPlain, signText, paramFontSize, paramModel, exifText, profileAuto, srgbAuto,
+            glassSlider: !!glassSlider, glassDate: !!glassDate, glassSize, signHiddenOnGlass,
             exifBrand: ((window.QF_PS_POC.lastTemplate() || {}).manualExif || {}).brand,
             previewW: document.getElementById('previewCanvas').width,
             hasLive: typeof window.QF_PS_POC.renderPreviewLive === 'function',
@@ -205,6 +214,9 @@ app.whenReady().then(async () => {
     check(r.blurCount > 0 && r.blurOn === 1, '背景模糊参数可开启', JSON.stringify({ blurCount: r.blurCount, blurOn: r.blurOn }));
     check(r.signHiddenOnPlain && r.blurHiddenOnPlain, '不支持的风格隐藏签名/模糊控件',
         JSON.stringify({ signHidden: r.signHiddenOnPlain, blurHidden: r.blurHiddenOnPlain }));
+    check(r.glassSlider && r.glassDate && r.glassSize === 1.5 && r.signHiddenOnGlass,
+        '液态玻璃有玻璃条大小/日期开关且无签名控件',
+        JSON.stringify({ slider: r.glassSlider, date: r.glassDate, size: r.glassSize, signHidden: r.signHiddenOnGlass }));
     check(r.tpCount > 0 && r.lineText === '编辑后的文字', '预设文字可编辑', JSON.stringify({ tpCount: r.tpCount, lineText: r.lineText }));
     check(!!r.defaultSignature, '空签名预设自动补默认签名', String(r.defaultSignature));
     check(r.signCtls >= 7 && r.hasAvatarBtn && r.signText === '个性签名测试', '个性签名（含头像）可编辑',

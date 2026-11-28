@@ -100,7 +100,16 @@
           hint: '相邻齿孔的节距；越小越密，默认 100%' }
     ];
 
+    // 液态玻璃底部那条玻璃条：apk 原始高度是 45dp，100% 就是 1 倍，
+    // 引擎从 t.liquidGlassSize 读；这里沿存量 root 字段，不改 schema。
+    const LIQUID_GLASS = [
+        { key: 'liquidGlassSize', label: '玻璃条大小', min: 50, max: 200, step: 5, def: 100, unit: '%',
+          path: 'root', legacy: 1, apply: pct, scale: 100, group: '玻璃条',
+          hint: '100% = apk 原始 45dp 高度；只影响 LIQUID_GLASS 底部的玻璃条' }
+    ];
+
     const TABLE = { BLUR_CLASSIC: BLUR, BLUR_DATE: BLUR, CARD_3D: CARD_3D,
+        LIQUID_GLASS: LIQUID_GLASS,
         STAMP_POSTAGE: STAMP_POSTAGE, FILM_TEAR: FILM_TEAR,
         TICKET_VINTAGE: TICKET, TICKET_SCRAP: TICKET, TICKET_CONCERT: TICKET,
         MOVIE_TICKET: TICKET, BOARDING_PASS: TICKET,
@@ -120,7 +129,11 @@
     // 读到的永远是 UI 值;字段不存在时给 def,但绝不写回模板。
     function get(t, style, p) {
         if (!t) return p.def;
-        if (p.path === 'root') return t[p.key] == null ? p.def : clamp(p, t[p.key]);
+        if (p.path === 'root') {
+            if (t[p.key] == null) return p.def;
+            // scale: 模板存的是倍率(1 = 默认)，面板显示百分数(100% = 1)
+            return clamp(p, p.scale ? Number(t[p.key]) * p.scale : t[p.key]);
+        }
         // 导入的工程 / 分享码里的 styleParams 可能不是对象(字符串、数组、null),
         // 一律当作「没有调过参数」,不让脏结构渗进面板。
         const root = t.styleParams;
@@ -135,7 +148,7 @@
         if (!t) return p.def;
         const n = clamp(p, v);
         if (p.path === 'root') {
-            t[p.key] = n;
+            t[p.key] = p.scale ? n / p.scale : n;
         } else {
             const s = String(style).toUpperCase();
             // 数组虽然 typeof 是 object,但 JSON.stringify 会丢掉字符串键 —— 必须纠正成普通对象,

@@ -172,20 +172,23 @@
 
         // 风格私有参数：缺省不写字段，改了才写进 styleParams
         const P = window.StyleParams;
-        // 只显示真正的「风格私有参数」；背景模糊那几个 root 字段已经在上面的
-        // 背景模糊分组里出现过，不要再重复摆一组。
-        const params = P && P.styleParams ? P.styleParams(style)
-            : (P && P.forStyle ? P.forStyle(style) : []);
-        if (params.length) {
-            const body = params.map((p) => {
-                const id = `style-${p.key}`;
-                const v = P.get(t, style, p);
-                list.push({ _id: id, type: 'range', min: p.min, max: p.max, step: p.step,
-                    set: (val) => P.set(t, style, p, val) });
-                return row({ type: 'range', label: p.label, value: v, min: p.min, max: p.max, step: p.step, unit: p.unit || '%' }, id);
-            }).join('');
-            out += `<details><summary>样式参数</summary>${body}</details>`;
+        const allParams = P && P.forStyle ? P.forStyle(style) : [];
+        // root 的 blur 字段已经在上面的「背景模糊」分组里出现过，不要再摆一组
+        const params = allParams.filter((p) => !(p.path === 'root' && /^blur/.test(p.key)));
+        let body = params.map((p) => {
+            const id = `style-${p.key}`;
+            const v = P.get(t, style, p);
+            list.push({ _id: id, type: 'range', min: p.min, max: p.max, step: p.step,
+                set: (val) => P.set(t, style, p, val) });
+            return row({ type: 'range', label: p.label, value: v, min: p.min, max: p.max, step: p.step, unit: p.unit || '%' }, id);
+        }).join('');
+        // 玻璃条日期开关：StyleParams 的表只描述数值滑块，布尔项在这里单独补
+        if (style === 'LIQUID_GLASS' && vis.rowGlassDate !== false) {
+            const id = 'style-liquidGlassDate';
+            list.push({ _id: id, type: 'check', set: (v) => { t.liquidGlassDate = v ? 1 : 0; } });
+            body += row({ type: 'check', label: '玻璃条显示日期', value: t.liquidGlassDate !== 0 }, id);
         }
+        if (body) out += `<details><summary>样式参数</summary>${body}</details>`;
 
         host.innerHTML = out;
         const byId = new Map(list.map((c) => [c._id, c]));
