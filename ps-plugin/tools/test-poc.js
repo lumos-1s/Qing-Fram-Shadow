@@ -126,6 +126,14 @@ app.whenReady().then(async () => {
         const tpl0 = window.QF_BorderParams.current() || {};
         const strokeWidth = ((tpl0.layerList || [])[0] || {}).strokeConfig
             ? tpl0.layerList[0].strokeConfig.strokeWidth : null;
+
+        // 每个预设各自记住参数：切走再切回，编辑值应还原
+        await wait(400);
+        sel.value = '0'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+        sel.value = '1'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+        await wait(100);
+        const rememberedStroke = document.querySelector('[data-bp="stroke-宽度"]').value;
+
         document.getElementById('btnBorder').click();
         for (let i = 0; i < 100 && window.QF_PS_POC.isBusy(); i++) await wait(100);
         await wait(150);
@@ -146,9 +154,11 @@ app.whenReady().then(async () => {
 
         window.QF_PS_POC.resetCurrent();
         const strokeAfterReset = document.querySelector('[data-bp="stroke-宽度"]').value;
+        const editsAfterReset = JSON.parse(localStorage.getItem('qfs_preset_edits_v1') || '{}');
+        const hasSavedEdit = Object.keys(editsAfterReset).some((k) => k.indexOf('Canva错位拼贴') === 0);
 
         return {
-            cachedLog, statusText, filteredWall, strokeAfterReset,
+            cachedLog, statusText, filteredWall, strokeAfterReset, rememberedStroke, hasSavedEdit,
             appliedStroke, appliedSign, appliedModel,
             presets: presets.length, wallCount, thumbImgs, thumbErr,
             hasRender: typeof window.__render === 'function',
@@ -202,7 +212,9 @@ app.whenReady().then(async () => {
     check(/已放回文档/.test(r.statusText), '状态栏显示写回结果', r.statusText);
     check(r.appliedStroke === 40 && r.appliedSign === '个性签名测试' && r.appliedModel === 'CUSTOMMODEL',
         '套用时使用面板当前编辑值', JSON.stringify({ stroke: r.appliedStroke, sign: r.appliedSign, model: r.appliedModel }));
-    check(r.strokeAfterReset === '0', '重置参数恢复预设默认值', r.strokeAfterReset);
+    check(r.rememberedStroke === '40', '切走再切回还原该预设的参数', r.rememberedStroke);
+    check(r.strokeAfterReset === '0' && !r.hasSavedEdit, '重置会清除该预设的记忆',
+        JSON.stringify({ stroke: r.strokeAfterReset, saved: r.hasSavedEdit }));
     check(r.placed.every((p) => p.hide === 'true'), '隐藏原图层参数已传给 PS', JSON.stringify(r.placed.map((p) => p.hide)));
     check(r.placed.every((p) => p.smart === 'true'), '智能对象参数已传给 PS', JSON.stringify(r.placed.map((p) => p.smart)));
     check(r.outputs.every((f) => f.len > 10000 && f.jpeg && f.hasIcc), '写回的是带 Adobe RGB ICC 的 JPEG', JSON.stringify(r.outputs));

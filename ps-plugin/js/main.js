@@ -325,7 +325,38 @@
         return A;
     }
 
-    function presetAt() {
+    // 每个预设各自记住用户调过的参数（整份模板快照，任何字段都涵盖）。
+    const EDIT_KEY = 'qfs_preset_edits_v1';
+    let currentPresetIndex = 0;
+    let editSaveTimer = 0;
+
+    function readPresetEdits() {
+        try { return JSON.parse(localStorage.getItem(EDIT_KEY) || '{}') || {}; }
+        catch (_) { return {}; }
+    }
+    function writePresetEdits(all) {
+        try { localStorage.setItem(EDIT_KEY, JSON.stringify(all)); }
+        catch (_) { /* 配额不足就先不记，不影响使用 */ }
+    }
+    function presetKeyOf(i) {
+        const p = (window.QF_PRESETS || [])[i] || {};
+        return (p.templateName || p._fileName || ('风格 ' + i))
+            + '|' + String(p.photoFrameStyle || '');
+    }
+    function saveEditsNow(i, tpl) {
+        if (!tpl) return;
+        try {
+            const all = readPresetEdits();
+            all[presetKeyOf(i)] = JSON.parse(JSON.stringify(tpl));
+            writePresetEdits(all);
+        } catch (_) { /* 忽略 */ }
+    }
+    function scheduleEditSave() {
+        clearTimeout(editSaveTimer);
+        editSaveTimer = setTimeout(() => saveEditsNow(currentPresetIndex, liveTemplate), 300);
+    }
+
+    function freshPreset() {
         const list = window.QF_PRESETS || [];
         const i = Number(presetSel && presetSel.value) || 0;
         const p = list[i] || list[0] || {};
@@ -344,6 +375,20 @@
                 if (!defaultOff) t.userSignature = '清框影';
             }
         } catch (_) { /* 本地存储不可用就用空签名 */ }
+        return t;
+    }
+
+    // 切回某个预设时把它的编辑快照盖回去；resetCurrent() 用 freshPreset() 绕过这一步
+    function presetAt() {
+        const fresh = freshPreset();
+        const t = fresh;
+        try {
+            const saved = readPresetEdits()[presetKeyOf(currentPresetIndex)];
+            if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+                Object.assign(t, saved);
+                t.templateName = fresh.templateName;
+            }
+        } catch (_) { /* 快照坏了就按预设默认值来 */ }
         return t;
     }
 
@@ -716,8 +761,15 @@
 
     function resetCurrent() {
         if (busy) return;
+        clearTimeout(editSaveTimer);
         const prev = liveTemplate || {};
-        const t = presetAt();
+        const t = freshPreset();
+        // 重置要连这个预设记住的参数一起清掉，否则下次切回来又变回旧值
+        try {
+            const all = readPresetEdits();
+            delete all[presetKeyOf(currentPresetIndex)];
+            writePresetEdits(all);
+        } catch (_) { /* 忽略 */ }
         if (prev.__qfDocW && prev.__qfDocH) {
             t.__qfDocW = prev.__qfDocW;
             t.__qfDocH = prev.__qfDocH;
@@ -730,7 +782,7 @@
         if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(t);
         if (window.QF_TextParams) window.QF_TextParams.setTemplate(t);
         renderPreviewLive();
-        setStatus('已重置为预设默认参数', 'ok');
+        setStatus('已重置为预设默认参数（清除该风格的记忆）', 'ok');
     }
 
     function init() {
@@ -746,6 +798,7 @@
                     presetSel.value = String(saved);
                 }
             } catch (_) { /* 忽略 */ }
+            currentPresetIndex = Number(presetSel.value) || 0;
         }
         if (btnBorder) btnBorder.addEventListener('click', () => apply());
         if (btnReset) btnReset.addEventListener('click', resetCurrent);
@@ -753,6 +806,11 @@
         const exifBtn = document.getElementById('btnExifDetect');
         if (exifBtn) exifBtn.addEventListener('click', () => detectExif().catch(() => {}));
         if (presetSel) presetSel.addEventListener('change', () => {
+            // 先把当前预设的编辑存好，再切走（presetAt 会读新索引）
+            // 取消尚未落盘的延迟写入，否则它会用新的索引把旧模板写错地方
+            clearTimeout(editSaveTimer);
+            saveEditsNow(currentPresetIndex, liveTemplate);
+            currentPresetIndex = Number(presetSel.value) || 0;
             try { localStorage.setItem('qfs_last_preset', presetSel.value); } catch (_) { /* 忽略 */ }
             const tpl = presetAt();
             if (window.QF_BorderParams) window.QF_BorderParams.setTemplate(tpl);
@@ -764,6 +822,7 @@
         const changed = () => {
             liveTemplate = window.QF_BorderParams ? window.QF_BorderParams.current()
                 : (window.QF_TextParams ? window.QF_TextParams.current() : presetAt());
+            scheduleEditSave();
             renderPreviewLive();
         };
         if (window.QF_BorderParams) {
