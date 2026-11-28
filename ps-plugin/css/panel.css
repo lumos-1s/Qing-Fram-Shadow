@@ -107,6 +107,8 @@ button.primary:not(:disabled):hover { border-color:#6ff0cc; }
 .status.ok { color:var(--primary); }
 .status.err { color:var(--danger); }
 .status.busy { color:#e7c177; }
+.status.busy::before { content:'◐'; display:inline-block; margin-right:5px; animation:statusSpin 1s linear infinite; }
+@keyframes statusSpin { to { transform:rotate(360deg); } }
 
 pre { margin:4px 0 0; min-height:70px; max-height:160px; overflow:auto; white-space:pre-wrap; word-break:break-all;
       background:#151515; border:1px solid var(--line); border-radius:4px; padding:8px; color:#9fd; font:11px/1.5 Consolas, monospace; }

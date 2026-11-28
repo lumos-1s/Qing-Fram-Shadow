@@ -14,6 +14,7 @@
     const presetSearch = document.getElementById('presetSearch');
 
     let busy = false;
+    let cancelRequested = false;
     let lastDocPath = '';
 
     function log(s) {
@@ -89,10 +90,26 @@
 
     function updatePreviewMeta(pc, t) {
         const meta = document.getElementById('previewMeta');
-        if (meta) {
-            meta.textContent = (t && t.templateName || '自定义风格')
-                + ' · 预览 ' + pc.width + '×' + pc.height;
-        }
+        if (!meta) return;
+        const colorChk = document.getElementById('chkPreviewColor');
+        const csSel = document.getElementById('selColorSpace');
+        const colorNote = (colorChk && colorChk.checked && csSel && csSel.value !== 'srgb')
+            ? ' · 按输出色域' : '';
+        meta.textContent = (t && t.templateName || '自定义风格')
+            + ' · 预览 ' + pc.width + '×' + pc.height + colorNote;
+    }
+
+    // 勾选后把 sRGB 预览像素转成所选输出色域，和成品口径一致（默认 sRGB 不转换）
+    function applyPreviewColor(pc) {
+        const chk = document.getElementById('chkPreviewColor');
+        const sel = document.getElementById('selColorSpace');
+        if (!chk || !chk.checked || !sel || sel.value === 'srgb' || !window.QfsColorSpace) return;
+        try {
+            const g = pc.getContext('2d', { willReadFrequently: true });
+            const img = g.getImageData(0, 0, pc.width, pc.height);
+            window.QfsColorSpace.convertRgbaInPlace(img.data, sel.value);
+            g.putImageData(img, 0, 0);
+        } catch (_) { /* 转换失败就保留 sRGB 预览 */ }
     }
 
     // 套用时已经全尺寸渲染过一遍，预览直接从成品缩小即可，
@@ -106,6 +123,7 @@
         const g = pc.getContext('2d');
         g.clearRect(0, 0, pc.width, pc.height);
         g.drawImage(canvas, 0, 0, pc.width, pc.height);
+        applyPreviewColor(pc);
         updatePreviewMeta(pc, t);
     }
 
@@ -127,6 +145,7 @@
             delete A.exportScale;
             syncImageExif(liveTemplate, previewSource);
             window.__render(A, false);
+            applyPreviewColor(pc);
             updatePreviewMeta(pc, liveTemplate);
         } catch (e) {
             log('预览失败：' + ((e && e.message) || e));
@@ -441,10 +460,11 @@
     async function apply() {
         if (busy) return;
         busy = true;
+        cancelRequested = false;
         clearLog();
-        btnBorder.disabled = true;
         btnReset.disabled = true;
-        btnBorder.textContent = '处理中…';
+        btnBorder.disabled = false; // 处理中点它 = 取消
+        btnBorder.textContent = '取消当前操作';
         const wrap = document.querySelector('.wrap');
         if (wrap) wrap.classList.add('busy');
         setStatus('正在读取当前文档…', 'busy');
@@ -498,7 +518,7 @@
             // 输出走 JPEG（质量 95）：带边框的成品不需要 alpha，体积比 PNG 小一个量级。
             // 色域转换直接在输出画布上原地做，省掉一张与成品等大的临时 Canvas。
             const csSel = document.getElementById('selColorSpace');
-            let cs = (csSel && csSel.value) || 'adobergb';
+            let cs = (csSel && csSel.value) || 'srgb';
             if ((cs === 'adobergb' || cs === 'p3') && window.QfsColorSpace) {
                 try {
                     const g = canvas.getContext('2d', { willReadFrequently: true });
@@ -539,6 +559,7 @@
             const csOpt = csSel && csSel.options[csSel.selectedIndex];
             log('输出色域：' + (csOpt ? csOpt.text : cs));
 
+            if (cancelRequested) { setStatus('已取消，未写回文档'); return; }
             setStatus('正在写回 Photoshop…', 'busy');
             const out = tempPath('qingframe-border.jpg');
             const wr = await writeBase64(out, data);
@@ -552,10 +573,17 @@
             const hide = hideSrc && hideSrc.checked ? 'true' : 'false';
             const smartEl = document.getElementById('chkSmart');
             const smart = smartEl && smartEl.checked ? 'true' : 'false';
+            if (cancelRequested) {
+                removeTemp(out);
+                setStatus('已取消，未写回文档');
+                return;
+            }
             const fitEl = document.getElementById('chkFitDoc');
             const fitDoc = fitEl && fitEl.checked ? 'true' : 'false';
+            const stamp = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            const layerName = '清框影边框 · ' + (template.templateName || '预设') + ' ' + stamp;
             const placed = await evalScript('qfPlacePng(' + JSON.stringify(out) + ','
-                + JSON.stringify('清框影边框') + ',' + JSON.stringify(hide) + ','
+                + JSON.stringify(layerName) + ',' + JSON.stringify(hide) + ','
                 + JSON.stringify(smart) + ',' + JSON.stringify(fitDoc) + ','
                 + JSON.stringify(outCanvas.width) + ',' + JSON.stringify(outCanvas.height) + ','
                 + JSON.stringify(canvasFit) + ')');
@@ -709,7 +737,10 @@
             } catch (_) { /* 忽略 */ }
             currentPresetIndex = Number(presetSel.value) || 0;
         }
-        if (btnBorder) btnBorder.addEventListener('click', () => apply());
+        if (btnBorder) btnBorder.addEventListener('click', () => {
+            if (busy) { cancelRequested = true; return; } // 处理中点按钮即取消
+            apply();
+        });
         if (btnReset) btnReset.addEventListener('click', resetCurrent);
         if (presetSearch) presetSearch.addEventListener('input', () => filterWall(presetSearch.value));
         const exifBtn = document.getElementById('btnExifDetect');
@@ -756,6 +787,9 @@
         } catch (_) { /* 本地存储不可用时忽略 */ }
         cleanupSourceFiles();
         log('就绪；共 ' + list.length + ' 款预设。' + (cs ? '已连接 Photoshop。' : '本机测试模式。'));
+        if (cs && !window.qfMockHost) {
+            evalScript('qfSelfTest()').then((r) => log('PS 自检：' + r)).catch(() => {});
+        }
         buildPresetWall();
         detectExif().catch(() => {});
         prepareSource().catch(() => {});
@@ -766,6 +800,7 @@
 
     window.QF_PS_POC = {
         apply, detectExif, renderPreviewLive, evalScript, readBase64, writeBase64, tempPath, loadLayer,
+        selfTest: () => evalScript('qfSelfTest()'),
         lastTemplate: () => lastTemplate,
         buildPresetWall, paintWall, applyDocProfile,
         ensureAllThumbs, resetCurrent, filterWall,

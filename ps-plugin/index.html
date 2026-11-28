@@ -24,6 +24,7 @@
     <div class="preview-box">
       <canvas id="previewCanvas" class="preview"></canvas>
       <div id="previewMeta" class="preview-meta">选择风格后显示预览</div>
+      <label class="exif-auto"><input id="chkPreviewColor" type="checkbox"> 预览按输出色域显示（默认 sRGB）</label>
     </div>
 
     <div id="borderParams" class="params"></div>
@@ -40,9 +41,9 @@
       <summary>输出</summary>
       <label for="selColorSpace">色彩空间</label>
       <select id="selColorSpace">
-        <option value="adobergb" selected>Adobe RGB (1998)</option>
+        <option value="srgb" selected>sRGB</option>
+        <option value="adobergb">Adobe RGB (1998)</option>
         <option value="p3">Display P3</option>
-        <option value="srgb">sRGB</option>
       </select>
       <label class="exif-auto"><input id="chkSmart" type="checkbox" checked> 作为智能对象放入</label>
       <label class="exif-auto"><input id="chkHideSrc" type="checkbox" checked> 套用后隐藏原图层</label>

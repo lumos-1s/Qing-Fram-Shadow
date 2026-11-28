@@ -31,6 +31,7 @@ app.whenReady().then(async () => {
 
     const r = await win.webContents.executeJavaScript(`(async () => {
         const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const initialColor = document.getElementById('selColorSpace').value;
         const prefix = ${JSON.stringify(TMP)};
         const source = prefix + 'ps-poc-source.png';
         window.qfMockPlaced = [];
@@ -41,6 +42,7 @@ app.whenReady().then(async () => {
             write: (p, b64, cb) => { window.qfMockFiles[p] = b64; cb(true); },
             eval: (src, cb) => {
                 const key = 'OK:800x1000|' + prefix + 'exif-source.jpg|1|Layer 1';
+                if (/qfSelfTest/.test(src)) { cb('OK:doc,canvas,place,undo-group,jpeg,unit,dialog|800x1000'); return; }
                 if (/qfGetDocKey/.test(src)) { cb(key); return; }
                 const m = /qfGetLayerPng\\("([^"]+)"\\)/.exec(src);
                 if (m) {
@@ -222,8 +224,17 @@ app.whenReady().then(async () => {
         const editsAfterReset = JSON.parse(localStorage.getItem('qfs_preset_edits_v1') || '{}');
         const hasSavedEdit = Object.keys(editsAfterReset).some((k) => k.indexOf('Canva错位拼贴') === 0);
 
+        // 取消：处理中点主按钮应当中止写回
+        const selfTestResult = window.QF_PS_POC.selfTest ? await window.QF_PS_POC.selfTest() : '';
+        document.getElementById('btnBorder').click();
+        const cancelLabel = document.getElementById('btnBorder').textContent;
+        document.getElementById('btnBorder').click();
+        for (let i = 0; i < 100 && window.QF_PS_POC.isBusy(); i++) await wait(50);
+        const cancelStatus = document.getElementById('status').textContent;
+
         return {
             cachedLog, statusText, filteredWall, strokeAfterReset, rememberedStroke, hasSavedEdit,
+            initialColor, selfTestResult, cancelLabel, cancelStatus,
             appliedStroke, appliedSign, appliedModel, appliedRatio, canvasAtApply, heavyRenderCount, applyRenderCount,
             presets: presets.length, wallCount, thumbImgs,
             hasRender: typeof window.__render === 'function',
@@ -256,6 +267,8 @@ app.whenReady().then(async () => {
     })()`);
 
     console.log(JSON.stringify(r, null, 2));
+    check(r.initialColor === 'srgb', '默认输出色域为 sRGB', r.initialColor);
+    check(/^OK:/.test(r.selfTestResult), 'PS 自检可用', r.selfTestResult);
     check(r.presets === 91 && r.hasRender, '引擎与预设已加载', JSON.stringify({ presets: r.presets, hasRender: r.hasRender }));
     check(r.wallCount === 91 && r.thumbImgs === 0, '风格列表为纯文字按钮', JSON.stringify({ buttons: r.wallCount, images: r.thumbImgs }));
     check(r.filteredWall >= 2, '风格搜索可过滤', String(r.filteredWall));
@@ -281,8 +294,8 @@ app.whenReady().then(async () => {
     check(r.exifBrand === 'CANON', '相机参数可手动修改并写回模板', String(r.exifBrand));
     check(r.hasLive && r.previewW > 0, '实时预览画布已渲染', JSON.stringify({ hasLive: r.hasLive, previewW: r.previewW }));
     check(/放回文档：OK/.test(r.logText), '边框渲染并写回图层', r.logText.split('\n').slice(-2).join(' / '));
-    check(r.placed.length >= 1 && r.placed[0].name === '清框影边框',
-        '写回边框图层', JSON.stringify(r.placed.map((p) => p.name)));
+    check(r.placed.length >= 1 && r.placed[0].name.indexOf('清框影边框') === 0,
+        '写回带预设名的边框图层', JSON.stringify(r.placed.map((p) => p.name)));
     check(/缓存/.test(r.cachedLog), '重复套用命中源图缓存', r.cachedLog.split('\n')[0]);
     check(/已放回文档/.test(r.statusText), '状态栏显示写回结果', r.statusText);
     check(r.appliedStroke === 40 && r.appliedSign === '个性签名测试' && r.appliedModel === 'CUSTOMMODEL',
@@ -296,6 +309,8 @@ app.whenReady().then(async () => {
     check(r.placed.every((p) => p.hide === 'true'), '隐藏原图层参数已传给 PS', JSON.stringify(r.placed.map((p) => p.hide)));
     check(r.placed.every((p) => p.smart === 'true'), '智能对象参数已传给 PS', JSON.stringify(r.placed.map((p) => p.smart)));
     check(r.placed.every((p) => p.fit === 'false'), '默认不缩放铺满文档', JSON.stringify(r.placed.map((p) => p.fit)));
+    check(r.cancelLabel === '取消当前操作' && r.cancelStatus === '已取消，未写回文档',
+        '处理中可取消写回', JSON.stringify({ label: r.cancelLabel, status: r.cancelStatus }));
     check(r.placed[0].canvasFit === 'true' && r.placed[0].out === r.canvasAtApply,
         '画布按预设尺寸调整，成品不缩放不裁切',
         JSON.stringify({ out: r.placed[0].out, canvas: r.canvasAtApply, fit: r.placed[0].canvasFit }));
